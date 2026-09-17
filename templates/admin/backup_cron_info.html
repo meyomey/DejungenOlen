@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Backup-Cronjob – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+
+<h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
+  <i class="bi bi-clock-history me-2"></i>Zuverlässige Backup-Auslösung
+</h2>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <p>
+      Automatische Backups laufen normalerweise beim nächsten Seitenaufruf, sobald das
+      eingestellte Intervall abgelaufen ist. Das funktioniert gut solange die App
+      regelmäßig besucht wird – für eine <strong>zuverlässigere, zeitgenaue Auslösung</strong>
+      (z.B. nachts, wenn niemand die Seite aufruft) kannst du zusätzlich eine
+      <strong>Geplante Aufgabe</strong> in Plesk einrichten.
+    </p>
+
+    <h6 class="fw-bold mt-4">So geht's in Plesk:</h6>
+    <ol class="small">
+      <li>Plesk öffnen → <strong>Geplante Aufgaben</strong> (unter „Tools & Einstellungen" oder direkt in der Domain-Verwaltung)</li>
+      <li><strong>Aufgabe hinzufügen</strong> klicken</li>
+      <li>Als Befehl <code>curl</code> oder <code>wget</code> mit folgender URL eintragen:</li>
+    </ol>
+
+    <div class="p-3 rounded mb-3" style="background:#f8f9fa;border:1px solid #dee2e6">
+      <code style="word-break:break-all;font-size:.85rem">{{ trigger_url }}</code>
+      <button class="btn btn-sm btn-outline-secondary ms-2 mt-2"
+              onclick="navigator.clipboard.writeText('{{ trigger_url }}'); this.textContent='Kopiert!'">
+        <i class="bi bi-clipboard me-1"></i>Kopieren
+      </button>
+    </div>
+
+    <h6 class="fw-bold mt-4">Beispiel-Befehl für Plesk:</h6>
+    <div class="p-3 rounded mb-3" style="background:#f8f9fa;border:1px solid #dee2e6">
+      <code style="word-break:break-all;font-size:.8rem">curl -s "{{ trigger_url }}" > /dev/null 2>&1</code>
+    </div>
+
+    <div class="alert alert-info border-0 small">
+      <i class="bi bi-info-circle me-1"></i>
+      <strong>Häufigkeit der Geplanten Aufgabe:</strong> stell sie in Plesk auf
+      <strong>täglich</strong> (z.B. 03:00 Uhr) – dieser Endpunkt prüft selbst,
+      ob laut deinem eingestellten Intervall (täglich/wöchentlich/monatlich)
+      wirklich ein Backup fällig ist, und überspringt es sonst automatisch.
+      Ein täglicher Aufruf reicht also für jede Intervall-Einstellung.
+    </div>
+
+    <div class="alert alert-warning border-0 small mb-0">
+      <i class="bi bi-shield-lock me-1"></i>
+      Der Link enthält ein geheimes Token – nicht öffentlich teilen.
+    </div>
+  </div>
+</div>
+
+<a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-djo btn-sm">
+  <i class="bi bi-arrow-left me-1"></i>Zurück zum Admin-Bereich
+</a>
+
+{% endblock %}

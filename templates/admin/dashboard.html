@@ -17,12 +17,6 @@
     <a href="{{ url_for('admin_install_packages') }}" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-box-seam me-1"></i>Pakete
     </a>
-    <form method="post" action="{{ url_for('admin_backup') }}"
-          onsubmit="return confirm('Backup jetzt erstellen?')">
-      <button class="btn btn-djo btn-sm">
-        <i class="bi bi-archive me-1"></i>Backup
-      </button>
-    </form>
   </div>
 </div>
 
@@ -63,6 +57,67 @@
         <div class="text-muted" style="font-size:.7rem">Offene Einladungen</div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ── Backup-Karte ──────────────────────────────────────────────────────────── -->
+<div class="card shadow-sm border-0 mb-3">
+  <div class="card-body py-2 px-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-archive" style="font-size:1.3rem;color:var(--djo-navy)"></i>
+        <div>
+          <div class="fw-semibold small">Backup</div>
+          <div class="text-muted" style="font-size:.72rem">
+            {% if backup_last_run %}
+              Letztes: {{ backup_last_run.strftime('%d.%m.%Y %H:%M') }} Uhr
+              {% if backup_last_status == 'ok' %}
+              <span class="badge bg-success ms-1" style="font-size:.62rem">✓ OK</span>
+              {% else %}
+              <span class="badge bg-danger ms-1" style="font-size:.62rem">✗ Fehler</span>
+              {% endif %}
+              {% if backup_last_trigger and backup_last_trigger != 'manuell' %}
+              <span class="text-muted">({{ backup_last_trigger }})</span>
+              {% endif %}
+            {% else %}
+              Noch kein Backup gelaufen
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <form method="post" action="{{ url_for('admin_backup_settings') }}" class="d-flex align-items-center gap-2">
+          <select name="backup_interval" class="form-select form-select-sm" style="width:auto;font-size:.78rem"
+                  onchange="this.form.submit()">
+            <option value="off"     {% if backup_interval == 'off'     %}selected{% endif %}>Automatisch: Aus</option>
+            <option value="daily"   {% if backup_interval == 'daily'   %}selected{% endif %}>Täglich</option>
+            <option value="weekly"  {% if backup_interval == 'weekly'  %}selected{% endif %}>Wöchentlich</option>
+            <option value="monthly" {% if backup_interval == 'monthly' %}selected{% endif %}>Monatlich</option>
+          </select>
+          <div class="form-check form-check-inline mb-0" style="font-size:.75rem" title="E-Mail bei automatischem Backup">
+            <input class="form-check-input" type="checkbox" name="backup_notify_email" value="1"
+                   id="backupNotify" {% if backup_notify_email == '1' %}checked{% endif %}
+                   onchange="this.form.submit()">
+            <label class="form-check-label text-muted" for="backupNotify">
+              <i class="bi bi-envelope"></i>
+            </label>
+          </div>
+        </form>
+        <form method="post" action="{{ url_for('admin_backup') }}"
+              onsubmit="return confirm('Backup jetzt erstellen?')">
+          <button class="btn btn-djo btn-sm">
+            <i class="bi bi-cloud-arrow-down me-1"></i>Jetzt
+          </button>
+        </form>
+      </div>
+    </div>
+    {% if backup_interval != 'off' %}
+    <div class="text-muted mt-2" style="font-size:.7rem">
+      <i class="bi bi-info-circle me-1"></i>Läuft automatisch beim nächsten Seitenaufruf nach Ablauf des Intervalls.
+      Für zuverlässigere Auslösung unabhängig von Besuchen:
+      <a href="{{ url_for('admin_backup_cron_info') }}">Cronjob-Anleitung</a>.
+    </div>
+    {% endif %}
   </div>
 </div>
 

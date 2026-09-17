@@ -2,7 +2,7 @@ import os
 import re
 import secrets
 import json
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from functools import wraps
 
 from flask import (Flask, render_template, redirect, url_for, request,
@@ -2246,28 +2246,85 @@ def global_search():
     return render_template('suche.html', q=q, results=results)
 
 
+def _run_backup(triggered_by='manuell'):
+    """Führt backup.sh aus und protokolliert Zeitpunkt/Ergebnis in SiteConfig.
+    Gibt (erfolgreich: bool, meldung: str) zurück."""
+    import subprocess
+    backup_script = os.path.join(os.path.dirname(__file__), 'backup.sh')
+    if not os.path.exists(backup_script):
+        return False, 'backup.sh nicht gefunden.'
+    try:
+        result = subprocess.run(
+            ['bash', backup_script],
+            capture_output=True, text=True, timeout=120
+        )
+        now_iso = datetime.utcnow().isoformat()
+        if result.returncode == 0:
+            SiteConfig.set('backup_last_run', now_iso)
+            SiteConfig.set('backup_last_status', 'ok')
+            SiteConfig.set('backup_last_trigger', triggered_by)
+            db.session.commit()
+            msg = result.stdout.strip() or 'Backup erstellt.'
+            # Optionale E-Mail-Benachrichtigung bei automatischem Lauf
+            if triggered_by != 'manuell' and cfg('backup_notify_email') == '1':
+                admin_mail = cfg('admin_email')
+                if admin_mail:
+                    try:
+                        send_mail(to=admin_mail, subject='✅ Backup erfolgreich – De jungen Olen',
+                                  body=f'Automatisches Backup ({triggered_by}) wurde erstellt.\n\n{msg}')
+                    except Exception:
+                        pass
+            return True, msg
+        else:
+            SiteConfig.set('backup_last_run', now_iso)
+            SiteConfig.set('backup_last_status', 'error')
+            SiteConfig.set('backup_last_trigger', triggered_by)
+            db.session.commit()
+            err = result.stderr[:300]
+            if triggered_by != 'manuell' and cfg('backup_notify_email') == '1':
+                admin_mail = cfg('admin_email')
+                if admin_mail:
+                    try:
+                        send_mail(to=admin_mail, subject='❌ Backup fehlgeschlagen – De jungen Olen',
+                                  body=f'Automatisches Backup ({triggered_by}) ist fehlgeschlagen:\n\n{err}')
+                    except Exception:
+                        pass
+            return False, f'Backup-Fehler: {err}'
+    except Exception as e:
+        return False, f'Backup fehlgeschlagen: {e}'
+
+
+def _backup_is_due():
+    """Prüft anhand der Einstellungen, ob ein automatisches Backup fällig ist."""
+    interval = cfg('backup_interval') or 'off'
+    if interval == 'off':
+        return False
+    last_run_str = cfg('backup_last_run')
+    if not last_run_str:
+        return True  # noch nie gelaufen
+    try:
+        last_run = datetime.fromisoformat(last_run_str)
+    except ValueError:
+        return True
+    now = datetime.utcnow()
+    elapsed = now - last_run
+    thresholds = {
+        'daily':   timedelta(hours=23),
+        'weekly':  timedelta(days=6, hours=23),
+        'monthly': timedelta(days=27),
+    }
+    threshold = thresholds.get(interval)
+    return bool(threshold and elapsed >= threshold)
+
+
 @app.route('/admin/backup', methods=['POST'])
 @login_required
 def admin_backup():
     """Manuelles Backup aus dem Admin-Dashboard."""
     if not current_user.is_admin:
         abort(403)
-    import subprocess
-    backup_script = os.path.join(os.path.dirname(__file__), 'backup.sh')
-    if not os.path.exists(backup_script):
-        flash('backup.sh nicht gefunden.', 'danger')
-        return redirect(url_for('admin_dashboard'))
-    try:
-        result = subprocess.run(
-            ['bash', backup_script],
-            capture_output=True, text=True, timeout=60
-        )
-        if result.returncode == 0:
-            flash(f'Backup erstellt. {result.stdout.strip()}', 'success')
-        else:
-            flash(f'Backup-Fehler: {result.stderr[:200]}', 'danger')
-    except Exception as e:
-        flash(f'Backup fehlgeschlagen: {e}', 'danger')
+    ok, msg = _run_backup(triggered_by='manuell')
+    flash(msg, 'success' if ok else 'danger')
     return redirect(url_for('admin_dashboard'))
 
 
@@ -2354,11 +2411,24 @@ def admin_dashboard():
 
     birthdays = upcoming_birthdays(days=14)
 
+    backup_last_run_str = cfg('backup_last_run')
+    backup_last_run = None
+    if backup_last_run_str:
+        try:
+            backup_last_run = datetime.fromisoformat(backup_last_run_str)
+        except ValueError:
+            pass
+
     return render_template('admin/dashboard.html',
                            users=users, invites=invites,
                            active_users=active_users,
                            inactive_users=inactive_users,
-                           birthdays=birthdays)
+                           birthdays=birthdays,
+                           backup_last_run=backup_last_run,
+                           backup_last_status=cfg('backup_last_status'),
+                           backup_last_trigger=cfg('backup_last_trigger'),
+                           backup_interval=cfg('backup_interval') or 'off',
+                           backup_notify_email=cfg('backup_notify_email') or '0')
 
 
 @app.route('/admin/einladung/<int:invite_id>/loeschen', methods=['POST'])
@@ -3440,6 +3510,51 @@ def admin_backup_status():
         body=f'Backup-Status: {status}\nGröße: {size}\n\n{details}'
     )
     return jsonify({'ok': True})
+
+
+@app.route('/api/backup/trigger', methods=['GET', 'POST'])
+def api_backup_trigger():
+    """Externer Trigger-Endpunkt für automatische Backups.
+    Für Plesk 'Geplante Aufgaben' (curl/wget) gedacht, ODER wird zusätzlich
+    bei jedem normalen Seitenaufruf geprüft (Selbst-Trigger als Fallback).
+    Geschützt durch Token statt Login, da Cronjobs sich nicht einloggen können.
+    """
+    token = request.args.get('token', '')
+    expected = (app.config.get('SECRET_KEY') or '')[:20]
+    if not expected or token != expected:
+        return jsonify({'error': 'invalid token'}), 403
+
+    if not _backup_is_due():
+        return jsonify({'ok': True, 'skipped': True, 'reason': 'not due yet'})
+
+    ok, msg = _run_backup(triggered_by='cron')
+    return jsonify({'ok': ok, 'message': msg})
+
+
+@app.route('/admin/backup/einstellungen', methods=['POST'])
+@login_required
+@admin_required
+def admin_backup_settings():
+    """Backup-Intervall und Benachrichtigungs-Einstellung speichern."""
+    interval = request.form.get('backup_interval', 'off')
+    if interval not in ('off', 'daily', 'weekly', 'monthly'):
+        interval = 'off'
+    SiteConfig.set('backup_interval', interval)
+    SiteConfig.set('backup_notify_email', '1' if request.form.get('backup_notify_email') == '1' else '0')
+    db.session.commit()
+    labels = {'off': 'deaktiviert', 'daily': 'täglich', 'weekly': 'wöchentlich', 'monthly': 'monatlich'}
+    flash(f'Automatisches Backup: {labels[interval]}.', 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/backup/cron-info')
+@login_required
+@admin_required
+def admin_backup_cron_info():
+    """Zeigt die fertige URL zum Eintragen in Plesk 'Geplante Aufgaben'."""
+    token = (app.config.get('SECRET_KEY') or '')[:20]
+    trigger_url = url_for('api_backup_trigger', token=token, _external=True)
+    return render_template('admin/backup_cron_info.html', trigger_url=trigger_url)
 
 
 @app.route('/api/docs')
@@ -4545,6 +4660,26 @@ def _auto_migrate_once():
         except Exception as e:
             app.logger.warning(f'Auto-migrate error: {e}')
         _db_migrated = True
+
+
+# ── Selbst-Trigger für automatisches Backup (Fallback ohne Cronjob) ─────────
+# Prüft nur mit geringer Wahrscheinlichkeit (~1 von 50 Requests), damit nicht
+# bei jedem einzelnen Seitenaufruf ein DB-Zugriff für die Prüfung nötig ist.
+# Reicht für eine aktive Gruppe locker aus, um ein fälliges Backup zeitnah
+# auszulösen, ohne spürbare Last zu verursachen.
+@app.before_request
+def _self_trigger_backup():
+    if request.endpoint in ('static', 'service_worker', 'api_backup_trigger'):
+        return
+    import random
+    if random.random() > 0.02:  # ~2% Chance pro Request
+        return
+    try:
+        if _backup_is_due():
+            _run_backup(triggered_by='auto')
+    except Exception as e:
+        app.logger.warning(f'Self-trigger backup error: {e}')
+
 
 @app.route('/archiv/suche')
 @login_required
