@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Foto-Challenge – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <div>
+    <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
+      <i class="bi bi-camera me-2"></i>Foto-Challenge
+    </h2>
+    <p class="text-muted small mb-0">Monatliches Fotothema der Gruppe</p>
+  </div>
+</div>
+
+<!-- Current challenge banner -->
+{% if challenge %}
+<div class="card mb-4" style="border-left:6px solid var(--djo-red)">
+  <div class="card-body d-flex align-items-center gap-3 flex-wrap">
+    <div style="font-size:3rem">📸</div>
+    <div>
+      <div class="text-muted small fw-semibold text-uppercase">Aktuelles Thema</div>
+      <h3 class="fw-bold mb-1" style="color:var(--djo-navy)">{{ challenge.name }}</h3>
+      {% if challenge.description %}
+      <p class="mb-0 text-muted">{{ challenge.description }}</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info mb-4">
+  <i class="bi bi-info-circle me-1"></i>
+  Noch kein Challenge-Thema für diesen Monat gesetzt.
+  {% if current_user.is_organizer %}
+  Setze unten ein Thema!
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Set new challenge (organizer only) -->
+{% if current_user.is_organizer %}
+<div class="card mb-4">
+  <div class="card-header card-header-djo">
+    <i class="bi bi-pencil me-1"></i>
+    {% if challenge %}Thema ändern{% else %}Thema setzen{% endif %}
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('challenge_set') }}" class="row g-3">
+      <div class="col-md-5">
+        <label class="form-label fw-semibold">Thema *</label>
+        <input type="text" name="theme" class="form-control" required
+               placeholder="z.B. Windmühlen, Brücken, Herbstfarben…"
+               value="{{ challenge.name if challenge else '' }}">
+      </div>
+      <div class="col-md-5">
+        <label class="form-label fw-semibold">Erläuterung</label>
+        <input type="text" name="description" class="form-control"
+               placeholder="Hinweise zum Thema…"
+               value="{{ challenge.description if challenge else '' }}">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-djo w-100">
+          <i class="bi bi-check-lg me-1"></i>Setzen
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- How to participate -->
+<div class="alert alert-light border mb-4">
+  <strong>So machst du mit:</strong>
+  Lade bei jeder Tour ein Foto hoch, das zum aktuellen Thema passt –
+  es erscheint automatisch hier unten. 📷
+</div>
+
+<!-- Recent photos this month -->
+<h4 class="fw-bold mb-3" style="color:var(--djo-navy)">
+  <i class="bi bi-images me-2"></i>Fotos diesen Monat
+  {% if recent_photos %}
+  <span class="badge bg-secondary ms-1">{{ recent_photos|length }}</span>
+  {% endif %}
+</h4>
+
+{% if recent_photos %}
+<!-- Bulk controls -->
+<form method="post" action="{{ url_for('challenge_bulk_delete') }}"
+      id="ch-bulk-form" onsubmit="return confirmChBulk()">
+<div class="d-flex gap-2 mb-2 flex-wrap align-items-center">
+  <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+          onclick="chSelectAll(true)"><i class="bi bi-check-all"></i> Alle</button>
+  <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+          onclick="chSelectAll(false)">Keine</button>
+  <button type="submit" id="ch-del-btn" style="display:none"
+          class="btn btn-sm btn-outline-danger py-0">
+    <i class="bi bi-trash me-1"></i>Löschen (<span id="ch-del-count">0</span>)
+  </button>
+  <span class="text-muted small ms-auto">{{ recent_photos|length }} Fotos</span>
+</div>
+<div class="row g-2">
+  {% for p in recent_photos %}
+  <div class="col-6 col-sm-4 col-md-3 col-lg-2 position-relative">
+    <div class="position-relative">
+      <!-- Checkbox -->
+      {% if p.user_id == current_user.id or current_user.is_admin %}
+      <input type="checkbox" name="photo_ids" value="{{ p.id }}"
+             class="ch-checkbox form-check-input position-absolute"
+             style="top:5px;left:5px;z-index:10;width:18px;height:18px"
+             onchange="chUpdateCount()">
+      {% endif %}
+      <a href="{{ url_for('tour_detail', tour_id=p.tour_id) }}" title="{{ p.caption or '' }}">
+        <img src="{{ url_for('serve_photo', filename=p.filename) }}"
+             class="photo-thumb" alt="{{ p.caption or 'Foto' }}">
+      </a>
+      {% if p.has_gps %}
+      <span class="badge bg-success photo-gps-badge">
+        <i class="bi bi-geo-alt-fill"></i>
+      </span>
+      {% endif %}
+      {% if p.user_id == current_user.id or current_user.is_admin %}
+      <button type="button"
+              class="btn btn-danger btn-sm position-absolute py-0 px-1"
+              style="bottom:4px;right:4px;font-size:.65rem;opacity:.85"
+              onclick="chDeleteOne({{ p.id }})" title="Löschen">
+        <i class="bi bi-trash3"></i>
+      </button>
+      {% endif %}
+    </div>
+    <div class="text-muted mt-1" style="font-size:.68rem">
+      {{ p.user.display_name }}
+      {% if p.taken_at %}<br>📸 {{ p.taken_at.strftime('%d.%m %H:%M') }}{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+</form>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <div style="font-size:3rem">📷</div>
+  <h5 class="mt-2">Noch keine Fotos diesen Monat</h5>
+  <p>Lade bei der nächsten Tour Fotos hoch!</p>
+  <a href="{{ url_for('tour_list') }}" class="btn btn-djo mt-1">Zur Tourenplanung</a>
+</div>
+{% endif %}
+{% block scripts %}
+<script>
+function chSelectAll(sel) {
+  document.querySelectorAll('.ch-checkbox').forEach(cb => cb.checked = sel);
+  chUpdateCount();
+}
+function chUpdateCount() {
+  const n = document.querySelectorAll('.ch-checkbox:checked').length;
+  document.getElementById('ch-del-count').textContent = n;
+  document.getElementById('ch-del-btn').style.display = n > 0 ? '' : 'none';
+}
+function confirmChBulk() {
+  const n = document.querySelectorAll('.ch-checkbox:checked').length;
+  return n > 0 && confirm(`${n} Foto(s) löschen?`);
+}
+function chDeleteOne(id) {
+  if (!confirm('Dieses Foto löschen?')) return;
+  const form = document.getElementById('ch-bulk-form');
+  // Uncheck all others, check only this one
+  document.querySelectorAll('.ch-checkbox').forEach(cb => cb.checked = false);
+  const cb = document.querySelector(`.ch-checkbox[value="${id}"]`);
+  if (cb) cb.checked = true;
+  form.submit();
+}
+</script>
+{% endblock %}
+{% endblock %}

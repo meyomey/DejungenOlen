@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block content %}
+
+<!-- ① Begrüßung ──────────────────────────────────────────────────────────── -->
+<div class="hero-banner d-flex align-items-center gap-3 mb-3" style="padding:0.75rem 1.2rem">
+  {% if current_group and current_group.logo %}
+  <img src="{{ url_for('static', filename='uploads/group_logos/' + current_group.logo) }}"
+       alt="Logo" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0">
+  {% else %}
+  <img src="{{ url_for('static', filename='logo.png') }}"
+       alt="Logo" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0">
+  {% endif %}
+  <div>
+    <h5 class="mb-0 fw-bold">Moin, {{ current_user.display_name }}! 🚴</h5>
+    <div class="small opacity-75">{{ current_group.name if current_group else 'De jungen Olen' }}{% if current_group and current_group.description %} – {{ current_group.description }}{% endif %}</div>
+  </div>
+</div>
+
+<!-- Geburtstag & Erinnerungen -->
+{% if birthdays %}
+<div class="alert alert-warning py-2 mb-2">
+  <i class="bi bi-balloon-heart me-2"></i>
+  {% for b in birthdays[:3] %}
+    {% if b.days_until == 0 %}🎂 <strong>Heute hat {{ b.user.display_name }} Geburtstag!</strong>
+    {% elif b.days_until == 1 %}🎉 Morgen: <strong>{{ b.user.display_name }}</strong>
+    {% else %}📅 <strong>{{ b.user.display_name }}</strong> in {{ b.days_until }} Tagen
+    {% endif %}{% if not loop.last %} &middot; {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+{% if memories %}
+<div class="alert alert-info py-2 mb-3">
+  <i class="bi bi-clock-history me-2"></i>
+  {% for m in memories[:2] %}
+    Vor {{ m.years_ago }} Jahr{% if m.years_ago != 1 %}en{% endif %}:
+    <a href="{{ url_for('tour_detail', tour_id=m.tour.id) }}" class="alert-link">{{ m.tour.title }}</a>
+    ({{ m.tour.tour_date.strftime('%d.%m.%Y') if (m.tour.tour_date and not m.tour.is_date_open) else 'offen' }}){% if not loop.last %} &middot; {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ② Gesamtkilometer · Touren · Nächstes Ziel ──────────────────────────── -->
+{% if milestones.total_tours > 0 %}
+<div class="card mb-3" style="border-left:4px solid var(--djo-olive)">
+  <div class="card-body py-2">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <div class="text-center" style="min-width:65px">
+        <div style="font-size:1.4rem;font-weight:700;color:var(--djo-navy)">{{ milestones.total_km }}</div>
+        <div class="stat-label">km gesamt</div>
+      </div>
+      <div class="text-center" style="min-width:60px">
+        <div style="font-size:1.4rem;font-weight:700;color:var(--djo-navy)">{{ milestones.total_tours }}</div>
+        <div class="stat-label">Touren</div>
+      </div>
+      {% if milestones.next_km %}
+      <div class="flex-grow-1" style="min-width:180px">
+        <div class="d-flex justify-content-between small mb-1">
+          <span class="text-muted">Nächstes Ziel: <strong>{{ milestones.next_km }} km</strong></span>
+          <span class="fw-semibold" style="color:var(--djo-navy)">{{ milestones.pct_km }}%</span>
+        </div>
+        <div class="progress" style="height:8px">
+          <div class="progress-bar" style="width:{{ milestones.pct_km }}%;background:var(--djo-navy)"></div>
+        </div>
+      </div>
+      {% endif %}
+      {% if milestones.achieved_km %}
+      <div>{% for m in milestones.achieved_km[-3:] %}
+        <span class="badge bg-success me-1">🏅 {{ m }} km</span>
+      {% endfor %}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ③ Zwei große Buttons ─────────────────────────────────────────────────── -->
+<div class="row g-2 mb-4">
+  <div class="col-6">
+    <a href="{{ url_for('tour_list') }}"
+       class="btn btn-djo w-100 py-3 d-flex flex-column align-items-center gap-1">
+      <i class="bi bi-calendar3 fs-4"></i>
+      <span class="fw-semibold">Touren</span>
+    </a>
+  </div>
+  <div class="col-6">
+    <a href="{{ url_for('archiv') }}"
+       class="btn btn-outline-djo w-100 py-3 d-flex flex-column align-items-center gap-1">
+      <i class="bi bi-archive fs-4"></i>
+      <span class="fw-semibold">Archiv</span>
+    </a>
+  </div>
+</div>
+
+<!-- ④ Touren ohne Termin ──────────────────────────────────────────────────── -->
+{% if geplante_touren %}
+<div class="card mb-4">
+  <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-map me-2"></i>Touren ohne Termin</span>
+    <a href="{{ url_for('geplante_touren') }}" class="btn btn-sm btn-outline-light">
+      Alle anzeigen <i class="bi bi-arrow-right ms-1"></i>
+    </a>
+  </div>
+  <div class="list-group list-group-flush">
+    {% for t in geplante_touren %}
+    <a href="{{ url_for('tour_detail', tour_id=t.id) }}"
+       class="list-group-item list-group-item-action py-3">
+      <div class="d-flex justify-content-between align-items-center gap-2">
+        <div class="flex-grow-1">
+          <div class="fw-semibold">{{ t.title }}</div>
+          <small class="text-muted">
+            <i class="bi bi-clock me-1"></i>Datum noch offen
+            {% if t.gpx_km %} · {{ t.gpx_km }} km{% elif t.approx_km %} · ~{{ t.approx_km|int }} km{% endif %}
+          </small>
+        </div>
+        <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
+          <span class="badge badge-{{ t.difficulty }}">{{ t.difficulty_label }}</span>
+          <small class="text-muted">
+            <i class="bi bi-people me-1"></i>{{ t.attending_count }}
+          </small>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  <div class="card-footer text-center py-2">
+    <a href="{{ url_for('geplante_touren') }}" class="btn btn-sm btn-outline-djo">
+      <i class="bi bi-map me-1"></i>Alle Touren ohne Termin
+    </a>
+  </div>
+</div>
+{% endif %}
+
+<!-- ⑤ Nächste Touren ───────────────────────────────────────────────────────── -->
+<div class="card mb-4">
+  <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-calendar3 me-2"></i>Nächste Touren</span>
+    {% if current_user.is_organizer %}
+    <a href="{{ url_for('tour_create') }}" class="btn btn-sm btn-warning">
+      <i class="bi bi-plus"></i> Neue Tour
+    </a>
+    {% endif %}
+  </div>
+  <div class="card-body p-2">
+    {% if upcoming %}
+      {% for t in upcoming %}
+      {% set cover = cover_photos[t.id] if (cover_photos and t.id in cover_photos) else none %}
+      <div class="card mb-2 border-0 shadow-sm overflow-hidden">
+        {% if cover %}
+        <div style="height:120px;overflow:hidden;position:relative">
+          <img src="{{ url_for('serve_photo', filename=cover.filename) }}"
+               style="width:100%;height:100%;object-fit:cover;filter:brightness(.8);display:block">
+          <div style="position:absolute;inset:0;background:linear-gradient(to bottom,transparent 30%,rgba(0,0,0,.65))"></div>
+          <div style="position:absolute;bottom:6px;left:10px;right:8px;display:flex;justify-content:space-between;align-items:flex-end">
+            <span class="text-white fw-bold" style="font-size:.88rem">{{ t.title }}</span>
+            <span class="badge badge-{{ t.difficulty }} flex-shrink-0 ms-1">{{ t.difficulty_label }}</span>
+          </div>
+        </div>
+        {% else %}
+        <div class="mini-map-card" id="minimap-idx-{{ t.id }}"
+             data-tour-id="{{ t.id }}"
+             data-has-gpx="{{ '1' if t.gpx_file else '0' }}"
+             data-lat="{{ t.meeting_lat or '52.942' }}"
+             data-lng="{{ t.meeting_lng or '9.097' }}"
+             style="height:100px;background:#e8edf2"></div>
+        {% endif %}
+        <a href="{{ url_for('tour_detail', tour_id=t.id) }}"
+           class="text-decoration-none d-block px-3 py-2">
+          {% if not cover %}
+          <div class="fw-semibold small" style="color:var(--djo-navy)">{{ t.title }}</div>
+          {% endif %}
+          <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted">
+              📅 {{ t.tour_date | de_date }}
+              {% if t.start_time %} · {{ t.start_time }} Uhr{% endif %}
+              <span id="wx-{{ t.id }}" class="ms-1"
+                    data-lat="{{ t.meeting_lat or '52.942' }}"
+                    data-lng="{{ t.meeting_lng or '9.097' }}"
+                    data-date="{{ t.tour_date.isoformat() if t.tour_date else '' }}"></span>
+            </small>
+            <small class="text-muted flex-shrink-0 ms-2">
+              <i class="bi bi-people me-1"></i>{{ t.attending_count }}
+            </small>
+          </div>
+        </a>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="p-4 text-center text-muted">
+      <i class="bi bi-calendar-x fs-2 d-block mb-2"></i>
+      Noch keine Touren geplant.
+      {% if current_user.is_organizer %}
+      <br><a href="{{ url_for('tour_create') }}">Jetzt eine erstellen!</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+<!-- ⑥ Letzte Fahrten ─────────────────────────────────────────────────────── -->
+{% if recent %}
+<div class="card mb-3">
+  <div class="card-header card-header-djo">
+    <i class="bi bi-archive me-2"></i>Letzte Fahrten
+  </div>
+  <div class="list-group list-group-flush">
+    {% for t in recent %}
+    <a href="{{ url_for('tour_detail', tour_id=t.id) }}"
+       class="list-group-item list-group-item-action tour-card completed">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <div class="fw-semibold">{{ t.title }}</div>
+          <small class="text-muted">{{ t.tour_date.strftime('%d.%m.%Y') if (t.tour_date and not t.is_date_open) else 'offen' }}</small>
+        </div>
+        <small class="text-muted text-end">
+          {% if t.gpx_km %}<div><i class="bi bi-signpost-2 me-1"></i>{{ t.gpx_km }} km</div>{% endif %}
+          <div><i class="bi bi-people me-1"></i>{{ t.attending_count }}</div>
+        </small>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  <div class="card-footer text-center">
+    <a href="{{ url_for('archiv') }}" class="btn btn-sm btn-outline-djo">
+      Ganzes Archiv <i class="bi bi-arrow-right ms-1"></i>
+    </a>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('[id^="wx-"]').forEach(function(el) {
+    var lat = el.dataset.lat;
+    var lng = el.dataset.lng;
+    var dt  = el.dataset.date;
+    if (!lat || !lng || !dt) return;
+    var daysAhead = (new Date(dt) - new Date()) / 86400000;
+    if (daysAhead > 14 || daysAhead < -1) return;
+    fetch('/api/wetter?lat=' + lat + '&lng=' + lng + '&date=' + dt)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.error) return;
+        var html = d.icon || '';
+        if (d.temp_max) html += ' <strong>' + Math.round(d.temp_max) + '°</strong>';
+        el.innerHTML = html;
+      })
+      .catch(function() {});
+  });
+});
+
+// ── Mini-Karten Startseite ────────────────────────────────────────────────────
+var _idxMaps = {};
+function _initIdxMap(el) {
+  var id = el.dataset.tourId;
+  if (_idxMaps[id]) return;
+  var hasGpx = el.dataset.hasGpx === '1';
+  var lat = parseFloat(el.dataset.lat) || null;
+  var lng = parseFloat(el.dataset.lng) || null;
+  var m = L.map(el, {zoomControl:false,attributionControl:false,
+    dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
+    boxZoom:false,keyboard:false,tap:false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:16}).addTo(m);
+  _idxMaps[id] = m;
+  if (hasGpx) {
+    fetch('/api/gpx/' + id).then(function(r){return r.json();}).then(function(d){
+      if (d.points && d.points.length > 1) {
+        var poly = L.polyline(d.points,{color:'#2B3F6B',weight:2.5,opacity:.9}).addTo(m);
+        m.fitBounds(poly.getBounds(),{padding:[4,4]});
+        L.circleMarker(d.points[0],{radius:4,color:'#fff',fillColor:'#2E7D4F',fillOpacity:1,weight:1.5}).addTo(m);
+      } else if (lat && lng) { m.setView([lat,lng],13); }
+      setTimeout(function(){m.invalidateSize();},50);
+    });
+  } else if (lat && lng) {
+    m.setView([lat,lng],13);
+    L.circleMarker([lat,lng],{radius:6,color:'#fff',fillColor:'#f0a500',fillOpacity:1,weight:2}).addTo(m);
+    setTimeout(function(){m.invalidateSize();},50);
+  }
+}
+if ('IntersectionObserver' in window) {
+  var _idxObs = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){if(e.isIntersecting)_initIdxMap(e.target);});
+  },{rootMargin:'100px'});
+  document.querySelectorAll('.mini-map-card').forEach(function(el){_idxObs.observe(el);});
+} else {
+  document.querySelectorAll('.mini-map-card').forEach(_initIdxMap);
+}
+</script>
+{% endblock %}

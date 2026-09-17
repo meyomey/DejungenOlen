@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Rangliste – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+
+<h2 class="fw-bold mb-1" style="color:var(--djo-navy)">
+  <i class="bi bi-trophy-fill me-2" style="color:#f0a500"></i>Rangliste
+</h2>
+<p class="text-muted small mb-4">Alle Zeiten – nur bestätigte Fahrten</p>
+
+<!-- ── Tabs ──────────────────────────────────────────────────────────────────── -->
+<ul class="nav nav-pills mb-4 gap-2">
+  <li class="nav-item">
+    <a class="nav-link active" id="tab-gesamt" href="#" onclick="showTab('gesamt',this);return false">
+      <i class="bi bi-infinity me-1"></i>Gesamt
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" id="tab-jahr" href="#" onclick="showTab('jahr',this);return false">
+      <i class="bi bi-calendar3 me-1"></i>{{ year }}
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" id="tab-km" href="#" onclick="showTab('km',this);return false">
+      <i class="bi bi-geo-alt me-1"></i>Kilometer
+    </a>
+  </li>
+</ul>
+
+<!-- ── Podium (Top 3) ────────────────────────────────────────────────────────── -->
+{% macro podium(items, key) %}
+{% if items|length >= 3 %}
+<div class="d-flex justify-content-center align-items-end gap-3 mb-4" style="min-height:120px">
+  <!-- 2. Platz -->
+  <div class="text-center" style="flex:1;max-width:110px">
+    {% set u2 = items[1].user %}
+    {% if u2.avatar %}
+    <img src="{{ url_for('static', filename='uploads/avatars/' + u2.avatar) }}"
+         style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:3px solid #aaa">
+    {% else %}
+    <div style="width:52px;height:52px;border-radius:50%;background:#aaa;
+                display:inline-flex;align-items:center;justify-content:center;
+                color:#fff;font-weight:700;font-size:1.1rem;border:3px solid #aaa">
+      {{ u2.display_name[:1].upper() }}
+    </div>
+    {% endif %}
+    <div class="fw-semibold small mt-1" style="color:var(--djo-navy)">{{ u2.display_name.split()[0] }}</div>
+    <div class="text-muted" style="font-size:.75rem">{{ items[1][key] }} {{ 'km' if key=='total_km' else 'Touren' }}</div>
+    <div style="background:#aaa;color:#fff;border-radius:8px 8px 0 0;padding:6px 0;margin-top:4px;font-size:1.2rem">🥈</div>
+    <div style="background:#aaa;height:50px;border-radius:0"></div>
+  </div>
+  <!-- 1. Platz -->
+  <div class="text-center" style="flex:1;max-width:120px">
+    {% set u1 = items[0].user %}
+    {% if u1.avatar %}
+    <img src="{{ url_for('static', filename='uploads/avatars/' + u1.avatar) }}"
+         style="width:62px;height:62px;border-radius:50%;object-fit:cover;border:3px solid #f0a500">
+    {% else %}
+    <div style="width:62px;height:62px;border-radius:50%;background:#f0a500;
+                display:inline-flex;align-items:center;justify-content:center;
+                color:#fff;font-weight:700;font-size:1.3rem;border:3px solid #f0a500">
+      {{ u1.display_name[:1].upper() }}
+    </div>
+    {% endif %}
+    <div class="fw-bold mt-1" style="color:var(--djo-navy)">{{ u1.display_name.split()[0] }}</div>
+    <div class="text-muted" style="font-size:.75rem">{{ items[0][key] }} {{ 'km' if key=='total_km' else 'Touren' }}</div>
+    <div style="background:#f0a500;color:#fff;border-radius:8px 8px 0 0;padding:8px 0;margin-top:4px;font-size:1.4rem">🥇</div>
+    <div style="background:#f0a500;height:80px;border-radius:0"></div>
+  </div>
+  <!-- 3. Platz -->
+  <div class="text-center" style="flex:1;max-width:110px">
+    {% set u3 = items[2].user %}
+    {% if u3.avatar %}
+    <img src="{{ url_for('static', filename='uploads/avatars/' + u3.avatar) }}"
+         style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:3px solid #cd7f32">
+    {% else %}
+    <div style="width:48px;height:48px;border-radius:50%;background:#cd7f32;
+                display:inline-flex;align-items:center;justify-content:center;
+                color:#fff;font-weight:700;border:3px solid #cd7f32">
+      {{ u3.display_name[:1].upper() }}
+    </div>
+    {% endif %}
+    <div class="fw-semibold small mt-1" style="color:var(--djo-navy)">{{ u3.display_name.split()[0] }}</div>
+    <div class="text-muted" style="font-size:.75rem">{{ items[2][key] }} {{ 'km' if key=='total_km' else 'Touren' }}</div>
+    <div style="background:#cd7f32;color:#fff;border-radius:8px 8px 0 0;padding:6px 0;margin-top:4px;font-size:1.1rem">🥉</div>
+    <div style="background:#cd7f32;height:35px;border-radius:0"></div>
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+<!-- ── Tab: Gesamt ───────────────────────────────────────────────────────────── -->
+<div id="panel-gesamt">
+  {{ podium(ranking, 'tour_count') }}
+  <div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+      {% for r in ranking %}
+      {% set pos = loop.index %}
+      <div class="d-flex align-items-center gap-3 px-3 py-2 border-bottom
+                  {% if pos == 1 %}bg-warning bg-opacity-10{% endif %}">
+        <!-- Position -->
+        <div style="width:32px;text-align:center;flex-shrink:0">
+          {% if pos == 1 %}<span style="font-size:1.3rem">🥇</span>
+          {% elif pos == 2 %}<span style="font-size:1.2rem">🥈</span>
+          {% elif pos == 3 %}<span style="font-size:1.1rem">🥉</span>
+          {% else %}<span class="text-muted fw-bold">{{ pos }}</span>
+          {% endif %}
+        </div>
+        <!-- Avatar -->
+        <div style="flex-shrink:0">
+          {% if r.user.avatar %}
+          <img src="{{ url_for('static', filename='uploads/avatars/' + r.user.avatar) }}"
+               style="width:36px;height:36px;border-radius:50%;object-fit:cover">
+          {% else %}
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--djo-navy);
+                      display:flex;align-items:center;justify-content:center;
+                      color:#fff;font-weight:700;font-size:.85rem">
+            {{ r.user.display_name[:1].upper() }}
+          </div>
+          {% endif %}
+        </div>
+        <!-- Name + Badges -->
+        <div class="flex-grow-1">
+          <a href="{{ url_for('profil', user_id=r.user.id) }}"
+             class="fw-semibold text-decoration-none" style="color:var(--djo-navy)">
+            {{ r.user.display_name }}
+          </a>
+          {% if r.badges %}
+          <div>
+            {% for b in r.badges[:3] %}
+            <span title="{{ b.label }}" style="font-size:.85rem">{{ b.icon }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        <!-- Stats -->
+        <div class="text-end flex-shrink-0">
+          <div class="fw-bold" style="color:var(--djo-navy)">{{ r.tour_count }} Touren</div>
+          {% if r.total_km %}
+          <div class="text-muted small">{{ r.total_km }} km</div>
+          {% endif %}
+        </div>
+        <!-- Fortschrittsbalken -->
+        {% if ranking[0].tour_count > 0 %}
+        <div style="width:60px;flex-shrink:0;display:none" class="d-md-block">
+          <div style="background:#e9ecef;border-radius:4px;height:6px">
+            <div style="width:{{ (r.tour_count / ranking[0].tour_count * 100)|int }}%;
+                        background:var(--djo-navy);height:6px;border-radius:4px"></div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="p-4 text-center text-muted">Noch keine Touren bestätigt.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Tab: Dieses Jahr ──────────────────────────────────────────────────────── -->
+<div id="panel-jahr" style="display:none">
+  {% set annual_filtered = annual | selectattr('tours_by_year.' + year|string) | list %}
+  {{ podium(annual, 'tour_count') }}
+  <div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+      {% set shown = [] %}
+      {% for r in annual %}
+      {% set year_count = r.tours_by_year.get(year, 0) %}
+      {% if year_count > 0 %}
+      {% set _ = shown.append(1) %}
+      <div class="d-flex align-items-center gap-3 px-3 py-2 border-bottom">
+        <div style="width:32px;text-align:center;flex-shrink:0">
+          {% if shown|length == 1 %}<span style="font-size:1.3rem">🥇</span>
+          {% elif shown|length == 2 %}<span style="font-size:1.2rem">🥈</span>
+          {% elif shown|length == 3 %}<span style="font-size:1.1rem">🥉</span>
+          {% else %}<span class="text-muted fw-bold">{{ shown|length }}</span>
+          {% endif %}
+        </div>
+        <div style="flex-shrink:0">
+          {% if r.user.avatar %}
+          <img src="{{ url_for('static', filename='uploads/avatars/' + r.user.avatar) }}"
+               style="width:36px;height:36px;border-radius:50%;object-fit:cover">
+          {% else %}
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--djo-navy);
+                      display:flex;align-items:center;justify-content:center;
+                      color:#fff;font-weight:700;font-size:.85rem">
+            {{ r.user.display_name[:1].upper() }}
+          </div>
+          {% endif %}
+        </div>
+        <div class="flex-grow-1">
+          <a href="{{ url_for('profil', user_id=r.user.id) }}"
+             class="fw-semibold text-decoration-none" style="color:var(--djo-navy)">
+            {{ r.user.display_name }}
+          </a>
+        </div>
+        <div class="fw-bold" style="color:var(--djo-navy)">{{ year_count }} Touren</div>
+      </div>
+      {% endif %}
+      {% endfor %}
+      {% if not annual | selectattr('tours_by_year.' + year|string) | list %}
+      <div class="p-4 text-center text-muted">Noch keine Touren in {{ year }} bestätigt.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Tab: Kilometer ────────────────────────────────────────────────────────── -->
+<div id="panel-km" style="display:none">
+  {% set km_ranking = ranking | sort(attribute='total_km', reverse=True) %}
+  {{ podium(km_ranking, 'total_km') }}
+  <div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+      {% for r in km_ranking %}
+      {% if r.total_km > 0 %}
+      <div class="d-flex align-items-center gap-3 px-3 py-2 border-bottom">
+        <div style="width:32px;text-align:center;flex-shrink:0">
+          {% if loop.index == 1 %}<span style="font-size:1.3rem">🥇</span>
+          {% elif loop.index == 2 %}<span style="font-size:1.2rem">🥈</span>
+          {% elif loop.index == 3 %}<span style="font-size:1.1rem">🥉</span>
+          {% else %}<span class="text-muted fw-bold">{{ loop.index }}</span>
+          {% endif %}
+        </div>
+        <div style="flex-shrink:0">
+          {% if r.user.avatar %}
+          <img src="{{ url_for('static', filename='uploads/avatars/' + r.user.avatar) }}"
+               style="width:36px;height:36px;border-radius:50%;object-fit:cover">
+          {% else %}
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--djo-navy);
+                      display:flex;align-items:center;justify-content:center;
+                      color:#fff;font-weight:700;font-size:.85rem">
+            {{ r.user.display_name[:1].upper() }}
+          </div>
+          {% endif %}
+        </div>
+        <div class="flex-grow-1">
+          <a href="{{ url_for('profil', user_id=r.user.id) }}"
+             class="fw-semibold text-decoration-none" style="color:var(--djo-navy)">
+            {{ r.user.display_name }}
+          </a>
+          <div style="background:#e9ecef;border-radius:4px;height:5px;margin-top:3px;max-width:200px">
+            <div style="width:{{ (r.total_km / km_ranking[0].total_km * 100)|int if km_ranking[0].total_km else 0 }}%;
+                        background:#f0a500;height:5px;border-radius:4px"></div>
+          </div>
+        </div>
+        <div class="fw-bold" style="color:var(--djo-navy)">{{ r.total_km }} km</div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showTab(name, el) {
+  ['gesamt','jahr','km'].forEach(t => {
+    document.getElementById('panel-' + t).style.display = t === name ? '' : 'none';
+    document.getElementById('tab-' + t).classList.toggle('active', t === name);
+  });
+}
+</script>
+{% endblock %}

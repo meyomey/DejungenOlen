@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}Karte – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block head %}
+<style>
+#main-map { height: calc(100vh - 160px); min-height: 500px; border-radius: 10px; }
+.layer-toggle { cursor: pointer; user-select: none; }
+.layer-toggle.off { opacity: .4; }
+.leaflet-tooltip.track-tooltip {
+  background: rgba(20,30,60,.88);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: .82rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
+    <i class="bi bi-map me-2"></i>Gruppen-Karte
+  </h2>
+  <div class="d-flex gap-2 flex-wrap" id="layer-controls">
+    <button class="btn btn-sm btn-success layer-toggle" data-layer="gastro" onclick="toggleLayer(this)">
+      ☕ Gastronomie (<span id="cnt-gastro">0</span>)
+    </button>
+    <button class="btn btn-sm btn-primary layer-toggle" data-layer="pois" onclick="toggleLayer(this)">
+      📍 Orte & POIs (<span id="cnt-pois">0</span>)
+    </button>
+    <button class="btn btn-sm btn-warning layer-toggle" data-layer="meetings" onclick="toggleLayer(this)">
+      🚩 Treffpunkte (<span id="cnt-meetings">0</span>)
+    </button>
+    <button class="btn btn-sm btn-outline-primary layer-toggle" id="btn-heatmap" onclick="toggleHeatmap(this)">
+      🗺️ Touren-Tracks
+    </button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="locateMe()">
+      <i class="bi bi-crosshair me-1"></i>Mein Standort
+    </button>
+  </div>
+</div>
+
+<!-- Filter strip -->
+<div class="d-flex gap-2 flex-wrap mb-3">
+  <span class="badge bg-success py-2">☀️ Grün = Frühöffner (vor {{ morning_threshold }})</span>
+  <span class="badge py-2" style="background:var(--djo-navy)">🔵 Navy = Normaler Gastro-Eintrag</span>
+  <span class="badge bg-warning text-dark py-2">🟡 Gelb = Treffpunkt</span>
+</div>
+
+<div id="main-map"></div>
+
+<!-- Quick-add shortcut bar -->
+<div class="d-flex gap-2 mt-3 flex-wrap">
+  <a href="{{ url_for('gastro_new') }}" class="btn btn-sm btn-outline-djo">
+    <i class="bi bi-plus me-1"></i>Gastronomie eintragen
+  </a>
+  <a href="{{ url_for('poi_new') }}" class="btn btn-sm btn-outline-djo">
+    <i class="bi bi-plus me-1"></i>Ort merken
+  </a>
+  <a href="{{ url_for('gastro_list', morning=1) }}" class="btn btn-sm btn-success">
+    ☀️ Nur Frühöffner zeigen
+  </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Data ─────────────────────────────────────────────────────────────────────
+const GASTRO   = {{ gastro_json   | safe }};
+const POIS     = {{ pois_json     | safe }};
+const MEETINGS = {{ meetings_json | safe }};
+
+// ── Map init ─────────────────────────────────────────────────────────────────
+const isMobile = window.innerWidth < 992;
+const map = L.map('main-map', {
+  dragging:        !isMobile,
+  tap:             !isMobile,
+  scrollWheelZoom: false,
+}).setView([53.15, 9.20], 10);
+
+if (isMobile) {
+  const mapEl = document.getElementById('main-map');
+  mapEl.style.position = 'relative';
+  const overlay = document.createElement('div');
+  overlay.innerHTML = '<div style="background:rgba(0,0,0,.45);color:#fff;padding:8px 16px;border-radius:20px;font-size:.85rem;pointer-events:none"><i class="bi bi-hand-index me-1"></i>Tippen zum Aktivieren</div>';
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;cursor:pointer';
+  const lockBtn = document.createElement('button');
+  lockBtn.innerHTML = '<i class="bi bi-lock-fill"></i>';
+  lockBtn.title = 'Karte sperren';
+  lockBtn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:1001;background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:6px;width:32px;height:32px;cursor:pointer;font-size:.9rem;display:none';
+  mapEl.appendChild(overlay);
+  mapEl.appendChild(lockBtn);
+  function activateMap() {
+    map.dragging.enable(); map.tap && map.tap.enable();
+    overlay.style.display = 'none'; lockBtn.style.display = 'block';
+  }
+  function deactivateMap() {
+    map.dragging.disable(); map.tap && map.tap.disable();
+    overlay.style.display = 'flex'; lockBtn.style.display = 'none';
+  }
+  overlay.addEventListener('click', activateMap);
+  lockBtn.addEventListener('click', deactivateMap);
+}
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+
+// ── Layer groups ─────────────────────────────────────────────────────────────
+const layers = { gastro: L.layerGroup(), pois: L.layerGroup(), meetings: L.layerGroup() };
+Object.values(layers).forEach(l => l.addTo(map));
+
+// ── Gastro markers ────────────────────────────────────────────────────────────
+GASTRO.forEach(g => {
+  const color  = g.morning ? '#2E7D4F' : '#2B3F6B';
+  const icon   = L.divIcon({
+    html: `<div style="background:${color};color:#fff;border-radius:50%;width:30px;height:30px;
+                display:flex;align-items:center;justify-content:center;font-size:14px">☕</div>`,
+    iconSize:[30,30], iconAnchor:[15,15]
+  });
+  const rating = g.rating ? `⭐ ${g.rating}` : '';
+  const hours  = g.opens ? `🕐 ${g.opens}${g.closes ? ' – ' + g.closes : ''} Uhr` : '';
+  const badge  = g.morning ? '<br><span style="color:#2E7D4F;font-weight:bold">☀️ Frühöffner!</span>' : '';
+
+  L.marker([g.lat, g.lng], {icon})
+   .addTo(layers.gastro)
+   .bindPopup(`
+     <b>${g.name}</b><br>
+     <small>${g.type}</small>
+     ${hours ? '<br>' + hours : ''}
+     ${rating ? '<br>' + rating : ''}
+     ${g.notes ? '<br><i>' + g.notes.substring(0,80) + '</i>' : ''}
+     ${badge}
+   `);
+});
+document.getElementById('cnt-gastro').textContent = GASTRO.length;
+
+// ── POI markers ───────────────────────────────────────────────────────────────
+POIS.forEach(p => {
+  const icon = L.divIcon({
+    html: `<div style="background:var(--djo-navy);color:#fff;border-radius:50%;width:30px;height:30px;
+                display:flex;align-items:center;justify-content:center;font-size:15px">${p.icon}</div>`,
+    iconSize:[30,30], iconAnchor:[15,15]
+  });
+  L.marker([p.lat, p.lng], {icon})
+   .addTo(layers.pois)
+   .bindPopup(`<b>${p.icon} ${p.name}</b><br><small>${p.label}</small>${p.desc ? '<br>' + p.desc : ''}`);
+});
+document.getElementById('cnt-pois').textContent = POIS.length;
+
+// ── Meeting markers ───────────────────────────────────────────────────────────
+MEETINGS.forEach(m => {
+  const color  = m.status === 'planned' ? '#B85C00' : '#777';
+  const icon   = L.divIcon({
+    html: `<div style="background:${color};color:#fff;border-radius:50%;width:30px;height:30px;
+                display:flex;align-items:center;justify-content:center;font-size:15px">🚩</div>`,
+    iconSize:[30,30], iconAnchor:[15,15]
+  });
+  L.marker([m.lat, m.lng], {icon})
+   .addTo(layers.meetings)
+   .bindPopup(`<b>${m.title}</b><br>📅 ${m.date}${m.desc ? '<br>📍 ' + m.desc : ''}`);
+});
+document.getElementById('cnt-meetings').textContent = MEETINGS.length;
+
+// ── Layer toggle ──────────────────────────────────────────────────────────────
+function toggleLayer(btn) {
+  const name = btn.dataset.layer;
+  if (map.hasLayer(layers[name])) {
+    map.removeLayer(layers[name]);
+    btn.classList.add('off');
+  } else {
+    layers[name].addTo(map);
+    btn.classList.remove('off');
+  }
+}
+
+// ── Heatmap ───────────────────────────────────────────────────────────────────
+// ── Touren-Track-Overlay ─────────────────────────────────────────────────────
+let trackLayers = [];
+let tracksLoaded = false;
+let tracksVisible = false;
+
+function toggleHeatmap(btn) {
+  if (tracksVisible) {
+    trackLayers.forEach(l => map.removeLayer(l));
+    tracksVisible = false;
+    btn.innerHTML = '🗺️ Touren-Tracks';
+    return;
+  }
+  if (tracksLoaded) {
+    trackLayers.forEach(l => l.addTo(map));
+    tracksVisible = true;
+    btn.innerHTML = '🗺️ Tracks ausblenden';
+    return;
+  }
+
+  btn.innerHTML = '⏳ Lade…';
+  fetch('/api/heatmap')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.tracks || !data.tracks.length) {
+        btn.innerHTML = '🗺️ Touren-Tracks <small>(keine GPX-Touren)</small>';
+        return;
+      }
+      const COLOR   = '#2B5EA7';
+      const OPACITY = 0.32;
+      data.tracks.forEach(t => {
+        const line = L.polyline(t.pts, {
+          color: COLOR, weight: 3, opacity: OPACITY,
+          lineCap: 'round', lineJoin: 'round'
+        });
+        line.on('mouseover', function(e) {
+          this.setStyle({opacity: 0.9, weight: 4, color: '#1a3a6e'});
+          const km = t.km ? ' · ' + t.km + ' km' : '';
+          this.bindTooltip('<strong>' + t.title + '</strong><br><small>' + t.date + km + '</small>',
+            {sticky: true}).openTooltip(e.latlng);
+        });
+        line.on('mouseout', function() {
+          this.setStyle({opacity: OPACITY, weight: 3, color: COLOR});
+          this.closeTooltip();
+        });
+        line.on('click', function() {
+          window.location.href = '/touren/' + t.id;
+        });
+        line.addTo(map);
+        trackLayers.push(line);
+      });
+      tracksLoaded = true;
+      tracksVisible = true;
+      btn.innerHTML = '🗺️ Tracks ausblenden <span class="badge bg-light text-dark ms-1">' + data.tracks.length + '</span>';
+    })
+    .catch(e => { btn.innerHTML = '🗺️ Touren-Tracks <small>(Fehler)</small>'; });
+}
+
+
+// ── Locate me ────────────────────────────────────────────────────────────────
+let locMarker = null;
+function locateMe() {
+  if (!navigator.geolocation) { alert('Geolocation nicht verfügbar.'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    const ll = [pos.coords.latitude, pos.coords.longitude];
+    map.setView(ll, 14);
+    if (locMarker) map.removeLayer(locMarker);
+    locMarker = L.circleMarker(ll, {
+      radius: 10, color: '#C0392B', fillColor: '#C0392B', fillOpacity: .6
+    }).addTo(map).bindPopup('Du bist hier 🚴').openPopup();
+  });
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Touren ohne Termin – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block head %}
+<style>
+.rating-btn {
+  border: 1px solid #dee2e6;
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: .82rem;
+  cursor: pointer;
+  background: transparent;
+  transition: all .15s;
+  font-weight: 500;
+}
+.rating-btn:hover { opacity: .85; transform: scale(1.05); }
+.rating-btn.active-good { background: #198754; color: #fff; border-color: #198754; }
+.rating-btn.active-ok   { background: #fd7e14; color: #fff; border-color: #fd7e14; }
+.rating-btn.active-bad  { background: #dc3545; color: #fff; border-color: #dc3545; }
+.rating-bar { height: 6px; border-radius: 3px; background: #e9ecef; overflow: hidden; }
+.rating-bar-inner { height: 100%; background: linear-gradient(90deg, #198754, #fd7e14, #dc3545); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <div>
+    <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
+      <i class="bi bi-calendar-question me-2"></i>Touren ohne Termin
+    </h2>
+    <p class="text-muted small mb-0">
+      Routen ohne fixierten Termin – Datum wird vom Organisator später gesetzt.
+    </p>
+  </div>
+  {% if current_user.is_organizer %}
+  <a href="{{ url_for('tour_create') }}" class="btn btn-djo">
+    <i class="bi bi-plus-lg me-1"></i>Tour hinzufügen
+  </a>
+  {% endif %}
+</div>
+
+{% if touren %}
+<div class="row g-4">
+  {% for t in touren %}
+  {% set r = rating_map.get(t.id, {}) %}
+  <div class="col-12 col-md-6 col-xl-4">
+    <div class="card h-100">
+
+      <!-- Mini-Karte -->
+      {% if t.id in gpx_map %}
+      <div id="gmap-{{ t.id }}"
+           style="height:160px;border-radius:8px 8px 0 0;overflow:hidden"></div>
+      {% endif %}
+
+      <div class="card-body d-flex flex-column">
+
+        <!-- Titel + Badge -->
+        <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+          <h5 class="fw-bold mb-0 flex-grow-1" style="font-size:1rem">{{ t.title }}</h5>
+          <span class="badge badge-{{ t.difficulty }} flex-shrink-0">{{ t.difficulty_label }}</span>
+        </div>
+
+        <!-- Meta -->
+        <div class="d-flex flex-wrap gap-2 mb-2 small text-muted">
+          {% if t.gpx_km %}
+          <span><i class="bi bi-signpost-2 me-1"></i>{{ t.gpx_km }} km</span>
+          {% endif %}
+          {% if t.gpx_ascent %}
+          <span>⛰️ {{ t.gpx_ascent|int }} m</span>
+          {% endif %}
+          {% if t.meeting_desc %}
+          <span><i class="bi bi-geo-alt me-1"></i>{{ t.meeting_desc }}</span>
+          {% endif %}
+        </div>
+
+        {% if t.description %}
+        <p class="small text-muted mb-3">{{ t.description | truncate(120) }}</p>
+        {% endif %}
+
+        <!-- ── Bewertungs-Zusammenfassung ─────────────────────────────── -->
+        {% set total = r.get('total', 0) %}
+        {% if total %}
+        <div class="mb-3">
+          <div class="d-flex justify-content-between small text-muted mb-1">
+            <span>{{ total }} Bewertung{{ 'en' if total != 1 }}</span>
+            <span>
+              {% if r.good %}👍 {{ r.good }}{% endif %}
+              {% if r.ok %}  😐 {{ r.ok }}{% endif %}
+              {% if r.bad %} 👎 {{ r.bad }}{% endif %}
+            </span>
+          </div>
+          <div class="rating-bar">
+            <div class="rating-bar-inner" style="width:100%"></div>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- ── Eigene Bewertung abgeben ──────────────────────────────── -->
+        <div class="mb-3">
+          <div class="small text-muted mb-2 fw-semibold">
+            {% if r.mine %}Deine Bewertung:{% else %}Route bewerten:{% endif %}
+          </div>
+          <div class="d-flex gap-2 flex-wrap">
+            {% for val, emoji, label in [('good','👍','Klingt gut!'),('ok','😐','Geht so'),('bad','👎','Nicht meins')] %}
+            <button class="rating-btn {% if r.mine and r.mine.rating == val %}active-{{ val }}{% endif %}"
+                    onclick="rateRoute({{ t.id }}, '{{ val }}', this)"
+                    title="{{ label }}">
+              {{ emoji }} {{ label }}
+            </button>
+            {% endfor %}
+          </div>
+          {% if r.mine and r.mine.comment %}
+          <div class="small text-muted mt-1 fst-italic">„{{ r.mine.comment }}"</div>
+          {% endif %}
+        </div>
+
+        <!-- ── Termin setzen (Organizer) ─────────────────────────────── -->
+        {% if current_user.is_organizer %}
+        <div class="mt-auto pt-2 border-top">
+          <div class="small fw-semibold text-muted mb-2">
+            <i class="bi bi-calendar-plus me-1"></i>Termin fixieren:
+          </div>
+          <form method="post" action="{{ url_for('tour_set_date', tour_id=t.id) }}"
+                class="d-flex gap-2 flex-wrap">
+            <input type="date" name="tour_date" class="form-control form-control-sm"
+                   style="width:150px">
+            <input type="time" name="start_time" class="form-control form-control-sm"
+                   style="width:110px" value="{{ default_time or '09:00' }}">
+            <button class="btn btn-sm btn-djo">
+              <i class="bi bi-check-lg me-1"></i>Setzen
+            </button>
+          </form>
+        </div>
+        {% endif %}
+
+        <!-- Detail-Link -->
+        <div class="mt-2">
+          <a href="{{ url_for('tour_detail', tour_id=t.id) }}"
+             class="btn btn-outline-djo btn-sm w-100">
+            <i class="bi bi-eye me-1"></i>Details & Karte
+          </a>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="card">
+  <div class="card-body text-center py-5 text-muted">
+    <div style="font-size:3rem">🚴</div>
+    <h5 class="mt-3">Keine geplanten Touren ohne Datum</h5>
+    <p class="mb-3">Erstelle eine Tour ohne Datum um sie hier zu sehen.</p>
+    {% if current_user.is_organizer %}
+    <a href="{{ url_for('tour_create') }}" class="btn btn-djo">
+      <i class="bi bi-plus-lg me-1"></i>Tour hinzufügen
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Mini-Karten ───────────────────────────────────────────────────────────
+const GPX = {{ gpx_map | tojson | safe }};
+document.addEventListener('DOMContentLoaded', function() {
+  Object.entries(GPX).forEach(function([tid, data]) {
+    var el = document.getElementById('gmap-' + tid);
+    if (!el || !data.points || !data.points.length) return;
+    var map = L.map(el, {
+      zoomControl:false, attributionControl:false,
+      dragging:false, scrollWheelZoom:false,
+      doubleClickZoom:false, touchZoom:false
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    var pts = data.points.map(function(p){return [p.lat,p.lng];});
+    var poly = L.polyline(pts,{color:'#FF6A00',weight:3,opacity:.9}).addTo(map);
+    map.fitBounds(poly.getBounds(),{padding:[6,6]});
+    var dot = function(c){return L.divIcon({
+      html:'<div style="width:8px;height:8px;background:'+c+';border:2px solid #fff;border-radius:50%"></div>',
+      iconSize:[8,8],iconAnchor:[4,4],className:''
+    });};
+    L.marker(pts[0],{icon:dot('#2E7D4F')}).addTo(map);
+    L.marker(pts[pts.length-1],{icon:dot('#C0392B')}).addTo(map);
+    setTimeout(function(){map.invalidateSize(false);},100);
+  });
+});
+
+// ── Bewertung ─────────────────────────────────────────────────────────────
+function rateRoute(tourId, rating, btn) {
+  fetch('/touren/' + tourId + '/bewerten', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'rating=' + rating
+  }).then(function(r){return r.json();}).then(function(d){
+    if (d.ok) location.reload();
+  });
+}
+</script>
+{% endblock %}

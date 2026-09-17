@@ -1,0 +1,38 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Datenbank
+*.db
+*.db-shm
+*.db-wal
+instance/
+
+# Uploads (keine echten Fotos/GPX/Logos ins Repo)
+static/uploads/photos/
+static/uploads/gpx/
+static/uploads/avatars/
+static/uploads/videos/
+static/uploads/group_logos/
+
+# Backups
+backups/
+*.log
+
+# Konfiguration (enthält Secrets!)
+config_local.py
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

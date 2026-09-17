@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Jahresrückblick {{ year }} – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block content %}
+<!-- Year selector -->
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
+    <i class="bi bi-calendar-heart me-2"></i>Jahresrückblick {{ year }}
+  </h2>
+  <div class="d-flex gap-2 flex-wrap align-items-center">
+    {% if available_years %}
+    {% for y in available_years %}
+    <a href="{{ url_for('rueckblick', year=y) }}"
+       class="btn btn-sm {% if y == year %}btn-djo{% else %}btn-outline-djo{% endif %}">
+      {{ y }}
+    </a>
+    {% endfor %}
+    {% endif %}
+    {% if tours %}
+    <a href="{{ url_for('gpx_export_all', year=year) }}"
+       class="btn btn-sm btn-outline-secondary ms-2" title="Alle GPX-Tracks als ZIP">
+      <i class="bi bi-download me-1"></i>GPX-ZIP {{ year }}
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+{% if tours %}
+
+<!-- ── Hero stats ──────────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  {% set stats = [
+    ('bi-map','#4e9af1', tours|length, 'Touren', ''),
+    ('bi-geo-alt','#f0a500', total_km, 'km gesamt', ''),
+    ('bi-arrow-up','#e74c3c', total_ascent, 'm Anstieg', ''),
+    ('bi-camera','#27ae60', total_photos, 'Fotos', ''),
+  ] %}
+  {% for icon, color, val, label, _ in stats %}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center h-100">
+      <div class="card-body py-3">
+        <i class="bi {{ icon }}" style="font-size:1.8rem;color:{{ color }}"></i>
+        <div class="fw-bold mt-1" style="font-size:2rem;line-height:1.1">{{ val }}</div>
+        <div class="text-muted small">{{ label }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if longest %}
+<div class="alert border-0 shadow-sm mb-4 d-flex align-items-center gap-3"
+     style="background:linear-gradient(135deg,#2B3F6B 0%,#4e6fa8 100%);color:#fff;border-radius:12px">
+  <i class="bi bi-trophy-fill" style="font-size:2rem;color:#f0a500;flex-shrink:0"></i>
+  <div>
+    <div class="fw-bold">Längste Tour {{ year }}</div>
+    <div>{{ longest.title }} –
+      <strong>{{ longest.gpx_km }} km</strong>
+      {% if longest.gpx_ascent %} · ⛰️ {{ longest.gpx_ascent|int }} m{% endif %}
+      {% if longest.tour_date %} · {{ longest.tour_date | de_date }}{% endif %}
+    </div>
+  </div>
+  <a href="{{ url_for('tour_detail', tour_id=longest.id) }}"
+     class="btn btn-sm btn-warning ms-auto">Details</a>
+</div>
+{% endif %}
+
+<div class="row g-4">
+
+  <!-- ── Monthly chart ──────────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-7">
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-bar-chart me-1"></i>Touren pro Monat {{ year }}
+      </div>
+      <div class="card-body">
+        <canvas id="monthly-chart" style="max-height:220px"></canvas>
+      </div>
+    </div>
+
+    <!-- Tour list -->
+    <div class="card">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-list-ul me-1"></i>Alle {{ tours|length }} Touren
+      </div>
+      <div class="list-group list-group-flush">
+        {% for t in tours %}
+        <a href="{{ url_for('tour_detail', tour_id=t.id) }}"
+           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-semibold">{{ t.title }}</div>
+            <small class="text-muted">
+              {{ t.tour_date.strftime('%d.%m.%Y') if (t.tour_date and not t.is_date_open) else 'offen' }}
+              &middot; <span class="badge badge-{{ t.difficulty }}">{{ t.difficulty_label }}</span>
+            </small>
+          </div>
+          <div class="text-end text-muted small text-nowrap ms-2">
+            {% if t.gpx_km %}<div>{{ t.gpx_km }} km</div>{% endif %}
+            <div><i class="bi bi-people me-1"></i>{{ t.attending_count }}</div>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right panel ────────────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-5">
+
+    <!-- Most active -->
+    {% if most_active %}
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-star me-1"></i>Aktivste Mitglieder {{ year }}
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for user, cnt in most_active %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <div>
+            <span class="me-2">
+              {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+            </span>
+            <a href="{{ url_for('profil', user_id=user.id) }}"
+               class="text-decoration-none fw-semibold">{{ user.display_name }}</a>
+          </div>
+          <span class="badge bg-primary rounded-pill">{{ cnt }} Touren</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <!-- Highlight: longest tour -->
+    {% if longest and longest.gpx_km %}
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-signpost-split me-1"></i>Längste Tour {{ year }}
+      </div>
+      <div class="card-body">
+        <h5 class="fw-bold">{{ longest.title }}</h5>
+        <div class="d-flex gap-3 flex-wrap">
+          <div>
+            <div class="stat-number" style="font-size:1.8rem">{{ longest.gpx_km }}</div>
+            <div class="stat-label">km</div>
+          </div>
+          {% if longest.gpx_ascent %}
+          <div>
+            <div class="stat-number" style="font-size:1.8rem">{{ longest.gpx_ascent|int }}</div>
+            <div class="stat-label">m Anstieg</div>
+          </div>
+          {% endif %}
+        </div>
+        <a href="{{ url_for('tour_detail', tour_id=longest.id) }}"
+           class="btn btn-sm btn-outline-djo mt-2">Zur Tour</a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Fun facts -->
+    <div class="card">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-emoji-smile me-1"></i>Fun Facts
+      </div>
+      <div class="card-body">
+        {% if total_km > 0 %}
+        <p class="small mb-2">
+          🌍 {{ total_km }} km entsprechen
+          <strong>{{ (total_km / 40075 * 100)|round(2) }}%</strong> des Erdumfangs.
+        </p>
+        {% endif %}
+        {% if tours|length > 0 %}
+        <p class="small mb-2">
+          📅 Im Schnitt eine Tour alle
+          <strong>{{ (365 / tours|length)|round(0)|int }} Tage</strong>.
+        </p>
+        {% endif %}
+        {% if total_ascent > 0 %}
+        <p class="small mb-0">
+          ⛰️ {{ total_ascent }} m Anstieg =
+          <strong>{{ (total_ascent / 8849 * 100)|round(1) }}%</strong> des Mount Everest.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <div style="font-size:3rem">📅</div>
+  <h5 class="mt-3">Keine abgeschlossenen Touren in {{ year }}</h5>
+  <a href="{{ url_for('tour_list') }}" class="btn btn-djo mt-2">Zur Tourenplanung</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if tours %}
+<script>
+const MONTHLY = {{ monthly_json | safe }};
+const MONTHS  = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+
+new Chart(document.getElementById('monthly-chart'), {
+  type: 'bar',
+  data: {
+    labels: MONTHS,
+    datasets: [{
+      label: 'Touren',
+      data: MONTHLY,
+      backgroundColor: 'rgba(43,63,107,.75)',
+      borderColor: '#2B3F6B',
+      borderWidth: 1,
+      borderRadius: 5,
+    }]
+  },
+  options: {
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: 'rgba(0,0,0,.06)' } },
+      x: { grid: { display: false } }
+    },
+    responsive: true, animation: false
+  }
+});
+</script>
+{% endif %}
+{% endblock %}

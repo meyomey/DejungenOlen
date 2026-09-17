@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Suche – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-8">
+    <h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
+      <i class="bi bi-search me-2"></i>Suche
+    </h2>
+
+    <form method="get" action="{{ url_for('global_search') }}" class="mb-4">
+      <div class="input-group input-group-lg">
+        <input type="text" name="q" class="form-control" value="{{ q }}"
+               placeholder="Tour, Gastro, Ort…" autofocus>
+        <button class="btn btn-djo" type="submit">
+          <i class="bi bi-search"></i>
+        </button>
+      </div>
+    </form>
+
+    {% if results is none %}
+    <p class="text-muted">Suchbegriff eingeben (mind. 2 Zeichen).</p>
+
+    {% elif results.total == 0 %}
+    <div class="alert alert-info">
+      <i class="bi bi-info-circle me-1"></i>
+      Keine Ergebnisse für <strong>{{ q }}</strong>.
+    </div>
+
+    {% else %}
+    <p class="text-muted small mb-4">{{ results.total }} Ergebnis{{ 'se' if results.total != 1 }} für <strong>{{ q }}</strong></p>
+
+    {% if results.touren %}
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-bicycle me-1"></i>Touren ({{ results.touren|length }})
+      </div>
+      <div class="list-group list-group-flush">
+        {% for t in results.touren %}
+        <a href="{{ url_for('tour_detail', tour_id=t.id) }}"
+           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-semibold">{{ t.title }}</div>
+            {% if t.description %}
+            <div class="text-muted small">{{ t.description[:100] }}…</div>
+            {% endif %}
+          </div>
+          <small class="text-muted text-nowrap ms-2">{{ t.tour_date | de_date }}</small>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if results.gastro %}
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-cup-hot me-1"></i>Gastronomie ({{ results.gastro|length }})
+      </div>
+      <div class="list-group list-group-flush">
+        {% for s in results.gastro %}
+        <a href="{{ url_for('gastro_detail', spot_id=s.id) }}"
+           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-semibold">{{ s.name }}</div>
+            {% if s.address %}
+            <div class="text-muted small">{{ s.address }}</div>
+            {% endif %}
+          </div>
+          <small class="text-muted ms-2">{{ s.type_label }}</small>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if results.pois %}
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-geo-alt me-1"></i>Orte ({{ results.pois|length }})
+      </div>
+      <div class="list-group list-group-flush">
+        {% for p in results.pois %}
+        <a href="{{ url_for('poi_list') }}"
+           class="list-group-item list-group-item-action">
+          <div class="fw-semibold">{{ p.name }}</div>
+          {% if p.description %}
+          <div class="text-muted small">{{ p.description[:80] }}…</div>
+          {% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

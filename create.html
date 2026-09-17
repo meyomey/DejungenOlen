@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Neue Tour – De jungen Olen{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-9">
+
+    <h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
+      <i class="bi bi-plus-circle me-2"></i>Neue Tour erstellen
+    </h2>
+
+    <form method="post" id="createForm">
+      <div class="row g-4">
+
+        <!-- Left column -->
+        <div class="col-12 col-md-7">
+          <div class="card">
+            <div class="card-header card-header-djo">
+              <i class="bi bi-info-circle me-1"></i>Tour-Details
+            </div>
+            <div class="card-body">
+              {% if prefill %}
+              <div class="alert alert-success py-2 small mb-3">
+                <i class="bi bi-lightbulb me-1"></i>
+                Tour wird aus Vorschlag <strong>„{{ prefill.title }}"</strong> erstellt –
+                Daten vorausgefüllt. Bitte Datum und Startzeit noch anpassen!
+                {% if prefill.gpx_file %}
+                <br><i class="bi bi-check-circle me-1 text-success"></i>
+                GPX-Datei wird automatisch übernommen.
+                {% endif %}
+              </div>
+              {# Hidden: carry proposal GPX filename to POST handler #}
+              {% if prefill.gpx_file %}
+              <input type="hidden" name="proposal_gpx_file" value="{{ prefill.gpx_file }}">
+              {% endif %}
+              {% endif %}
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Titel *</label>
+                <input type="text" name="title" class="form-control"
+                       value="{{ prefill.title if prefill else '' }}"
+                       placeholder="z.B. Sonntagsrunde durch die Wümmewiesen" required>
+              </div>
+              <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                  <label class="form-label fw-semibold">Datum *</label>
+                  <input type="date" name="tour_date" class="form-control" required
+                         min="{{ today.strftime('%Y-%m-%d') if today else '' }}">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label fw-semibold">Startzeit</label>
+                  <input type="time" name="start_time" class="form-control"
+                         value="{{ default_time }}">
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Schwierigkeit</label>
+                <select name="difficulty" class="form-select">
+                  {% for val, label in difficulties %}
+                  <option value="{{ val }}"
+                    {% if prefill and prefill.difficulty == val %}selected{% endif %}>
+                    {{ label }}
+                  </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Beschreibung</label>
+                <textarea name="description" class="form-control" rows="4"
+                  placeholder="Routenbeschreibung, besondere Hinweise, Pausen...">{% if prefill %}{% if prefill.description %}{{ prefill.description }}{% endif %}{% if prefill.region %}
+Region: {{ prefill.region }}{% endif %}{% if prefill.approx_km %}
+ca. {{ prefill.approx_km|int }} km{% endif %}{% if prefill.link %}
+{{ prefill.link }}{% endif %}{% endif %}</textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right column: meeting point -->
+        <div class="col-12 col-md-5">
+          <div class="card h-100">
+            <div class="card-header card-header-djo">
+              <i class="bi bi-geo-alt me-1"></i>Treffpunkt
+            </div>
+            <div class="card-body d-flex flex-column">
+              <p class="text-muted small mb-2">
+                Klicke auf die Karte um den Treffpunkt zu setzen.
+              </p>
+              <div id="meeting-map" class="mb-3 flex-grow-1" style="min-height:220px"></div>
+              <input type="hidden" name="meeting_lat" id="meeting_lat">
+              <input type="hidden" name="meeting_lng" id="meeting_lng">
+              <div id="coord-display" class="text-muted small mb-2"></div>
+              <div class="mb-0">
+                <label class="form-label fw-semibold">Treffpunkt-Beschreibung</label>
+                <input type="text" name="meeting_desc" class="form-control"
+                       value="{{ default_meeting_desc }}"
+                       placeholder="z.B. Parkplatz Freibad Ottersberg">
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="mt-4 d-flex gap-2">
+        <button type="submit" class="btn btn-djo px-4">
+          <i class="bi bi-check-lg me-1"></i>Tour speichern
+        </button>
+        <a href="{{ url_for('tour_list') }}" class="btn btn-outline-secondary">Abbrechen</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Meeting-point Leaflet map ──────────────────────────────────────────────
+const DEFAULT_LAT = {{ default_meeting_lat or '53.1' }};
+const DEFAULT_LNG = {{ default_meeting_lng or '9.2' }};
+const map = L.map('meeting-map').setView([DEFAULT_LAT, DEFAULT_LNG], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+
+let marker = null;
+const latInput  = document.getElementById('meeting_lat');
+const lngInput  = document.getElementById('meeting_lng');
+const coordDisp = document.getElementById('coord-display');
+
+map.on('click', function(e) {
+  const {lat, lng} = e.latlng;
+  latInput.value = lat.toFixed(6);
+  lngInput.value = lng.toFixed(6);
+  coordDisp.textContent = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+  if (marker) map.removeLayer(marker);
+  marker = L.marker([lat, lng], {
+    icon: L.divIcon({
+      html: '<div style="background:var(--djo-navy);color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;">📍</div>',
+      iconSize: [28, 28], iconAnchor: [14, 14]
+    })
+  }).addTo(map);
+});
+
+// Try geolocation to center map
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(pos => {
+    map.setView([pos.coords.latitude, pos.coords.longitude], 11);
+  }, () => {});
+}
+</script>
+{% endblock %}

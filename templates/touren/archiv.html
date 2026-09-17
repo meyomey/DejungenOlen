@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Archiv – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
+    <i class="bi bi-archive me-2"></i>Tour-Archiv
+  </h2>
+  <div class="d-flex gap-2">
+    {% if current_user.is_organizer %}
+    <a href="{{ url_for('archiv_new') }}" class="btn btn-sm btn-djo">
+      <i class="bi bi-plus-lg me-1"></i>Alte Tour eintragen
+    </a>
+    {% endif %}
+    {% if current_user.is_admin %}
+    <a href="{{ url_for('admin_export_tours') }}" class="btn btn-sm btn-outline-djo">
+      <i class="bi bi-download me-1"></i>CSV
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Search/filter -->
+<form method="get" action="{{ url_for('archiv_suche') }}" class="card p-3 mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-sm-5">
+      <input type="text" name="q" value="{{ q if q is defined else '' }}"
+             class="form-control form-control-sm" placeholder="🔍 Tour suchen…">
+    </div>
+    <div class="col-6 col-sm-2">
+      <select name="year" class="form-select form-select-sm">
+        <option value="">Alle Jahre</option>
+        {% for y in (all_years if all_years is defined else []) %}
+        <option value="{{ y }}" {% if y|string == (year if year is defined else '') %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-sm-2">
+      <select name="diff" class="form-select form-select-sm">
+        <option value="">Alle</option>
+        <option value="leicht" {% if (diff if diff is defined else '') == 'leicht' %}selected{% endif %}>Leicht</option>
+        <option value="mittel" {% if (diff if diff is defined else '') == 'mittel' %}selected{% endif %}>Mittel</option>
+        <option value="schwer" {% if (diff if diff is defined else '') == 'schwer' %}selected{% endif %}>Schwer</option>
+      </select>
+    </div>
+    <div class="col-12 col-sm-3">
+      <div class="d-flex gap-1">
+        <button type="submit" class="btn btn-djo btn-sm flex-grow-1">Suchen</button>
+        <a href="{{ url_for('archiv') }}" class="btn btn-outline-secondary btn-sm">✕</a>
+      </div>
+    </div>
+  </div>
+</form>
+
+{% if tours %}
+<!-- Stats -->
+<div class="d-flex gap-3 mb-3 flex-wrap">
+  <div class="stat-box px-3 py-2">
+    <div class="stat-number" style="font-size:1.4rem">{{ tours|length }}</div>
+    <div class="stat-label">Touren</div>
+  </div>
+  <div class="stat-box px-3 py-2">
+    <div class="stat-number" style="font-size:1.4rem">
+      {{ tours | selectattr('gpx_km') | map(attribute='gpx_km') | sum | round(1) }}
+    </div>
+    <div class="stat-label">km gesamt</div>
+  </div>
+</div>
+
+<!-- Desktop: Tabelle (versteckt auf xs/sm) -->
+<div class="card d-none d-md-block">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead class="table-admin">
+        <tr>
+          <th>Datum</th>
+          <th>Tour</th>
+          <th>Level</th>
+          <th>km</th>
+          <th>👥</th>
+          <th>📷</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tours %}
+        <tr onclick="location.href='{{ url_for('tour_detail', tour_id=t.id) }}'"
+            style="cursor:pointer">
+          <td class="text-nowrap small">{{ t.tour_date.strftime('%d.%m.%Y') if (t.tour_date and not t.is_date_open) else 'offen' }}</td>
+          <td><strong>{{ t.title }}</strong></td>
+          <td><span class="badge badge-{{ t.difficulty }}">{{ t.difficulty_label }}</span></td>
+          <td class="text-nowrap small">
+            {% if t.gpx_km %}{{ t.gpx_km }}{% else %}–{% endif %}
+          </td>
+          <td class="small">
+            {% set confirmed = part_counts.get(t.id, 0) %}
+            {% set total = confirmed %}
+            {{ confirmed if confirmed else total }}
+          </td>
+          <td class="small">
+            {% set pc = photo_counts.get(t.id, 0) %}{{ pc if pc else '–' }}
+          </td>
+          <td>
+            <div class="d-flex gap-1" onclick="event.stopPropagation()">
+            <a href="{{ url_for('tour_detail', tour_id=t.id) }}"
+               class="btn btn-sm btn-outline-djo">Details</a>
+            {% if current_user.is_organizer or current_user.is_admin %}
+            <a href="{{ url_for('tour_edit', tour_id=t.id) }}"
+               class="btn btn-sm btn-outline-secondary" title="Bearbeiten">
+              <i class="bi bi-pencil"></i>
+            </a>
+            {% endif %}
+          </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Mobil: Karten-Liste (nur auf xs/sm sichtbar) -->
+<div class="d-md-none">
+  {% for t in tours %}
+  {% set cover = cover_photos[t.id] if (cover_photos is defined and cover_photos and t.id in cover_photos) else none %}
+  <a href="{{ url_for('tour_detail', tour_id=t.id) }}"
+     class="text-decoration-none d-block mb-2">
+    <div class="card tour-card overflow-hidden" style="{% if not cover %}border-left:4px solid var(--djo-navy){% endif %}">
+      {% if cover %}
+      <div style="height:110px;overflow:hidden;position:relative">
+        <img src="{{ url_for('serve_photo', filename=cover.filename) }}"
+             style="width:100%;height:100%;object-fit:cover;filter:brightness(.8);display:block">
+        <div style="position:absolute;inset:0;background:linear-gradient(to bottom,transparent 20%,rgba(0,0,0,.7))"></div>
+        <div style="position:absolute;bottom:6px;left:10px;right:10px">
+          <div class="d-flex justify-content-between align-items-end">
+            <div>
+              <span class="text-white fw-semibold d-block" style="font-size:.88rem">{{ t.title }}</span>
+              <span style="color:rgba(255,255,255,.8);font-size:.7rem">
+                📅 {{ t.tour_date.strftime('%d.%m.%Y') if (t.tour_date and not t.is_date_open) else 'Datum offen' }}
+              </span>
+            </div>
+            <span class="badge badge-{{ t.difficulty }} flex-shrink-0 ms-1">{{ t.difficulty_label }}</span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="card-body py-2 px-3">
+        {% if not cover %}
+        <div class="d-flex justify-content-between align-items-start">
+          <div class="flex-grow-1 me-2">
+            <div class="fw-semibold" style="color:var(--djo-navy)">{{ t.title }}</div>
+            <div class="text-muted" style="font-size:.8rem">
+              {{ t.tour_date.strftime('%d.%m.%Y') if (t.tour_date and not t.is_date_open) else 'offen' }}
+            </div>
+          </div>
+          <span class="badge badge-{{ t.difficulty }} flex-shrink-0">{{ t.difficulty_label }}</span>
+        </div>
+        {% endif %}
+        <div class="d-flex gap-3 mt-1" style="font-size:.78rem;color:#666">
+          {% if t.gpx_km %}
+          <span><i class="bi bi-signpost-2 me-1"></i>{{ t.gpx_km }} km</span>
+          {% endif %}
+          {% if t.gpx_ascent %}
+          <span>⛰️ {{ t.gpx_ascent|int }} m</span>
+          {% endif %}
+          <span>
+            👥 {% set confirmed = part_counts.get(t.id, 0) %}
+               {% set total = confirmed %}
+               {{ confirmed if confirmed else total }}
+          </span>
+          {% set pc = photo_counts.get(t.id, 0) %}
+          {% if pc %}<span>📷 {{ pc }}</span>{% endif %}
+        </div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-archive fs-1 d-block mb-3"></i>
+  <h5>Noch keine abgeschlossenen Touren</h5>
+</div>
+{% endif %}
+
+{% if pages > 1 %}
+<nav class="mt-4">
+  <ul class="pagination justify-content-center">
+    {% if page > 1 %}
+    <li class="page-item">
+      <a class="page-link" href="?page={{ page - 1 }}">‹ Neuer</a>
+    </li>
+    {% endif %}
+    {% for p in range(1, pages + 1) %}
+    <li class="page-item {% if p == page %}active{% endif %}">
+      <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+    </li>
+    {% endfor %}
+    {% if page < pages %}
+    <li class="page-item">
+      <a class="page-link" href="?page={{ page + 1 }}">Älter ›</a>
+    </li>
+    {% endif %}
+  </ul>
+  <p class="text-center text-muted small">{{ total }} Touren gesamt</p>
+</nav>
+{% endif %}
+{% endblock %}

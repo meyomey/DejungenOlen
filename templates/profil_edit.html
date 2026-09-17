@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Profil bearbeiten – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-md-7 col-lg-6">
+    <div class="d-flex align-items-center gap-3 mb-4">
+      <div class="participant-avatar" style="width:52px;height:52px;font-size:1.4rem">
+        {{ current_user.display_name[0].upper() }}
+      </div>
+      <div>
+        <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">Profil bearbeiten</h2>
+        <div class="text-muted small">{{ current_user.email }}</div>
+      </div>
+    </div>
+
+    <!-- Avatar Upload -->
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-person-circle me-1"></i>Profilbild
+      </div>
+      <div class="card-body d-flex align-items-center gap-4 flex-wrap">
+        {% if current_user.avatar %}
+        <img src="{{ url_for('static', filename='uploads/avatars/' + current_user.avatar) }}"
+             alt="Avatar"
+             style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid var(--djo-navy)">
+        {% else %}
+        <div class="participant-avatar"
+             style="width:80px;height:80px;font-size:2rem;flex-shrink:0">
+          {{ current_user.display_name[0].upper() }}
+        </div>
+        {% endif %}
+        <div>
+          <form method="post" action="{{ url_for('avatar_upload') }}"
+                enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap mb-2">
+            <input type="file" name="avatar" accept="image/*"
+                   class="form-control form-control-sm" style="max-width:220px">
+            <button type="submit" class="btn btn-sm btn-djo">
+              <i class="bi bi-upload me-1"></i>Hochladen
+            </button>
+          </form>
+          {% if current_user.avatar %}
+          <form method="post" action="{{ url_for('avatar_delete') }}"
+                onsubmit="return confirm('Profilbild entfernen?')">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-trash me-1"></i>Bild entfernen
+            </button>
+          </form>
+          {% endif %}
+          <div class="text-muted small mt-1">JPG, PNG, WebP · max. 256×256px (wird automatisch skaliert)</div>
+        </div>
+      </div>
+    </div>
+
+    <form method="post">
+      <div class="card mb-3">
+        <div class="card-header card-header-djo">
+          <i class="bi bi-person me-1"></i>Persönliche Daten
+        </div>
+        <div class="card-body">
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Vollständiger Name</label>
+              <input type="text" name="name" class="form-control"
+                     value="{{ current_user.name }}" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Spitzname</label>
+              <input type="text" name="nickname" class="form-control"
+                     value="{{ current_user.nickname or '' }}"
+                     placeholder="Wie dich die Gruppe nennt">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-balloon-heart me-1"></i>Geburtstag
+              <span class="text-muted fw-normal">(optional – für Geburtstagsanzeige)</span>
+            </label>
+            <input type="date" name="birthday" class="form-control"
+                   value="{{ current_user.birthday.isoformat() if current_user.birthday else '' }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Über mich</label>
+            <textarea name="bio" class="form-control" rows="3"
+                      placeholder="Was fährst du gern, wo kommst du her…">{{ current_user.bio or '' }}</textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header card-header-djo">
+          <i class="bi bi-bicycle me-1"></i>Fahrrad
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Fahrrad-Typ</label>
+            <select name="bicycle_type" class="form-select">
+              {% for val, lbl in [('trekking','🚲 Trekking'),('rennrad','🚴 Rennrad'),('mtb','🚵 MTB'),('ebike','⚡ E-Bike')] %}
+              <option value="{{ val }}" {% if current_user.bicycle_type == val %}selected{% endif %}>{{ lbl }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="is_ebike"
+                   id="is_ebike" {% if current_user.is_ebike %}checked{% endif %}>
+            <label class="form-check-label" for="is_ebike">⚡ Ich fahre ein E-Bike</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header card-header-djo">
+          <i class="bi bi-key me-1"></i>Passwort ändern
+          <span class="fw-normal opacity-75 ms-1">(optional – leer lassen = kein Wechsel)</span>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Neues Passwort</label>
+              <input type="password" name="password" class="form-control"
+                     placeholder="Mindestens 6 Zeichen" minlength="6">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Bestätigen</label>
+              <input type="password" name="password2" class="form-control">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-djo px-4">
+          <i class="bi bi-check-lg me-1"></i>Speichern
+        </button>
+        <a href="{{ url_for('my_profil') }}" class="btn btn-outline-secondary">Abbrechen</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

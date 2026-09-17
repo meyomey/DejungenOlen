@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}</title>
+  <meta name="theme-color" content="#2B3F6B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="{{ current_group.name if current_group else 'De jungen Olen' }}">
+  <link rel="manifest" href="/static/manifest.json">
+  {% if current_group and current_group.logo %}
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='uploads/group_logos/' + current_group.logo) }}">
+  <link rel="icon" href="{{ url_for('static', filename='uploads/group_logos/' + current_group.logo) }}">
+  {% else %}
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='logo.png') }}">
+  <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
+  {% endif %}
+  <!-- Bootstrap 5 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+  <!-- Custom -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>
+    // Apply dark mode before render to avoid flash
+    if (localStorage.getItem('djo-dark') === '1') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  </script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+{% if current_user.is_authenticated %}
+<!-- ── Navbar ──────────────────────────────────────────────────────────────── -->
+<nav class="navbar navbar-expand-lg navbar-djo sticky-top">
+  <div class="container">
+
+    <!-- Brand -->
+    <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+      {% if current_group and current_group.logo %}
+      <img src="{{ url_for('static', filename='uploads/group_logos/' + current_group.logo) }}"
+           alt="Logo" class="navbar-logo">
+      {% else %}
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="navbar-logo">
+      {% endif %}
+      <span class="nav-label">{{ current_group.name if current_group else 'De jungen Olen' }}</span>
+    </a>
+
+    <!-- ── Mobile: immer sichtbare Aktions-Buttons rechts vom Hamburger ──── -->
+    <div class="d-flex align-items-center gap-1 d-lg-none ms-auto me-1">
+      <!-- Nächste Touren Badge -->
+      {% if upcoming_tours %}
+      <a class="btn btn-sm btn-outline-light position-relative"
+         href="{{ url_for('tour_list') }}" title="Nächste Touren">
+        <i class="bi bi-bicycle"></i>
+        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning text-dark"
+              style="font-size:.6rem">{{ upcoming_tours|length }}</span>
+      </a>
+      {% endif %}
+      <!-- Suche -->
+      <button class="btn btn-sm btn-outline-light" onclick="toggleMobileSearch()"
+              title="Suchen" id="mobile-search-btn">
+        <i class="bi bi-search"></i>
+      </button>
+      <!-- Neue Tour -->
+      {% if current_user.is_organizer %}
+      <a class="btn btn-sm btn-warning text-dark fw-bold" href="{{ url_for('tour_create') }}" title="Neue Tour">
+        <i class="bi bi-plus-lg"></i>
+      </a>
+      {% endif %}
+      <!-- Avatar → Profil -->
+      <a class="btn btn-sm btn-outline-light d-flex align-items-center"
+         href="{{ url_for('my_profil') }}" title="Profil">
+        {% if current_user.avatar %}
+        <img src="{{ url_for('static', filename='uploads/avatars/' + current_user.avatar) }}"
+             style="width:22px;height:22px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'">
+        {% else %}
+        <i class="bi bi-person-circle"></i>
+        {% endif %}
+      </a>
+    </div>
+
+    <!-- Hamburger -->
+    <button class="navbar-toggler border-0" type="button"
+            data-bs-toggle="collapse" data-bs-target="#navMenu"
+            aria-label="Navigation">
+      <span class="navbar-toggler-icon" style="filter:invert(1)"></span>
+    </button>
+
+    <!-- ── Collapse: Hauptnavigation ─────────────────────────────────────── -->
+    <div class="collapse navbar-collapse" id="navMenu">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}"
+             href="{{ url_for('index') }}">
+            <i class="bi bi-house-door me-1"></i><span class="nav-label">Start</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint in ['tour_list','tour_create'] %}active{% endif %}"
+             href="{{ url_for('tour_list') }}">
+            <i class="bi bi-calendar3 me-1"></i><span class="nav-label">Touren</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'archiv' %}active{% endif %}"
+             href="{{ url_for('archiv') }}">
+            <i class="bi bi-archive me-1"></i><span class="nav-label">Archiv</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'gastro_list' %}active{% endif %}"
+             href="{{ url_for('gastro_list') }}">
+            <i class="bi bi-cup-hot me-1"></i><span class="nav-label">Gastro</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint == 'global_map' %}active{% endif %}"
+             href="{{ url_for('global_map') }}">
+            <i class="bi bi-map me-1"></i><span class="nav-label">Karte</span>
+          </a>
+        </li>
+
+        <!-- Mehr-Dropdown (Desktop) -->
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle
+             {% if request.endpoint in ['rangliste','rueckblick','my_profil','profil','poi_list','foto_challenge','mitglieder'] %}active{% endif %}"
+             href="#" data-bs-toggle="dropdown">
+            <i class="bi bi-grid-3x3-gap me-1"></i><span class="nav-label">Mehr</span>
+          </a>
+          <ul class="dropdown-menu">
+            <li><h6 class="dropdown-header small">Orte & Entdeckungen</h6></li>
+            <li><a class="dropdown-item" href="{{ url_for('poi_list') }}">
+              <i class="bi bi-geo-alt me-2"></i>Orte & POIs</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('gastro_list') }}">
+              <i class="bi bi-cup-hot me-2"></i>Gastronomie</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><h6 class="dropdown-header small">Community</h6></li>
+            <li><a class="dropdown-item" href="{{ url_for('rangliste') }}">
+              <i class="bi bi-trophy me-2"></i>Rangliste</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('rueckblick') }}">
+              <i class="bi bi-calendar-heart me-2"></i>Jahresrückblick</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('foto_challenge') }}">
+              <i class="bi bi-camera me-2"></i>Foto-Challenge</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('mitglieder') }}">
+              <i class="bi bi-people me-2"></i>Mitglieder</a></li>
+          </ul>
+        </li>
+
+        {% if current_user.is_organizer %}
+        <li class="nav-item d-none d-lg-block">
+          <a class="nav-link {% if request.endpoint == 'tour_create' %}active{% endif %}"
+             href="{{ url_for('tour_create') }}">
+            <i class="bi bi-plus-circle me-1"></i>Neue Tour
+          </a>
+        </li>
+        {% endif %}
+        {% if current_user.is_admin %}
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle
+             {% if request.endpoint and ('admin' in request.endpoint or request.endpoint in ['group_create']) %}active{% endif %}"
+             href="#" data-bs-toggle="dropdown">
+            <i class="bi bi-gear me-1"></i><span class="nav-label">Admin</span>
+          </a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('admin_dashboard') }}">
+              <i class="bi bi-speedometer2 me-2"></i>Dashboard</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><h6 class="dropdown-header small">
+              Gruppe: {{ current_group.name if current_group else '–' }}
+            </h6></li>
+            {% for g in all_groups %}
+            <li>
+              <form method="post" action="{{ url_for('switch_group', group_id=g.id) }}">
+                <button type="submit" class="dropdown-item small
+                  {% if current_group and current_group.id == g.id %}fw-bold{% endif %}">
+                  <i class="bi bi-arrow-repeat me-1"></i>{{ g.name }}
+                  <span class="text-muted ms-1">({{ g.member_count }})</span>
+                </button>
+              </form>
+            </li>
+            {% endfor %}
+            <li><a class="dropdown-item small" href="{{ url_for('group_create') }}">
+              <i class="bi bi-plus-circle me-2"></i>Neue Gruppe</a></li>
+            <li><a class="dropdown-item small" href="{{ url_for('admin_groups') }}">
+              <i class="bi bi-grid me-2"></i>Gruppen verwalten</a></li>
+          </ul>
+        </li>
+        {% endif %}
+
+        <!-- ── Mobile-only: direkte Links (kein nested Dropdown) ─────────── -->
+        <li class="d-lg-none"><hr class="dropdown-divider" style="border-color:rgba(255,255,255,.2)"></li>
+        <li class="nav-item d-lg-none">
+          <a class="nav-link" href="{{ url_for('my_profil') }}">
+            <i class="bi bi-person-badge me-2"></i>Mein Profil
+          </a>
+        </li>
+        <li class="nav-item d-lg-none">
+          <a class="nav-link" href="{{ url_for('profil_edit') }}">
+            <i class="bi bi-pencil-square me-2"></i>Profil bearbeiten
+          </a>
+        </li>
+        <li class="nav-item d-lg-none">
+          <a class="nav-link" href="{{ url_for('hilfe') }}">
+            <i class="bi bi-question-circle me-2"></i>Hilfe & Info
+          </a>
+        </li>
+        {% if telegram_link %}
+        <li class="nav-item d-lg-none">
+          <a class="nav-link" href="{{ telegram_link }}">
+            <i class="bi bi-telegram me-2"></i>Telegram-Gruppe
+          </a>
+        </li>
+        {% endif %}
+        <li class="nav-item d-lg-none">
+          <a class="nav-link" href="#" onclick="toggleDark(event)">
+            <i class="bi bi-moon-stars me-2" id="dark-icon-mobile"></i>
+            <span id="dark-label-mobile">Dark Mode</span>
+          </a>
+        </li>
+        <li class="nav-item d-lg-none">
+          <a class="nav-link text-danger" href="{{ url_for('logout') }}">
+            <i class="bi bi-box-arrow-right me-2"></i>Abmelden
+          </a>
+        </li>
+      </ul>
+
+      <!-- ── Desktop: Suche + Nächste Touren + User-Dropdown ────────────── -->
+      {% if upcoming_tours %}
+      <div class="dropdown me-2 d-none d-lg-block">
+        <button class="btn btn-sm btn-outline-light dropdown-toggle" data-bs-toggle="dropdown">
+          <i class="bi bi-bicycle"></i>
+          <span class="badge bg-warning text-dark ms-1">{{ upcoming_tours|length }}</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><h6 class="dropdown-header">Nächste Touren</h6></li>
+          {% for t in upcoming_tours %}
+          <li>
+            <a class="dropdown-item" href="{{ url_for('tour_detail', tour_id=t.id) }}">
+              <small class="text-muted">{{ t.tour_date.strftime('%d.%m.') if (t.tour_date and not t.is_date_open) else '?' }}</small>
+              {{ t.title }}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      <!-- Suche (Desktop) -->
+      <form method="get" action="{{ url_for('global_search') }}"
+            class="d-none d-lg-flex me-2" role="search">
+        <div class="input-group input-group-sm">
+          <input type="text" name="q" class="form-control"
+                 placeholder="Suchen…" style="width:140px"
+                 value="{{ request.args.get('q','') }}">
+          <button class="btn btn-outline-light btn-sm" type="submit">
+            <i class="bi bi-search"></i>
+          </button>
+        </div>
+      </form>
+
+      <!-- User-Dropdown (Desktop) -->
+      <div class="dropdown d-none d-lg-block">
+        <button class="btn btn-sm btn-outline-light dropdown-toggle d-flex align-items-center gap-1"
+                data-bs-toggle="dropdown">
+          {% if current_user.avatar %}
+          <img src="{{ url_for('static', filename='uploads/avatars/' + current_user.avatar) }}"
+               style="width:22px;height:22px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'">
+          {% else %}
+          <i class="bi bi-person-circle"></i>
+          {% endif %}
+          {{ current_user.display_name }}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><h6 class="dropdown-header">{{ current_user.email }}</h6></li>
+          <li><span class="dropdown-item-text text-muted small">Rolle: {{ current_user.role | capitalize }}</span></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="{{ url_for('my_profil') }}">
+            <i class="bi bi-person-badge me-2"></i>Mein Profil</a></li>
+          <li><a class="dropdown-item" href="{{ url_for('profil_edit') }}">
+            <i class="bi bi-pencil-square me-2"></i>Profil bearbeiten</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="#" onclick="toggleDark(event)">
+            <i class="bi bi-moon-stars me-2" id="dark-icon"></i>
+            <span id="dark-label">Dark Mode</span></a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="{{ url_for('hilfe') }}">
+            <i class="bi bi-question-circle me-2"></i>Hilfe & Info</a></li>
+          {% if telegram_link %}
+          <li><a class="dropdown-item" href="{{ telegram_link }}" target="_blank">
+            <i class="bi bi-telegram me-2"></i>Telegram-Gruppe</a></li>
+          {% endif %}
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+            <i class="bi bi-box-arrow-right me-1"></i>Abmelden</a></li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</nav>
+
+<!-- ── Mobile-Suchleiste (ausgeklappt unter Navbar) ──────────────────────── -->
+<div id="mobile-search-bar" style="display:none;background:var(--djo-navy);padding:8px 12px">
+  <form method="get" action="{{ url_for('global_search') }}" class="d-flex gap-2">
+    <input type="text" name="q" class="form-control form-control-sm"
+           placeholder="Suchen…" id="mobile-search-input"
+           value="{{ request.args.get('q','') }}" autofocus>
+    <button class="btn btn-warning btn-sm fw-bold" type="submit">
+      <i class="bi bi-search"></i>
+    </button>
+    <button type="button" class="btn btn-outline-light btn-sm"
+            onclick="toggleMobileSearch()">✕</button>
+  </form>
+</div>
+{% endif %}
+
+
+<!-- ── Flash messages ──────────────────────────────────────────────────────── -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="container mt-3">
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+    {{ msg }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+
+<!-- ── Page content ────────────────────────────────────────────────────────── -->
+<main class="container py-4">
+  {% block content %}{% endblock %}
+</main>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
+<footer class="text-center">
+  <div class="container d-flex justify-content-between flex-wrap gap-2">
+    <span>🚴 {{ current_group.name if current_group else 'De jungen Olen' }} &mdash; Radgruppe</span>
+    {% if current_user.is_authenticated %}
+    <span>
+      <a href="{{ url_for('newsletter_current') }}" class="text-white-50 small me-3">📰 Newsletter</a>
+      <a href="{{ url_for('datenschutz') }}" class="text-white-50 small">Datenschutz</a>
+    </span>
+    {% else %}
+    <a href="{{ url_for('datenschutz') }}" class="text-white-50 small">Datenschutz</a>
+    {% endif %}
+  </div>
+</footer>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<!-- PWA service worker registration -->
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js', {scope: '/'}).catch(() => {});
+}
+
+// Dark mode toggle
+function toggleDark(e) {
+  e.preventDefault();
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (isDark) {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.setItem('djo-dark', '0');
+  } else {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('djo-dark', '1');
+  }
+  updateDarkUI();
+}
+function toggleMobileSearch() {
+  var bar   = document.getElementById('mobile-search-bar');
+  var input = document.getElementById('mobile-search-input');
+  if (bar.style.display === 'none') {
+    bar.style.display = '';
+    if (input) setTimeout(() => input.focus(), 50);
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function updateDarkUI() {
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  ['dark-icon','dark-icon-mobile'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.className = isDark ? 'bi bi-sun me-2' : 'bi bi-moon-stars me-2';
+  });
+  ['dark-label','dark-label-mobile'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = isDark ? 'Hell' : 'Dark Mode';
+  });
+}
+updateDarkUI();
+</script>
+{% block scripts %}{% endblock %}
+
+<!-- ── Logo-Zuschneide-Editor ──────────────────────────────────────────────── -->
+<div class="modal fade" id="logoCropModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-crop me-1"></i>Logo einpassen</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" id="logoCropCancelX"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div style="position:relative;width:280px;height:280px;margin:0 auto;
+                    border-radius:50%;overflow:hidden;background:#eee;
+                    box-shadow:0 0 0 2000px rgba(0,0,0,.4);cursor:move">
+          <canvas id="logoCropCanvas" width="280" height="280"
+                  style="display:block;touch-action:none"></canvas>
+        </div>
+        <div class="d-flex align-items-center gap-2 mt-3">
+          <i class="bi bi-zoom-out text-muted"></i>
+          <input type="range" id="logoCropZoom" class="form-range" min="1" max="4" step="0.01" value="1">
+          <i class="bi bi-zoom-in text-muted"></i>
+        </div>
+        <div class="text-muted small mt-1">Ziehen zum Verschieben, Regler zum Zoomen</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" id="logoCropCancel">Abbrechen</button>
+        <button type="button" class="btn btn-djo btn-sm" id="logoCropConfirm">
+          <i class="bi bi-check-lg me-1"></i>Übernehmen
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var CANVAS_SIZE = 280;
+  var OUTPUT_SIZE = 480;
+  var canvas = document.getElementById('logoCropCanvas');
+  var ctx = canvas.getContext('2d');
+  var zoomSlider = document.getElementById('logoCropZoom');
+  var modalEl = document.getElementById('logoCropModal');
+  var modal = null; // lazy init (bootstrap must be loaded)
+
+  var img = null, baseScale = 1, offsetX = 0, offsetY = 0;
+  var dragging = false, lastX = 0, lastY = 0;
+  var activeInput = null;
+
+  function clampOffsets() {
+    var scale = baseScale * parseFloat(zoomSlider.value);
+    var dw = img.width * scale, dh = img.height * scale;
+    var maxX = Math.max(0, (dw - CANVAS_SIZE) / 2);
+    var maxY = Math.max(0, (dh - CANVAS_SIZE) / 2);
+    offsetX = Math.max(-maxX, Math.min(maxX, offsetX));
+    offsetY = Math.max(-maxY, Math.min(maxY, offsetY));
+  }
+
+  function draw() {
+    if (!img) return;
+    clampOffsets();
+    var scale = baseScale * parseFloat(zoomSlider.value);
+    var dw = img.width * scale, dh = img.height * scale;
+    var dx = CANVAS_SIZE / 2 - dw / 2 + offsetX;
+    var dy = CANVAS_SIZE / 2 - dh / 2 + offsetY;
+    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    ctx.drawImage(img, dx, dy, dw, dh);
+  }
+
+  function startPos(e) {
+    var p = e.touches ? e.touches[0] : e;
+    return {x: p.clientX, y: p.clientY};
+  }
+  canvas.addEventListener('pointerdown', function(e) {
+    dragging = true;
+    var p = startPos(e);
+    lastX = p.x; lastY = p.y;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', function(e) {
+    if (!dragging) return;
+    var p = startPos(e);
+    offsetX += p.x - lastX;
+    offsetY += p.y - lastY;
+    lastX = p.x; lastY = p.y;
+    draw();
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(evt) {
+    canvas.addEventListener(evt, function() { dragging = false; });
+  });
+  zoomSlider.addEventListener('input', draw);
+
+  function openCropperFor(input, file) {
+    activeInput = input;
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      img = new Image();
+      img.onload = function() {
+        baseScale = Math.max(CANVAS_SIZE / img.width, CANVAS_SIZE / img.height);
+        offsetX = 0; offsetY = 0;
+        zoomSlider.value = 1;
+        draw();
+        if (!modal) modal = new bootstrap.Modal(modalEl);
+        modal.show();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  document.addEventListener('change', function(e) {
+    var input = e.target;
+    if (!input.matches || !input.matches('.logo-crop-input')) return;
+    if (input.dataset.cropped === '1') { delete input.dataset.cropped; return; }
+    var file = input.files && input.files[0];
+    if (!file) return;
+    openCropperFor(input, file);
+  });
+
+  function resetInput() {
+    if (activeInput) { activeInput.value = ''; }
+    activeInput = null;
+  }
+  document.getElementById('logoCropCancel').addEventListener('click', resetInput);
+  document.getElementById('logoCropCancelX').addEventListener('click', resetInput);
+
+  document.getElementById('logoCropConfirm').addEventListener('click', function() {
+    if (!img || !activeInput) return;
+    var out = document.createElement('canvas');
+    out.width = OUTPUT_SIZE; out.height = OUTPUT_SIZE;
+    var octx = out.getContext('2d');
+    var ratio = OUTPUT_SIZE / CANVAS_SIZE;
+    var scale = baseScale * parseFloat(zoomSlider.value) * ratio;
+    var dw = img.width * scale, dh = img.height * scale;
+    var dx = OUTPUT_SIZE / 2 - dw / 2 + offsetX * ratio;
+    var dy = OUTPUT_SIZE / 2 - dh / 2 + offsetY * ratio;
+    octx.drawImage(img, dx, dy, dw, dh);
+
+    out.toBlob(function(blob) {
+      var file = new File([blob], 'logo.png', {type: 'image/png'});
+      var dt = new DataTransfer();
+      dt.items.add(file);
+      activeInput.dataset.cropped = '1';
+      activeInput.files = dt.files;
+      // Vorschau aktualisieren, falls vorhanden
+      var preview = document.getElementById(activeInput.id + '-preview');
+      if (preview) preview.src = out.toDataURL('image/png');
+      modal.hide();
+      activeInput = null;
+    }, 'image/png', 0.92);
+  });
+})();
+</script>
+
+<script>
+</script>
+
+<!-- ── Mobile Bottom Navigation ─────────────────────────────────────────── -->
+<nav class="d-lg-none" id="bottom-nav"
+     style="position:fixed;bottom:0;left:0;right:0;z-index:1030;
+            background:var(--djo-navy);border-top:1px solid rgba(255,255,255,.15);
+            display:flex;justify-content:space-around;align-items:center;
+            padding:6px 0 calc(6px + env(safe-area-inset-bottom));
+            box-shadow:0 -2px 10px rgba(0,0,0,.2)">
+  <a href="{{ url_for('index') }}"
+     class="bottom-nav-item {% if request.endpoint == 'index' %}active{% endif %}">
+    <i class="bi bi-house-door-fill"></i>
+    <span>Start</span>
+  </a>
+  <a href="{{ url_for('tour_list') }}"
+     class="bottom-nav-item {% if request.endpoint in ['tour_list','tour_detail'] %}active{% endif %}">
+    <i class="bi bi-calendar-week-fill"></i>
+    <span>Touren</span>
+  </a>
+  {% if current_user.is_organizer %}
+  <a href="{{ url_for('tour_create') }}"
+     class="bottom-nav-item bottom-nav-create">
+    <i class="bi bi-plus-lg"></i>
+  </a>
+  {% else %}
+  <a href="{{ url_for('global_map') }}"
+     class="bottom-nav-item {% if request.endpoint == 'global_map' %}active{% endif %}">
+    <i class="bi bi-map-fill"></i>
+    <span>Karte</span>
+  </a>
+  {% endif %}
+  <a href="{{ url_for('archiv') }}"
+     class="bottom-nav-item {% if request.endpoint == 'archiv' %}active{% endif %}">
+    <i class="bi bi-archive-fill"></i>
+    <span>Archiv</span>
+  </a>
+  <a href="{{ url_for('my_profil') }}"
+     class="bottom-nav-item {% if request.endpoint in ['profil','my_profil'] %}active{% endif %}">
+    <i class="bi bi-person-fill"></i>
+    <span>Profil</span>
+  </a>
+</nav>
+
+<style>
+.bottom-nav-item {
+  display: flex; flex-direction: column; align-items: center;
+  color: rgba(255,255,255,.6); text-decoration: none;
+  font-size: .6rem; gap: 1px; padding: 4px 8px; border-radius: 8px;
+  transition: color .15s;
+  min-width: 52px;
+}
+.bottom-nav-item i { font-size: 1.3rem; line-height: 1; }
+.bottom-nav-item.active { color: #fff; }
+.bottom-nav-item.active i { color: #f0a500; }
+.bottom-nav-create {
+  background: #f0a500; color: #1a2a4a !important;
+  border-radius: 50%; width: 46px; height: 46px;
+  justify-content: center; min-width: unset; padding: 0;
+  margin-bottom: 4px;
+}
+.bottom-nav-create i { font-size: 1.5rem; }
+/* Platz für Bottom Nav auf Mobile */
+@media (max-width: 991px) {
+  body { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+}
+</style>
+
+</body>
+</html>

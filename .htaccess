@@ -1,0 +1,15 @@
+# De jungen Olen – Apache Konfiguration
+# Große Datei-Uploads (Videos bis 500 MB)
+
+# Maximale Upload-Größe
+php_value upload_max_filesize 500M
+php_value post_max_size 600M
+
+# Timeouts für große Uploads
+php_value max_execution_time 600
+php_value max_input_time 600
+
+# Für Apache mod_reqtimeout (falls aktiv)
+<IfModule mod_reqtimeout.c>
+    RequestReadTimeout header=20-40,MinRate=500 body=600,MinRate=500
+</IfModule>

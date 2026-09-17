@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Registrieren – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-3">
+  <div class="col-12 col-md-7 col-lg-6">
+    <div class="text-center mb-4">
+      {% if invite.group and invite.group.logo %}
+      <img src="{{ url_for('static', filename='uploads/group_logos/' + invite.group.logo) }}"
+           alt="Logo" style="width:96px;height:96px;border-radius:50%;object-fit:cover">
+      {% else %}
+      <img src="{{ url_for('static', filename='logo.png') }}"
+           alt="Logo" style="width:96px;height:96px;border-radius:50%;object-fit:cover">
+      {% endif %}
+      <h2 class="mt-2 fw-bold" style="color:var(--djo-navy)">Konto erstellen</h2>
+      <p class="text-muted">Du wurdest eingeladen, {{ invite.group.name if invite.group else 'De jungen Olen' }} beizutreten!</p>
+    </div>
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">E-Mail *</label>
+            <input type="email" name="email" class="form-control"
+                   value="{{ invite.email or '' }}"
+                   {% if invite.email %}readonly{% endif %} required>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Vollständiger Name *</label>
+              <input type="text" name="name" class="form-control"
+                     placeholder="Max Mustermann" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Spitzname</label>
+              <input type="text" name="nickname" class="form-control"
+                     placeholder="Maxi">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Fahrrad-Typ</label>
+            <select name="bicycle_type" class="form-select">
+              <option value="trekking">🚲 Trekking-Rad</option>
+              <option value="rennrad">🚴 Rennrad</option>
+              <option value="mtb">🚵 Mountainbike</option>
+              <option value="ebike">⚡ E-Bike</option>
+            </select>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="is_ebike" id="is_ebike">
+            <label class="form-check-label" for="is_ebike">⚡ Ich fahre ein E-Bike</label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Passwort *</label>
+            <input type="password" name="password" class="form-control"
+                   placeholder="Mindestens 6 Zeichen" required minlength="6">
+          </div>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Passwort bestätigen *</label>
+            <input type="password" name="password2" class="form-control"
+                   placeholder="Wiederholen" required>
+          </div>
+          <button type="submit" class="btn btn-djo w-100">
+            <i class="bi bi-person-plus me-1"></i>Konto erstellen
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

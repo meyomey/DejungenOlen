@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Tour bearbeiten – {{ tour.title }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <div>
+    <a href="{{ url_for('tour_detail', tour_id=tour.id) }}" class="text-muted small">
+      <i class="bi bi-arrow-left me-1"></i>Zurück
+    </a>
+    <h2 class="fw-bold mt-1 mb-0" style="color:var(--djo-navy)">
+      <i class="bi bi-pencil-square me-2"></i>Tour bearbeiten
+    </h2>
+  </div>
+</div>
+<div class="row justify-content-center">
+<div class="col-12 col-lg-8">
+<div class="card">
+  <div class="card-header card-header-djo">{{ tour.title }}</div>
+  <div class="card-body">
+    <form method="post">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Titel *</label>
+        <input type="text" name="title" class="form-control" value="{{ tour.title }}" required>
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-sm-5">
+          <label class="form-label fw-semibold">Datum <span class="text-muted fw-normal">(optional)</span></label>
+          <input type="date" name="tour_date" class="form-control"
+                 value="{{ tour.tour_date.strftime('%Y-%m-%d') if (tour.tour_date and not tour.is_date_open) else '' }}">
+          <div class="form-text">Leer lassen = Datum noch offen</div>
+        </div>
+        <div class="col-sm-3">
+          <label class="form-label fw-semibold">Startzeit</label>
+          <input type="time" name="start_time" class="form-control" value="{{ tour.start_time or '' }}">
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label fw-semibold">Schwierigkeit</label>
+          <select name="difficulty" class="form-select">
+            {% for val, label in difficulties %}
+            <option value="{{ val }}" {% if tour.difficulty == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      {% if current_user.is_admin %}
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Status <span class="badge bg-warning text-dark">Admin</span></label>
+        <select name="status" class="form-select">
+          <option value="planned"   {% if tour.status=='planned'   %}selected{% endif %}>Geplant</option>
+          <option value="completed" {% if tour.status=='completed' %}selected{% endif %}>Abgeschlossen</option>
+          <option value="cancelled" {% if tour.status=='cancelled' %}selected{% endif %}>Abgesagt</option>
+        </select>
+      </div>
+      {% endif %}
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Treffpunkt</label>
+        <input type="text" name="meeting_desc" class="form-control"
+               value="{{ tour.meeting_desc or '' }}" placeholder="Adresse…">
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-6">
+          <label class="form-label fw-semibold small">Breitengrad</label>
+          <input type="number" step="0.000001" name="meeting_lat" class="form-control form-control-sm font-monospace"
+                 value="{{ tour.meeting_lat or '' }}" placeholder="52.9637">
+        </div>
+        <div class="col-6">
+          <label class="form-label fw-semibold small">Längengrad</label>
+          <input type="number" step="0.000001" name="meeting_lng" class="form-control form-control-sm font-monospace"
+                 value="{{ tour.meeting_lng or '' }}" placeholder="9.0891">
+        </div>
+      </div>
+      <div class="mb-4">
+        <label class="form-label fw-semibold">Beschreibung</label>
+        <textarea name="description" class="form-control" rows="4">{{ tour.description or '' }}</textarea>
+      </div>
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        <div class="row g-2 mb-3">
+          <div class="col-sm-6">
+            <label class="form-label fw-semibold">Ungefähre Länge <span class="text-muted fw-normal">(km)</span></label>
+            <div class="input-group">
+              <input type="number" name="approx_km" class="form-control"
+                     min="1" max="999" step="1"
+                     value="{{ tour.approx_km|int if tour.approx_km else '' }}">
+              <span class="input-group-text">km</span>
+            </div>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-semibold">Externer Link <span class="text-muted fw-normal">(optional)</span></label>
+            <input type="url" name="external_link" class="form-control"
+                   placeholder="Komoot / Strava / Garmin"
+                   value="{{ tour.external_link or '' }}">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-djo px-4">
+          <i class="bi bi-check-lg me-1"></i>Speichern
+        </button>
+        <a href="{{ url_for('tour_detail', tour_id=tour.id) }}" class="btn btn-outline-secondary">Abbrechen</a>
+        <form method="post" action="{{ url_for('tour_delete', tour_id=tour.id) }}"
+              class="ms-auto"
+              onsubmit="return confirm('Tour löschen? Alle Fotos werden ebenfalls gelöscht!')">
+          <button type="submit" class="btn btn-outline-danger">
+            <i class="bi bi-trash3 me-1"></i>Tour löschen
+          </button>
+        </form>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}

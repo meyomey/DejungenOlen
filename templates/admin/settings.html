@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen – Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
+    <i class="bi bi-sliders me-2"></i>Einstellungen
+  </h2>
+  <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Admin-Übersicht
+  </a>
+</div>
+
+<form method="post" id="settings-form">
+<div class="row g-4">
+
+  <!-- ── Telegram ──────────────────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-6">
+    <div class="card">
+      <div class="card-header card-header-djo">
+        ✈️ Telegram-Integration
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Bot-Token</label>
+          <input type="text" name="telegram_bot_token" class="form-control font-monospace"
+                 value="{{ settings.telegram_bot_token }}"
+                 placeholder="123456789:ABC-DEF...">
+          <div class="form-text">
+            Erstellen bei <a href="https://t.me/BotFather" target="_blank">@BotFather</a>.
+            Bot muss Admin der Gruppe sein.
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Chat-ID</label>
+          <input type="text" name="telegram_chat_id" class="form-control font-monospace"
+                 value="{{ settings.telegram_chat_id }}"
+                 placeholder="-100123456789">
+          <div class="form-text">
+            Chat-ID ermitteln:
+            <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Einladungslink (für private Gruppen)</label>
+          <input type="url" name="telegram_invite_link" class="form-control"
+                 value="{{ settings.get('telegram_invite_link','') }}"
+                 placeholder="https://t.me/+AbCdEfGhIjKlMnOp">
+          <div class="form-text">
+            In Telegram: Gruppe öffnen → Mitglieder hinzufügen → Einladungslink erstellen.
+            Dieser Link wird auf der Startseite als Button angezeigt.
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Gruppen-Username <span class="text-muted fw-normal">(nur für öffentliche Gruppen)</span></label>
+          <div class="input-group">
+            <span class="input-group-text">@</span>
+            <input type="text" name="telegram_chat_username" class="form-control"
+                   value="{{ settings.telegram_chat_username | replace('@','') }}"
+                   placeholder="dejungenolen">
+          </div>
+        </div>
+
+        <!-- Test button – separate mini-form, außerhalb der Haupt-Form -->
+        <div class="mt-2">
+          <button type="button" class="btn btn-outline-djo btn-sm"
+                  onclick="document.getElementById('tg-test-form').submit()">
+            <i class="bi bi-send me-1"></i>Test-Nachricht senden
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Standard-Tour-Einstellungen ──────────────────────────────────────── -->
+  <div class="col-12 col-lg-6">
+    <div class="card">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-bicycle me-1"></i>Standard-Tour-Einstellungen
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Standard-Startzeit</label>
+          <input type="time" name="default_start_time" class="form-control"
+                 value="{{ settings.default_start_time }}">
+          <div class="form-text">Wird beim Erstellen neuer Touren vorausgefüllt.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Standard-Treffpunkt (Beschreibung)</label>
+          <input type="text" name="default_meeting_desc" class="form-control"
+                 value="{{ settings.default_meeting_desc }}"
+                 placeholder="Dörphus Wulmstorf, Marschstraße 2...">
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-semibold">Breite (lat)</label>
+            <input type="number" step="0.0001" name="default_meeting_lat" class="form-control"
+                   value="{{ settings.default_meeting_lat }}" placeholder="52.9637">
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold">Länge (lng)</label>
+            <input type="number" step="0.0001" name="default_meeting_lng" class="form-control"
+                   value="{{ settings.default_meeting_lng }}" placeholder="9.0891">
+          </div>
+        </div>
+        <!-- Map preview -->
+        <div id="default-map" style="height:180px;border-radius:6px;margin-bottom:.5rem"></div>
+        <button type="button" class="btn btn-outline-secondary btn-sm"
+                onclick="updateDefaultMap()">
+          <i class="bi bi-arrow-repeat me-1"></i>Vorschau aktualisieren
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Gastronomie-Filter ────────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-6">
+    <div class="card">
+      <div class="card-header card-header-djo">
+        ☀️ Gastronomie-Filter
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">
+            „Frühöffner"-Schwelle
+            <span class="text-muted fw-normal">(Gaststätten öffnen bis spätestens…)</span>
+          </label>
+          <div class="input-group" style="max-width:180px">
+            <input type="time" name="morning_opener_until" class="form-control"
+                   value="{{ settings.morning_opener_until }}">
+            <span class="input-group-text">Uhr</span>
+          </div>
+          <div class="form-text">
+            Aktuell: Gaststätten die bis
+            <strong>{{ settings.morning_opener_until }} Uhr</strong> öffnen,
+            werden als ☀️ Frühöffner markiert.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Allgemein ─────────────────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-6">
+    <div class="card">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-globe me-1"></i>Allgemein
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Gruppenname</label>
+          <input type="text" name="site_name" class="form-control"
+                 value="{{ settings.site_name }}" placeholder="De jungen Olen">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Basis-URL (für Links in Telegram etc.)</label>
+          <input type="url" name="base_url" class="form-control"
+                 value="{{ settings.base_url }}" placeholder="https://deine-domain.de">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Google Places API-Key</label>
+          <input type="text" name="google_places_api_key" class="form-control font-monospace"
+                 value="{{ settings.get('google_places_api_key','') }}"
+                 placeholder="AIza...">
+          <div class="form-text">
+            Für „Daten aus Google Places" auf Gastro-Detailseiten.
+            Key erstellen unter <a href="https://console.cloud.google.com/apis/library/places-backend.googleapis.com" target="_blank">Google Cloud Console</a>
+            → Places API aktivieren.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</div><!-- end row -->
+</form><!-- Haupt-Einstellungsform Ende -->
+
+<!-- Standalone Telegram-Test-Form (außerhalb der Haupt-Form!) -->
+<form id="tg-test-form" method="post"
+      action="{{ url_for('admin_telegram_test') }}" style="display:none"></form>
+
+<!-- Speichern-Button als eigene Form -->
+<div class="mt-4 d-flex gap-2">
+  <button type="submit" form="settings-form" class="btn btn-djo px-5">
+    <i class="bi bi-check-lg me-1"></i>Alle Einstellungen speichern
+  </button>
+  <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">Abbrechen</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let defaultMap = null, defaultMarker = null;
+
+function initDefaultMap() {
+  const lat = parseFloat('{{ settings.default_meeting_lat }}') || 52.9637;
+  const lng = parseFloat('{{ settings.default_meeting_lng }}') || 9.0891;
+  defaultMap = L.map('default-map').setView([lat, lng], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(defaultMap);
+  defaultMarker = L.marker([lat, lng]).addTo(defaultMap)
+    .bindPopup('{{ settings.default_meeting_desc | e }}').openPopup();
+
+  defaultMap.on('click', function(e) {
+    document.querySelector('[name=default_meeting_lat]').value = e.latlng.lat.toFixed(4);
+    document.querySelector('[name=default_meeting_lng]').value = e.latlng.lng.toFixed(4);
+    defaultMarker.setLatLng(e.latlng);
+  });
+}
+
+function updateDefaultMap() {
+  const lat = parseFloat(document.querySelector('[name=default_meeting_lat]').value);
+  const lng = parseFloat(document.querySelector('[name=default_meeting_lng]').value);
+  if (!isNaN(lat) && !isNaN(lng) && defaultMap) {
+    defaultMap.setView([lat, lng], 14);
+    defaultMarker.setLatLng([lat, lng]);
+  }
+}
+
+initDefaultMap();
+</script>
+{% endblock %}

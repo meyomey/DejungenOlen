@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+{% block title %}Admin – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+
+<!-- ── Header ────────────────────────────────────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
+      <i class="bi bi-gear-fill me-2"></i>Admin
+    </h2>
+    <div class="text-muted small">{{ users|length }} Mitglieder · {{ invites|length }} Einladungen</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('admin_settings') }}" class="btn btn-outline-djo btn-sm">
+      <i class="bi bi-sliders me-1"></i>Einstellungen
+    </a>
+    <a href="{{ url_for('admin_install_packages') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-box-seam me-1"></i>Pakete
+    </a>
+    <form method="post" action="{{ url_for('admin_backup') }}"
+          onsubmit="return confirm('Backup jetzt erstellen?')">
+      <button class="btn btn-djo btn-sm">
+        <i class="bi bi-archive me-1"></i>Backup
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ── Stat Cards ────────────────────────────────────────────────────────────── -->
+<div class="row g-2 mb-3">
+  <div class="col-6 col-sm-3">
+    <div class="card text-center h-100 border-0 shadow-sm">
+      <div class="card-body py-2">
+        <div style="font-size:1.6rem;color:var(--djo-navy)"><i class="bi bi-people-fill"></i></div>
+        <div class="fw-bold fs-5">{{ users|selectattr('is_active')|list|length }}</div>
+        <div class="text-muted" style="font-size:.7rem">Aktive Mitglieder</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-3">
+    <div class="card text-center h-100 border-0 shadow-sm">
+      <div class="card-body py-2">
+        <div style="font-size:1.6rem;color:#f0a500"><i class="bi bi-activity"></i></div>
+        <div class="fw-bold fs-5">{{ active_users if active_users is defined else '–' }}</div>
+        <div class="text-muted" style="font-size:.7rem">Logins 30 Tage</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-3">
+    <div class="card text-center h-100 border-0 shadow-sm">
+      <div class="card-body py-2">
+        <div style="font-size:1.6rem;color:#e74c3c"><i class="bi bi-clock-history"></i></div>
+        <div class="fw-bold fs-5">{{ inactive_users|length if inactive_users is defined else '–' }}</div>
+        <div class="text-muted" style="font-size:.7rem">Inaktiv >90 Tage</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-3">
+    <div class="card text-center h-100 border-0 shadow-sm">
+      <div class="card-body py-2">
+        <div style="font-size:1.6rem;color:#198754"><i class="bi bi-envelope-check"></i></div>
+        <div class="fw-bold fs-5">{{ invites|selectattr('used', 'eq', false)|list|length }}</div>
+        <div class="text-muted" style="font-size:.7rem">Offene Einladungen</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Hauptbereich: 2 Spalten ab md ─────────────────────────────────────────── -->
+<div class="row g-3">
+
+  <!-- ── Linke Spalte: Mitgliederliste ──────────────────────────────────────── -->
+  <div class="col-12 col-lg-8">
+
+    <!-- Geburtstage (wenn vorhanden) -->
+    {% if birthdays is defined and birthdays %}
+    <div class="alert d-flex align-items-center gap-2 mb-3 border-0 shadow-sm"
+         style="background:linear-gradient(135deg,#fff8e1,#fffde7);border-left:4px solid #f0a500 !important">
+      <span style="font-size:1.5rem">🎂</span>
+      <div class="flex-grow-1">
+        <div class="fw-semibold small">Nächste Geburtstage</div>
+        <div class="d-flex flex-wrap gap-2 mt-1">
+          {% for b in birthdays %}
+          <span class="badge" style="background:#f0a500;color:#1a2a4a;font-size:.75rem">
+            {{ b.user.display_name.split()[0] }}
+            · {{ b.date.strftime('%d.%m.') }}
+            {% if b.days_until == 0 %}🎉 Heute!
+            {% elif b.days_until == 1 %}· Morgen!
+            {% else %}· in {{ b.days_until }}d{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Mitgliederliste -->
+    <div class="card shadow-sm border-0">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-people me-2"></i>Mitglieder</span>
+        <div class="d-flex gap-1">
+          <a href="{{ url_for('admin_export_members') }}" class="btn btn-sm btn-warning" title="CSV">
+            <i class="bi bi-download me-1"></i>CSV
+          </a>
+          <a href="{{ url_for('mitglieder') }}" class="btn btn-sm btn-outline-light" title="Öffentliche Liste">
+            <i class="bi bi-eye"></i>
+          </a>
+        </div>
+      </div>
+
+      <!-- Suchfeld -->
+      <div class="p-2 border-bottom">
+        <input type="text" id="member-search" class="form-control form-control-sm"
+               placeholder="Mitglied suchen…" oninput="filterMembers(this.value)">
+      </div>
+
+      <div id="member-list" class="card-body p-0">
+        {% for u in users %}
+        <div class="member-row px-3 py-2 border-bottom d-flex align-items-start gap-2
+                    {% if not u.is_active %}opacity-50{% endif %}"
+             data-name="{{ u.display_name|lower }}">
+
+          <!-- Avatar -->
+          <div class="flex-shrink-0 mt-1">
+            {% if u.avatar %}
+            <img src="{{ url_for('static', filename='uploads/avatars/' + u.avatar) }}"
+                 style="width:34px;height:34px;border-radius:50%;object-fit:cover">
+            {% else %}
+            <div style="width:34px;height:34px;border-radius:50%;background:var(--djo-navy);
+                        display:flex;align-items:center;justify-content:center;
+                        color:#fff;font-weight:700;font-size:.8rem;flex-shrink:0">
+              {{ u.display_name[:1].upper() }}
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- Info -->
+          <div class="flex-grow-1 min-width-0">
+            <div class="d-flex align-items-center gap-1 flex-wrap">
+              <span class="fw-semibold small">{{ u.display_name }}</span>
+              {% if u.id == current_user.id %}
+              <span class="badge bg-primary" style="font-size:.6rem">Du</span>
+              {% endif %}
+              <span class="badge {% if u.role=='admin' %}bg-danger{% elif u.role=='organizer' %}bg-warning text-dark{% else %}bg-secondary{% endif %}"
+                    style="font-size:.6rem">{{ u.role }}</span>
+              {% if not u.is_active %}<span class="badge bg-dark" style="font-size:.6rem">gesperrt</span>{% endif %}
+            </div>
+            <div class="text-muted" style="font-size:.72rem">{{ u.email }}
+              {% if u.last_login %} · {{ u.last_login.strftime('%d.%m.%Y') }}{% endif %}
+            </div>
+          </div>
+
+          <!-- Aktionen: Dropdown auf Mobile, Buttons auf Desktop -->
+          <div class="flex-shrink-0">
+            <!-- Mobile: Dropdown -->
+            <div class="d-md-none">
+              <div class="dropdown">
+                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown">
+                  <i class="bi bi-three-dots-vertical"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px">
+                  <li>
+                    <form method="post" action="{{ url_for('admin_set_role', user_id=u.id) }}"
+                          class="px-3 py-2 d-flex gap-2 align-items-center">
+                      <select name="role" class="form-select form-select-sm flex-grow-1">
+                        <option value="member"    {% if u.role=='member'    %}selected{% endif %}>Mitglied</option>
+                        <option value="organizer" {% if u.role=='organizer' %}selected{% endif %}>Organizer</option>
+                        <option value="admin"     {% if u.role=='admin'     %}selected{% endif %}>Admin</option>
+                      </select>
+                      <button type="submit" class="btn btn-sm btn-outline-secondary">✓</button>
+                    </form>
+                  </li>
+                  <li><hr class="dropdown-divider my-1"></li>
+                  <li>
+                    <a href="{{ url_for('profil', user_id=u.id) }}" class="dropdown-item small">
+                      <i class="bi bi-person me-2"></i>Profil anzeigen
+                    </a>
+                  </li>
+                  <li>
+                    <a href="#" class="dropdown-item small" onclick="showPwForm({{ u.id }});return false">
+                      <i class="bi bi-key me-2"></i>Passwort setzen
+                    </a>
+                  </li>
+                  {% if u.id != current_user.id %}
+                  <li>
+                    <form method="post" action="{{ url_for('admin_toggle_user', user_id=u.id) }}">
+                      <button type="submit" class="dropdown-item small {% if u.is_active %}text-warning{% else %}text-success{% endif %}">
+                        <i class="bi bi-{% if u.is_active %}lock{% else %}unlock{% endif %} me-2"></i>
+                        {% if u.is_active %}Sperren{% else %}Aktivieren{% endif %}
+                      </button>
+                    </form>
+                  </li>
+                  <li>
+                    <form method="post" action="{{ url_for('admin_delete_user', user_id=u.id) }}"
+                          onsubmit="return confirm('{{ u.name }} wirklich löschen?')">
+                      <button type="submit" class="dropdown-item small text-danger">
+                        <i class="bi bi-trash3 me-2"></i>Löschen
+                      </button>
+                    </form>
+                  </li>
+                  {% endif %}
+                </ul>
+              </div>
+            </div>
+            <!-- Desktop: Buttons -->
+            <div class="d-none d-md-flex gap-1 flex-wrap justify-content-end">
+              <form method="post" action="{{ url_for('admin_set_role', user_id=u.id) }}"
+                    class="d-flex gap-1">
+                <select name="role" class="form-select form-select-sm" style="width:auto;font-size:.72rem">
+                  <option value="member"    {% if u.role=='member'    %}selected{% endif %}>Mitglied</option>
+                  <option value="organizer" {% if u.role=='organizer' %}selected{% endif %}>Organizer</option>
+                  <option value="admin"     {% if u.role=='admin'     %}selected{% endif %}>Admin</option>
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-1">✓</button>
+              </form>
+              {% if u.id != current_user.id %}
+              <form method="post" action="{{ url_for('admin_toggle_user', user_id=u.id) }}">
+                <button class="btn btn-sm {% if u.is_active %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                  <i class="bi bi-{% if u.is_active %}lock{% else %}unlock{% endif %}"></i>
+                </button>
+              </form>
+              <button class="btn btn-sm btn-outline-secondary" onclick="showPwForm({{ u.id }})">
+                <i class="bi bi-key"></i>
+              </button>
+              <form method="post" action="{{ url_for('admin_delete_user', user_id=u.id) }}"
+                    onsubmit="return confirm('{{ u.name }} wirklich löschen?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash3"></i></button>
+              </form>
+              {% endif %}
+              <a href="{{ url_for('profil', user_id=u.id) }}" class="btn btn-sm btn-outline-djo">
+                <i class="bi bi-person"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+        <!-- PW Form -->
+        <div id="pw-form-{{ u.id }}" class="d-none px-3 py-2 bg-light border-bottom">
+          <form method="post" action="{{ url_for('admin_reset_pw', user_id=u.id) }}"
+                class="d-flex gap-2 align-items-center">
+            <input type="password" name="password" class="form-control form-control-sm"
+                   placeholder="Neues Passwort (min. 6 Zeichen)" minlength="6" required
+                   style="max-width:200px">
+            <button type="submit" class="btn btn-sm btn-djo">Setzen</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="document.getElementById('pw-form-{{ u.id }}').classList.add('d-none')">✕</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Rechte Spalte: Einladen + Links + Aktivität ────────────────────────── -->
+  <div class="col-12 col-lg-4">
+
+    <!-- Mitglied einladen -->
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-person-plus me-2"></i>Mitglied einladen
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin_invite') }}">
+          <div class="mb-2">
+            <input type="text" name="label" class="form-control form-control-sm" required
+                   placeholder="Name (z.B. Klaus Müller)">
+          </div>
+          <div class="mb-3">
+            <input type="email" name="email" class="form-control form-control-sm"
+                   placeholder="E-Mail (optional)">
+          </div>
+          <button type="submit" class="btn btn-djo btn-sm w-100">
+            <i class="bi bi-link-45deg me-1"></i>Link erstellen
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Einladungslinks -->
+    {% if invites %}
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header card-header-djo d-flex justify-content-between">
+        <span><i class="bi bi-ticket-perforated me-2"></i>Einladungslinks</span>
+        <span class="badge bg-light text-dark">{{ invites|length }}</span>
+      </div>
+      <div class="list-group list-group-flush" style="max-height:220px;overflow-y:auto">
+        {% for inv in invites %}
+        <div class="list-group-item px-3 py-2">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div class="flex-grow-1 min-width-0">
+              <div class="fw-semibold small text-truncate">
+                {{ inv.label or inv.email or '–' }}
+                {% if inv.used %}
+                <span class="badge bg-success" style="font-size:.6rem">✓</span>
+                {% endif %}
+              </div>
+              <div class="text-muted" style="font-size:.7rem">{{ inv.created_at.strftime('%d.%m.%Y') }}</div>
+              {% if not inv.used %}
+              <a href="#" onclick="copyLink(this,'{{ url_for('register', token=inv.token, _external=True) }}')"
+                 class="small text-primary"><i class="bi bi-clipboard me-1"></i>Kopieren</a>
+              {% endif %}
+            </div>
+            <form method="post" action="{{ url_for('admin_delete_invite', invite_id=inv.id) }}"
+                  onsubmit="return confirm('Link löschen?')">
+              <button class="btn btn-sm btn-outline-danger py-0 px-1"><i class="bi bi-x"></i></button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Inaktive Mitglieder -->
+    {% if inactive_users is defined and inactive_users %}
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-clock-history me-2"></i>Inaktiv >90 Tage
+      </div>
+      <div class="list-group list-group-flush" style="max-height:200px;overflow-y:auto">
+        {% for u in inactive_users[:10] %}
+        <div class="list-group-item px-3 py-2 d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-semibold small">{{ u.display_name }}</div>
+            <div class="text-muted" style="font-size:.7rem">
+              {% if u.last_login %}{{ u.last_login.strftime('%d.%m.%Y') }}{% else %}nie{% endif %}
+            </div>
+          </div>
+          <a href="{{ url_for('profil', user_id=u.id) }}" class="btn btn-sm btn-outline-secondary py-0">
+            <i class="bi bi-person"></i>
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Schnelllinks -->
+    <div class="card shadow-sm border-0">
+      <div class="card-header card-header-djo"><i class="bi bi-lightning me-2"></i>Schnelllinks</div>
+      <div class="list-group list-group-flush">
+        <a href="{{ url_for('admin_settings') }}" class="list-group-item list-group-item-action small">
+          <i class="bi bi-sliders me-2 text-muted"></i>Einstellungen
+        </a>
+        <a href="{{ url_for('tour_create') }}" class="list-group-item list-group-item-action small">
+          <i class="bi bi-plus-circle me-2 text-muted"></i>Neue Tour erstellen
+        </a>
+        <a href="{{ url_for('rangliste') }}" class="list-group-item list-group-item-action small">
+          <i class="bi bi-trophy me-2 text-muted"></i>Rangliste
+        </a>
+        <a href="{{ url_for('rueckblick') }}" class="list-group-item list-group-item-action small">
+          <i class="bi bi-calendar-check me-2 text-muted"></i>Jahresrückblick
+        </a>
+        <a href="{{ url_for('api_docs') }}" class="list-group-item list-group-item-action small">
+          <i class="bi bi-braces me-2 text-muted"></i>API-Dokumentation
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /col right -->
+
+</div><!-- /row -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showPwForm(uid) {
+  const el = document.getElementById('pw-form-' + uid);
+  el.classList.toggle('d-none');
+  if (!el.classList.contains('d-none')) el.querySelector('input').focus();
+}
+function copyLink(el, url) {
+  navigator.clipboard.writeText(url).then(() => {
+    const orig = el.innerHTML;
+    el.innerHTML = '<i class="bi bi-check2 me-1"></i>Kopiert!';
+    el.style.color = 'green';
+    setTimeout(() => { el.innerHTML = orig; el.style.color = ''; }, 2000);
+  }).catch(() => { prompt('Link kopieren:', url); });
+}
+function filterMembers(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.member-row').forEach(row => {
+    row.style.display = row.dataset.name.includes(q) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

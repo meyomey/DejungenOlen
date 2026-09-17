@@ -1,0 +1,392 @@
+{% extends "base.html" %}
+{% block title %}Hilfe & Info – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block head %}
+<style>
+.help-section { scroll-margin-top: 72px; }
+.toc-link { color:var(--djo-navy); text-decoration:none; font-size:.88rem; }
+.toc-link:hover { text-decoration:underline; }
+.toc-link.active { font-weight:700; color:var(--djo-navy); }
+.feature-icon {
+  font-size:1.5rem; width:44px; height:44px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:10px; background:rgba(43,63,107,.08);
+}
+.step-num {
+  width:26px; height:26px; border-radius:50%; background:var(--djo-navy);
+  color:#fff; font-size:.75rem; font-weight:700; display:inline-flex;
+  align-items:center; justify-content:center; flex-shrink:0;
+}
+kbd { background:#e9ecef !important; border:1px solid #adb5bd !important; border-radius:4px;
+      padding:2px 6px; font-size:.8rem; color:#212529 !important; font-family:inherit; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-3 d-none d-lg-block">
+    <div class="card shadow-sm border-0 sticky-top" style="top:72px">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-list-ul me-1"></i>Inhalt
+      </div>
+      <nav class="nav flex-column p-0">
+        <a class="nav-link toc-link py-2 px-3 border-bottom" href="#uebersicht">🗺️ Übersicht</a>
+        <a class="nav-link toc-link py-2 px-3 border-bottom" href="#touren">🚴 Touren</a>
+        <a class="nav-link toc-link py-2 px-3 border-bottom" href="#fotos">📷 Fotos</a>
+        <a class="nav-link toc-link py-2 px-3 border-bottom" href="#karte">🗺 Karte</a>
+        <a class="nav-link toc-link py-2 px-3 border-bottom" href="#rangliste">🏆 Rangliste</a>
+        <a class="nav-link toc-link py-2 px-3 border-bottom" href="#gastro">🍺 Gastronomie</a>
+        <a class="nav-link toc-link py-2 px-3 border-bottom" href="#profil">👤 Profil</a>
+        <a class="nav-link toc-link py-2 px-3 border-bottom" href="#wetter">🌤️ Wetter</a>
+        {% if current_user.is_admin or current_user.is_organizer %}
+        <a class="nav-link toc-link py-2 px-3 border-bottom" href="#organizer">📋 Organizer</a>
+        {% endif %}
+        {% if current_user.is_admin %}
+        <a class="nav-link toc-link py-2 px-3" href="#admin">⚙️ Admin</a>
+        {% endif %}
+      </nav>
+    </div>
+  </div>
+
+  <!-- ── Inhalt ────────────────────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-9">
+
+    <!-- HEADER -->
+    <div class="mb-4 p-4 rounded-3 text-white"
+         style="background:linear-gradient(135deg,var(--djo-navy),#4e6fa8)">
+      <h2 class="fw-bold mb-1"><i class="bi bi-question-circle me-2"></i>Hilfe & Info</h2>
+      <p class="mb-0 opacity-75">Alles über die {{ current_group.name if current_group else 'De jungen Olen' }} Radgruppen-App</p>
+    </div>
+
+    <!-- ── ÜBERSICHT ─────────────────────────────────────────────────────── -->
+    <div id="uebersicht" class="help-section mb-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-header card-header-djo">🗺️ Übersicht</div>
+        <div class="card-body">
+          <p>Willkommen bei <strong>{{ current_group.name if current_group else 'De jungen Olen' }}</strong> – der App für eure Radgruppe. Hier plant ihr Touren, teilt Fotos, bewertet Routen und behaltet den Überblick.</p>
+          <div class="row g-3 mt-1">
+            {% for icon, title, desc in [
+              ('bi-calendar3','Touren planen','Neue Touren anlegen, Termin abstimmen, RSVP'),
+              ('bi-camera','Fotos teilen','Fotos hochladen, beschriften, in Lightbox ansehen'),
+              ('bi-map','Karte','Treffpunkte, GPX-Tracks, Live-Standort'),
+              ('bi-trophy','Rangliste','Wer ist am meisten gefahren?'),
+              ('bi-cloud-sun','Wetter','14-Tage-Vorhersage direkt bei der Tour'),
+              ('bi-person-circle','Profil','Fahrrad, Avatar, persönliche Stats'),
+            ] %}
+            <div class="col-12 col-sm-6">
+              <div class="d-flex gap-3 align-items-start">
+                <div class="feature-icon"><i class="bi {{ icon }}"></i></div>
+                <div>
+                  <div class="fw-semibold small">{{ title }}</div>
+                  <div class="text-muted small">{{ desc }}</div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TOUREN ────────────────────────────────────────────────────────── -->
+    <div id="touren" class="help-section mb-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-header card-header-djo">🚴 Touren</div>
+        <div class="card-body">
+
+          <h6 class="fw-bold">Geplante Touren</h6>
+          <p class="text-muted small mb-3">Unter <strong>Touren</strong> siehst du alle bevorstehenden Fahrten mit Datum, Karte, Wetter und Teilnehmerzahl.</p>
+
+          <h6 class="fw-bold">Teilnahme</h6>
+          <div class="d-flex flex-column gap-2 mb-3">
+            <div class="d-flex gap-2 align-items-center">
+              <span class="badge bg-success">🚴 Dabei!</span>
+              <span class="text-muted small">Ich fahre mit.</span>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+              <span class="badge bg-warning text-dark">🤔 Vielleicht</span>
+              <span class="text-muted small">Noch unsicher.</span>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+              <span class="badge bg-secondary">❌ Nicht dabei</span>
+              <span class="text-muted small">Diesmal nicht.</span>
+            </div>
+          </div>
+
+          <h6 class="fw-bold">Touren ohne Termin</h6>
+          <p class="text-muted small mb-3">Routenideen ohne fixen Termin. Du kannst sie bewerten (👍 / 😐 / 👎) und so dem Organizer helfen zu entscheiden, welche Tour als nächstes stattfindet.</p>
+
+          <h6 class="fw-bold">Startzeit-Abstimmung</h6>
+          <p class="text-muted small mb-0">Bei jeder Tour kannst du für eine Startzeit zwischen 09:00 und 11:00 Uhr abstimmen. Erreichbar über den <span style="background:#2B3F6B;color:#fff;border-radius:4px;padding:1px 7px;font-size:.78rem;font-weight:600;white-space:nowrap">Startzeit</span>-Button.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── FOTOS ─────────────────────────────────────────────────────────── -->
+    <div id="fotos" class="help-section mb-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-header card-header-djo">📷 Fotos</div>
+        <div class="card-body">
+          <div class="d-flex flex-column gap-3">
+
+            <div class="d-flex gap-3">
+              <div class="feature-icon">📤</div>
+              <div>
+                <div class="fw-semibold small">Hochladen</div>
+                <div class="text-muted small">Einzelne Bilder oder ZIP-Archive auf der Tour-Detailseite. GPS-Daten werden automatisch aus EXIF ausgelesen.</div>
+              </div>
+            </div>
+
+            <div class="d-flex gap-3">
+              <div class="feature-icon">🔍</div>
+              <div>
+                <div class="fw-semibold small">Lightbox</div>
+                <div class="text-muted small">Antippen öffnet die Vollbild-Ansicht. Navigation per Pfeilkeys oder Wischen. Beschriftung direkt im Lightbox-Header bearbeiten.</div>
+              </div>
+            </div>
+
+            <div class="d-flex gap-3">
+              <div class="feature-icon">✏️</div>
+              <div>
+                <div class="fw-semibold small">Beschriftung</div>
+                <div class="text-muted small">Unter jedem eigenen Foto gibt es ein Textfeld. Eingabe + <span style="background:#2B3F6B;color:#fff;border-radius:4px;padding:1px 7px;font-size:.78rem;font-weight:600;white-space:nowrap">Enter</span> speichert – oder den ✓-Button. Auch in der Lightbox möglich.</div>
+              </div>
+            </div>
+
+            <div class="d-flex gap-3">
+              <div class="feature-icon">🗺️</div>
+              <div>
+                <div class="fw-semibold small">GPS-Fotos auf der Karte</div>
+                <div class="text-muted small">Fotos mit GPS-Daten erscheinen als Marker auf der Tour-Karte. Klick auf den Marker öffnet das Foto.</div>
+              </div>
+            </div>
+
+            <div class="d-flex gap-3">
+              <div class="feature-icon">📍</div>
+              <div>
+                <div class="fw-semibold small">GPS fehlt nach Smartphone-Upload?</div>
+                <div class="text-muted small">
+                  iOS und Android entfernen beim Hochladen über die normale Foto-Auswahl oft die GPS-Daten aus Datenschutzgründen (auch wenn das Original-Foto welche hat).
+                  <strong>Lösung:</strong> Beim Auswählen statt „Galerie/Fotos" die App
+                  <span style="background:#2B3F6B;color:#fff;border-radius:4px;padding:1px 7px;font-size:.78rem;font-weight:600;white-space:nowrap">Dateien</span>
+                  bzw. „Mein Dateimanager" wählen und direkt zu <code>DCIM/Camera</code> navigieren – damit bleiben die GPS-Daten erhalten.
+                  Alternativ: Position nachträglich per ✏️-Button am Foto manuell auf der Karte setzen.
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── KARTE ─────────────────────────────────────────────────────────── -->
+    <div id="karte" class="help-section mb-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-header card-header-djo">🗺 Karte</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">Die Karte auf der Tour-Detailseite zeigt den GPX-Track, Start/Ziel-Marker, Treffpunkt und Foto-Pins.</p>
+
+          <div class="alert alert-info border-0 py-2 small">
+            <i class="bi bi-phone me-1"></i>
+            <strong>Auf dem Smartphone:</strong> Die Karte ist standardmäßig gesperrt, damit das Scrollen der Seite nicht gestört wird. Antippen aktiviert sie. Mit 🔒 wieder sperren.
+          </div>
+
+          <h6 class="fw-bold mt-3">Navigation zu Treffpunkt / Start</h6>
+          <p class="text-muted small mb-3">Über die Navigations-Buttons direkt unterhalb der Karte öffnet sich Google Maps Fahrrad, Komoot, OsmAnd oder Apple Maps mit dem Treffpunkt als Ziel.</p>
+
+          <div class="d-flex gap-3 align-items-start mb-3">
+            <div class="feature-icon">📍</div>
+            <div>
+              <div class="fw-semibold small">Live-Standort teilen</div>
+              <div class="text-muted small">Über den 📍-Button in der Karten-Toolbar kannst du deinen Standort während der Tour mit anderen Teilnehmern teilen. Die Standorte werden alle 15 Sekunden aktualisiert.</div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-3 align-items-start">
+            <div class="feature-icon">⬇️</div>
+            <div>
+              <div class="fw-semibold small">Karte offline speichern</div>
+              <div class="text-muted small">Der ⬇️-Button speichert die aktuell sichtbaren Kartenkacheln im Browser-Cache – so ist die Karte auch ohne Internetverbindung unterwegs nutzbar. Nur bei geplanten Touren sichtbar.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RANGLISTE ─────────────────────────────────────────────────────── -->
+    <div id="rangliste" class="help-section mb-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-header card-header-djo">🏆 Rangliste</div>
+        <div class="card-body">
+          <p class="text-muted small mb-2">Die Rangliste zeigt, wer am meisten Touren gefahren ist – aufgeteilt in drei Tabs:</p>
+          <ul class="text-muted small mb-0">
+            <li><strong>Gesamt</strong> – alle bestätigten Touren aller Jahre</li>
+            <li><strong>Dieses Jahr</strong> – nur Touren des aktuellen Jahres</li>
+            <li><strong>Kilometer</strong> – sortiert nach gefahrenen km (nur Touren mit GPX)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── GASTRONOMIE ────────────────────────────────────────────────────── -->
+    <div id="gastro" class="help-section mb-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-header card-header-djo">🍺 Gastronomie</div>
+        <div class="card-body">
+          <p class="text-muted small mb-0">Einkehrmöglichkeiten entlang eurer Strecken – von der Gruppe gepflegt. Mit Bewertung, Öffnungszeiten und Karte. Unter dem Menüpunkt <strong>Mehr → Gastronomie</strong> erreichbar.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PROFIL ─────────────────────────────────────────────────────────── -->
+    <div id="profil" class="help-section mb-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-header card-header-djo">👤 Profil</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-12 col-sm-6">
+              <div class="fw-semibold small mb-1">Was du angeben kannst</div>
+              <ul class="text-muted small mb-0">
+                <li>Name &amp; Avatar-Foto</li>
+                <li>Fahrrad-Typ (Rennrad, E-Bike, MTB…)</li>
+                <li>Geburtstag (für Gruppen-Glückwünsche)</li>
+                <li>Kurze Bio</li>
+              </ul>
+            </div>
+            <div class="col-12 col-sm-6">
+              <div class="fw-semibold small mb-1">Was du siehst</div>
+              <ul class="text-muted small mb-0">
+                <li>Deine gefahrenen Touren</li>
+                <li>Persönliche km-Statistik</li>
+                <li>Letzter Login (nur für dich)</li>
+                <li>Datenschutz-Export</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── WETTER ─────────────────────────────────────────────────────────── -->
+    <div id="wetter" class="help-section mb-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-header card-header-djo">🌤️ Wetter</div>
+        <div class="card-body">
+          <p class="text-muted small mb-2">Das Wetter wird automatisch von <strong>Open-Meteo</strong> geladen – für den Treffpunkt und das Datum der Tour. Verfügbar bis 14 Tage im Voraus.</p>
+          <div class="d-flex flex-wrap gap-3 small text-muted mb-3">
+            <span>🌧️ = Regenrisiko &gt;30%</span>
+            <span>💨 = Windböen &gt;35 km/h</span>
+            <span>🌡️ = Tagesmaximum</span>
+          </div>
+          <div class="d-flex gap-3 align-items-start">
+            <div class="feature-icon">📈</div>
+            <div>
+              <div class="fw-semibold small">Stündlicher Tagesverlauf</div>
+              <div class="text-muted small">Über den Button <span style="background:#2B3F6B;color:#fff;border-radius:4px;padding:1px 7px;font-size:.78rem;font-weight:600;white-space:nowrap">Tagesverlauf</span> in der Wetter-Karte öffnet sich ein Chart mit Temperatur, Regenrisiko und Wind für alle 24 Stunden des Tourtags. Eine goldene Linie markiert die geplante Startzeit.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ORGANIZER ──────────────────────────────────────────────────────── -->
+    {% if current_user.is_admin or current_user.is_organizer %}
+    <div id="organizer" class="help-section mb-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-header card-header-djo">📋 Organizer-Funktionen</div>
+        <div class="card-body">
+          <div class="d-flex flex-column gap-3">
+
+            <div class="d-flex gap-3">
+              <div class="feature-icon">➕</div>
+              <div>
+                <div class="fw-semibold small">Tour erstellen</div>
+                <div class="text-muted small">Über <span style="background:#2B3F6B;color:#fff;border-radius:4px;padding:1px 7px;font-size:.78rem;font-weight:600;white-space:nowrap">+ Neue Tour</span> in der Navigationsleiste. GPX hochladen, Treffpunkt auf Karte setzen, Schwierigkeit wählen.</div>
+              </div>
+            </div>
+
+            <div class="d-flex gap-3">
+              <div class="feature-icon">📅</div>
+              <div>
+                <div class="fw-semibold small">Termin fixieren</div>
+                <div class="text-muted small">Bei Touren ohne Termin: Datum und Startzeit direkt in der Tourenliste oder Detailseite setzen.</div>
+              </div>
+            </div>
+
+            <div class="d-flex gap-3">
+              <div class="feature-icon">✅</div>
+              <div>
+                <div class="fw-semibold small">Tour abschließen</div>
+                <div class="text-muted small">Nach der Fahrt Tour auf „Abgeschlossen" setzen – damit erscheint sie im Archiv und zählt für die Rangliste.</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ── ADMIN ──────────────────────────────────────────────────────────── -->
+    {% if current_user.is_admin %}
+    <div id="admin" class="help-section mb-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-header card-header-djo">⚙️ Admin-Bereich</div>
+        <div class="card-body">
+          <div class="row g-3 small text-muted">
+            <div class="col-12 col-sm-6">
+              <div class="fw-semibold text-dark mb-1">Mitglieder</div>
+              <ul class="mb-0">
+                <li>Einladungslinks erstellen</li>
+                <li>Rollen vergeben (Mitglied / Organizer / Admin)</li>
+                <li>Konten sperren / entsperren</li>
+                <li>Passwörter zurücksetzen</li>
+                <li>Login-Aktivität einsehen</li>
+              </ul>
+            </div>
+            <div class="col-12 col-sm-6">
+              <div class="fw-semibold text-dark mb-1">System</div>
+              <ul class="mb-0">
+                <li>Einstellungen (Name, Standard-Treffpunkt)</li>
+                <li>Datenbank-Backup erstellen</li>
+                <li>Geburtstags-Erinnerungen (14 Tage voraus)</li>
+                <li>Inaktive Mitglieder einsehen</li>
+                <li>API-Dokumentation unter <a href="{{ url_for('api_docs') }}">/api/docs</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- FOOTER -->
+    <div class="text-center text-muted small mt-2 pb-3">
+      {{ current_group.name if current_group else 'De jungen Olen' }} Radgruppe<br>
+      Bei Fragen oder Problemen: Admin kontaktieren.
+    </div>
+
+  </div><!-- /col -->
+</div><!-- /row -->
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Aktiven TOC-Link hervorheben beim Scrollen
+var sections = document.querySelectorAll('.help-section');
+var tocLinks = document.querySelectorAll('.toc-link');
+window.addEventListener('scroll', function() {
+  var cur = '';
+  sections.forEach(function(s) {
+    if (window.scrollY >= s.offsetTop - 100) cur = s.id;
+  });
+  tocLinks.forEach(function(l) {
+    l.classList.toggle('active', l.getAttribute('href') === '#' + cur);
+  });
+}, {passive: true});
+</script>
+{% endblock %}

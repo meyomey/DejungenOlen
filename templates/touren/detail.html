@@ -1,0 +1,2500 @@
+{% extends "base.html" %}
+{% block title %}{{ tour.title }} – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block content %}
+
+<!-- ── Header ───────────────────────────────────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <div>
+    <a href="{{ url_for('tour_list') }}" class="text-muted small">
+      <i class="bi bi-arrow-left me-1"></i>Alle Touren
+    </a>
+    <h2 class="fw-bold mt-1 mb-0" style="color:var(--djo-navy)">{{ tour.title }}</h2>
+    <div class="text-muted">
+      <i class="bi bi-calendar-event me-1"></i>
+      {% if not tour.is_date_open %}{{ tour.tour_date | de_date }}{% else %}
+      {% if current_user.is_organizer or tour.created_by == current_user.id %}
+      <span class="badge bg-warning text-dark" style="cursor:pointer"
+            onclick="document.getElementById('date-setter').style.display='flex'"
+            title="Datum eintragen">
+        📅 Datum noch offen – hier klicken
+      </span>
+      <form id="date-setter" method="post"
+            action="{{ url_for('tour_set_date', tour_id=tour.id) }}"
+            style="display:none;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px">
+        <input type="date" name="tour_date" class="form-control form-control-sm"
+               style="width:160px" required min="{{ today.strftime('%Y-%m-%d') }}">
+        <input type="time" name="start_time" class="form-control form-control-sm"
+               style="width:110px" value="{{ tour.start_time or '09:00' }}">
+        <button class="btn btn-sm btn-djo">
+          <i class="bi bi-check-lg me-1"></i>Setzen
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                onclick="document.getElementById('date-setter').style.display='none'">✕</button>
+      </form>
+      {% else %}
+      <span class="badge bg-warning text-dark">Datum noch offen</span>
+      {% endif %}
+      {% endif %}
+      {% if tour.start_time %} &middot; {{ tour.start_time }} Uhr{% endif %}
+      &nbsp;
+      <span class="badge badge-{{ tour.difficulty }}">{{ tour.difficulty_label }}</span>
+      {% if tour.status == 'completed' %}
+      <span class="badge bg-success ms-1"><i class="bi bi-check-lg"></i> Abgeschlossen</span>
+      {% elif tour.status == 'cancelled' %}
+      <span class="badge bg-danger ms-1">Abgesagt</span>
+      {% endif %}
+    </div>
+  </div>
+  {% if current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
+  <div class="d-flex gap-2 flex-wrap">
+    {% if current_user.is_organizer and tour.status == 'planned' %}
+    <form method="post" action="{{ url_for('tour_complete', tour_id=tour.id) }}"
+          onsubmit="return confirm('Tour als abgeschlossen markieren?')">
+      <button class="btn btn-sm btn-success">
+        <i class="bi bi-check2-circle me-1"></i>Abschließen
+      </button>
+    </form>
+    {% endif %}
+    {# Bearbeiten: Admin, Organisator oder Ersteller #}
+    {% if current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
+    <a href="{{ url_for('tour_edit', tour_id=tour.id) }}"
+       class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-pencil me-1"></i>Bearbeiten
+    </a>
+    {% endif %}
+    {# Löschen: nur Admin oder Ersteller #}
+    {% if current_user.is_admin or tour.created_by == current_user.id %}
+    <form method="post" action="{{ url_for('tour_delete', tour_id=tour.id) }}"
+          onsubmit="return confirm('Tour „{{ tour.title }}" wirklich löschen? Alle Fotos werden auch gelöscht.')"
+          style="display:inline">
+      <button class="btn btn-sm btn-outline-danger">
+        <i class="bi bi-trash3 me-1"></i>Löschen
+      </button>
+    </form>
+    {% endif %}
+    <a href="{{ url_for('tour_print', tour_id=tour.id) }}" target="_blank"
+       class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-printer me-1"></i>Drucken / PDF
+    </a>
+    <a href="{{ url_for('tour_ical', tour_id=tour.id) }}"
+       class="btn btn-sm btn-outline-secondary" title="In Kalender importieren">
+      <i class="bi bi-calendar-plus me-1"></i>iCal
+    </a>
+    {% if photos %}
+    <a href="{{ url_for('tour_video', tour_id=tour.id) }}"
+       class="btn btn-sm btn-outline-secondary" title="Tour-Video erstellen">
+      <i class="bi bi-film me-1"></i>Video
+    </a>
+    {% endif %}
+    {% if current_user.is_organizer %}
+    <form method="post" action="{{ url_for('tour_telegram_share', tour_id=tour.id) }}" class="d-inline">
+      <button class="btn btn-sm btn-outline-secondary" title="Im Telegram teilen">
+        ✈️ Teilen
+      </button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Stats bar ─────────────────────────────────────────────────────────────── -->
+{% if tour.gpx_km or tour.gpx_ascent or tour.approx_km or tour.external_link %}
+<div class="row g-2 mb-3">
+  {% if tour.gpx_km %}
+  <div class="col-auto">
+    <div class="stat-box px-3 py-2">
+      <div class="stat-number" style="font-size:1.4rem">{{ tour.gpx_km }}</div>
+      <div class="stat-label">km (GPX)</div>
+    </div>
+  </div>
+  {% elif tour.approx_km %}
+  <div class="col-auto">
+    <div class="stat-box px-3 py-2">
+      <div class="stat-number" style="font-size:1.4rem">~{{ tour.approx_km|int }}</div>
+      <div class="stat-label">km (ca.)</div>
+    </div>
+  </div>
+  {% endif %}
+  {% if tour.gpx_ascent %}
+  <div class="col-auto">
+    <div class="stat-box px-3 py-2">
+      <div class="stat-number" style="font-size:1.4rem">{{ tour.gpx_ascent|int }}</div>
+      <div class="stat-label">m Anstieg</div>
+    </div>
+  </div>
+  {% endif %}
+  <div class="col-auto">
+    <div class="stat-box px-3 py-2">
+      <div class="stat-number" style="font-size:1.4rem">{{ attending|length }}</div>
+      <div class="stat-label">Dabei</div>
+    </div>
+  </div>
+  {% if tour.external_link %}
+  <div class="col-auto d-flex align-items-center">
+    <a href="{{ tour.external_link }}" target="_blank" class="btn btn-outline-djo btn-sm">
+      <i class="bi bi-link-45deg me-1"></i>Route ansehen
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="row g-4">
+
+  <!-- ── Top row: map + RSVP ──────────────────────────────────────────────── -->
+  <!-- ── Left: map + description ──────────────────────────────────────────── -->
+  <div class="col-12 col-lg-7">
+
+    <!-- Map -->
+    <div class="card mb-3" id="map-card" style="overflow:hidden;max-width:100%">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span>
+          <i class="bi bi-map me-1"></i>Karte
+          {% if tour.gpx_km %}
+          <small class="ms-2 opacity-75">{{ tour.gpx_km }} km</small>
+          {% endif %}
+          {% if tour.gpx_ascent %}
+          <small class="ms-1 opacity-75">· ⛰️ {{ tour.gpx_ascent|int }} m</small>
+          {% endif %}
+          {% if photos|selectattr('has_gps')|list|length > 0 %}
+          <small class="ms-1 opacity-75">· 📷 {{ photos|selectattr('has_gps')|list|length }} Fotos</small>
+          {% endif %}
+        </span>
+        <div class="d-flex gap-1">
+          <button class="btn btn-sm btn-outline-light py-0 px-2 active" id="btn-osm"
+                  onclick="switchLayer('osm',this)" title="Karte">
+            🗺️
+          </button>
+          <button class="btn btn-sm btn-outline-light py-0 px-2" id="btn-sat"
+                  onclick="switchLayer('sat',this)" title="Satellit">
+            🛰️
+          </button>
+          <button class="btn btn-sm btn-outline-light py-0 px-2" id="btn-topo"
+                  onclick="switchLayer('topo',this)" title="Topographie">
+            📐
+          </button>
+          {% if gpx_data != 'null' %}
+          <button class="btn btn-sm btn-outline-light py-0 px-2" id="btn-elev"
+                  onclick="toggleElevationOverlay()" title="Höhenprofil ein/aus">
+            ⛰️
+          </button>
+          {% endif %}
+
+          <button class="btn btn-sm btn-outline-light py-0 px-2"
+                  onclick="toggleFullscreen()" id="fs-btn" title="Vollbild">
+            <i class="bi bi-arrows-fullscreen" id="fs-icon"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-light py-0 px-2" id="live-btn"
+                  onclick="toggleLiveLocation()" title="Live-Standort teilen">
+            📍
+          </button>
+          {% if tour.status == 'planned' %}
+          <button class="btn btn-sm btn-outline-light py-0 px-2"
+                  onclick="prefetchTiles()" title="Karte offline speichern">
+            <i class="bi bi-download"></i>
+          </button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-body p-0 position-relative" id="map-wrap" style="overflow:hidden">
+        <div id="tour-map" style="height:460px;display:block;border-radius:0;max-width:100%"></div>
+        <!-- Elevation overlay (shown on map when toggled) -->
+        <div id="elev-overlay" style="display:none;position:absolute;bottom:0;left:0;right:0;
+             height:130px;background:rgba(10,20,50,.72);pointer-events:none;z-index:800;
+             border-top:1px solid rgba(255,255,255,.15)">
+          <canvas id="elev-overlay-chart" style="width:100%;height:100%"></canvas>
+          <div id="elev-overlay-info" style="position:absolute;top:4px;left:8px;color:#fff;
+               font-size:.72rem;opacity:.85;pointer-events:none"></div>
+        </div>
+
+      </div>
+      {% if gpx_data != 'null' %}
+      <div class="card-footer p-0">
+        <!-- Hover info bar -->
+        <div id="elev-info" style="display:none;background:#f0f3fa;border-top:1px solid #dce3f0;
+             font-size:.8rem;padding:4px 12px;gap:12px;flex-wrap:wrap" class="d-flex">
+          <span><span class="text-muted">📍</span> <strong id="ei-km">–</strong></span>
+          <span><span class="text-muted">⛰️</span> <strong id="ei-ele">–</strong> m</span>
+          <span><span class="text-muted">↗️</span> <strong id="ei-gain">–</strong> m</span>
+          <span id="ei-coords" class="text-muted" style="font-size:.72rem"></span>
+        </div>
+        <!-- WICHTIG: div mit fester Höhe ist Pflicht für Chart.js -->
+        <div style="position:relative;height:150px;width:100%">
+          <canvas id="elevation-chart"></canvas>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- GPX upload with drag & drop -->
+    {% if current_user.is_organizer and not tour.gpx_file %}
+    <form id="gpx-form" method="post" action="{{ url_for('tour_upload_gpx', tour_id=tour.id) }}"
+          enctype="multipart/form-data">
+      <div id="gpx-drop" class="card mb-3"
+           style="border:2px dashed #adb5bd;cursor:pointer;transition:all .2s"
+           onclick="document.getElementById('gpx-input').click()"
+           ondragover="dzOver(event,'gpx-drop')"
+           ondragleave="dzLeave('gpx-drop')"
+           ondrop="dzDrop(event,'gpx-drop','gpx-input','gpx-form')">
+        <div class="card-body py-3 text-center text-muted">
+          <i class="bi bi-file-earmark-arrow-up fs-3 d-block mb-1"></i>
+          <div class="fw-semibold">GPX hierher ziehen</div>
+          <div class="small">oder klicken zum Auswählen</div>
+          <div id="gpx-name" class="small text-success mt-1 fw-semibold"></div>
+        </div>
+      </div>
+      <input type="file" id="gpx-input" name="gpx_file" accept=".gpx"
+             class="d-none" onchange="dzPickFile(this,'gpx-name','gpx-form')">
+    </form>
+    {% elif tour.gpx_file %}
+    <div class="mb-3">
+      <a href="{{ url_for('static', filename='uploads/gpx/' + tour.gpx_file) }}"
+         class="btn btn-sm btn-outline-djo" download>
+        <i class="bi bi-download me-1"></i>GPX herunterladen
+      </a>
+    </div>
+    {% endif %}
+
+    <!-- Description -->
+    {% if tour.description %}
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-text-paragraph me-1"></i>Beschreibung
+      </div>
+      <div class="card-body">
+        <p class="mb-0" style="white-space:pre-wrap">{{ tour.description }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- ── Right: RSVP + participants + meeting point ───────────────────────── -->
+  <div class="col-12 col-lg-5">
+
+    <!-- RSVP -->
+    {% if tour.status == 'planned' %}
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-person-check me-1"></i>Deine Anmeldung
+      </div>
+      <div class="card-body">
+        {% if tour.is_date_open %}
+        <div class="text-muted small text-center py-2">
+          <i class="bi bi-calendar-x me-1"></i>
+          Anmeldung möglich sobald ein Termin feststeht.
+        </div>
+        {% else %}
+        <div class="d-flex gap-2 rsvp-group flex-wrap">
+          <form method="post" action="{{ url_for('tour_rsvp', tour_id=tour.id) }}">
+            <input type="hidden" name="status" value="attending">
+            <button type="submit" class="btn btn-success {% if my_rsvp and my_rsvp.status == 'attending' %}active-rsvp{% endif %}">
+              <i class="bi bi-check2 me-1"></i>Dabei!
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('tour_rsvp', tour_id=tour.id) }}">
+            <input type="hidden" name="status" value="maybe">
+            <button type="submit" class="btn btn-warning {% if my_rsvp and my_rsvp.status == 'maybe' %}active-rsvp{% endif %}">
+              <i class="bi bi-question me-1"></i>Vielleicht
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('tour_rsvp', tour_id=tour.id) }}">
+            <input type="hidden" name="status" value="declined">
+            <button type="submit" class="btn btn-outline-danger {% if my_rsvp and my_rsvp.status == 'declined' %}active-rsvp{% endif %}">
+              <i class="bi bi-x me-1"></i>Absage
+            </button>
+          </form>
+        </div>
+        {% if my_rsvp %}
+        <div class="mt-2 small text-muted">
+          Aktuell: <strong>
+            {{ {'attending':'Dabei!','maybe':'Vielleicht','declined':'Abgesagt'}.get(my_rsvp.status, '') }}
+          </strong>
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Participants -->
+    <div class="card mb-3" id="teilnehmer">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-people me-1"></i>Teilnehmer</span>
+      </div>
+      <div class="card-body">
+        {% macro plist(label, icon, color, items) %}
+        {% if items %}
+        <div class="mb-2">
+          <div class="text-muted small fw-semibold mb-1">
+            <i class="{{ icon }} me-1 text-{{ color }}"></i>{{ label }} ({{ items|length }})
+          </div>
+          {% for p in items %}
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <div class="d-flex align-items-center">
+              <span class="participant-avatar">{{ p.user.display_name[0].upper() }}</span>
+              <span class="small">{{ p.user.display_name }}
+                {% if p.user.is_ebike %}<span title="E-Bike">⚡</span>{% endif %}
+              </span>
+            </div>
+            {% if current_user.is_organizer or current_user.is_admin %}
+            <form method="post"
+                  action="{{ url_for('tour_remove_participant', tour_id=tour.id, user_id=p.user_id) }}"
+                  onsubmit="return confirm('{{ p.user.display_name }} von der Tour entfernen?')"
+                  style="display:inline">
+              <button type="submit" class="btn btn-sm py-0 px-1 text-muted"
+                      title="Entfernen" style="font-size:.7rem">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </form>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% endmacro %}
+
+        {{ plist('Dabei', 'bi-check-circle-fill', 'success', attending) }}
+        {{ plist('Vielleicht', 'bi-question-circle-fill', 'warning', maybe) }}
+        {{ plist('Abgesagt', 'bi-x-circle-fill', 'danger', declined) }}
+
+        {% if not attending and not maybe and not declined %}
+        <p class="text-muted small mb-0">Noch niemand angemeldet.</p>
+        {% endif %}
+
+        <!-- Add participant (organizer/admin only) -->
+        {% if current_user.is_organizer or current_user.is_admin %}
+        {% set not_yet = all_users | rejectattr('id', 'in', participant_ids) | list %}
+        {% if not_yet %}
+        <hr class="my-2">
+        <form method="post" action="{{ url_for('tour_add_participant', tour_id=tour.id) }}"
+              class="d-flex align-items-center gap-2 flex-wrap">
+          <select name="user_id" class="form-select form-select-sm" style="max-width:180px">
+            <option value="">Mitglied auswählen…</option>
+            {% for u in not_yet %}
+            <option value="{{ u.id }}">{{ u.display_name }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-check mb-0">
+            <input type="checkbox" class="form-check-input" name="confirmed" value="1"
+                   id="chk-confirmed">
+            <label class="form-check-label small" for="chk-confirmed">War dabei</label>
+          </div>
+          <button type="submit" class="btn btn-sm btn-outline-djo py-0">
+            <i class="bi bi-person-plus me-1"></i>Hinzufügen
+          </button>
+        </form>
+        {% endif %}
+        {% endif %}
+      </div>
+
+      <!-- Confirm attendance after tour -->
+      {% if current_user.is_organizer and tour.status == 'completed' %}
+      <div class="card-footer">
+        <details>
+          <summary class="small fw-semibold cursor-pointer">
+            <i class="bi bi-person-check me-1"></i>Anwesenheit bestätigen
+          </summary>
+          <form method="post" action="{{ url_for('tour_confirm_participants', tour_id=tour.id) }}"
+                class="mt-2">
+            {% for p in attending %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="confirmed"
+                     value="{{ p.user_id }}" id="conf{{ p.user_id }}"
+                     {% if p.confirmed_present %}checked{% endif %}>
+              <label class="form-check-label small" for="conf{{ p.user_id }}">
+                {{ p.user.display_name }}
+              </label>
+            </div>
+            {% endfor %}
+            <button type="submit" class="btn btn-sm btn-djo mt-2">Speichern</button>
+          </form>
+        </details>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Weather widget -->
+    {% if tour.status == 'planned' %}
+    <div class="card mb-3" id="weather-card" style="display:none">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-cloud-sun me-1"></i>Wetter am Tourtag</span>
+        <button onclick="toggleVerlauf()" id="verlauf-btn"
+                style="background:#f0a500;color:#1a2a4a;border:0;border-radius:6px;
+                       padding:2px 10px;font-size:.78rem;cursor:pointer;font-weight:600">
+          <i class="bi bi-graph-up me-1"></i>Tagesverlauf
+        </button>
+      </div>
+      <div class="card-body" id="weather-body">
+        <div class="text-muted small text-center py-2">
+          <div class="spinner-border spinner-border-sm me-1"></div>Lade Wetter…
+        </div>
+      </div>
+      <!-- Tagesverlauf Chart (hidden by default) -->
+      <div id="verlauf-panel" style="display:none" class="px-3 pb-3">
+        <div id="verlauf-loading" class="text-muted small text-center py-2">
+          <div class="spinner-border spinner-border-sm me-1"></div>Lade Stundendaten…
+        </div>
+        <canvas id="verlauf-chart" style="display:none;max-height:200px"></canvas>
+        <!-- Stunden-Symbole -->
+        <div id="verlauf-icons" class="d-flex justify-content-between mt-1" style="font-size:.75rem;display:none!important"></div>
+      </div>
+    </div>
+    {% endif %}
+
+
+    <!-- Meeting point info -->
+    {% if tour.meeting_desc or (tour.meeting_lat and tour.meeting_lng) %}
+    <div class="card mb-3 d-none d-lg-block">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-geo-alt me-1"></i>Treffpunkt
+      </div>
+      <div class="card-body">
+        {% if tour.meeting_desc %}
+        <p class="mb-2"><strong>{{ tour.meeting_desc }}</strong></p>
+        {% endif %}
+        {% if tour.meeting_lat and tour.meeting_lng %}
+        <div class="d-grid gap-1">
+          <!-- Google Maps: universell, jeder kennt es -->
+          <a href="https://www.google.com/maps/dir/?api=1&destination={{ tour.meeting_lat }},{{ tour.meeting_lng }}&travelmode=bicycling"
+             target="_blank" class="btn btn-sm btn-outline-djo">
+            <i class="bi bi-compass me-1"></i>Google Maps (Fahrrad)
+          </a>
+          <!-- Komoot: beliebteste Rad-App in Deutschland -->
+          <a href="https://www.komoot.com/plan/@{{ tour.meeting_lat }},{{ tour.meeting_lng }},14z"
+             target="_blank" class="btn btn-sm btn-outline-secondary">
+            🌿 Komoot
+          </a>
+
+          <!-- OsmAnd: geo: URI öffnet direkt die installierte Maps-App -->
+          <a href="geo:{{ tour.meeting_lat }},{{ tour.meeting_lng }}?z=14"
+             class="btn btn-sm btn-outline-secondary">
+            📱 OsmAnd / Maps-App
+          </a>
+          <!-- Apple Maps: für iPhone-Nutzer -->
+          <a href="https://maps.apple.com/?daddr={{ tour.meeting_lat }},{{ tour.meeting_lng }}&dirflg=c"
+             target="_blank" class="btn btn-sm btn-outline-secondary">
+            🍎 Apple Maps
+          </a>
+          <!-- OpenStreetMap direkt -->
+          <a href="https://www.openstreetmap.org/directions?from=&to={{ tour.meeting_lat }},{{ tour.meeting_lng }}#map=14/{{ tour.meeting_lat }}/{{ tour.meeting_lng }}"
+             target="_blank" class="btn btn-sm btn-outline-secondary">
+            🗺️ OpenStreetMap
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div><!-- /right col -->
+</div>
+
+<!-- ── Photos (volle Breite) ────────────────────────────────────────────────── -->
+<div class="row">
+  <div class="col-12">
+    <!-- Photos -->
+    <div class="card mb-3" id="fotos">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-images me-1"></i>Fotos
+          {% if photos %}<span class="badge bg-light text-dark ms-1">{{ photos|length }}</span>{% endif %}
+          {% if tour.status == 'completed' %}
+          <span class="badge bg-secondary ms-1" title="Fotos können auch nach der Tour noch hinzugefügt werden">Archiv</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="card-body">
+        <!-- Photo upload with drag & drop + client-side GPS preservation -->
+        <form id="photo-form" method="post"
+              action="{{ url_for('tour_upload_photos', tour_id=tour.id) }}"
+              enctype="multipart/form-data" class="mb-3">
+          <div id="photo-drop"
+               style="border:2px dashed #adb5bd;border-radius:8px;padding:14px;
+                      text-align:center;cursor:pointer;transition:all .2s;margin-bottom:6px"
+               onclick="document.getElementById('photo-input').click()"
+               ondragover="dzOver(event,'photo-drop')"
+               ondragleave="dzLeave('photo-drop')"
+               ondrop="dzDrop(event,'photo-drop','photo-input',null)">
+            <i class="bi bi-images text-muted" style="font-size:1.6rem;display:block;margin-bottom:4px"></i>
+            <div class="fw-semibold text-muted small">Fotos hierher ziehen</div>
+            <div class="text-muted" style="font-size:.72rem">
+              klicken · <kbd style="font-size:.65rem;padding:1px 4px">Strg+V</kbd> aus Zwischenablage · oder ZIP-Archiv
+            </div>
+            <div id="photo-names" class="small text-success mt-1 fw-semibold"></div>
+          </div>
+          <input type="file" id="photo-input" name="photos" accept="image/*,.zip" multiple
+                 class="d-none" onchange="photoFilesSelected(this)">
+          <div id="gps-hidden-fields"></div>
+          <div id="photo-submit-row" class="d-none d-flex align-items-center gap-2 mt-1">
+            <button type="submit" class="btn btn-sm btn-djo">
+              <i class="bi bi-upload me-1"></i>Hochladen
+            </button>
+            <span id="gps-status" class="text-muted small">GPS-Daten werden automatisch erkannt</span>
+          </div>
+        </form>
+
+        <!-- Photo grid -->
+        {% if photos %}
+        <!-- Bulk controls -->
+        <form method="post" action="{{ url_for('photos_bulk_delete', tour_id=tour.id) }}"
+              id="bulk-form" onsubmit="return confirmBulkDelete()">
+        <div class="d-flex gap-2 mb-2 flex-wrap align-items-center">
+          <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                  onclick="toggleAllPhotos(true)">
+            <i class="bi bi-check-all"></i> Alle
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                  onclick="toggleAllPhotos(false)">
+            Keine
+          </button>
+          <button type="submit" id="bulk-delete-btn"
+                  class="btn btn-sm btn-outline-danger py-0" style="display:none">
+            <i class="bi bi-trash me-1"></i>Löschen
+            (<span id="bulk-count">0</span>)
+          </button>
+        </div>
+        <!-- Photo grid (same layout on all screens, swipe only in lightbox) -->
+        <div class="row g-2" id="photo-grid">
+          {% for p in photos %}
+          <div class="col-6 col-sm-4 col-md-3 col-lg-2 photo-item" data-id="{{ p.id }}">
+            <div class="card h-100">
+              {% if tour.created_by == current_user.id or current_user.is_admin %}
+              <div class="drag-handle text-center text-muted py-1" style="cursor:grab;font-size:.7rem;background:#f8f9fa;border-radius:4px 4px 0 0;user-select:none">
+                <i class="bi bi-grip-horizontal"></i>
+              </div>
+              {% endif %}
+              <div class="position-relative"
+                   {% if p.has_gps %}
+                   onmouseenter="highlightMarker({{ p.id }})"
+                   onmouseleave="unhighlightMarker({{ p.id }})"
+                   {% endif %}>
+                <!-- Checkbox for bulk select -->
+                <input type="checkbox" name="photo_ids" value="{{ p.id }}"
+                       class="photo-checkbox form-check-input position-absolute"
+                       style="top:6px;left:6px;z-index:10;width:18px;height:18px;cursor:pointer"
+                       onchange="updateBulkCount()">
+                <img src="{{ url_for('serve_photo', filename=p.filename) }}"
+                     data-lb-src="{{ url_for('serve_photo', filename=p.filename) }}"
+                     data-lb-cap="{{ p.caption|e if p.caption else '' }}"
+                     data-photo-id="{{ p.id }}"
+                     data-can-edit="{{ '1' if (p.user_id == current_user.id or current_user.is_admin or current_user.is_organizer) else '0' }}"
+                     style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:4px 4px 0 0;cursor:zoom-in;display:block"
+                     alt="{{ p.caption or 'Foto' }}"
+                     title="🔍 Antippen zum Vergrößern{% if p.has_gps %} · GPS vorhanden{% endif %}"
+                     onclick="lbOpenFromEl(this)">
+                {% if p.has_gps %}
+                <span class="badge bg-success position-absolute top-0 end-0 m-1"
+                      title="GPS: {{ p.lat }}, {{ p.lng }}">
+                  <i class="bi bi-geo-alt-fill"></i>
+                </span>
+                {% else %}
+                <span class="badge bg-secondary position-absolute top-0 end-0 m-1" title="Kein GPS">
+                  <i class="bi bi-geo-alt"></i>
+                </span>
+                {% endif %}
+              </div>
+              <div class="p-1">
+                {% set can_edit_photo = current_user.is_admin or current_user.is_organizer or p.user_id == current_user.id or tour.created_by == current_user.id %}
+                {% if can_edit_photo %}
+                <div class="mb-1">
+                  <div class="input-group input-group-sm">
+                    <input type="text" class="form-control caption-input"
+                           placeholder="Beschriftung…"
+                           value="{{ p.caption or '' }}"
+                           data-photo-id="{{ p.id }}"
+                           style="font-size:.7rem"
+                           onkeydown="if(event.key==='Enter'){event.preventDefault();saveCaption(this)}">
+                    <button class="btn btn-outline-secondary py-0"
+                            onclick="saveCaption(this.previousElementSibling)"
+                            title="Speichern">✓</button>
+                  </div>
+                </div>
+                {% endif %}
+                <div class="d-flex gap-1 flex-wrap">
+                  {% if can_edit_photo %}
+                  <button class="btn btn-sm py-0 px-1 {% if p.has_gps %}btn-outline-warning{% else %}btn-outline-primary{% endif %}"
+                          style="font-size:.68rem"
+                          onclick="openGpsModal({{ p.id }},{{ p.lat or 'null' }},{{ p.lng or 'null' }})"
+                          title="{% if p.has_gps %}GPS korrigieren{% else %}GPS manuell setzen{% endif %}">
+                    <i class="bi bi-pencil-square"></i>
+                    {% if not p.has_gps %}GPS{% endif %}
+                  </button>
+                  {% if not p.has_gps %}
+                  <button class="btn btn-sm btn-outline-info py-0 px-1"
+                          style="font-size:.68rem"
+                          onclick="reextractGps({{ p.id }}, this)" title="EXIF erneut auslesen">
+                    <i class="bi bi-arrow-repeat"></i>
+                  </button>
+                  {% endif %}
+                  {% if p.has_gps %}
+                  <form method="post" action="{{ url_for('photo_clear_gps', photo_id=p.id) }}"
+                        onsubmit="return confirm('GPS entfernen?')">
+                    <button class="btn btn-sm btn-outline-secondary py-0 px-1"
+                            style="font-size:.68rem" title="GPS entfernen">
+                      <i class="bi bi-geo-alt"></i>✕
+                    </button>
+                  </form>
+                  {% endif %}
+                  <form method="post" action="{{ url_for('photo_delete', photo_id=p.id) }}"
+                        onsubmit="return confirm('Foto löschen?')">
+                    <button class="btn btn-sm btn-outline-danger py-0 px-1"
+                            style="font-size:.68rem" title="Löschen">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+                <div class="text-muted mt-1" style="font-size:.62rem">
+                  {% if p.taken_at %}
+                  📸 {{ p.taken_at.strftime('%d.%m.%Y %H:%M') }}
+                  {% else %}
+                  📤 {{ p.created_at.strftime('%d.%m.%Y %H:%M') }}
+                  {% endif %}
+                  · {{ p.user.display_name }}
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div><!-- end photo-grid -->
+        </form>
+        {% else %}
+        <p class="text-muted small mb-0">Noch keine Fotos hochgeladen.</p>
+        {% endif %}
+        </div><!-- end photo-grid -->
+        {% if photos %}</form>{% endif %}
+      </div>
+    </div>
+
+    <!-- GPS Editor M
+
+    <!-- GPS Editor Modal -->
+    <div class="modal fade" id="gpsModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header card-header-djo">
+            <h5 class="modal-title fw-bold text-white">
+              <i class="bi bi-geo-alt me-2"></i>GPS-Position setzen / korrigieren
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted small mb-2">
+              Klicke auf die Karte oder gib Koordinaten manuell ein. Dann <strong>Speichern</strong>.
+            </p>
+            <div id="gps-modal-map" style="height:300px;border-radius:8px;margin-bottom:1rem"></div>
+            <form id="gpsModalForm" method="post">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold small">Breitengrad (lat)</label>
+                  <input type="number" step="0.000001" id="gps-modal-lat" name="lat"
+                         class="form-control" placeholder="52.963700" required>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold small">Längengrad (lng)</label>
+                  <input type="number" step="0.000001" id="gps-modal-lng" name="lng"
+                         class="form-control" placeholder="9.089100" required>
+                </div>
+                <div class="col-md-4">
+                  <button type="submit" class="btn btn-djo w-100">
+                    <i class="bi bi-check-lg me-1"></i>Speichern
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>  </div>
+</div>
+</div>
+
+<!-- ── Videos ────────────────────────────────────────────────────────────────── -->
+{% if videos or True %}
+<div class="row mt-3">
+  <div class="col-12">
+    <div class="card mb-3" id="videos">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span>
+          <i class="bi bi-camera-video me-1"></i>Videos
+          {% if videos %}<span class="badge bg-light text-dark ms-1">{{ videos|length }}</span>{% endif %}
+        </span>
+      </div>
+      <div class="card-body">
+
+        <!-- Vorhandene Videos -->
+        {% if videos %}
+        <div class="row g-3 mb-3">
+          {% for v in videos %}
+          <div class="col-12 col-lg-6">
+            <div class="card h-100">
+              <video controls preload="metadata"
+                     style="width:100%;background:#000;border-radius:6px 6px 0 0;
+                            display:block;max-height:85vh;
+                            object-fit:contain"
+                     playsinline>
+                <source src="{{ url_for('static', filename='uploads/videos/' + v.filename) }}"
+                        type="video/mp4">
+                Dein Browser unterstützt kein HTML5-Video.
+                <a href="{{ url_for('static', filename='uploads/videos/' + v.filename) }}" download>
+                  Video herunterladen
+                </a>
+              </video>
+              <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+                <div>
+                  <div class="fw-semibold small">{{ v.title or v.filename }}</div>
+                  <div class="text-muted" style="font-size:.72rem">
+                    {{ v.user.display_name }} · {{ v.created_at.strftime('%d.%m.%Y') }}
+                    {% if v.filesize %} · {{ (v.filesize / 1024 / 1024)|round(1) }} MB{% endif %}
+                  </div>
+                </div>
+                <div class="d-flex gap-1 ms-2">
+                  <a href="{{ url_for('static', filename='uploads/videos/' + v.filename) }}"
+                     download class="btn btn-outline-secondary btn-sm py-0 px-2" title="Herunterladen">
+                    <i class="bi bi-download"></i>
+                  </a>
+                  {% set can_del = current_user.is_admin or current_user.is_organizer
+                                   or v.user_id == current_user.id
+                                   or tour.created_by == current_user.id %}
+                  {% if can_del %}
+                  <form method="post" action="{{ url_for('tour_delete_video', video_id=v.id) }}"
+                        onsubmit="return confirm('Video löschen?')">
+                    <button class="btn btn-outline-danger btn-sm py-0 px-2">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Upload-Bereich -->
+        <form method="post" action="{{ url_for('tour_upload_video', tour_id=tour.id) }}"
+              enctype="multipart/form-data">
+          <div class="mb-2">
+            <label class="form-label fw-semibold small">Video-Titel (optional)</label>
+            <input type="text" name="video_title" class="form-control form-control-sm"
+                   placeholder="z.B. Tourfilm April 2026">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Video auswählen</label>
+            <input type="file" name="video" class="form-control"
+                   accept=".mp4,.mov,.avi,.mkv,.m4v">
+            <div class="form-text">MP4, MOV, AVI, MKV · max. 500 MB</div>
+          </div>
+          <button type="submit" class="btn btn-djo">
+            <i class="bi bi-upload me-1"></i>Video hochladen
+          </button>
+        </form>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Kommentare (volle Breite) ─────────────────────────────────────────── -->
+<div class="row mt-2">
+  <div class="col-12 col-lg-9">
+    <!-- Comments -->
+    {% set root_comments = tour.comments|selectattr('parent_id', 'none')|list if tour.comments is defined else [] %}
+    <div class="card mb-3" id="kommentare">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-chat-square-text me-1"></i>Kommentare
+      </div>
+      <div class="card-body">
+        <!-- Write comment -->
+        <form method="post" action="{{ url_for('tour_comment', tour_id=tour.id) }}" class="mb-4">
+          <div class="d-flex gap-2">
+            <span class="participant-avatar flex-shrink-0">{{ current_user.display_name[0].upper() }}</span>
+            <div class="flex-grow-1">
+              <textarea name="content" class="form-control form-control-sm" rows="2"
+                        placeholder="Kommentar schreiben…" required></textarea>
+              <button type="submit" class="btn btn-djo btn-sm mt-1">
+                <i class="bi bi-send me-1"></i>Absenden
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <!-- Existing comments -->
+        {% if comments %}
+          {% for c in comments %}
+          <div class="border-top pt-3 pb-1 mb-1">
+            <div class="d-flex gap-2">
+              <span class="participant-avatar flex-shrink-0">{{ c.user.display_name[0].upper() }}</span>
+              <div class="flex-grow-1">
+                <div class="d-flex justify-content-between align-items-center">
+                  <strong class="small">{{ c.user.display_name }}</strong>
+                  <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted">{{ c.created_at.strftime('%d.%m. %H:%M') }}</small>
+                    {% if c.user_id == current_user.id or current_user.is_admin %}
+                    <form method="post"
+                          action="{{ url_for('comment_delete', tour_id=tour.id, comment_id=c.id) }}"
+                          onsubmit="return confirm('Löschen?')">
+                      <button class="btn btn-link btn-sm text-danger p-0">
+                        <i class="bi bi-trash3"></i>
+                      </button>
+                    </form>
+                    {% endif %}
+                  </div>
+                </div>
+                <p class="mb-1 mt-1">{{ c.content }}</p>
+                <!-- Reply button -->
+                <button class="btn btn-link btn-sm text-muted p-0 mb-1"
+                        onclick="showReply({{ c.id }})">
+                  <i class="bi bi-reply me-1"></i>Antworten
+                </button>
+                <!-- Reply form (hidden) -->
+                <div id="reply-{{ c.id }}" class="d-none ms-2 mt-1">
+                  <form method="post" action="{{ url_for('tour_comment', tour_id=tour.id) }}">
+                    <input type="hidden" name="parent_id" value="{{ c.id }}">
+                    <div class="d-flex gap-2">
+                      <textarea name="content" class="form-control form-control-sm" rows="1"
+                                placeholder="Antworten…" required></textarea>
+                      <button type="submit" class="btn btn-djo btn-sm">↩</button>
+                    </div>
+                  </form>
+                </div>
+
+                <!-- Replies -->
+                {% for r in c.replies.order_by('created_at').all() %}
+                <div class="ms-3 border-start ps-2 mt-2">
+                  <div class="d-flex gap-2">
+                    <span class="participant-avatar flex-shrink-0"
+                          style="width:26px;height:26px;font-size:.7rem">
+                      {{ r.user.display_name[0].upper() }}
+                    </span>
+                    <div class="flex-grow-1">
+                      <div class="d-flex justify-content-between">
+                        <strong class="small">{{ r.user.display_name }}</strong>
+                        <small class="text-muted">{{ r.created_at.strftime('%d.%m. %H:%M') }}</small>
+                      </div>
+                      <p class="mb-0 small">{{ r.content }}</p>
+                    </div>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+        <p class="text-muted small mb-0">
+          Noch keine Kommentare. Schreib den ersten!
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Treffpunkt (Mobile): erscheint hier ganz unten nach den Kommentaren -->
+{% if tour.meeting_desc or (tour.meeting_lat and tour.meeting_lng) %}
+<div class="row d-lg-none">
+  <div class="col-12">
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-geo-alt me-1"></i>Treffpunkt
+      </div>
+      <div class="card-body">
+        {% if tour.meeting_desc %}
+        <p class="mb-2"><strong>{{ tour.meeting_desc }}</strong></p>
+        {% endif %}
+        {% if tour.meeting_lat and tour.meeting_lng %}
+        <div class="d-grid gap-1">
+          <a href="https://www.google.com/maps/dir/?api=1&destination={{ tour.meeting_lat }},{{ tour.meeting_lng }}&travelmode=bicycling"
+             target="_blank" class="btn btn-sm btn-outline-djo">
+            <i class="bi bi-compass me-1"></i>Google Maps (Fahrrad)
+          </a>
+          <a href="https://www.komoot.com/plan/@{{ tour.meeting_lat }},{{ tour.meeting_lng }},14z"
+             target="_blank" class="btn btn-sm btn-outline-secondary">
+            🌿 Komoot
+          </a>
+          <a href="geo:{{ tour.meeting_lat }},{{ tour.meeting_lng }}?z=14"
+             class="btn btn-sm btn-outline-secondary">
+            📱 OsmAnd / Maps-App
+          </a>
+          <a href="https://maps.apple.com/?daddr={{ tour.meeting_lat }},{{ tour.meeting_lng }}&dirflg=c"
+             target="_blank" class="btn btn-sm btn-outline-secondary">
+            🍎 Apple Maps
+          </a>
+          <a href="https://www.openstreetmap.org/directions?from=&to={{ tour.meeting_lat }},{{ tour.meeting_lng }}#map=14/{{ tour.meeting_lat }}/{{ tour.meeting_lng }}"
+             target="_blank" class="btn btn-sm btn-outline-secondary">
+            🗺️ OpenStreetMap
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Lightbox Vollbild -->
+<!-- Lightbox -->
+<div class="modal fade" id="lightboxModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered"
+       style="max-width:100vw;margin:0;width:100vw">
+    <div class="modal-content border-0" style="background:#000;border-radius:0">
+      <div class="modal-header border-0 py-1 px-2" style="background:#111">
+        <span class="text-white small" id="lb-counter"></span>
+        <div class="flex-grow-1 text-center px-2" id="lb-cap">
+          <span id="lb-cap-text" class="text-white small"></span>
+          <div id="lb-caption-wrap" style="display:none">
+            <div class="input-group input-group-sm" style="max-width:320px;margin:0 auto">
+              <input type="text" id="lb-caption-input" class="form-control form-control-sm"
+                     placeholder="Beschriftung…"
+                     style="background:#333;border-color:#555;color:#fff;font-size:.75rem"
+                     onkeydown="if(event.key==='Enter')saveLbCaption()">
+              <button class="btn btn-outline-light btn-sm" onclick="saveLbCaption()">✓</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0 d-flex align-items-center justify-content-center position-relative"
+           id="lb-body" style="background:#000;height:92vh;height:92dvh">
+        <button id="lb-prev" onclick="lbNav(-1)"
+                class="position-absolute d-none d-md-flex align-items-center justify-content-center"
+                style="left:0;top:0;bottom:0;width:48px;background:rgba(0,0,0,.4);
+                       border:0;color:#fff;font-size:2rem;cursor:pointer;z-index:10">‹</button>
+        <button id="lb-next" onclick="lbNav(1)"
+                class="position-absolute d-none d-md-flex align-items-center justify-content-center"
+                style="right:0;top:0;bottom:0;width:48px;background:rgba(0,0,0,.4);
+                       border:0;color:#fff;font-size:2rem;cursor:pointer;z-index:10">›</button>
+        <img id="lightbox-img" src="" alt=""
+             style="max-width:100%;max-height:92vh;max-height:92dvh;
+                    width:auto;height:auto;object-fit:contain;display:block">
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Reply toggle ─────────────────────────────────────────────────────────────
+function showReply(id) {
+  const el = document.getElementById('reply-' + id);
+  el.classList.toggle('d-none');
+  if (!el.classList.contains('d-none')) el.querySelector('textarea').focus();
+}
+
+// ── GPS Modal ─────────────────────────────────────────────────────────────────
+let gpsModalMap = null, gpsModalMarker = null;
+
+function openGpsModal(photoId, existingLat, existingLng) {
+  const form = document.getElementById('gpsModalForm');
+  form.action = '/fotos/' + photoId + '/gps';
+
+  const modal = new bootstrap.Modal(document.getElementById('gpsModal'));
+  modal.show();
+
+  document.getElementById('gpsModal').addEventListener('shown.bs.modal', function initMap() {
+    if (!gpsModalMap) {
+      const startLat = existingLat || {{ tour.meeting_lat or 53.1 }};
+      const startLng = existingLng || {{ tour.meeting_lng or 9.2 }};
+
+      gpsModalMap = L.map('gps-modal-map').setView([startLat, startLng], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(gpsModalMap);
+
+      gpsModalMap.on('click', function(e) {
+        setGpsMarker(e.latlng.lat, e.latlng.lng);
+      });
+    } else {
+      gpsModalMap.invalidateSize();
+    }
+
+    if (existingLat && existingLng) {
+      setGpsMarker(existingLat, existingLng);
+      gpsModalMap.setView([existingLat, existingLng], 16);
+    }
+
+    this.removeEventListener('shown.bs.modal', initMap);
+  });
+}
+
+function setGpsMarker(lat, lng) {
+  document.getElementById('gps-modal-lat').value = lat.toFixed(6);
+  document.getElementById('gps-modal-lng').value = lng.toFixed(6);
+  if (gpsModalMarker) gpsModalMap.removeLayer(gpsModalMarker);
+  gpsModalMarker = L.marker([lat, lng]).addTo(gpsModalMap);
+}
+
+// Sync manual coord input → map marker
+['gps-modal-lat', 'gps-modal-lng'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', function() {
+    const lat = parseFloat(document.getElementById('gps-modal-lat').value);
+    const lng = parseFloat(document.getElementById('gps-modal-lng').value);
+    if (!isNaN(lat) && !isNaN(lng)) {
+      setGpsMarker(lat, lng);
+      gpsModalMap.setView([lat, lng], 15);
+    }
+  });
+});
+
+
+// ── Elevation overlay on map ─────────────────────────────────────────────────// ── Elevation overlay on map ─────────────────────────────────────────────────
+let elevOverlayChart = null;
+let elevOverlayVisible = false;
+
+function toggleElevationOverlay() {
+  const overlay = document.getElementById('elev-overlay');
+  const btn     = document.getElementById('btn-elev');
+  if (!overlay) return;
+
+  elevOverlayVisible = !elevOverlayVisible;
+  overlay.style.display = elevOverlayVisible ? 'block' : 'none';
+  btn.classList.toggle('active', elevOverlayVisible);
+
+  if (elevOverlayVisible && !elevOverlayChart && GPX_DATA) {
+    buildElevOverlay();
+  }
+  // Resize map after showing/hiding overlay
+  setTimeout(() => map.invalidateSize(), 50);
+}
+
+function buildElevOverlay() {
+  if (!GPX_DATA || !GPX_DATA.points) return;
+  const allPts = GPX_DATA.points;
+  const step   = Math.max(1, Math.floor(allPts.length / 400));
+  const pts    = allPts.filter((_, i) => i % step === 0);
+  const eles   = pts.map(p => p.ele);
+
+  // cumulative km (reuse haverDist if available, else inline)
+  const cumKm2 = [0];
+  for (let i = 1; i < pts.length; i++) {
+    const R=6371, dLat=(pts[i].lat-pts[i-1].lat)*Math.PI/180,
+          dLon=(pts[i].lng-pts[i-1].lng)*Math.PI/180;
+    const a=Math.sin(dLat/2)**2+Math.cos(pts[i-1].lat*Math.PI/180)*Math.cos(pts[i].lat*Math.PI/180)*Math.sin(dLon/2)**2;
+    cumKm2.push(cumKm2[i-1]+R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
+  }
+
+  const ctx = document.getElementById('elev-overlay-chart');
+  elevOverlayChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: pts.map((_,i) => i),
+      datasets: [{
+        data: eles,
+        borderColor: 'rgba(255,220,80,.9)',
+        backgroundColor: 'rgba(255,220,80,.15)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointHoverBackgroundColor: '#ff4444',
+        borderWidth: 1.5
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: true,
+          mode: 'index',
+          intersect: false,
+          backgroundColor: 'rgba(10,20,50,.9)',
+          titleColor: '#ffd',
+          bodyColor: '#cce',
+          callbacks: {
+            title: items => `Km ${cumKm2[items[0].dataIndex].toFixed(2)}`,
+            label: item => {
+              const i = item.dataIndex;
+              return [`⛰️ ${eles[i].toFixed(0)} m`, `📍 ${pts[i].lat.toFixed(4)}, ${pts[i].lng.toFixed(4)}`];
+            }
+          }
+        }
+      },
+      hover: { mode: 'index', intersect: false },
+      scales: {
+        x: { display: false },
+        y: {
+          position: 'right',
+          grid: { color: 'rgba(255,255,255,.1)' },
+          ticks: { color: 'rgba(255,220,80,.8)', font: { size: 9 },
+                   callback: v => v + 'm' }
+        }
+      },
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      onHover: (evt, elements) => {
+        if (!elements || !elements.length) {
+          if (crosshair) { map.removeLayer(crosshair); crosshair = null; }
+          document.getElementById('elev-overlay-info').textContent = '';
+          return;
+        }
+        const i   = elements[0].index;
+        const pt  = pts[i];
+        const info = document.getElementById('elev-overlay-info');
+        info.textContent = `Km ${cumKm2[i].toFixed(2)} · ${pt.ele.toFixed(0)} m`;
+        if (crosshair) {
+          crosshair.setLatLng([pt.lat, pt.lng]);
+        } else {
+          const cIcon = L.divIcon({
+            html: '<div style="width:12px;height:12px;background:#ff4;border:2px solid #f80;border-radius:50%;box-shadow:0 0 8px rgba(255,200,0,.8)"></div>',
+            iconSize:[12,12], iconAnchor:[6,6], className:''
+          });
+          crosshair = L.marker([pt.lat, pt.lng], { icon: cIcon, zIndexOffset: 1000 }).addTo(map);
+        }
+      }
+    }
+  });
+}
+
+// ── Lightbox mit Navigation + Wischfunktion ──────────────────────────────────
+let _lbModal = null;
+let _lbPhotos = [];  // [{src, cap}]
+let _lbIdx   = 0;
+
+// Build gallery index from all photo thumbnails on page
+function _buildLbIndex() {
+  _lbPhotos = [];
+  document.querySelectorAll('[data-lb-src]').forEach(el => {
+    _lbPhotos.push({ src: el.dataset.lbSrc, cap: el.dataset.lbCap || '', id: el.dataset.photoId || '', canEdit: el.dataset.canEdit === '1' });
+  });
+}
+
+function openLightbox(src, cap) {
+  _buildLbIndex();
+  _lbIdx = _lbPhotos.findIndex(p => p.src === src);
+  if (_lbIdx < 0) { _lbPhotos = [{src, cap}]; _lbIdx = 0; }
+  _lbShow();
+  if (!_lbModal) _lbModal = new bootstrap.Modal(document.getElementById('lightboxModal'));
+  _lbModal.show();
+}
+
+function lbOpenFromEl(el) {
+  // Use data attributes to avoid quote-escaping issues with captions
+  const src = el.dataset.lbSrc || el.src;
+  const cap = el.dataset.lbCap || '';
+  openLightbox(src, cap);
+}
+
+function _lbShow() {
+  const p = _lbPhotos[_lbIdx];
+  const img = document.getElementById('lightbox-img');
+  img.style.opacity = '0';
+  img.style.transition = '';
+  img.onload = () => {
+    img.style.transition = 'opacity .2s';
+    img.style.opacity = '1';
+  };
+  img.src = p.src;
+  // Gecachte Bilder: onload feuert nicht – sofort einblenden
+  if (img.complete && img.naturalWidth > 0) {
+    img.style.opacity = '1';
+  }
+  // Caption display + edit
+  const capText = document.getElementById('lb-cap-text');
+  const capWrap = document.getElementById('lb-caption-wrap');
+  const capInput = document.getElementById('lb-caption-input');
+  if (capText) capText.textContent = p.cap || '';
+  if (capWrap && capInput) {
+    capInput.value = p.cap || '';
+    capInput.dataset.photoId = p.id || '';
+    // Show edit field only for own photos or admins
+    capWrap.style.display = p.canEdit ? '' : 'none';
+    capText.style.display = (p.cap && !p.canEdit) ? '' : 'none';
+  }
+  document.getElementById('lb-counter').textContent =
+    _lbPhotos.length > 1 ? `${_lbIdx+1} / ${_lbPhotos.length}` : '';
+  const prev = document.getElementById('lb-prev');
+  const next = document.getElementById('lb-next');
+  if (prev) prev.style.opacity = _lbIdx > 0 ? '1' : '0.3';
+  if (next) next.style.opacity = _lbIdx < _lbPhotos.length-1 ? '1' : '0.3';
+  // Adjust image height for landscape on mobile
+  _lbAdjustOrientation();
+}
+
+function _lbAdjustOrientation() {
+  // modal-fullscreen übernimmt Sizing – nichts zu tun
+}
+
+// Re-adjust when phone rotates
+window.addEventListener('orientationchange', () => setTimeout(_lbAdjustOrientation, 100));
+window.addEventListener('resize', _lbAdjustOrientation);
+// Screen Orientation API (moderner, schneller)
+if (screen && screen.orientation) {
+  screen.orientation.addEventListener('change', () => setTimeout(_lbAdjustOrientation, 100));
+}
+
+function lbNav(dir) {
+  const n = _lbIdx + dir;
+  if (n >= 0 && n < _lbPhotos.length) { _lbIdx = n; _lbShow(); }
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  if (!document.getElementById('lightboxModal').classList.contains('show')) return;
+  if (e.key === 'ArrowLeft')  lbNav(-1);
+  if (e.key === 'ArrowRight') lbNav(1);
+});
+
+// Touch/swipe support in lightbox
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('lightboxModal');
+  if (!modal) return;
+  let touchX = 0, touchY = 0;
+  modal.addEventListener('touchstart', e => {
+    touchX = e.touches[0].clientX;
+    touchY = e.touches[0].clientY;
+  }, {passive:true});
+  modal.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchX;
+    const dy = e.changedTouches[0].clientY - touchY;
+    // Nur horizontale Swipes (dx > dy) auswerten
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+      lbNav(dx < 0 ? 1 : -1);
+    }
+  }, {passive:true});
+
+  // Clear src on close
+  document.getElementById('lightboxModal').addEventListener('hidden.bs.modal',  () => {
+    document.getElementById('lightbox-img').src = '';
+  });
+
+// Fullscreen-Änderung: CSS anpassen
+});
+
+function saveLbCaption() {
+  const input = document.getElementById('lb-caption-input');
+  if (!input || !input.dataset.photoId) return;
+  const caption = input.value.trim();
+  fetch('/fotos/' + input.dataset.photoId + '/caption', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({caption: caption})
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      if (_lbPhotos[_lbIdx]) _lbPhotos[_lbIdx].cap = caption;
+      const imgEl = document.querySelector('[data-photo-id="' + input.dataset.photoId + '"][data-lb-src]');
+      if (imgEl) {
+        imgEl.dataset.lbCap = caption;
+        const captionInput = imgEl.closest('.photo-item')?.querySelector('.caption-input');
+        if (captionInput) captionInput.value = caption;
+      }
+      input.style.background = '#1a5c2a';
+      setTimeout(() => { input.style.background = '#333'; }, 1200);
+    }
+  }).catch(() => {});
+}
+
+function saveCaption(input) {
+  const photoId = input.dataset.photoId;
+  if (!photoId) return;
+  const caption = input.value.trim();
+  const btn = input.nextElementSibling;
+  fetch('/fotos/' + photoId + '/caption', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({caption: caption})
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      const imgEl = document.querySelector('[data-photo-id="' + photoId + '"][data-lb-src]');
+      if (imgEl) imgEl.dataset.lbCap = caption;
+      btn.textContent = '✅';
+      setTimeout(() => { btn.textContent = '✓'; }, 1500);
+    }
+  }).catch(() => {
+    btn.textContent = '❌';
+    setTimeout(() => { btn.textContent = '✓'; }, 1500);
+  });
+}
+
+// ── Client-side EXIF GPS/DateTime reader (preserves data stripped by mobile browsers) ──
+function readExifFromBuffer(buf) {
+  /** Returns {lat, lng, datetime} from JPEG ArrayBuffer. Pure JS, no libs.
+   *  Scannt ALLE APP1/Exif-Segmente (manche Kameras/Apps schreiben mehrere),
+   *  damit GPS nicht verpasst wird falls das erste Segment keines enthält. */
+  const data = new DataView(buf);
+  if (data.getUint16(0) !== 0xFFD8) return {}; // not JPEG
+  let off = 2;
+  let lastResult = {};
+  while (off < data.byteLength - 4) {
+    const marker = data.getUint16(off);
+    const segLen = data.getUint16(off + 2);
+    if (marker === 0xFFE1 && off + 8 <= data.byteLength) { // APP1
+      const hdr = String.fromCharCode(
+        data.getUint8(off+4), data.getUint8(off+5),
+        data.getUint8(off+6), data.getUint8(off+7));
+      if (hdr === 'Exif') {
+        try {
+          const result = _parseExif(buf, off + 10);
+          if (result.lat != null && result.lng != null) return result; // GPS gefunden, fertig
+          if (Object.keys(result).length) lastResult = result; // datetime etc. merken
+        } catch (e) { /* dieses Segment war kaputt, weiter suchen */ }
+      }
+    }
+    if (marker === 0xFFDA) break; // SOS - image data starts
+    if (segLen < 2) break; // defensive: ungültige Segmentlänge, Abbruch
+    off += 2 + segLen;
+  }
+  return lastResult;
+}
+
+function _parseExif(buf, tiffStart) {
+  const data = new DataView(buf);
+  const bo = data.getUint16(tiffStart); // 0x4949=LE, 0x4D4D=BE
+  const le = bo === 0x4949;
+  const r16 = o => le ? data.getUint16(tiffStart+o, true) : data.getUint16(tiffStart+o);
+  const r32 = o => le ? data.getUint32(tiffStart+o, true) : data.getUint32(tiffStart+o);
+  const rat = o => { const n=r32(o), d=r32(o+4); return d ? n/d : 0; };
+  const str = (o, l) => {
+    let s = '';
+    for (let i=0; i<l; i++) { const c=data.getUint8(tiffStart+o+i); if (c===0) break; s+=String.fromCharCode(c); }
+    return s.trim();
+  };
+
+  const ifd0 = r32(4);
+  const n0   = r16(ifd0);
+  let gpsOff = null, dtOrig = null;
+
+  for (let i=0; i<n0; i++) {
+    const e = ifd0 + 2 + i*12;
+    const tag = r16(e);
+    if (tag === 0x8825) gpsOff = r32(e+8);  // GPS IFD
+    if (tag === 0x0132) dtOrig = str(r32(e+8), 20); // DateTime
+  }
+
+  // Also check Exif IFD for DateTimeOriginal
+  for (let i=0; i<n0; i++) {
+    const e = ifd0 + 2 + i*12;
+    if (r16(e) === 0x8769) { // Exif IFD
+      const exifOff = r32(e+8);
+      const ne = r16(exifOff);
+      for (let j=0; j<ne; j++) {
+        const ee = exifOff + 2 + j*12;
+        if (r16(ee) === 0x9003) { dtOrig = str(r32(ee+8), 20); break; } // DateTimeOriginal
+      }
+      break;
+    }
+  }
+
+  if (!gpsOff) return {datetime: dtOrig};
+
+  const ng = r16(gpsOff);
+  const gps = {};
+  for (let i=0; i<ng; i++) {
+    const e = gpsOff + 2 + i*12;
+    const tag = r16(e), type = r16(e+2), cnt = r32(e+4);
+    if (type === 2) { // ASCII ref (z.B. "N\0", "S\0") – bei count<=4 INLINE im Value-Feld!
+      if (cnt <= 4) {
+        gps[tag] = String.fromCharCode(data.getUint8(e+8)).trim();
+      } else {
+        const voff = r32(e+8);
+        gps[tag] = String.fromCharCode(data.getUint8(tiffStart+voff)).trim();
+      }
+    } else if (type === 5) { // RATIONAL – immer extern (3 Werte x 8 Byte > 4 Byte Feld)
+      const voff = r32(e+8);
+      gps[tag] = [rat(voff), rat(voff+8), rat(voff+16)];
+    }
+  }
+
+  if (!gps[2] || !gps[4]) return {datetime: dtOrig};
+  const dms = (v, ref) => {
+    const dec = v[0] + v[1]/60 + v[2]/3600;
+    return (ref==='S'||ref==='W') ? -dec : dec;
+  };
+  return {
+    lat: Math.round(dms(gps[2], gps[1]||'N') * 1e6) / 1e6,
+    lng: Math.round(dms(gps[4], gps[3]||'E') * 1e6) / 1e6,
+    datetime: dtOrig,
+  };
+}
+
+async function photoFilesSelected(input) {
+  // WICHTIG: gleiche Reihenfolge wie input.files behalten (inkl. ZIPs),
+  // damit der Index exakt zum Server-seitigen file_idx passt!
+  const allFiles = Array.from(input.files);
+  const hidden = document.getElementById('gps-hidden-fields');
+  const status = document.getElementById('gps-status');
+  const names  = document.getElementById('photo-names');
+  const submit = document.getElementById('photo-submit-row');
+
+  if (names) names.textContent = input.files.length === 1
+    ? `✓ ${input.files[0].name}`
+    : `✓ ${input.files.length} Fotos ausgewählt`;
+
+  if (!hidden || !allFiles.length) {
+    if (submit) submit.classList.remove('d-none');
+    return;
+  }
+
+  hidden.innerHTML = '';
+  if (status) status.textContent = 'Lese GPS-Daten…';
+
+  let gpsFound = 0;
+  let imageCount = 0;
+  for (let i = 0; i < allFiles.length; i++) {
+    // ZIP-Dateien überspringen, aber Index i beibehalten (= file_idx am Server)
+    if (allFiles[i].name.toLowerCase().endsWith('.zip')) continue;
+    imageCount++;
+    try {
+      // arrayBuffer() is widely supported but wrap in try for safety
+      const buf  = await allFiles[i].arrayBuffer();
+      const exif = readExifFromBuffer(buf);
+      if (exif.lat != null && exif.lng != null && !isNaN(exif.lat) && !isNaN(exif.lng)
+          && !(exif.lat === 0 && exif.lng === 0)) {
+        hidden.innerHTML +=
+          `<input type="hidden" name="gps_lat_${i}" value="${exif.lat}">` +
+          `<input type="hidden" name="gps_lng_${i}" value="${exif.lng}">`;
+        gpsFound++;
+      }
+      if (exif.datetime) {
+        hidden.innerHTML +=
+          `<input type="hidden" name="exif_dt_${i}" value="${exif.datetime}">`;
+      }
+    } catch(e) {
+      console.warn('EXIF read failed for', allFiles[i].name, e);
+    }
+  }
+
+  if (gpsFound > 0) {
+    if (status) status.textContent = `✅ GPS in ${gpsFound} von ${imageCount} Foto(s) erkannt`;
+  } else if (imageCount > 0) {
+    if (status) {
+      status.innerHTML =
+        '⚠️ Kein GPS in den Fotos gefunden. ' +
+        '<span class="text-muted" style="font-size:.7rem">Tipp: Foto über die <strong>Dateien-App</strong> ' +
+        '(statt Galerie) aus DCIM/Camera auswählen – Android/iOS entfernen GPS oft bei der normalen Foto-Auswahl.</span><br>' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 mt-1" ' +
+        'onclick="useDeviceLocationForUpload(' + imageCount + ')" ' +
+        'style="font-size:.72rem">📍 Aktuellen Standort verwenden</button> ' +
+        '<button type="button" class="btn btn-sm btn-outline-info py-0 px-2 mt-1" ' +
+        'onclick="runExifDebug(window._lastSelectedFiles)" ' +
+        'style="font-size:.72rem">🔍 Diagnose anzeigen</button>' +
+        '<div id="exif-debug-out" class="mt-2"></div>';
+    }
+  }
+  window._lastSelectedFiles = allFiles;
+  if (submit) submit.classList.remove('d-none');
+}
+
+async function runExifDebug(files) {
+  const out = document.getElementById('exif-debug-out');
+  if (!files || !files.length) return;
+  const file = files.find(f => !f.name.toLowerCase().endsWith('.zip'));
+  if (!file) return;
+  if (out) out.innerHTML = '<div class="text-muted small">Analysiere ' + file.name + '…</div>';
+
+  const fd = new FormData();
+  fd.append('photo', file);
+  try {
+    const resp = await fetch('/api/exif-debug', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (out) {
+      out.innerHTML =
+        '<pre style="background:#f8f9fa;border-radius:6px;padding:10px;font-size:.7rem;' +
+        'max-height:300px;overflow:auto;white-space:pre-wrap">' +
+        JSON.stringify(data, null, 2).replace(/</g,'&lt;') +
+        '</pre>' +
+        '<div class="small text-muted">Diese Diagnose-Ausgabe kannst du kopieren und zur Fehleranalyse weitergeben.</div>';
+    }
+  } catch (e) {
+    if (out) out.innerHTML = '<div class="text-danger small">Diagnose fehlgeschlagen: ' + e + '</div>';
+  }
+}
+
+function useDeviceLocationForUpload(imageCount) {
+  const hidden = document.getElementById('gps-hidden-fields');
+  const status = document.getElementById('gps-status');
+  const input  = document.querySelector('input[type="file"][name="photos"]') ||
+                 document.querySelector('input[type="file"][onchange*="photoFilesSelected"]');
+  if (!hidden || !input) return;
+  if (!navigator.geolocation) { alert('Standortzugriff nicht verfügbar.'); return; }
+  if (status) status.textContent = '📍 Ermittle Standort…';
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    const lat = Math.round(pos.coords.latitude  * 1e6) / 1e6;
+    const lng = Math.round(pos.coords.longitude * 1e6) / 1e6;
+    const allFiles = Array.from(input.files);
+    let added = 0;
+    for (let i = 0; i < allFiles.length; i++) {
+      if (allFiles[i].name.toLowerCase().endsWith('.zip')) continue;
+      hidden.innerHTML +=
+        `<input type="hidden" name="gps_lat_${i}" value="${lat}">` +
+        `<input type="hidden" name="gps_lng_${i}" value="${lng}">`;
+      added++;
+    }
+    if (status) status.textContent =
+      `📍 Aktueller Standort (${lat}, ${lng}) für ${added} Foto(s) gesetzt`;
+  }, function() {
+    if (status) status.textContent = '⚠️ Standort nicht verfügbar / abgelehnt';
+  }, {timeout: 8000, enableHighAccuracy: true});
+}
+
+// ── Drag & Drop + Clipboard paste ────────────────────────────────────────────
+// Listen for paste anywhere on the page when photo drop zone is visible
+document.addEventListener('paste', (e) => {
+  const input  = document.getElementById('photo-input');
+  const drop   = document.getElementById('photo-drop');
+  const names  = document.getElementById('photo-names');
+  const submit = document.getElementById('photo-submit-row');
+  if (!input || !drop) return;
+
+  const items = Array.from(e.clipboardData.items || [])
+    .filter(i => i.type.startsWith('image/'));
+  if (!items.length) return;
+
+  e.preventDefault();
+  const dt = new DataTransfer();
+  let count = 0;
+  items.forEach((item, idx) => {
+    const file = item.getAsFile();
+    if (!file) return;
+    // Give it a sensible name
+    const ext  = file.type.split('/')[1] || 'jpg';
+    const ts   = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+    const named = new File([file], `clipboard-${ts}-${idx}.${ext}`, {type: file.type});
+    dt.items.add(named);
+    count++;
+  });
+
+  if (!count) return;
+  input.files = dt.files;
+  if (names) names.textContent = count === 1
+    ? `📋 ${dt.files[0].name}`
+    : `📋 ${count} Fotos aus Zwischenablage`;
+  if (submit) submit.classList.remove('d-none');
+
+  // Visual feedback on drop zone
+  drop.style.borderColor   = '#198754';
+  drop.style.background    = 'rgba(25,135,84,.08)';
+  setTimeout(() => {
+    drop.style.borderColor = '#adb5bd';
+    drop.style.background  = '';
+  }, 1500);
+});
+
+// ── Drag & Drop helper functions ─────────────────────────────────────────────
+function dzOver(e, id) {
+  e.preventDefault();
+  const el = document.getElementById(id);
+  el.style.borderColor   = '#2B3F6B';
+  el.style.background    = 'rgba(43,63,107,.08)';
+  el.style.transform     = 'scale(1.01)';
+}
+function dzLeave(id) {
+  const el = document.getElementById(id);
+  el.style.borderColor   = '#adb5bd';
+  el.style.background    = '';
+  el.style.transform     = '';
+}
+function dzDrop(e, zoneId, inputId, formId) {
+  e.preventDefault();
+  dzLeave(zoneId);
+  const input = document.getElementById(inputId);
+  const dt    = new DataTransfer();
+  Array.from(e.dataTransfer.files).forEach(f => dt.items.add(f));
+  input.files = dt.files;
+  if (formId) {
+    // GPX: show name, auto-submit
+    const nameEl = document.getElementById(zoneId === 'gpx-drop' ? 'gpx-name' : 'photo-names');
+    if (nameEl) nameEl.textContent = `✓ ${dt.files[0].name}`;
+    setTimeout(() => document.getElementById(formId).submit(), 400);
+  } else {
+    // Photos: run GPS extraction first, THEN show submit
+    photoFilesSelected(input);
+  }
+}
+function dzPickFile(input, nameId, formId) {
+  const files = Array.from(input.files);
+  const el = document.getElementById(nameId);
+  if (el) el.textContent = files.length === 1
+    ? `✓ ${files[0].name}`
+    : `✓ ${files.length} Dateien ausgewählt`;
+  if (formId) {
+    setTimeout(() => document.getElementById(formId).submit(), 400);
+  } else {
+    // For photos this path is only called from clipboard paste handler
+    const row = document.getElementById('photo-submit-row');
+    if (row) row.classList.remove('d-none');
+  }
+}
+function dzShowNames(input, nameId) {
+  // For photos: photoFilesSelected handles everything including submit button
+  // Only used for non-photo inputs now
+  dzPickFile(input, nameId, null);
+}
+
+// ── Bulk photo select ────────────────────────────────────────────────────────
+function toggleAllPhotos(select) {
+  document.querySelectorAll('.photo-checkbox').forEach(cb => cb.checked = select);
+  updateBulkCount();
+}
+function updateBulkCount() {
+  const checked = document.querySelectorAll('.photo-checkbox:checked').length;
+  const btn = document.getElementById('bulk-delete-btn');
+  if (btn) {
+    document.getElementById('bulk-count').textContent = checked;
+    btn.style.display = checked > 0 ? '' : 'none';
+  }
+}
+function confirmBulkDelete() {
+  const n = document.querySelectorAll('.photo-checkbox:checked').length;
+  if (n === 0) return false;
+  return confirm(`${n} Foto(s) unwiderruflich löschen?`);
+}
+
+// ── Fullscreen map ───────────────────────────────────────────────────────────
+let isFullscreen = false;
+function toggleFullscreen() {
+  const wrap = document.getElementById('map-wrap');
+  const card = document.getElementById('map-card');
+  const icon = document.getElementById('fs-icon');
+  const mapEl = document.getElementById('tour-map');
+
+  if (!isFullscreen) {
+    // Enter fullscreen — z-index 1040 stays BELOW Bootstrap modal (1055)
+    // so lightbox always appears in front of the fullscreen map
+    wrap.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:1040;background:#000';
+    mapEl.style.height = '100vh';
+    card.style.zIndex = '1040';
+    icon.className = 'bi bi-fullscreen-exit';
+    document.body.style.overflow = 'hidden';
+    isFullscreen = true;
+  } else {
+    // Exit fullscreen
+    wrap.style.cssText = '';
+    mapEl.style.height = '460px';
+    card.style.zIndex = '';
+    icon.className = 'bi bi-arrows-fullscreen';
+    document.body.style.overflow = '';
+    isFullscreen = false;
+  }
+  setTimeout(() => map.invalidateSize(), 50);
+}
+
+// ESC key exits fullscreen
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && isFullscreen) toggleFullscreen(); });
+
+// ── Re-extract GPS from EXIF (AJAX) ──────────────────────────────────────────
+function reextractGps(photoId, btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  fetch('/api/fotos/' + photoId + '/reextract-gps')
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        btn.closest('.col-6, .col-sm-4, .col-md-3').querySelector('.badge').className =
+          'badge bg-success position-absolute top-0 end-0 m-1';
+        btn.closest('.col-6, .col-sm-4, .col-md-3').querySelector('.badge').innerHTML =
+          '<i class="bi bi-geo-alt-fill"></i>';
+        showToast('✅ GPS gefunden: ' + d.lat + ', ' + d.lng + ' – Seite neu laden!', 'success');
+      } else {
+        showToast('⚠️ ' + d.msg, 'warning');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+      }
+    })
+    .catch(() => { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>'; });
+}
+
+function showToast(msg, type) {
+  const t = document.createElement('div');
+  t.className = `alert alert-${type} position-fixed bottom-0 end-0 m-3 shadow`;
+  t.style.zIndex = 9999;
+  t.innerHTML = msg + ' <button class="btn-close float-end" onclick="this.parentElement.remove()"></button>';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 5000);
+}
+
+const GPX_DATA = {{ gpx_data | safe }};
+const MEETING_LAT = {{ tour.meeting_lat or 'null' }};
+const MEETING_LNG = {{ tour.meeting_lng or 'null' }};
+const PHOTOS = [
+  {% for p in photos %}{% if p.has_gps and p.lat and p.lng %}
+  { id: {{ p.id }},
+    lat: {{ p.lat }}, lng: {{ p.lng }},
+    src: "{{ url_for('serve_photo', filename=p.filename) }}",
+    cap: {{ (p.caption or '')|tojson }},
+    user: {{ p.user.display_name|tojson }},
+    date: "{{ (p.taken_at or p.created_at).strftime('%d.%m.%Y %H:%M') }}",
+    is_taken: {{ 'true' if p.taken_at else 'false' }} },
+  {% endif %}{% endfor %}
+];
+
+// ── Leaflet map ───────────────────────────────────────────────────────────────
+let center = [53.1, 9.2];
+let zoom   = 10;
+
+if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length > 0) {
+  center = [GPX_DATA.points[0].lat, GPX_DATA.points[0].lng];
+  zoom   = 12;
+} else if (MEETING_LAT) {
+  center = [MEETING_LAT, MEETING_LNG];
+  zoom   = 13;
+}
+
+const isMobile = window.innerWidth < 992;
+const map = L.map('tour-map', {
+  zoomControl: true,
+  dragging:         !isMobile,
+  tap:              !isMobile,
+  scrollWheelZoom:  false,
+}).setView(center, zoom);
+
+// Mobile: Karte erst nach Tippen aktivieren
+if (isMobile) {
+  const overlay = document.createElement('div');
+  overlay.id = 'map-touch-overlay';
+  overlay.innerHTML = '<div style="background:rgba(0,0,0,.45);color:#fff;padding:8px 16px;border-radius:20px;font-size:.85rem;pointer-events:none"><i class="bi bi-hand-index me-1"></i>Tippen zum Aktivieren</div>';
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:inherit';
+  const lockBtn = document.createElement('button');
+  lockBtn.innerHTML = '<i class="bi bi-lock-fill"></i>';
+  lockBtn.title = 'Karte sperren';
+  lockBtn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:1001;background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:6px;width:32px;height:32px;cursor:pointer;font-size:.9rem;display:none';
+  document.getElementById('tour-map').appendChild(lockBtn);
+
+  function activateMap() {
+    map.dragging.enable();
+    map.tap && map.tap.enable();
+    overlay.style.display = 'none';
+    lockBtn.style.display = 'block';
+  }
+  function deactivateMap() {
+    map.dragging.disable();
+    map.tap && map.tap.disable();
+    overlay.style.display = 'flex';
+    lockBtn.style.display = 'none';
+  }
+  overlay.addEventListener('click', activateMap);
+  lockBtn.addEventListener('click', deactivateMap);
+  document.getElementById('tour-map').style.position = 'relative';
+  document.getElementById('tour-map').appendChild(overlay);
+}
+
+// Fix Leaflet sizing: force re-render after Bootstrap grid settles
+// Multiple delays to catch different rendering phases
+[50, 150, 300, 600].forEach(ms => setTimeout(() => map.invalidateSize(false), ms));
+window.addEventListener('load', () => {
+  map.invalidateSize(false);
+  setTimeout(() => map.invalidateSize(false), 200);
+});
+
+// ── Tile layers ───────────────────────────────────────────────────────────────
+const tileLayers = {
+  osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }),
+  sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri – Source: Esri, DigitalGlobe, USDA FSA',
+    maxZoom: 19
+  }),
+  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>',
+    maxZoom: 17
+  })
+};
+tileLayers.osm.addTo(map);
+let activeLayer = 'osm';
+
+function switchLayer(name, btn) {
+  if (activeLayer === name) return;
+  map.removeLayer(tileLayers[activeLayer]);
+  tileLayers[name].addTo(map);
+  activeLayer = name;
+  document.querySelectorAll('#btn-osm,#btn-sat,#btn-topo').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// GPX track
+if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length > 0) {
+  const latlngs = GPX_DATA.points.map(p => [p.lat, p.lng]);
+
+  // Weißer Schatten-Layer darunter für Kontrast auf dunklem Satellit
+  L.polyline(latlngs, {
+    color: '#ffffff', weight: 8, opacity: .7
+  }).addTo(map);
+  // Hauptlinie: leuchtendes Orange – sichtbar auf Satellit UND Straßenkarte
+  const poly = L.polyline(latlngs, {
+    color: '#FF6A00', weight: 5, opacity: .95
+  }).addTo(map);
+  map.fitBounds(poly.getBounds(), {padding:[20,20]});
+
+  // Start / end markers
+  const startIcon = L.divIcon({
+    html: '<div style="background:#2E7D4F;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold">S</div>',
+    iconSize:[26,26], iconAnchor:[13,13]
+  });
+  const endIcon = L.divIcon({
+    html: '<div style="background:#C0392B;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold">Z</div>',
+    iconSize:[26,26], iconAnchor:[13,13]
+  });
+  L.marker(latlngs[0], {icon: startIcon}).addTo(map).bindPopup('<b>Start</b>');
+  L.marker(latlngs[latlngs.length-1], {icon: endIcon}).addTo(map).bindPopup('<b>Ziel</b>');
+}
+
+// Meeting point marker
+if (MEETING_LAT) {
+  const meetIcon = L.divIcon({
+    html: '<div style="background:#B85C00;color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:16px;">📍</div>',
+    iconSize:[30,30], iconAnchor:[15,15]
+  });
+  L.marker([MEETING_LAT, MEETING_LNG], {icon: meetIcon})
+   .addTo(map)
+   .bindPopup('<b>Treffpunkt</b><br>{{ tour.meeting_desc or "" }}');
+}
+
+// Photo markers – with MarkerCluster + hover sync
+// Graceful fallback: use a LayerGroup if MarkerClusterGroup not available
+let photoCluster;
+if (typeof L.markerClusterGroup === 'function') {
+  photoCluster = L.markerClusterGroup({
+    maxClusterRadius: 50,
+    spiderfyOnMaxZoom: true,
+    showCoverageOnHover: false,
+    zoomToBoundsOnClick: true,
+    iconCreateFunction: function(cluster) {
+      const count = cluster.getChildCount();
+      return L.divIcon({
+        html: `<div style="background:rgba(43,63,107,.9);color:#fff;border-radius:6px;
+                           min-width:36px;height:36px;display:flex;align-items:center;
+                           justify-content:center;font-size:11px;font-weight:700;padding:0 6px;
+                           border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">
+                 📷${count}
+               </div>`,
+        iconSize: null, iconAnchor: [18, 18], className: ''
+      });
+    }
+  });
+} else {
+  console.warn('MarkerCluster nicht geladen, verwende einfache Marker');
+  photoCluster = L.layerGroup();
+}
+map.addLayer(photoCluster);
+
+const photoMarkers = {};
+PHOTOS.forEach(p => {
+  const normalIcon = L.divIcon({
+    html: `<div style="background:#fff;border:2px solid #2B3F6B;border-radius:4px;width:42px;height:36px;overflow:hidden;transition:transform .15s">
+             <img src="${p.src}" style="width:100%;height:100%;object-fit:cover">
+           </div>`,
+    iconSize:[42,36], iconAnchor:[21,18], className:''
+  });
+  const activeIcon = L.divIcon({
+    html: `<div style="background:#fff;border:3px solid #C0392B;border-radius:6px;width:56px;height:48px;overflow:hidden;
+                       box-shadow:0 0 0 3px rgba(192,57,43,.4);transform:scale(1.1)">
+             <img src="${p.src}" style="width:100%;height:100%;object-fit:cover">
+           </div>`,
+    iconSize:[56,48], iconAnchor:[28,24], className:''
+  });
+
+  const capHtml = p.cap
+    ? `<div style="font-size:.82rem;font-weight:600;color:#222;margin:4px 0 2px">${p.cap}</div>`
+    : '';
+  const escapedCap = p.cap ? p.cap.replace(/'/g, "&#39;") : '';
+  const popup = L.popup({maxWidth:240, className:'photo-popup'}).setContent(`
+    <div style="text-align:center">
+      <img src="${p.src}"
+           style="width:220px;max-height:180px;object-fit:cover;border-radius:4px;
+                  display:block;cursor:zoom-in"
+           onclick="openLightbox('${p.src}','${escapedCap}')"
+           title="Klicken zum Vergrößern">
+      ${capHtml}
+      <div style="font-size:.68rem;color:#aaa;margin-top:2px">🔍 Tippen zum Vergrößern</div>
+      <div style="font-size:.72rem;color:#888;margin-top:3px">
+        ${p.is_taken ? '📸' : '📤'} ${p.date} &middot; ${p.user}
+      </div>
+    </div>
+  `);
+
+  const marker = L.marker([p.lat, p.lng], {icon: normalIcon})
+    .bindPopup(popup);
+  photoCluster.addLayer(marker);
+
+  photoMarkers[p.id] = { marker, normalIcon, activeIcon };
+});
+
+// Highlight marker when hovering photo thumbnail
+function highlightMarker(photoId) {
+  const pm = photoMarkers[photoId];
+  if (!pm) return;
+  pm.marker.setIcon(pm.activeIcon);
+  map.panTo(pm.marker.getLatLng(), {animate: true, duration: 0.4});
+}
+function unhighlightMarker(photoId) {
+  const pm = photoMarkers[photoId];
+  if (pm && !pm.marker.isPopupOpen()) pm.marker.setIcon(pm.normalIcon);
+}
+function jumpToMarker(photoId) {
+  const pm = photoMarkers[photoId];
+  if (!pm) return;
+  map.setView(pm.marker.getLatLng(), Math.max(map.getZoom(), 15), {animate:true});
+  pm.marker.openPopup();
+}
+
+// ── Weather widget ───────────────────────────────────────────────────────────
+(function() {
+  const tourDate = '{{ tour.tour_date.isoformat() if (tour.tour_date and not tour.is_date_open) else "" }}';
+  const today    = new Date().toISOString().split('T')[0];
+  if (tourDate < today) return;   // past tour – skip
+
+  // Use meeting point or GPX start for location
+  let lat = MEETING_LAT || (GPX_DATA && GPX_DATA.points[0] ? GPX_DATA.points[0].lat : null);
+  let lng = MEETING_LNG || (GPX_DATA && GPX_DATA.points[0] ? GPX_DATA.points[0].lng : null);
+  if (!lat) { lat = 53.1; lng = 9.2; }   // fallback: Ottersberg
+
+  const card = document.getElementById('weather-card');
+  const body = document.getElementById('weather-body');
+  if (!card) return;
+  card.removeAttribute('style');
+
+  // Parse start hour from tour start_time
+  const startTimeStr = '{{ tour.start_time or "09:00" }}';
+  const startHour = parseInt(startTimeStr.split(':')[0]) || 9;
+
+  // ── Tagesverlauf ──────────────────────────────────────────────────────────
+  let _verlaufLoaded = false;
+  let _verlaufChart  = null;
+
+  window.toggleVerlauf = function() {
+    const panel = document.getElementById('verlauf-panel');
+    const isHidden = panel.style.display === 'none';
+    panel.style.display = isHidden ? 'block' : 'none';
+    if (isHidden && !_verlaufLoaded) {
+      _verlaufLoaded = true;
+      fetch(`/api/wetter/verlauf?lat=${lat}&lng=${lng}&date=${tourDate}`)
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById('verlauf-loading').style.display = 'none';
+          if (data.error || !data.hours) return;
+
+          const hours  = data.hours;
+          const labels = hours.map(h => h.hour + ':00');
+          const temps  = hours.map(h => h.temp);
+          const rain   = hours.map(h => h.rain);
+          const wind   = hours.map(h => h.wind);
+
+          // Wetter-Symbole
+          const iconsEl = document.getElementById('verlauf-icons');
+          // Show only every 3 hours
+          iconsEl.innerHTML = hours.filter((_,i) => i%3===0).map(h =>
+            `<span title="${h.hour}:00">${h.icon}</span>`
+          ).join('');
+          iconsEl.style.display = 'flex';
+
+          const ctx = document.getElementById('verlauf-chart');
+          ctx.style.display = 'block';
+
+          // Mark tour start hour
+          const startPlugin = {
+            id: 'startLine',
+            afterDraw(chart) {
+              const idx = hours.findIndex(h => h.hour === startHour);
+              if (idx < 0) return;
+              const {ctx: c, chartArea: {top, bottom}} = chart;
+              const x = chart.scales.x.getPixelForIndex(idx);
+              c.save();
+              c.strokeStyle = '#f0a500';
+              c.lineWidth = 2;
+              c.setLineDash([4,3]);
+              c.beginPath(); c.moveTo(x, top); c.lineTo(x, bottom); c.stroke();
+              c.setLineDash([]);
+              c.fillStyle = '#f0a500';
+              c.font = '10px sans-serif';
+              c.fillText('Start', x+3, top+10);
+              c.restore();
+            }
+          };
+
+          // Achsen vorberechnen
+          const vTemps = temps.filter(v => v !== null && !isNaN(v));
+          const vRain  = rain.filter(v => v !== null && !isNaN(v));
+          const vWind  = wind.filter(v => v !== null && !isNaN(v));
+          const tMin = Math.floor(Math.min.apply(null, vTemps)) - 1;
+          const tMax = Math.ceil(Math.max.apply(null, vTemps))  + 1;
+          const rMax = Math.max(20, Math.ceil(Math.max.apply(null, vRain) / 10) * 10 + 5);
+          const wMax = Math.max(30, Math.ceil(Math.max.apply(null, vWind) / 10) * 10 + 5);
+
+          _verlaufChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  type: 'line',
+                  label: 'Temperatur °C',
+                  data: temps,
+                  borderColor: '#e74c3c',
+                  backgroundColor: 'rgba(231,76,60,.1)',
+                  borderWidth: 2.5,
+                  pointRadius: 0,
+                  tension: 0.4,
+                  fill: true,
+                  yAxisID: 'yTemp',
+                  order: 1,
+                },
+                {
+                  type: 'line',
+                  label: 'Wind km/h',
+                  data: wind,
+                  borderColor: '#8e44ad',
+                  borderWidth: 1.5,
+                  borderDash: [4, 3],
+                  pointRadius: 0,
+                  tension: 0.3,
+                  fill: false,
+                  yAxisID: 'yWind',
+                  order: 2,
+                },
+                {
+                  type: 'bar',
+                  label: 'Regenrisiko %',
+                  data: rain,
+                  backgroundColor: 'rgba(52,152,219,.4)',
+                  borderRadius: 2,
+                  yAxisID: 'yRain',
+                  order: 3,
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: true,
+              interaction: { mode: 'index', intersect: false },
+              plugins: {
+                legend: {
+                  display: true,
+                  position: 'bottom',
+                  labels: { font:{size:9}, boxWidth:12, padding:6 }
+                },
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) {
+                      var units = ['°C', 'km/h', '%'];
+                      return ' ' + ctx.dataset.label + ': ' + Math.round(ctx.parsed.y * 10) / 10 + units[ctx.datasetIndex];
+                    }
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  ticks: { maxTicksLimit: 9, font:{size:9} },
+                  grid: { display: false }
+                },
+                yTemp: {
+                  type: 'linear',
+                  position: 'left',
+                  min: tMin,
+                  max: tMax,
+                  ticks: { font:{size:9}, callback: function(v){ return v+'°'; }, maxTicksLimit: 6 },
+                  grid: { color: 'rgba(0,0,0,.06)' }
+                },
+                yWind: {
+                  type: 'linear',
+                  position: 'right',
+                  min: 0,
+                  max: wMax,
+                  ticks: { font:{size:9}, callback: function(v){ return v+' km/h'; }, maxTicksLimit: 4 },
+                  grid: { display: false }
+                },
+                yRain: {
+                  type: 'linear',
+                  position: 'right',
+                  min: 0,
+                  max: rMax,
+                  ticks: { font:{size:9}, callback: function(v){ return v+'%'; }, maxTicksLimit: 4 },
+                  grid: { display: false }
+                }
+              }
+            }
+          });
+        })
+        .catch(() => {
+          document.getElementById('verlauf-loading').textContent = 'Verlauf nicht verfügbar.';
+        });
+    }
+  };
+
+  fetch(`/api/wetter?lat=${lat}&lng=${lng}&date=${tourDate}&hour=${startHour}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { card.style.display='none'; return; }
+
+      const rainColor   = d.rain_pct > 60 ? 'danger' : d.rain_pct > 30 ? 'warning' : 'success';
+      const windBad     = d.wind_kmh > 35;
+      const rainBad     = d.rain_pct > 60;
+      const uvHigh      = d.uv && d.uv >= 6;
+
+      // Warning badges
+      let warnings = '';
+      if (rainBad)  warnings += '<span class="badge bg-danger me-1">🌧️ Regenwahrscheinlich</span>';
+      if (windBad)  warnings += '<span class="badge bg-warning text-dark me-1">💨 Starker Wind</span>';
+      if (uvHigh)   warnings += '<span class="badge bg-orange text-dark me-1">☀️ UV hoch</span>';
+      if (!warnings && d.rain_pct < 20 && !windBad)
+        warnings = '<span class="badge bg-success">🌞 Gutes Wetter!</span>';
+
+      // Stündliche Daten für Startzeit
+      let hourlyBlock = '';
+      if (d.hourly && d.hourly.temp !== null && d.hourly.temp !== undefined) {
+        const h = d.hourly;
+        const hRainC = h.rain_pct > 60 ? 'danger' : h.rain_pct > 30 ? 'warning' : 'success';
+        hourlyBlock = `
+          <div class="border-top pt-2 mt-2">
+            <div class="small text-muted fw-semibold mb-1">
+              ${d.hourly.icon} Prognose für ${startHour}:00 Uhr
+            </div>
+            <div class="row g-1 text-center" style="font-size:.82rem">
+              <div class="col-4">
+                <div class="text-muted small">Temp</div>
+                <div class="fw-bold">${h.temp}°C</div>
+              </div>
+              <div class="col-4">
+                <div class="text-muted small">Regen</div>
+                <div class="fw-bold text-${hRainC}">${h.rain_pct}%</div>
+              </div>
+              <div class="col-4">
+                <div class="text-muted small">Wind</div>
+                <div class="fw-bold">${h.wind_dir} ${h.wind} km/h</div>
+              </div>
+            </div>
+          </div>`;
+      }
+
+      body.innerHTML = `
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span style="font-size:2rem">${d.icon}</span>
+          <div>
+            <div class="fw-semibold">${d.label}</div>
+            <div class="small text-muted">Tagesprognose</div>
+          </div>
+        </div>
+        <div class="row g-2 text-center mb-2">
+          <div class="col-6">
+            <div class="small text-muted">🌡️ Temperatur</div>
+            <div class="fw-bold">${d.temp_min}° – ${d.temp_max}°C</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">💨 Wind max.</div>
+            <div class="fw-bold ${windBad ? 'text-warning' : ''}">
+              ${d.wind_dir} ${d.wind_kmh} km/h
+              ${d.wind_gusts ? `<small class="text-muted">(Böen ${d.wind_gusts})</small>` : ''}
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">🌧️ Niederschlag</div>
+            <div class="fw-bold">${d.rain_mm} mm</div>
+          </div>
+          <div class="col-6">
+            <div class="small text-muted">☔ Regenrisiko</div>
+            <div class="fw-bold text-${rainColor}">${d.rain_pct}%</div>
+          </div>
+          ${d.uv ? `
+          <div class="col-6">
+            <div class="small text-muted">☀️ UV-Index</div>
+            <div class="fw-bold ${uvHigh ? 'text-warning' : ''}">${d.uv}</div>
+          </div>` : ''}
+        </div>
+        <div class="text-center mb-2">${warnings}</div>
+        ${hourlyBlock}
+        <div class="text-muted text-center mt-2" style="font-size:.65rem">
+          Quelle: Open-Meteo · Daten für Tourstartort
+        </div>`;
+    })
+    .catch(() => { card.style.display = 'none'; });
+})();
+// ── Debug: log why elevation chart might not render ─────────────────────────
+if (!GPX_DATA) console.warn('Höhenprofil: GPX_DATA ist null/leer');
+else if (!document.getElementById('elevation-chart')) console.warn('Höhenprofil: canvas nicht gefunden');
+else if (!GPX_DATA.points || !GPX_DATA.points.length) console.warn('Höhenprofil: keine Punkte im GPX');
+else console.log('Höhenprofil: initialisiere mit', GPX_DATA.points.length, 'Punkten');
+
+if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length && document.getElementById('elevation-chart')) {
+  const allPts = GPX_DATA.points;
+  const step   = Math.max(1, Math.floor(allPts.length / 300));
+  const pts    = allPts.filter((_, i) => i % step === 0);
+  const eles   = pts.map(p => p.ele);
+
+  // Pre-calc cumulative distance (km) for each sampled point
+  function haverDist(a, b) {
+    const R = 6371, dLat = (b.lat-a.lat)*Math.PI/180, dLon = (b.lng-a.lng)*Math.PI/180;
+    const s = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+  }
+  const cumKm = [0];
+  for (let i = 1; i < pts.length; i++) {
+    cumKm.push(cumKm[i-1] + haverDist(pts[i-1], pts[i]));
+  }
+
+  // Pre-calc cumulative elevation gain
+  const cumGain = [0];
+  for (let i = 1; i < pts.length; i++) {
+    const diff = pts[i].ele - pts[i-1].ele;
+    cumGain.push(cumGain[i-1] + (diff > 0 ? diff : 0));
+  }
+
+  // Map crosshair marker
+  const crosshairIcon = L.divIcon({
+    html: '<div style="width:14px;height:14px;background:#C0392B;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(192,57,43,.7)"></div>',
+    iconSize:[14,14], iconAnchor:[7,7], className:''
+  });
+  let crosshair = null;
+
+  const chart = new Chart(document.getElementById('elevation-chart'), {
+    type: 'line',
+    data: {
+      labels: pts.map((_, i) => i),
+      datasets: [{
+        data: eles,
+        borderColor: '#2B3F6B',
+        backgroundColor: 'rgba(43,63,107,.15)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: '#C0392B',
+        pointHoverBorderColor: '#fff',
+        pointHoverBorderWidth: 2,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: true,
+          mode: 'index',
+          intersect: false,
+          backgroundColor: 'rgba(43,63,107,.92)',
+          titleColor: '#fff',
+          bodyColor: '#d0d8f0',
+          padding: 10,
+          cornerRadius: 6,
+          callbacks: {
+            title: (items) => {
+              const i = items[0].dataIndex;
+              return `Km ${cumKm[i].toFixed(2)}`;
+            },
+            label: (item) => {
+              const i = item.dataIndex;
+              return [
+                `⛰️  Höhe: ${eles[i].toFixed(0)} m`,
+                `↗️  Anstieg: ${cumGain[i].toFixed(0)} m`,
+                `📍  ${pts[i].lat.toFixed(5)}, ${pts[i].lng.toFixed(5)}`
+              ];
+            }
+          }
+        }
+      },
+      hover: { mode: 'index', intersect: false },
+      scales: {
+        x: { display: false },
+        y: {
+          grid: { color: 'rgba(0,0,0,.06)' },
+          ticks: { font: { size: 10 },
+            callback: v => v + ' m' }
+        }
+      },
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      onHover: (evt, elements) => {
+        if (!elements || !elements.length) {
+          // Hide info bar + remove crosshair
+          document.getElementById('elev-info').style.display = 'none';
+          if (crosshair) { map.removeLayer(crosshair); crosshair = null; }
+          return;
+        }
+        const i = elements[0].index;
+        const pt = pts[i];
+
+        // Show info bar
+        const info = document.getElementById('elev-info');
+        info.classList.remove('d-none');
+        document.getElementById('ei-km').textContent   = cumKm[i].toFixed(2) + ' km';
+        document.getElementById('ei-ele').textContent  = pt.ele.toFixed(0);
+        document.getElementById('ei-gain').textContent = cumGain[i].toFixed(0);
+        document.getElementById('ei-coords').textContent = `${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}`;
+
+        // Move/create crosshair on map
+        if (crosshair) {
+          crosshair.setLatLng([pt.lat, pt.lng]);
+        } else {
+          crosshair = L.marker([pt.lat, pt.lng], { icon: crosshairIcon, zIndexOffset: 1000 }).addTo(map);
+        }
+      }
+    }
+  });
+}
+</script>
+
+{% if tour.created_by == current_user.id or current_user.is_admin %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+<script>
+const grid = document.getElementById('photo-grid');
+if (grid) {
+  const hint = document.createElement('div');
+  hint.className = 'text-muted small mb-2';
+  hint.innerHTML = '<i class="bi bi-grip-horizontal me-1"></i>Fotos per Drag & Drop neu anordnen';
+  grid.parentNode.insertBefore(hint, grid);
+
+  Sortable.create(grid, {
+    animation:  150,
+    handle:     '.drag-handle',
+    ghostClass: 'opacity-50',
+    onEnd: function() {
+      const ids = [...grid.querySelectorAll('.photo-item')].map(el => el.dataset.id);
+      fetch('{{ url_for("photo_reorder", tour_id=tour.id) }}', {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json'},
+        body:    JSON.stringify({order: ids}),
+      }).then(r => r.json()).then(d => {
+        if (d.ok) {
+          hint.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i>Reihenfolge gespeichert';
+          setTimeout(() => {
+            hint.innerHTML = '<i class="bi bi-grip-horizontal me-1"></i>Fotos per Drag & Drop neu anordnen';
+          }, 2000);
+        } else {
+          hint.innerHTML = '<i class="bi bi-exclamation-triangle text-danger me-1"></i>Fehler: ' + (d.error || 'unbekannt');
+        }
+      }).catch(e => {
+        hint.innerHTML = '<i class="bi bi-exclamation-triangle text-danger me-1"></i>Verbindungsfehler beim Speichern';
+      });
+    }
+  });
+}
+</script>
+{% endif %}
+<script>
+
+// ── Live-Standort ─────────────────────────────────────────────────────────────
+const TOUR_ID = {{ tour.id }};
+let _liveActive   = false;
+let _liveWatchId  = null;
+let _liveInterval = null;
+let _liveMarkers  = {};
+
+function toggleLiveLocation() {
+  if (_liveActive) {
+    stopLiveLocation();
+  } else {
+    startLiveLocation();
+  }
+}
+
+function startLiveLocation() {
+  if (!navigator.geolocation) { alert('GPS nicht verfügbar.'); return; }
+  const btn = document.getElementById('live-btn');
+  if (btn) { btn.classList.add('btn-success'); btn.classList.remove('btn-outline-success'); }
+  _liveActive = true;
+
+  _liveWatchId = navigator.geolocation.watchPosition(pos => {
+    fetch('/api/location/update', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        tour_id:  TOUR_ID,
+        lat:      pos.coords.latitude,
+        lng:      pos.coords.longitude,
+        accuracy: pos.coords.accuracy
+      })
+    }).catch(() => {});
+  }, null, {enableHighAccuracy: true, maximumAge: 10000});
+
+  // Andere Standorte alle 15s abrufen
+  _pollLiveLocations();
+  _liveInterval = setInterval(_pollLiveLocations, 15000);
+}
+
+function stopLiveLocation() {
+  _liveActive = false;
+  if (_liveWatchId) navigator.geolocation.clearWatch(_liveWatchId);
+  if (_liveInterval) clearInterval(_liveInterval);
+  fetch('/api/location/stop', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({tour_id: TOUR_ID})
+  }).catch(() => {});
+  const btn = document.getElementById('live-btn');
+  if (btn) { btn.classList.remove('btn-success'); btn.classList.add('btn-outline-success'); }
+  Object.values(_liveMarkers).forEach(m => map.removeLayer(m));
+  _liveMarkers = {};
+}
+
+function _pollLiveLocations() {
+  fetch('/api/location/tour/' + TOUR_ID)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.locations) return;
+      const seen = new Set();
+      data.locations.forEach(loc => {
+        seen.add(loc.user_id);
+        const freshness = loc.ago < 30 ? '#00c851' : loc.ago < 120 ? '#ffbb33' : '#ff4444';
+        const icon = L.divIcon({
+          html: '<div style="background:' + freshness + ';width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>',
+          iconSize: [14,14], iconAnchor: [7,7], className: ''
+        });
+        const popup = '<b>' + loc.name + '</b><br><small>vor ' + loc.ago + 's</small>';
+        if (_liveMarkers[loc.user_id]) {
+          _liveMarkers[loc.user_id].setLatLng([loc.lat, loc.lng])
+                                   .setPopupContent(popup);
+        } else {
+          _liveMarkers[loc.user_id] = L.marker([loc.lat, loc.lng], {icon})
+            .bindPopup(popup).addTo(map);
+        }
+      });
+      // Entferne abgelaufene Marker
+      Object.keys(_liveMarkers).forEach(uid => {
+        if (!seen.has(parseInt(uid))) {
+          map.removeLayer(_liveMarkers[uid]);
+          delete _liveMarkers[uid];
+        }
+      });
+    }).catch(() => {});
+}
+
+// ── Offline Map Tiles voraus-cachen ──────────────────────────────────────────
+function prefetchTiles() {
+  const bounds = map.getBounds();
+  const zoom   = map.getZoom();
+  prefetchTilesForGPX(bounds, Math.min(zoom + 2, 16));
+  const btn = event.currentTarget;
+  btn.innerHTML = '<i class="bi bi-check2"></i>';
+  btn.title = 'Kacheln werden gecacht…';
+  setTimeout(() => { btn.innerHTML = '<i class="bi bi-download"></i>'; btn.title = 'Karte offline speichern'; }, 3000);
+}
+
+function prefetchTilesForGPX(bounds, maxZoom) {
+  if (!('serviceWorker' in navigator) || !bounds) return;
+  navigator.serviceWorker.ready.then(reg => {
+    const tiles = [];
+    for (let z = 10; z <= Math.min(maxZoom || 15, 15); z++) {
+      const min = latLngToTile(bounds.getSouth(), bounds.getWest(), z);
+      const max = latLngToTile(bounds.getNorth(), bounds.getEast(), z);
+      for (let x = min.x; x <= max.x; x++) {
+        for (let y = max.y; y <= min.y; y++) {
+          tiles.push('https://tile.openstreetmap.org/' + z + '/' + x + '/' + y + '.png');
+        }
+      }
+    }
+    if (tiles.length > 500) return; // Zu viele Kacheln
+    const ch = new MessageChannel();
+    ch.port1.onmessage = e => {
+      if (e.data.ok) console.log('Offline-Karte: ' + e.data.count + ' Kacheln gecacht');
+    };
+    reg.active.postMessage({type: 'PREFETCH_TILES', tiles}, [ch.port2]);
+  });
+}
+
+function latLngToTile(lat, lng, zoom) {
+  const n = Math.pow(2, zoom);
+  const x = Math.floor((lng + 180) / 360 * n);
+  const y = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+  return {x, y};
+}
+
+</script>
+{% endblock %}

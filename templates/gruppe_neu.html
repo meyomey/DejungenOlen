@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Neue Gruppe – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-md-6">
+    <h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
+      <i class="bi bi-plus-circle me-2"></i>Neue Gruppe erstellen
+    </h2>
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Gruppen-Name</label>
+            <input type="text" name="name" class="form-control" required
+                   placeholder="z.B. Radsportclub Musterhausen">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Slug (URL-Kürzel)</label>
+            <div class="input-group">
+              <span class="input-group-text text-muted">/gruppe/</span>
+              <input type="text" name="slug" class="form-control" required
+                     placeholder="z.B. rsc-musterhausen"
+                     pattern="[a-z0-9\-]+"
+                     title="Nur Kleinbuchstaben, Zahlen und Bindestriche">
+            </div>
+            <div class="form-text">Nur Kleinbuchstaben, Zahlen und Bindestriche. Kann später nicht geändert werden.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Logo <span class="text-muted">(optional)</span></label>
+            <div class="d-flex align-items-center gap-2">
+              <img id="new-group-logo-preview" style="width:48px;height:48px;border-radius:50%;
+                   object-fit:cover;background:#eee;display:none;flex-shrink:0">
+              <input type="file" id="new-group-logo" name="logo" class="form-control logo-crop-input"
+                     accept="image/png,image/jpeg,image/webp"
+                     onchange="document.getElementById('new-group-logo-preview').style.display='block'">
+            </div>
+            <div class="form-text">Nach Auswahl kannst du den Ausschnitt anpassen.</div>
+          </div>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Beschreibung <span class="text-muted">(optional)</span></label>
+            <textarea name="description" class="form-control" rows="3"
+                      placeholder="Kurze Beschreibung der Gruppe…"></textarea>
+          </div>
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-djo">
+              <i class="bi bi-check-lg me-1"></i>Gruppe erstellen
+            </button>
+            <a href="{{ url_for('admin_groups') }}" class="btn btn-outline-secondary">Abbrechen</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

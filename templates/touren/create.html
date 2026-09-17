@@ -1,0 +1,466 @@
+{% extends "base.html" %}
+{% block title %}Neue Tour – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block head %}
+<style>
+/* Fixierter Speichern-Button auf Mobile */
+@media (max-width: 767px) {
+  #sticky-save {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 1050;
+    padding: 10px 16px;
+    background: rgba(255,255,255,.95);
+    backdrop-filter: blur(4px);
+    border-top: 1px solid #dee2e6;
+    box-shadow: 0 -2px 8px rgba(0,0,0,.1);
+  }
+  #bottom-spacer { height: 72px; }
+}
+@media (min-width: 768px) {
+  #sticky-save { display: none !important; }
+}
+
+/* Live Badge-Vorschau */
+.badge-einfach   { background:#198754 !important; color:#fff }
+.badge-mittel    { background:#fd7e14 !important; color:#fff }
+.badge-schwer    { background:#dc3545 !important; color:#fff }
+.badge-sehr_schwer { background:#6f1d1b !important; color:#fff }
+
+/* GPX Drop-Zone */
+#create-gpx-drop { transition: all .2s; }
+#create-gpx-drop.drag-over {
+  border-color: var(--djo-navy) !important;
+  background: rgba(43,63,107,.07);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-9">
+
+    <h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
+      <i class="bi bi-plus-circle me-2"></i>Neue Tour erstellen
+    </h2>
+
+    <!-- Hinweis: Routenplaner -->
+    <div class="mb-4">
+      <button class="btn btn-outline-djo btn-sm w-100 d-flex justify-content-between align-items-center"
+              type="button" data-bs-toggle="collapse" data-bs-target="#routenplaner-hinweis">
+        <span><i class="bi bi-map me-2"></i>💡 Noch keine GPX-Datei? Hier findest du die besten kostenlosen Routenplaner</span>
+        <i class="bi bi-chevron-down"></i>
+      </button>
+      <div class="collapse" id="routenplaner-hinweis">
+        <div class="card mt-2">
+          <div class="card-body">
+            <p class="small text-muted mb-3">
+              Routen werden extern geplant und dann als <strong>GPX-Datei</strong> hier hochgeladen.
+              GPX ist das Standard-Format für GPS-Tracks – alle folgenden Programme unterstützen den Export.
+            </p>
+            <div class="row g-3">
+              <div class="col-12 col-sm-6">
+                <div class="d-flex gap-3 align-items-start">
+                  <div style="font-size:1.5rem;flex-shrink:0">🌟</div>
+                  <div>
+                    <div class="fw-semibold">
+                      <a href="https://www.komoot.com" target="_blank" class="text-decoration-none">Komoot</a>
+                    </div>
+                    <div class="small text-muted">
+                      Beliebtester Radtouren-Planer in Deutschland. Intelligentes Routing, Höhenprofil, große Community.
+                      Kostenlos nutzbar (GPX-Export inklusive).
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-sm-6">
+                <div class="d-flex gap-3 align-items-start">
+                  <div style="font-size:1.5rem;flex-shrink:0">🚀</div>
+                  <div>
+                    <div class="fw-semibold">
+                      <a href="https://bikerouter.de" target="_blank" class="text-decoration-none">BRouter / bikerouter.de</a>
+                    </div>
+                    <div class="small text-muted">
+                      Sehr präzises Fahrrad-Routing auf OSM-Basis. Ideal wenn man genaue Kontrolle über den Weg möchte.
+                      Komplett kostenlos, kein Konto nötig.
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-sm-6">
+                <div class="d-flex gap-3 align-items-start">
+                  <div style="font-size:1.5rem;flex-shrink:0">🏔</div>
+                  <div>
+                    <div class="fw-semibold">
+                      <a href="https://www.outdooractive.com" target="_blank" class="text-decoration-none">Outdooractive</a>
+                    </div>
+                    <div class="small text-muted">
+                      Sehr gute Karten, auch für MTB und Gravel. GPX-Export in der kostenlosen Version verfügbar.
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-sm-6">
+                <div class="d-flex gap-3 align-items-start">
+                  <div style="font-size:1.5rem;flex-shrink:0">🗺</div>
+                  <div>
+                    <div class="fw-semibold">
+                      <a href="https://www.openstreetmap.org" target="_blank" class="text-decoration-none">OpenStreetMap + uMap</a>
+                    </div>
+                    <div class="small text-muted">
+                      Für alle die eine Route manuell zeichnen wollen. Komplett kostenlos und ohne Anmeldung.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="alert alert-info py-2 small mt-3 mb-0">
+              <i class="bi bi-info-circle me-1"></i>
+              <strong>So geht's:</strong> Route im Routenplaner erstellen →
+              Als GPX-Datei herunterladen → Hier beim Erstellen der Tour hochladen.
+              Der Startpunkt und das Höhenprofil werden automatisch erkannt.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <form method="post" id="createForm" enctype="multipart/form-data">
+      <div class="row g-4">
+
+        <!-- ── Linke Spalte: Tour-Details ──────────────────────────────── -->
+        <div class="col-12 col-md-7 order-1">
+          <div class="card">
+            <div class="card-header card-header-djo">
+              <i class="bi bi-info-circle me-1"></i>Tour-Details
+            </div>
+            <div class="card-body">
+
+              {% if prefill %}
+              <div class="alert alert-success py-2 small mb-3">
+                <i class="bi bi-lightbulb me-1"></i>
+                Aus Vorschlag <strong>„{{ prefill.title }}"</strong> –
+                bitte Datum und Zeit anpassen!
+                {% if prefill.gpx_file %}
+                <br><i class="bi bi-check-circle me-1"></i>GPX wird übernommen.
+                {% endif %}
+              </div>
+              {% if prefill.gpx_file %}
+              <input type="hidden" name="proposal_gpx_file" value="{{ prefill.gpx_file }}">
+              {% endif %}
+              {% endif %}
+
+              <!-- Titel -->
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Titel *</label>
+                <input type="text" name="title" id="tour-title" class="form-control"
+                       value="{{ prefill.title if prefill else '' }}"
+                       placeholder="z.B. Sonntagsrunde durch die Wümmewiesen" required
+                       autofocus>
+              </div>
+
+              <!-- Datum + Zeit -->
+              <div class="row g-3 mb-3">
+                <div class="col-6">
+                  <label class="form-label fw-semibold">Datum
+                    <span class="text-muted fw-normal">(optional)</span>
+                  </label>
+                  <input type="date" name="tour_date" class="form-control"
+                         min="{{ today.strftime('%Y-%m-%d') if today else '' }}"
+                         placeholder="Noch offen">
+                  <div class="form-text">Leer lassen → Tour erscheint unter „Geplante Touren"</div>
+                </div>
+                <div class="col-6">
+                  <label class="form-label fw-semibold">Startzeit</label>
+                  <input type="time" name="start_time" class="form-control"
+                         value="{{ default_time }}">
+                </div>
+              </div>
+
+              <!-- Schwierigkeit mit Live-Badge -->
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Schwierigkeit</label>
+                <div class="d-flex align-items-center gap-3">
+                  <select name="difficulty" id="difficulty-select" class="form-select"
+                          onchange="updateBadge(this.value)">
+                    {% for val, label in difficulties %}
+                    <option value="{{ val }}"
+                      {% if prefill and prefill.difficulty == val %}selected{% endif %}>
+                      {{ label }}
+                    </option>
+                    {% endfor %}
+                  </select>
+                  <span id="difficulty-badge" class="badge fs-6 px-3 py-2">–</span>
+                </div>
+              </div>
+
+              <!-- Länge + externer Link -->
+              <div class="row g-3 mb-3">
+                <div class="col-6">
+                  <label class="form-label fw-semibold">
+                    Ungefähre Länge
+                    <span class="text-muted fw-normal">(km)</span>
+                  </label>
+                  <div class="input-group">
+                    <input type="number" name="approx_km" class="form-control"
+                           min="1" max="999" step="1" placeholder="z.B. 45">
+                    <span class="input-group-text">km</span>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <label class="form-label fw-semibold">
+                    Externer Link
+                    <span class="text-muted fw-normal">(optional)</span>
+                  </label>
+                  <input type="url" name="external_link" class="form-control"
+                         placeholder="Komoot / Strava / Garmin / GPX">
+                  <div class="form-text">Komoot, Strava, Garmin Connect, GPX-Link…</div>
+                </div>
+              </div>
+
+              <!-- Beschreibung mit Zeichenzähler -->
+              <div class="mb-0">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <label class="form-label fw-semibold mb-0">Beschreibung</label>
+                  <span id="desc-count" class="small text-muted">0 Zeichen</span>
+                </div>
+                <textarea name="description" id="desc-textarea" class="form-control" rows="5"
+                          placeholder="Routenbeschreibung, besondere Hinweise, Pausen, Caféstopp…"
+                          oninput="updateCharCount(this)">{% if prefill %}{% if prefill.description %}{{ prefill.description }}{% endif %}{% if prefill.region %}
+Region: {{ prefill.region }}{% endif %}{% if prefill.approx_km %}
+ca. {{ prefill.approx_km|int }} km{% endif %}{% if prefill.link %}
+{{ prefill.link }}{% endif %}{% endif %}</textarea>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Rechte Spalte: Treffpunkt ──────────────────────────────── -->
+        <div class="col-12 col-md-5 order-3 order-md-2">
+          <div class="card h-100">
+            <div class="card-header card-header-djo">
+              <i class="bi bi-geo-alt me-1"></i>Treffpunkt
+            </div>
+            <div class="card-body d-flex flex-column gap-2">
+              <p class="text-muted small mb-1">
+                Karte anklicken oder GPX hochladen – der Startpunkt wird automatisch übernommen.
+              </p>
+              <div id="meeting-map" style="height:240px;border-radius:6px;flex-shrink:0"></div>
+              <input type="hidden" name="meeting_lat" id="meeting_lat">
+              <input type="hidden" name="meeting_lng" id="meeting_lng">
+              <div id="coord-display" class="text-muted small"></div>
+              <div>
+                <label class="form-label fw-semibold mb-1">Treffpunkt-Beschreibung</label>
+                <input type="text" name="meeting_desc" id="meeting_desc" class="form-control"
+                       value="{{ default_meeting_desc or default_meeting_desc_last or '' }}"
+                       placeholder="z.B. Parkplatz Freibad">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── GPS-Track Spalte (Mobile: zwischen Details und Treffpunkt) ── -->
+        <div class="col-12 order-2 order-md-3">
+          <div class="card">
+        <div class="card-header card-header-djo">
+          <i class="bi bi-file-earmark-arrow-up me-1"></i>GPX-Track
+          <span class="text-white-50 fw-normal ms-1">(optional)</span>
+        </div>
+        <div class="card-body">
+          {% if prefill and prefill.gpx_file %}
+          <div class="alert alert-success py-2 small mb-3">
+            <i class="bi bi-file-earmark-check me-1"></i>
+            GPX aus Vorschlag wird übernommen – neue Datei ziehen um zu ersetzen.
+          </div>
+          {% endif %}
+          <div id="create-gpx-drop"
+               style="border:2px dashed #adb5bd;border-radius:8px;padding:20px;text-align:center;cursor:pointer"
+               onclick="document.getElementById('create-gpx-input').click()"
+               ondragover="event.preventDefault();this.classList.add('drag-over')"
+               ondragleave="this.classList.remove('drag-over')"
+               ondrop="handleGpxDrop(event)">
+            <i class="bi bi-file-earmark-arrow-up text-muted" style="font-size:2rem;display:block;margin-bottom:6px"></i>
+            <div class="small fw-semibold text-muted">GPX hierher ziehen oder klicken</div>
+            <div class="text-muted" style="font-size:.72rem">Karte, Höhenprofil und Startpunkt werden automatisch erkannt</div>
+            <div id="create-gpx-name" class="small mt-2 fw-semibold text-success"></div>
+          </div>
+          <input type="file" id="create-gpx-input" name="gpx_file" accept=".gpx" class="d-none"
+                 onchange="handleGpxFile(this.files[0])">
+
+          <!-- Mini-Vorschau des GPX-Tracks nach Upload -->
+          <div id="gpx-preview-wrap" style="display:none" class="mt-3">
+            <div id="gpx-preview-map" style="height:160px;border-radius:6px"></div>
+            <div id="gpx-preview-info" class="text-muted small mt-1"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Speichern (Desktop) ────────────────────────────────────────── -->
+      <div class="mt-4 d-flex gap-2 d-none d-md-flex">
+        <button type="submit" class="btn btn-djo px-5">
+          <i class="bi bi-check-lg me-1"></i>Tour speichern
+        </button>
+        <a href="{{ url_for('tour_list') }}" class="btn btn-outline-secondary">Abbrechen</a>
+          </div>
+        </div>
+      </div><!-- /row -->
+
+    </form>
+    <div id="bottom-spacer"></div>
+  </div>
+</div>
+
+<!-- ── Fixierter Speichern-Button (Mobile) ────────────────────────────────── -->
+<div id="sticky-save">
+  <div class="d-flex gap-2">
+    <button type="submit" form="createForm" class="btn btn-djo flex-grow-1">
+      <i class="bi bi-check-lg me-1"></i>Tour speichern
+    </button>
+    <a href="{{ url_for('tour_list') }}" class="btn btn-outline-secondary">✕</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Difficulty Badge Live-Vorschau ─────────────────────────────────────────
+function updateBadge(val) {
+  const el  = document.getElementById('difficulty-badge');
+  const opt = document.querySelector('#difficulty-select option[value="' + val + '"]');
+  el.textContent = opt ? opt.textContent.trim() : val;
+  el.className = 'badge fs-6 px-3 py-2 badge-' + val;
+}
+// Init
+const sel = document.getElementById('difficulty-select');
+if (sel) updateBadge(sel.value);
+
+// ── Zeichenzähler ──────────────────────────────────────────────────────────
+function updateCharCount(ta) {
+  const n = ta.value.length;
+  const el = document.getElementById('desc-count');
+  el.textContent = n + ' Zeichen';
+  el.className = 'small ' + (n > 800 ? 'text-warning' : 'text-muted');
+}
+const ta = document.getElementById('desc-textarea');
+if (ta && ta.value) updateCharCount(ta);
+
+// ── Treffpunkt-Karte ───────────────────────────────────────────────────────
+const DEFAULT_LAT = {{ default_meeting_lat or '53.1' }};
+const DEFAULT_LNG = {{ default_meeting_lng or '9.2' }};
+const HAS_DEFAULT = {{ 'true' if default_meeting_lat else 'false' }};
+
+const map = L.map('meeting-map').setView([DEFAULT_LAT, DEFAULT_LNG], HAS_DEFAULT ? 14 : 11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap'
+}).addTo(map);
+
+let marker = null;
+
+function setMeetingPoint(lat, lng, label) {
+  document.getElementById('meeting_lat').value = lat.toFixed(6);
+  document.getElementById('meeting_lng').value = lng.toFixed(6);
+  document.getElementById('coord-display').textContent =
+    '📍 ' + lat.toFixed(5) + ', ' + lng.toFixed(5);
+  if (label && !document.getElementById('meeting_desc').value) {
+    document.getElementById('meeting_desc').value = label;
+  }
+  if (marker) map.removeLayer(marker);
+  marker = L.marker([lat, lng]).addTo(map);
+  map.setView([lat, lng], 14);
+}
+
+// Vorhandenen Default-Marker setzen
+if (HAS_DEFAULT) {
+  setMeetingPoint(DEFAULT_LAT, DEFAULT_LNG, '');
+}
+
+map.on('click', e => setMeetingPoint(e.latlng.lat, e.latlng.lng, ''));
+
+// Geolocation nur wenn kein Default vorhanden
+if (!HAS_DEFAULT && navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    p => map.setView([p.coords.latitude, p.coords.longitude], 12),
+    () => {}
+  );
+}
+
+// ── GPX Upload + Track-Vorschau ────────────────────────────────────────────
+let gpxPreviewMap = null;
+
+function handleGpxDrop(e) {
+  e.preventDefault();
+  document.getElementById('create-gpx-drop').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) {
+    const dt = new DataTransfer();
+    dt.items.add(f);
+    document.getElementById('create-gpx-input').files = dt.files;
+    handleGpxFile(f);
+  }
+}
+
+function handleGpxFile(file) {
+  if (!file) return;
+  document.getElementById('create-gpx-name').textContent = '✓ ' + file.name;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    const pts  = parseGpxPoints(text);
+    if (!pts.length) return;
+
+    // Startpunkt als Treffpunkt vorschlagen
+    const [startLat, startLng] = pts[0];
+    setMeetingPoint(startLat, startLng, '');
+
+    // Mini-Preview-Karte
+    const wrap = document.getElementById('gpx-preview-wrap');
+    wrap.style.display = '';
+
+    if (!gpxPreviewMap) {
+      gpxPreviewMap = L.map('gpx-preview-map');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(gpxPreviewMap);
+    }
+
+    gpxPreviewMap.eachLayer(l => {
+      if (l instanceof L.Polyline || l instanceof L.Marker) gpxPreviewMap.removeLayer(l);
+    });
+
+    const poly = L.polyline(pts, {color: '#FF6A00', weight: 3}).addTo(gpxPreviewMap);
+    gpxPreviewMap.fitBounds(poly.getBounds(), {padding: [10, 10]});
+    L.marker(pts[0]).addTo(gpxPreviewMap).bindPopup('Start').openPopup();
+
+    // Distanz schätzen
+    let dist = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const [a, b] = [pts[i-1], pts[i]];
+      const dLat = (b[0]-a[0]) * Math.PI/180;
+      const dLng = (b[1]-a[1]) * Math.PI/180;
+      const x = Math.sin(dLat/2)**2 +
+                Math.cos(a[0]*Math.PI/180) * Math.cos(b[0]*Math.PI/180) *
+                Math.sin(dLng/2)**2;
+      dist += 6371 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+    }
+    document.getElementById('gpx-preview-info').textContent =
+      pts.length + ' Punkte · ca. ' + dist.toFixed(1) + ' km';
+  };
+  reader.readAsText(file);
+}
+
+function parseGpxPoints(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const trkpts = doc.querySelectorAll('trkpt');
+  const pts = [];
+  trkpts.forEach(pt => {
+    const lat = parseFloat(pt.getAttribute('lat'));
+    const lon = parseFloat(pt.getAttribute('lon'));
+    if (!isNaN(lat) && !isNaN(lon)) pts.push([lat, lon]);
+  });
+  // Jeder 5. Punkt für Performance
+  return pts.filter((_, i) => i % 5 === 0 || i === pts.length - 1);
+}
+</script>
+{% endblock %}

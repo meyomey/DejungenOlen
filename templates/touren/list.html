@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block title %}Touren – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+
+<!-- ── Header ────────────────────────────────────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
+    <i class="bi bi-bicycle me-2"></i>Touren
+  </h2>
+  {% if current_user.is_organizer %}
+  <a href="{{ url_for('tour_create') }}" class="btn btn-djo btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>Neue Tour
+  </a>
+  {% endif %}
+</div>
+
+<!-- ── Geplante Touren (mit Termin) ──────────────────────────────────────────── -->
+{% if tours %}
+<div class="d-flex align-items-center gap-2 mb-2">
+  <span class="fw-semibold small text-uppercase" style="color:var(--djo-navy);letter-spacing:.06em">
+    <i class="bi bi-calendar-check me-1"></i>Geplante Touren
+  </span>
+  <span class="badge bg-secondary" style="font-size:.65rem">{{ tours|length }}</span>
+</div>
+<div class="row g-3 mb-4">
+  {% for t in tours %}
+  {% set cover = cover_photos[t.id] if (cover_photos is defined and cover_photos and t.id in cover_photos) else none %}
+  <div class="col-12 col-md-6 col-xl-4">
+    <div class="card h-100 shadow-sm border-0 overflow-hidden">
+
+      <!-- Karte oben (immer, 150px) -->
+      {% if cover %}
+      <div style="height:150px;overflow:hidden;position:relative">
+        <img src="{{ url_for('serve_photo', filename=cover.filename) }}"
+             style="width:100%;height:100%;object-fit:cover;filter:brightness(.78);display:block">
+        <div style="position:absolute;inset:0;background:linear-gradient(to bottom,transparent 25%,rgba(0,0,0,.72))"></div>
+        <div style="position:absolute;bottom:8px;left:12px;right:10px">
+          <div class="d-flex justify-content-between align-items-end gap-2">
+            <span class="text-white fw-bold" style="font-size:.92rem;line-height:1.3">{{ t.title }}</span>
+            <span class="badge badge-{{ t.difficulty }} flex-shrink-0">{{ t.difficulty_label }}</span>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="mini-map-card" id="minimap-{{ t.id }}"
+           data-tour-id="{{ t.id }}"
+           data-has-gpx="{{ '1' if t.gpx_file else '0' }}"
+           data-lat="{{ t.meeting_lat or default_lat }}"
+           data-lng="{{ t.meeting_lng or default_lng }}"
+           style="height:150px;background:#e8edf2"></div>
+      {% endif %}
+
+      <!-- Card Body -->
+      <div class="card-body py-2 px-3 d-flex flex-column">
+        {% if not cover %}
+        <div class="d-flex justify-content-between align-items-start mb-1 gap-2">
+          <span class="fw-semibold" style="font-size:.92rem;color:var(--djo-navy)">{{ t.title }}</span>
+          <span class="badge badge-{{ t.difficulty }} flex-shrink-0">{{ t.difficulty_label }}</span>
+        </div>
+        {% endif %}
+
+        <!-- Datum + Wetter -->
+        <div class="d-flex align-items-center gap-2 mb-1 small text-muted">
+          <i class="bi bi-calendar-event"></i>
+          <strong style="color:var(--djo-navy)">{{ t.tour_date | de_date }}</strong>
+          {% if t.start_time %}<span>· {{ t.start_time }} Uhr</span>{% endif %}
+          {% if t.meeting_lat or t.gpx_km %}
+          <span id="wx-{{ t.id }}" class="ms-auto"
+                data-lat="{{ t.meeting_lat or default_lat }}"
+                data-lng="{{ t.meeting_lng or default_lng }}"
+                data-date="{{ t.tour_date.isoformat() if t.tour_date else '' }}">
+            <i class="bi bi-cloud opacity-25"></i>
+          </span>
+          {% endif %}
+        </div>
+
+        <!-- Stats Zeile -->
+        <div class="d-flex gap-3 small text-muted mb-2">
+          <span><i class="bi bi-people me-1"></i>{{ t.attending_count }} dabei</span>
+          {% if t.gpx_km %}<span><i class="bi bi-signpost-2 me-1"></i>{{ t.gpx_km }} km</span>{% endif %}
+          {% if t.meeting_desc %}<span class="text-truncate"><i class="bi bi-geo-alt me-1"></i>{{ t.meeting_desc }}</span>{% endif %}
+        </div>
+
+        {% if t.description %}
+        <p class="small text-muted mb-2 mt-auto" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
+          {{ t.description }}
+        </p>
+        {% endif %}
+
+        <!-- Buttons -->
+        <div class="d-flex gap-1 mt-auto pt-1">
+          <a href="{{ url_for('tour_detail', tour_id=t.id) }}" class="btn btn-djo btn-sm flex-grow-1">
+            <i class="bi bi-eye me-1"></i>Details
+          </a>
+          {% if current_user.is_admin or current_user.is_organizer or t.created_by == current_user.id %}
+          <a href="{{ url_for('tour_edit', tour_id=t.id) }}" class="btn btn-sm btn-outline-secondary" title="Bearbeiten">
+            <i class="bi bi-pencil"></i>
+          </a>
+          {% endif %}
+          {% if current_user.is_admin or t.created_by == current_user.id %}
+          <form method="post" action="{{ url_for('tour_delete', tour_id=t.id) }}"
+                onsubmit="return confirm('Tour löschen?')">
+            <button class="btn btn-sm btn-outline-danger" title="Löschen">
+              <i class="bi bi-trash3"></i>
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="text-center py-5 text-muted mb-4">
+  <i class="bi bi-calendar-x" style="font-size:3rem;opacity:.3"></i>
+  <p class="mt-3 mb-0">Keine Touren geplant.</p>
+  {% if current_user.is_organizer %}
+  <a href="{{ url_for('tour_create') }}" class="btn btn-djo mt-3">
+    <i class="bi bi-plus-lg me-1"></i>Erste Tour erstellen
+  </a>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ── Touren ohne Termin ─────────────────────────────────────────────────────── -->
+{% if tours_open %}
+<hr class="my-3">
+<div class="d-flex align-items-center gap-2 mb-2">
+  <span class="fw-semibold small text-uppercase" style="color:var(--djo-navy);letter-spacing:.06em">
+    <i class="bi bi-calendar-question me-1"></i>Touren ohne Termin
+  </span>
+  <span class="badge bg-secondary" style="font-size:.65rem">{{ tours_open|length }}</span>
+  <span class="text-muted small ms-1">– Datum wird vom Organisator gesetzt</span>
+</div>
+<div class="row g-3">
+  {% for t in tours_open %}
+  {% set r = rating_map.get(t.id, {}) if rating_map is defined else {} %}
+  <div class="col-12 col-md-6 col-xl-4">
+    <div class="card h-100 shadow-sm border-0 overflow-hidden">
+
+      <!-- Karte oben (160px) -->
+      <div class="mini-map-card" id="minimap-{{ t.id }}"
+           data-tour-id="{{ t.id }}"
+           data-has-gpx="{{ '1' if t.gpx_file else '0' }}"
+           data-lat="{{ t.meeting_lat or default_lat }}"
+           data-lng="{{ t.meeting_lng or default_lng }}"
+           style="height:160px;background:#e8edf2"></div>
+
+      <div class="card-body py-2 px-3 d-flex flex-column">
+
+        <!-- Titel + Badge -->
+        <div class="d-flex justify-content-between align-items-start mb-1 gap-2">
+          <span class="fw-semibold" style="font-size:.92rem;color:var(--djo-navy)">{{ t.title }}</span>
+          <span class="badge badge-{{ t.difficulty }} flex-shrink-0">{{ t.difficulty_label }}</span>
+        </div>
+
+        <!-- Meta -->
+        <div class="d-flex flex-wrap gap-3 mb-2 small text-muted">
+          {% if t.gpx_km %}<span><i class="bi bi-signpost-2 me-1"></i>{{ t.gpx_km }} km</span>{% endif %}
+          {% if t.gpx_ascent %}<span>⛰️ {{ t.gpx_ascent|int }} m</span>{% endif %}
+          {% if t.meeting_desc %}<span class="text-truncate"><i class="bi bi-geo-alt me-1"></i>{{ t.meeting_desc }}</span>{% endif %}
+        </div>
+
+        {% if t.description %}
+        <p class="small text-muted mb-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
+          {{ t.description }}
+        </p>
+        {% endif %}
+
+        <!-- Bewertung -->
+        {% set total = r.get('total', 0) %}
+        {% if total %}
+        <div class="mb-2">
+          <div class="d-flex justify-content-between small text-muted mb-1">
+            <span>{{ total }} Bewertung{{ 'en' if total != 1 }}</span>
+            <span>{% if r.good %}👍 {{ r.good }} {% endif %}{% if r.ok %}😐 {{ r.ok }} {% endif %}{% if r.bad %}👎 {{ r.bad }}{% endif %}</span>
+          </div>
+          <div class="rating-bar"><div class="rating-bar-inner"></div></div>
+        </div>
+        {% endif %}
+
+        <div class="mb-2">
+          <div class="d-flex gap-1 flex-wrap">
+            {% for val, emoji, label in [('good','👍','Klingt gut!'),('ok','😐','Geht so'),('bad','👎','Nicht meins')] %}
+            <button class="rating-btn {% if r.mine and r.mine.rating == val %}active-{{ val }}{% endif %}"
+                    onclick="rateRoute({{ t.id }}, '{{ val }}', this)">{{ emoji }} {{ label }}</button>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Termin setzen (Organizer) -->
+        {% if current_user.is_organizer %}
+        <div class="border-top pt-2 mb-2">
+          <form method="post" action="{{ url_for('tour_set_date', tour_id=t.id) }}"
+                class="d-flex gap-1 flex-wrap align-items-center">
+            <span class="small text-muted me-1"><i class="bi bi-calendar-plus"></i></span>
+            <input type="date" name="tour_date" class="form-control form-control-sm" style="width:140px">
+            <input type="time" name="start_time" class="form-control form-control-sm" style="width:95px" value="09:00">
+            <button class="btn btn-sm btn-djo"><i class="bi bi-check-lg"></i></button>
+          </form>
+        </div>
+        {% endif %}
+
+        <!-- Buttons -->
+        <div class="d-flex gap-1 mt-auto">
+          <a href="{{ url_for('tour_detail', tour_id=t.id) }}" class="btn btn-djo btn-sm flex-grow-1">
+            <i class="bi bi-eye me-1"></i>Details
+          </a>
+          <a href="{{ url_for('tour_time_vote', tour_id=t.id) }}" class="btn btn-outline-secondary btn-sm" title="Startzeit abstimmen">
+            <i class="bi bi-clock"></i>
+          </a>
+          {% if current_user.is_admin or current_user.is_organizer or t.created_by == current_user.id %}
+          <a href="{{ url_for('tour_edit', tour_id=t.id) }}" class="btn btn-outline-secondary btn-sm" title="Bearbeiten">
+            <i class="bi bi-pencil"></i>
+          </a>
+          {% endif %}
+        </div>
+
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+.rating-btn {
+  border:1px solid #dee2e6; border-radius:20px; padding:3px 10px;
+  font-size:.78rem; background:#fff; cursor:pointer; transition:all .15s;
+  white-space:nowrap;
+}
+.rating-btn:hover { opacity:.85; transform:scale(1.04); }
+.rating-btn.active-good { background:#198754; color:#fff; border-color:#198754; }
+.rating-btn.active-ok   { background:#fd7e14; color:#fff; border-color:#fd7e14; }
+.rating-btn.active-bad  { background:#dc3545; color:#fff; border-color:#dc3545; }
+.rating-bar { height:5px; border-radius:3px; background:#e9ecef; overflow:hidden; }
+.rating-bar-inner { height:100%; background:linear-gradient(90deg,#198754,#fd7e14,#dc3545); }
+</style>
+<script>
+function rateRoute(tourId, rating, btn) {
+  fetch('/touren/' + tourId + '/bewerten', {
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'rating=' + rating
+  }).then(function(r){return r.json();}).then(function(d){
+    if (d.ok) {
+      btn.closest('.d-flex').querySelectorAll('.rating-btn').forEach(function(b){
+        b.classList.remove('active-good','active-ok','active-bad');
+      });
+      btn.classList.add('active-' + rating);
+    }
+  }).catch(function(){});
+}
+
+// Wetter
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('[id^="wx-"]').forEach(function(el) {
+    var lat=el.dataset.lat, lng=el.dataset.lng, dt=el.dataset.date;
+    if (!lat||!lng||!dt){el.innerHTML='';return;}
+    var days=(new Date(dt)-new Date())/86400000;
+    if (days>14||days<-1){el.innerHTML='';return;}
+    fetch('/api/wetter?lat='+lat+'&lng='+lng+'&date='+dt)
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(d.error){el.innerHTML='';return;}
+        var h=d.icon||'';
+        if(d.temp_max!=null) h+=' <strong>'+Math.round(d.temp_max)+'°</strong>';
+        if(d.rain_pct!=null&&d.rain_pct>30)
+          h+=' <span class="badge bg-'+(d.rain_pct>60?'danger':'warning text-dark')+'">🌧️ '+d.rain_pct+'%</span>';
+        if((d.wind_gusts||d.wind_kmh)>35)
+          h+=' <span class="badge bg-warning text-dark">💨 '+Math.round(d.wind_gusts||d.wind_kmh)+'</span>';
+        el.innerHTML=h;
+      }).catch(function(){el.innerHTML='';});
+  });
+});
+
+// Mini-Karten
+var _miniMaps={};
+function _initMiniMap(el){
+  var id=el.dataset.tourId, hasGpx=el.dataset.hasGpx==='1';
+  var lat=parseFloat(el.dataset.lat)||null, lng=parseFloat(el.dataset.lng)||null;
+  if(_miniMaps[id]) return;
+  var m=L.map(el,{zoomControl:false,attributionControl:false,
+    dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
+    boxZoom:false,keyboard:false,tap:false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:16}).addTo(m);
+  _miniMaps[id]=m;
+  if(hasGpx){
+    fetch('/api/gpx/'+id).then(function(r){return r.json();}).then(function(d){
+      if(d.points&&d.points.length>1){
+        var poly=L.polyline(d.points,{color:'#2B3F6B',weight:3,opacity:.9}).addTo(m);
+        m.fitBounds(poly.getBounds(),{padding:[6,6]});
+        L.circleMarker(d.points[0],{radius:5,color:'#fff',fillColor:'#2E7D4F',fillOpacity:1,weight:1.5}).addTo(m);
+        L.circleMarker(d.points[d.points.length-1],{radius:5,color:'#fff',fillColor:'#C0392B',fillOpacity:1,weight:1.5}).addTo(m);
+      }
+      if(d.meeting){
+        L.circleMarker(d.meeting,{radius:6,color:'#fff',fillColor:'#f0a500',fillOpacity:1,weight:1.5}).addTo(m);
+        if(!d.points||d.points.length<2) m.setView(d.meeting,13);
+      } else if((!d.points||d.points.length<2)&&lat&&lng) m.setView([lat,lng],13);
+      setTimeout(function(){m.invalidateSize();},50);
+    });
+  } else if(lat&&lng){
+    m.setView([lat,lng],13);
+    L.circleMarker([lat,lng],{radius:7,color:'#fff',fillColor:'#f0a500',fillOpacity:1,weight:2}).addTo(m);
+    setTimeout(function(){m.invalidateSize();},50);
+  }
+}
+if('IntersectionObserver' in window){
+  var obs=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){if(e.isIntersecting)_initMiniMap(e.target);});
+  },{rootMargin:'200px'});
+  document.querySelectorAll('.mini-map-card').forEach(function(el){obs.observe(el);});
+} else {
+  document.querySelectorAll('.mini-map-card').forEach(_initMiniMap);
+}
+</script>
+{% endblock %}

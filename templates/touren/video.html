@@ -1,0 +1,624 @@
+{% extends "base.html" %}
+{% block title %}Tour-Video – {{ tour.title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="{{ url_for('tour_detail', tour_id=tour.id) }}" class="text-muted small">
+    <i class="bi bi-arrow-left me-1"></i>Zurück zur Tour
+  </a>
+</div>
+
+<h4 class="fw-bold mb-1" style="color:var(--djo-navy)">
+  <i class="bi bi-film me-2"></i>Tour-Video
+</h4>
+<p class="text-muted small mb-4">{{ tour.title }} · {{ tour.tour_date | de_date }}</p>
+
+<div class="row g-4">
+  <!-- Preview / Canvas -->
+  <div class="col-12 col-lg-8">
+    <div class="card">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span>Vorschau</span>
+        <div class="d-flex gap-2 flex-wrap">
+          <button id="btn-preview" class="btn btn-sm btn-outline-light" onclick="startPreview()">
+            <i class="bi bi-play-fill me-1"></i>Vorschau
+          </button>
+          <button id="btn-pause" class="btn btn-sm btn-outline-light" onclick="togglePause()"
+                  style="display:none">
+            <i class="bi bi-pause-fill me-1" id="pause-icon"></i><span id="pause-label">Pause</span>
+          </button>
+          <button id="btn-stop" class="btn btn-sm btn-outline-danger" onclick="stopPreview()"
+                  style="display:none">
+            <i class="bi bi-stop-fill me-1"></i>Stop
+          </button>
+          <button id="btn-record" class="btn btn-sm btn-warning" onclick="startRecording()">
+            <i class="bi bi-record-circle me-1"></i>WebM aufnehmen
+          </button>
+        </div>
+      </div>
+      <div class="card-body p-0 bg-black" style="position:relative">
+        <canvas id="video-canvas" width="1280" height="720"
+                style="width:100%;display:block;background:#000"></canvas>
+        <div id="rec-indicator"
+             style="display:none;position:absolute;top:10px;right:10px;
+                    background:red;color:#fff;padding:2px 8px;border-radius:4px;
+                    font-size:.75rem;font-weight:700">● REC</div>
+      </div>
+      <div class="card-footer d-flex align-items-center gap-3">
+        <div class="progress flex-grow-1" style="height:6px">
+          <div id="video-progress" class="progress-bar" style="width:0%;background:var(--djo-navy)"></div>
+        </div>
+        <span id="video-status" class="text-muted small">Bereit</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings + Server render -->
+  <div class="col-12 col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-sliders me-1"></i>Einstellungen
+      </div>
+      <div class="card-body">
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Sekunden pro Foto</label>
+          <input type="range" id="photo-duration" min="1" max="10" value="5" step="1"
+                 class="form-range" oninput="
+                   document.getElementById('pd-val').textContent=this.value;
+                   document.getElementById('server-photo-duration').value=this.value;">
+          <span class="small text-muted"><span id="pd-val">5</span> Sek.</span>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Übergänge</label>
+          <select id="transition" class="form-select form-select-sm">
+            <option value="fade">Überblenden</option>
+            <option value="slide">Schieben</option>
+            <option value="none">Ohne</option>
+          </select>
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="show-track" checked>
+          <label class="form-check-label small" for="show-track">Track-Animation zeigen</label>
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="show-profile" checked>
+          <label class="form-check-label small" for="show-profile">Höhenprofil zeigen</label>
+        </div>
+        <hr class="my-2">
+        <label class="form-label small fw-semibold">
+          🎵 Hintergrundmusik <span class="text-muted fw-normal">(optional)</span>
+        </label>
+        <div id="music-drop"
+             style="border:2px dashed #adb5bd;border-radius:6px;padding:10px;
+                    text-align:center;cursor:pointer;transition:all .2s;font-size:.8rem"
+             onclick="document.getElementById('music-input').click()"
+             ondragover="event.preventDefault();this.style.borderColor='#2B3F6B'"
+             ondragleave="this.style.borderColor='#adb5bd'"
+             ondrop="event.preventDefault();this.style.borderColor='#adb5bd';
+                     pickMusic(event.dataTransfer.files[0])">
+          <i class="bi bi-music-note-beamed me-1"></i>MP3 / AAC ziehen oder klicken
+          <div id="music-name" class="text-success small mt-1 fw-semibold"></div>
+          <div id="music-fade-hint" class="text-muted small mt-1" style="display:none">
+            <i class="bi bi-soundwave me-1"></i>Musik wird ein- und ausgeblendet (je ~2 Sek.)
+          </div>
+        </div>
+        <input type="file" id="music-input" accept="audio/*" class="d-none"
+               onchange="pickMusic(this.files[0])">
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" id="music-loop" checked>
+          <label class="form-check-label small" for="music-loop">Musik wiederholen</label>
+        </div>
+        <div class="mb-1 mt-1">
+          <label class="form-label small mb-0">Lautstärke</label>
+          <input type="range" id="music-volume" min="0" max="1" step="0.05" value="0.6"
+                 class="form-range">
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-download me-1"></i>Herunterladen
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-3">
+          <strong>WebM</strong> (Browser): Aufnahme der Vorschau, sofort verfügbar.<br>
+          <strong>MP4</strong> (Server): FFmpeg rendert alle Fotos als HD-Slideshow.
+        </p>
+        <a id="btn-download-webm" class="btn btn-outline-djo w-100 mb-2 disabled">
+          <i class="bi bi-file-earmark-play me-1"></i>WebM herunterladen
+        </a>
+        <form method="post" action="{{ url_for('tour_video_render', tour_id=tour.id) }}"
+              enctype="multipart/form-data" id="server-form">
+          <input type="hidden" name="photo_duration" id="server-photo-duration" value="5">
+          <input type="file" id="server-music" name="music" accept="audio/*" class="d-none">
+          <button type="button" class="btn btn-outline-secondary w-100 mb-2 btn-sm"
+                  onclick="document.getElementById('server-music').click()"
+                  id="btn-server-music">
+            <i class="bi bi-music-note me-1"></i>Musik für MP4 wählen
+          </button>
+          <div id="server-music-name" class="small text-success mb-2 text-center"></div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold mb-1">Format</label>
+            <div class="d-flex gap-2">
+              <label class="flex-fill">
+                <input type="radio" name="video_format" value="portrait" checked class="d-none">
+                <div class="btn btn-outline-djo w-100 small format-btn active-format">
+                  📱 Hochformat<br><small class="text-muted">1080×1920 · Reels/Stories</small>
+                </div>
+              </label>
+              <label class="flex-fill">
+                <input type="radio" name="video_format" value="landscape" class="d-none">
+                <div class="btn btn-outline-djo w-100 small format-btn">
+                  🖥️ Querformat<br><small class="text-muted">1920×1080 · TV/Desktop</small>
+                </div>
+              </label>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-djo w-100">
+            <i class="bi bi-file-earmark-play-fill me-1"></i>MP4 erstellen (Server)
+          </button>
+        </form>
+        <div class="text-muted small mt-1 text-center">
+          {{ photos|length }} Foto{{ 's' if photos|length != 1 }},
+          je 5 Sek. → ca. {{ (photos|length * 5) }}s
+        </div>
+      </div>
+    </div>
+
+    {% if photos %}
+    <div class="card">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-images me-1"></i>Fotos ({{ photos|length }})
+      </div>
+      <div style="max-height:220px;overflow-y:auto">
+        <div class="d-flex flex-wrap gap-1 p-2">
+          {% for p in photos %}
+          <img src="{{ url_for('serve_photo', filename=p.filename) }}"
+               style="width:56px;height:42px;object-fit:cover;border-radius:3px;opacity:.8"
+               title="{{ p.caption or (p.taken_at.strftime('%d.%m.%Y') if p.taken_at else '') }}">
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const GPX_DATA = {{ gpx_data | safe }};
+const PHOTOS   = [
+  {% for p in photos %}
+  { src: "{{ url_for('serve_photo', filename=p.filename) }}",
+    cap: {{ (p.caption or '')|tojson }},
+    date: "{{ (p.taken_at or p.created_at).strftime('%d.%m.%Y') }}" },
+  {% endfor %}
+];
+const TOUR_TITLE = {{ tour.title|tojson }};
+const TOUR_DATE  = "{{ tour.tour_date | de_date }}";
+const TOUR_KM    = {{ tour.gpx_km or 'null' }};
+const TOUR_ASC   = {{ tour.gpx_ascent or 'null' }};
+const GROUP_NAME = {{ (current_group.name if current_group else 'De jungen Olen')|tojson }};
+
+const canvas = document.getElementById('video-canvas');
+const ctx    = canvas.getContext('2d');
+const W = 1280, H = 720;
+let mediaRecorder = null, recordedChunks = [], isRecording = false;
+
+// ── Drawing helpers ────────────────────────────────────────────────────────────
+function drawBackground() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0d1b3e'); grad.addColorStop(1, '#162a5a');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+}
+
+function drawTitle(alpha=1, bgImg=null) {
+  ctx.globalAlpha = alpha;
+
+  // ── Hintergrund: echtes Foto (cover-fill) oder Fallback-Gradient ──────────
+  const cover = bgImg || imgs.find(i => i) || null;
+  if (cover) {
+    const scale = Math.max(W / cover.width, H / cover.height);
+    const dw = cover.width * scale, dh = cover.height * scale;
+    ctx.drawImage(cover, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    // Vignette: dunklere Ränder, Mitte etwas heller → Text gut lesbar
+    const vig = ctx.createLinearGradient(0, 0, 0, H);
+    vig.addColorStop(0,   'rgba(8,16,42,.72)');
+    vig.addColorStop(0.4, 'rgba(8,16,42,.42)');
+    vig.addColorStop(0.6, 'rgba(8,16,42,.42)');
+    vig.addColorStop(1,   'rgba(8,16,42,.80)');
+    ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+  } else {
+    drawBackground();
+    ctx.fillStyle = 'rgba(255,255,255,.06)';
+    ctx.beginPath(); ctx.arc(W/2, H/2-80, 90, 0, Math.PI*2); ctx.fill();
+  }
+
+  // ── Text mit Schatten ─────────────────────────────────────────────────────
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 14;
+
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 44px sans-serif';
+  ctx.fillText('🚴', W/2, H/2 - 92);
+
+  ctx.font = 'bold 54px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(TOUR_TITLE, W/2, H/2 + 16);
+
+  ctx.shadowBlur = 8;
+  ctx.font = '30px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,.92)';
+  ctx.fillText(TOUR_DATE, W/2, H/2 + 76);
+
+  if (TOUR_KM) {
+    ctx.font = '22px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,.78)';
+    ctx.fillText(`📏 ${TOUR_KM} km${TOUR_ASC ? '  ⛰️ ' + TOUR_ASC + ' m' : ''}`, W/2, H/2 + 118);
+  }
+
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+}
+
+function drawPhotoFrame(img, caption, dateStr, alpha=1) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  // Scale image to fit
+  const scale = Math.min(W/img.width, (H-80)/img.height);
+  const dw = img.width*scale, dh = img.height*scale;
+  ctx.drawImage(img, (W-dw)/2, (H-80-dh)/2+10, dw, dh);
+  // Bottom bar
+  ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(0, H-70, W, 70);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 22px sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(caption || dateStr || '', 20, H-35);
+  ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.font = '18px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(GROUP_NAME, W-20, H-35);
+  ctx.globalAlpha = 1;
+}
+
+function drawTrackFrame(progress) {
+  drawBackground();
+  if (!GPX_DATA || !GPX_DATA.points) return;
+  const pts = GPX_DATA.points.filter((_,i)=>i%Math.max(1,Math.floor(GPX_DATA.points.length/300))===0);
+  const lats=pts.map(p=>p.lat), lngs=pts.map(p=>p.lng);
+  const minLat=Math.min(...lats), maxLat=Math.max(...lats);
+  const minLng=Math.min(...lngs), maxLng=Math.max(...lngs);
+  const pad=80;
+  const proj=(lat,lng)=>[
+    pad + (lng-minLng)/(maxLng-minLng||1)*(W-2*pad),
+    H/2 + (1-(lat-minLat)/(maxLat-minLat||1))*(H/2-pad)
+  ];
+  const end=Math.floor(pts.length*Math.min(progress,1));
+  ctx.lineWidth=4; ctx.lineJoin='round'; ctx.strokeStyle='#64b5f6';
+  ctx.shadowBlur=8; ctx.shadowColor='#42a5f5';
+  ctx.beginPath();
+  for(let i=0;i<end;i++){
+    const[x,y]=proj(pts[i].lat,pts[i].lng);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke(); ctx.shadowBlur=0;
+  // Start dot
+  const[sx,sy]=proj(pts[0].lat,pts[0].lng);
+  ctx.beginPath();ctx.arc(sx,sy,8,0,Math.PI*2);
+  ctx.fillStyle='#4caf50';ctx.fill();
+  // Stats overlay
+  ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(20,20,300,80);
+  ctx.fillStyle='#fff'; ctx.font='bold 20px sans-serif';
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText(TOUR_TITLE, 35, 48);
+  ctx.fillStyle='rgba(255,255,255,.7)'; ctx.font='16px sans-serif';
+  ctx.fillText(`${Math.round(progress*100)}% der Strecke`, 35, 78);
+}
+
+function drawProfileFrame(progress) {
+  drawBackground();
+  if (!GPX_DATA || !GPX_DATA.points) return;
+  const pts = GPX_DATA.points.filter((_,i)=>i%Math.max(1,Math.floor(GPX_DATA.points.length/200))===0);
+  const eles=pts.map(p=>p.ele), minE=Math.min(...eles), maxE=Math.max(...eles);
+  const pad=80, end=Math.floor(pts.length*Math.min(progress,1));
+  // Draw gradient fill
+  const grad=ctx.createLinearGradient(0,pad,0,H-pad);
+  grad.addColorStop(0,'rgba(100,181,246,.6)'); grad.addColorStop(1,'rgba(100,181,246,.1)');
+  ctx.fillStyle=grad;
+  ctx.beginPath();
+  ctx.moveTo(pad,(H-pad));
+  for(let i=0;i<end;i++){
+    const x=pad+i/(pts.length-1)*(W-2*pad);
+    const y=H-pad-(eles[i]-minE)/(maxE-minE||1)*(H-2*pad);
+    ctx.lineTo(x,y);
+  }
+  ctx.lineTo(pad+((end-1)/(pts.length-1))*(W-2*pad),H-pad);
+  ctx.closePath(); ctx.fill();
+  // Line
+  ctx.strokeStyle='#64b5f6'; ctx.lineWidth=3;
+  ctx.beginPath();
+  for(let i=0;i<end;i++){
+    const x=pad+i/(pts.length-1)*(W-2*pad);
+    const y=H-pad-(eles[i]-minE)/(maxE-minE||1)*(H-2*pad);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  // Axis labels
+  ctx.fillStyle='rgba(255,255,255,.7)'; ctx.font='18px sans-serif';
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText(`${Math.round(maxE)}m`, 5, pad);
+  ctx.fillText(`${Math.round(minE)}m`, 5, H-pad);
+  ctx.textAlign='center';
+  ctx.fillText('Höhenprofil · '+TOUR_DATE, W/2, 30);
+  if(TOUR_KM) ctx.fillText(TOUR_KM+' km', W/2, H-20);
+}
+
+// ── Music handling ────────────────────────────────────────────────────────────
+let musicBuffer = null, audioCtx = null, musicSource = null, gainNode = null;
+let musicStream = null;
+
+function pickMusic(file) {
+  if (!file) return;
+  document.getElementById('music-name').textContent = '✓ ' + file.name;
+  document.getElementById('music-fade-hint').style.display = 'block';
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    musicBuffer = await audioCtx.decodeAudioData(e.target.result.slice(0));
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Show server music file name
+document.addEventListener('DOMContentLoaded', () => {
+  const si = document.getElementById('server-music');
+  if (si) si.onchange = () => {
+    const el = document.getElementById('server-music-name');
+    if (el && si.files[0]) el.textContent = '✓ ' + si.files[0].name;
+  };
+  const md = document.getElementById('music-drop');
+  if (md) md.addEventListener('dragover', e => e.preventDefault());
+});
+
+function startMusic(totalSecs) {
+  if (!musicBuffer || !audioCtx) return null;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  gainNode = audioCtx.createGain();
+  const vol = parseFloat(document.getElementById('music-volume').value);
+  const fadeSecs = Math.min(2, Math.max(0.5, totalSecs / 6));
+
+  // Fade-In
+  gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+  gainNode.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + fadeSecs);
+  // Fade-Out
+  if (totalSecs > fadeSecs * 2) {
+    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime + totalSecs - fadeSecs);
+    gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + totalSecs);
+  }
+
+  musicSource = audioCtx.createBufferSource();
+  musicSource.buffer = musicBuffer;
+  musicSource.loop = document.getElementById('music-loop').checked;
+  musicSource.connect(gainNode);
+  const dest = audioCtx.createMediaStreamDestination();
+  gainNode.connect(dest);
+  gainNode.connect(audioCtx.destination);
+  musicStream = dest.stream;
+  musicSource.start(0);
+  return dest;
+}
+
+function stopMusic() {
+  if (musicSource) { try { musicSource.stop(); } catch(e) {} musicSource = null; }
+}
+
+// ── Sequence ───────────────────────────────────────────────────────────────────
+let imgs = [];
+let animId = null, isPaused = false, stopRequested = false;
+
+function setPreviewControls(running) {
+  document.getElementById('btn-preview').style.display = running ? 'none' : '';
+  document.getElementById('btn-pause').style.display  = running ? '' : 'none';
+  document.getElementById('btn-stop').style.display   = running ? '' : 'none';
+}
+
+function togglePause() {
+  isPaused = !isPaused;
+  document.getElementById('pause-icon').className =
+    isPaused ? 'bi bi-play-fill me-1' : 'bi bi-pause-fill me-1';
+  document.getElementById('pause-label').textContent = isPaused ? 'Weiter' : 'Pause';
+  if (!isPaused && audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  if (isPaused && audioCtx && audioCtx.state === 'running') audioCtx.suspend();
+  status.textContent = isPaused ? '⏸ Pausiert' : 'Fortsetze…';
+}
+
+function stopPreview() {
+  stopRequested = true;
+  isPaused = false;
+  if (animId) cancelAnimationFrame(animId);
+  stopMusic();
+  setPreviewControls(false);
+  status.textContent = '⏹ Gestoppt';
+}
+const status = document.getElementById('video-status');
+const progress = document.getElementById('video-progress');
+
+async function preloadImages() {
+  status.textContent = 'Lade Fotos…';
+  imgs = await Promise.all(PHOTOS.map(p => new Promise((res,rej) => {
+    const i = new Image(); i.crossOrigin='anonymous';
+    i.onload=()=>res(i); i.onerror=()=>res(null);
+    i.src = p.src;
+  })));
+  status.textContent = 'Bereit';
+}
+
+function calcTotalSecs() {
+  const photoDur  = parseInt(document.getElementById('photo-duration').value);
+  const showTrack = document.getElementById('show-track').checked;
+  const showProf  = document.getElementById('show-profile').checked;
+  let secs = 3; // Titelfolie
+  if (showTrack && GPX_DATA) secs += 3;
+  secs += PHOTOS.length * photoDur;
+  if (showProf && GPX_DATA) secs += 3;
+  secs += 2; // Outro
+  return secs;
+}
+
+async function waitFrame() {
+  while (isPaused && !stopRequested) {
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (stopRequested) throw new Error('stopped');
+  return new Promise(r => { animId = requestAnimationFrame(r); });
+}
+
+async function runSequence(onFrame) {
+  const showTrack  = document.getElementById('show-track').checked;
+  const showProf   = document.getElementById('show-profile').checked;
+  const photoDur   = parseInt(document.getElementById('photo-duration').value);
+  const FPS        = 30;
+  const transition = document.getElementById('transition').value;
+
+  let totalFrames = FPS * 3; // Titelfolie
+  if (showTrack && GPX_DATA) totalFrames += FPS * 3;
+  totalFrames += PHOTOS.length * FPS * photoDur;
+  if (showProf && GPX_DATA) totalFrames += FPS * 3;
+  totalFrames += FPS * 2; // outro
+
+  let frame = 0;
+  function pct(f) { progress.style.width = Math.round(f/totalFrames*100)+'%'; }
+
+  async function next(frames, fn) {
+    for (let f=0;f<frames;f++) {
+      fn(f, frames);
+      pct(frame++);
+      await onFrame();
+    }
+  }
+
+  // 1. Title (3s) – erstes Foto als Hintergrund
+  const titleBg = imgs.find(i => i) || null;
+  status.textContent = 'Titelfolie…';
+  await next(FPS*3, (f,tot) => {
+    const a = f<FPS*.5 ? f/(FPS*.5) : f>tot-FPS*.5 ? (tot-f)/(FPS*.5) : 1;
+    drawTitle(a, titleBg);
+  });
+
+  // 2. Track (3s)
+  if (showTrack && GPX_DATA) {
+    status.textContent = 'Track-Animation…';
+    await next(FPS*3, (f,tot) => drawTrackFrame(f/tot));
+  }
+
+  // 3. Photos
+  for (let pi=0; pi<PHOTOS.length; pi++) {
+    const img = imgs[pi]; if(!img) continue;
+    const p = PHOTOS[pi];
+    status.textContent = `Foto ${pi+1}/${PHOTOS.length}…`;
+    await next(FPS*photoDur, (f,tot) => {
+      const fadeDur = FPS*0.4;
+      const a = transition==='none' ? 1
+        : f < fadeDur ? f/fadeDur
+        : f > tot-fadeDur ? (tot-f)/fadeDur : 1;
+      drawPhotoFrame(img, p.cap, p.date, a);
+    });
+  }
+
+  // 4. Profile (3s)
+  if (showProf && GPX_DATA) {
+    status.textContent = 'Höhenprofil…';
+    await next(FPS*3, (f,tot) => drawProfileFrame(f/tot));
+  }
+
+  // 5. Outro (2s) – letztes Foto als Hintergrund
+  const outroBg = [...imgs].reverse().find(i => i) || titleBg;
+  status.textContent = 'Outro…';
+  await next(FPS*2, (f,tot) => {
+    const a = f < FPS*.5 ? f/(FPS*.5) : 1;
+    drawTitle(a * (f<tot*.5 ? 1 : (tot-f)/(tot*.5)), outroBg);
+  });
+
+  progress.style.width='100%';
+}
+
+async function startPreview() {
+  if (!imgs.length) await preloadImages();
+  if (animId) cancelAnimationFrame(animId);
+  stopMusic();
+  isPaused = false;
+  stopRequested = false;
+  setPreviewControls(true);
+  const totalSecs = calcTotalSecs();
+  if (musicBuffer) startMusic(totalSecs);
+  try {
+    await runSequence(waitFrame);
+    status.textContent = 'Fertig';
+  } catch(e) {
+    if (e.message !== 'stopped') throw e;
+  }
+  stopMusic();
+  setPreviewControls(false);
+}
+
+async function startRecording() {
+  if (!imgs.length) await preloadImages();
+  if (!window.MediaRecorder) { alert('MediaRecorder wird nicht unterstützt.'); return; }
+
+  recordedChunks = [];
+  const videoStream = canvas.captureStream(30);
+  const totalSecs   = calcTotalSecs();
+
+  // Mix music if loaded
+  let combined = videoStream;
+  if (musicBuffer) {
+    const audioDest = startMusic(totalSecs);
+    if (audioDest) {
+      const tracks = [...videoStream.getTracks(), ...audioDest.stream.getTracks()];
+      combined = new MediaStream(tracks);
+    }
+  }
+
+  const mimeTypes = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  const mimeType  = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  mediaRecorder = new MediaRecorder(combined, { mimeType, videoBitsPerSecond: 4_000_000 });
+  mediaRecorder.ondataavailable = e => { if(e.data.size) recordedChunks.push(e.data); };
+  mediaRecorder.start(100);
+  document.getElementById('rec-indicator').style.display = 'block';
+  isRecording = true;
+
+  await runSequence(() => new Promise(r => requestAnimationFrame(r)));
+
+  stopMusic();
+  mediaRecorder.stop();
+  document.getElementById('rec-indicator').style.display = 'none';
+  isRecording = false;
+
+  setTimeout(() => {
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.getElementById('btn-download-webm');
+    a.href     = url;
+    a.download = `Tour_${TOUR_TITLE}_${TOUR_DATE}.webm`;
+    a.classList.remove('disabled');
+    a.textContent = '⬇️ WebM herunterladen';
+    status.textContent = `Fertig! ${Math.round(blob.size/1024/1024*10)/10} MB`;
+  }, 500);
+}
+
+// Draw initial frame
+drawTitle();
+preloadImages();
+// Format-Button Toggle
+document.querySelectorAll('.format-btn').forEach(btn => {
+  btn.closest('label').querySelector('input').addEventListener('change', () => {
+    document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active-format', 'btn-djo'));
+    document.querySelectorAll('.format-btn').forEach(b => b.classList.add('btn-outline-djo'));
+    btn.classList.add('active-format', 'btn-djo');
+    btn.classList.remove('btn-outline-djo');
+  });
+});
+</script>
+<style>
+.active-format { background: var(--djo-navy) !important; color: #fff !important; }
+</style>
+{% endblock %}

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ tour.title }} – {{ current_group.name if current_group else 'De jungen Olen' }}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root { --navy:#2B3F6B; --gold:#f0a500; }
+    * { box-sizing: border-box; }
+    body { font-family:'Segoe UI',Arial,sans-serif; font-size:13px; color:#222; background:#fff; }
+
+    /* ── Druckknopf-Leiste ── */
+    .no-print { display:flex; gap:.5rem; margin-bottom:1rem; }
+
+    /* ── Header ── */
+    .print-header {
+      background:var(--navy); color:#fff;
+      padding:1rem 1.5rem; border-radius:10px; margin-bottom:1.2rem;
+      display:flex; align-items:center; gap:1rem;
+    }
+    .print-header .logo {
+      width:52px; height:52px; border-radius:50%; object-fit:cover; flex-shrink:0;
+    }
+    .print-header h1 { font-size:1.5rem; margin:0 0 .2rem; font-weight:700; }
+    .print-header .meta { font-size:.82rem; opacity:.85; }
+
+    /* ── Stat Cards ── */
+    .stats-row { display:flex; gap:.75rem; flex-wrap:wrap; margin-bottom:1.2rem; }
+    .stat-card {
+      flex:1; min-width:100px; background:#f8f9ff;
+      border:1px solid #e0e4f0; border-radius:8px;
+      padding:.6rem .8rem; text-align:center;
+    }
+    .stat-card .num { font-size:1.6rem; font-weight:700; color:var(--navy); line-height:1.1; }
+    .stat-card .lbl { font-size:.68rem; color:#888; text-transform:uppercase; letter-spacing:.04em; }
+
+    /* ── Section titles ── */
+    .sec { color:var(--navy); font-weight:700; font-size:.9rem;
+      border-bottom:2px solid var(--navy); padding-bottom:3px;
+      margin:1.2rem 0 .6rem; display:flex; align-items:center; gap:.4rem; }
+
+    /* ── Map ── */
+    #print-map { height:320px; border-radius:8px; border:1px solid #ddd; margin-bottom:1rem; }
+
+    /* ── Elevation ── */
+    #elev-chart { max-height:100px; width:100%; margin-bottom:1rem; }
+
+    /* ── Info grid ── */
+    .info-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.5rem; margin-bottom:1rem; }
+    .info-item { background:#f8f9ff; border-radius:6px; padding:.4rem .7rem; font-size:.82rem; }
+    .info-item .lbl { color:#888; font-size:.72rem; display:block; }
+
+    /* ── Participants ── */
+    .pill { display:inline-block; background:#eef2ff; color:var(--navy);
+      border-radius:20px; padding:2px 10px; margin:2px;
+      font-size:.78rem; font-weight:600; }
+    .pill.maybe { background:#fff8e1; color:#7a5800; }
+
+    /* ── Photos ── */
+    .photo-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:6px; margin-bottom:1rem; }
+    .photo-item img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:5px; display:block; }
+    .photo-item .cap { font-size:.65rem; color:#666; margin-top:2px; line-height:1.2; }
+
+    /* ── Description ── */
+    .desc { background:#f8f9ff; border-left:4px solid var(--navy);
+      padding:.6rem .8rem; border-radius:0 6px 6px 0; margin-bottom:1rem;
+      font-size:.85rem; line-height:1.6; white-space:pre-wrap; }
+
+    /* ── Comments ── */
+    .comment { border-bottom:1px solid #f0f0f0; padding:.4rem 0; font-size:.82rem; }
+    .comment .author { font-weight:600; color:var(--navy); }
+    .comment .date { color:#aaa; font-size:.72rem; margin-left:.4rem; }
+
+    /* ── Footer ── */
+    .print-footer { margin-top:2rem; border-top:1px solid #e0e0e0;
+      padding-top:.5rem; color:#aaa; font-size:.7rem; text-align:center; }
+
+    /* ── Print Media ── */
+    @media print {
+      .no-print { display:none !important; }
+      body { font-size:11px; }
+      #print-map { height:260px !important; }
+      .print-header { border-radius:6px; padding:.75rem 1.2rem; }
+      .stat-card .num { font-size:1.3rem; }
+      .photo-grid { grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); }
+      @page { margin:1.5cm; }
+    }
+  </style>
+</head>
+<body class="p-3">
+
+<!-- ── Druckknopf ────────────────────────────────────────────────────────────── -->
+<div class="no-print">
+  <button onclick="window.print()"
+          style="background:var(--navy);color:#fff;border:0;border-radius:6px;padding:6px 16px;cursor:pointer;font-size:.85rem">
+    <i class="bi bi-printer me-1"></i>Drucken / Als PDF
+  </button>
+  <a href="{{ url_for('tour_detail', tour_id=tour.id) }}"
+     style="border:1px solid #ccc;border-radius:6px;padding:6px 14px;text-decoration:none;color:#555;font-size:.85rem;background:#fff">
+    ← Zurück zur Tour
+  </a>
+</div>
+
+<!-- ── Header ────────────────────────────────────────────────────────────────── -->
+<div class="print-header">
+  {% if current_group and current_group.logo %}
+  <img src="{{ url_for('static', filename='uploads/group_logos/' + current_group.logo) }}" class="logo">
+  {% else %}
+  <img src="{{ url_for('static', filename='logo.png') }}" class="logo">
+  {% endif %}
+  <div>
+    <h1>{{ tour.title }}</h1>
+    <div class="meta">
+      🚴 {{ current_group.name if current_group else 'De jungen Olen' }}
+      &middot; 📅 {{ tour.tour_date | de_date if not tour.is_date_open else 'Datum offen' }}
+      {% if tour.start_time %}&middot; 🕐 {{ tour.start_time }} Uhr{% endif %}
+      &middot; Schwierigkeit: <strong>{{ tour.difficulty_label }}</strong>
+      {% if tour.status == 'completed' %}&middot; ✅ Abgeschlossen{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Stats ─────────────────────────────────────────────────────────────────── -->
+<div class="stats-row">
+  {% if tour.gpx_km %}
+  <div class="stat-card">
+    <div class="num">{{ tour.gpx_km }}</div>
+    <div class="lbl">km Strecke</div>
+  </div>
+  {% elif tour.approx_km %}
+  <div class="stat-card">
+    <div class="num">~{{ tour.approx_km|int }}</div>
+    <div class="lbl">km (ca.)</div>
+  </div>
+  {% endif %}
+  {% if tour.gpx_ascent %}
+  <div class="stat-card">
+    <div class="num">{{ tour.gpx_ascent|int }}</div>
+    <div class="lbl">m Anstieg</div>
+  </div>
+  {% endif %}
+  {% if attending %}
+  <div class="stat-card">
+    <div class="num">{{ attending|length }}</div>
+    <div class="lbl">Dabei</div>
+  </div>
+  {% endif %}
+  {% if photos %}
+  <div class="stat-card">
+    <div class="num">{{ photos|length }}</div>
+    <div class="lbl">Fotos</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Tourinfo ───────────────────────────────────────────────────────────────── -->
+{% set has_info = tour.meeting_desc or tour.meeting_address or tour.region or tour.surface %}
+{% if has_info %}
+<div class="info-grid">
+  {% if tour.meeting_desc %}<div class="info-item"><span class="lbl">📍 Treffpunkt</span>{{ tour.meeting_desc }}</div>{% endif %}
+  {% if tour.meeting_address %}<div class="info-item"><span class="lbl">🏠 Adresse</span>{{ tour.meeting_address }}</div>{% endif %}
+  {% if tour.region %}<div class="info-item"><span class="lbl">🗺️ Region</span>{{ tour.region }}</div>{% endif %}
+  {% if tour.surface %}<div class="info-item"><span class="lbl">🛣️ Untergrund</span>{{ tour.surface }}</div>{% endif %}
+</div>
+{% endif %}
+
+<!-- ── Beschreibung ───────────────────────────────────────────────────────────── -->
+{% if tour.description %}
+<div class="sec"><i class="bi bi-text-paragraph"></i>Beschreibung</div>
+<div class="desc">{{ tour.description }}</div>
+{% endif %}
+
+<!-- ── Karte ──────────────────────────────────────────────────────────────────── -->
+{% if gpx_data != 'null' or tour.meeting_lat %}
+<div class="sec"><i class="bi bi-map"></i>Karte</div>
+<div id="print-map"></div>
+{% endif %}
+
+<!-- ── Höhenprofil ────────────────────────────────────────────────────────────── -->
+{% if gpx_data != 'null' %}
+<div class="sec"><i class="bi bi-activity"></i>Höhenprofil</div>
+<canvas id="elev-chart"></canvas>
+{% endif %}
+
+<!-- ── Teilnehmer ─────────────────────────────────────────────────────────────── -->
+{% if attending %}
+<div class="sec"><i class="bi bi-people-fill"></i>Teilnehmer ({{ attending|length }})</div>
+<div>
+  {% for p in attending %}
+  <span class="pill">{{ p.user.display_name }}</span>
+  {% endfor %}
+  {% if maybe %}
+  <div style="margin-top:.4rem;font-size:.78rem;color:#888">Vielleicht:</div>
+  {% for p in maybe %}
+  <span class="pill maybe">{{ p.user.display_name }}</span>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ── Fotos ──────────────────────────────────────────────────────────────────── -->
+{% if photos %}
+<div class="sec"><i class="bi bi-images"></i>Tourfotos ({{ photos|length }})</div>
+<div class="photo-grid">
+  {% for ph in photos %}
+  <div class="photo-item">
+    <img src="{{ url_for('serve_photo', filename=ph.filename) }}" alt="{{ ph.caption or '' }}">
+    {% if ph.caption %}<div class="cap">{{ ph.caption }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Kommentare ─────────────────────────────────────────────────────────────── -->
+{% if comments %}
+<div class="sec"><i class="bi bi-chat-text"></i>Kommentare</div>
+{% for c in comments %}
+<div class="comment">
+  <span class="author">{{ c.user.display_name }}</span>
+  <span class="date">{{ c.created_at.strftime('%d.%m.%Y') }}</span>
+  <div style="margin-top:2px">{{ c.content }}</div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- ── Footer ─────────────────────────────────────────────────────────────────── -->
+<div class="print-footer">
+  {{ current_group.name if current_group else 'De jungen Olen' }} Radgruppe &middot;
+  Erstellt {{ today.strftime('%d.%m.%Y') if today else '' }} &middot;
+  djo.wulmstorf.net
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+const GPX_DATA = {{ gpx_data | safe }};
+const MEET_LAT = {{ tour.meeting_lat or 'null' }};
+const MEET_LNG = {{ tour.meeting_lng or 'null' }};
+
+// ── Karte ────────────────────────────────────────────────────────────────────
+const mapEl = document.getElementById('print-map');
+if (mapEl) {
+  let center = [53.1, 9.2], zoom = 10;
+  if (GPX_DATA && GPX_DATA.points.length) {
+    center = [GPX_DATA.points[0].lat, GPX_DATA.points[0].lng]; zoom = 12;
+  } else if (MEET_LAT) {
+    center = [MEET_LAT, MEET_LNG]; zoom = 13;
+  }
+  const map = L.map('print-map', {zoomControl:false, attributionControl:false}).setView(center, zoom);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+  if (GPX_DATA && GPX_DATA.points.length) {
+    const ll = GPX_DATA.points.map(p => [p.lat, p.lng]);
+    const poly = L.polyline(ll, {color:'#2B3F6B', weight:4, opacity:.9}).addTo(map);
+    map.fitBounds(poly.getBounds(), {padding:[15,15]});
+    L.circleMarker(ll[0], {radius:8, color:'#fff', fillColor:'#2E7D4F', fillOpacity:1, weight:2})
+      .addTo(map).bindTooltip('Start', {permanent:false});
+    L.circleMarker(ll[ll.length-1], {radius:8, color:'#fff', fillColor:'#C0392B', fillOpacity:1, weight:2})
+      .addTo(map).bindTooltip('Ziel', {permanent:false});
+  }
+  if (MEET_LAT) {
+    L.circleMarker([MEET_LAT, MEET_LNG], {radius:9, color:'#fff', fillColor:'#f0a500', fillOpacity:1, weight:2})
+      .addTo(map).bindTooltip('Treffpunkt', {permanent:false});
+  }
+  {% for ph in photos %}{% if ph.has_gps and ph.lat and ph.lng %}
+  L.circleMarker([{{ ph.lat }}, {{ ph.lng }}], {radius:4, color:'#fff', fillColor:'#2B3F6B', fillOpacity:.8, weight:1.5})
+    .addTo(map);
+  {% endif %}{% endfor %}
+}
+
+// ── Höhenprofil ───────────────────────────────────────────────────────────────
+const elevEl = document.getElementById('elev-chart');
+if (elevEl && GPX_DATA && GPX_DATA.points) {
+  const pts  = GPX_DATA.points;
+  const step = Math.max(1, Math.floor(pts.length / 150));
+  const eles = pts.filter((_, i) => i % step === 0).map(p => p.ele);
+  const dists = pts.filter((_, i) => i % step === 0).map(p => p.dist ? (p.dist/1000).toFixed(1) : '');
+  new Chart(elevEl, {
+    type: 'line',
+    data: {
+      labels: dists,
+      datasets: [{
+        data: eles,
+        borderColor: '#2B3F6B', backgroundColor: 'rgba(43,63,107,.12)',
+        borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {legend:{display:false}},
+      scales: {
+        x: {ticks:{maxTicksLimit:8, font:{size:9}}, grid:{display:false}},
+        y: {ticks:{font:{size:9}}, title:{display:true, text:'m ü.NN', font:{size:9}}}
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>

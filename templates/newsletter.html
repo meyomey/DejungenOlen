@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Newsletter {{ month_label }} – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
+    📰 Monatsrückblick {{ month_label }}
+  </h2>
+  <div class="d-flex gap-2">
+    <button onclick="window.print()" class="btn btn-sm btn-djo no-print">
+      <i class="bi bi-printer me-1"></i>Drucken / PDF
+    </button>
+    <a href="{{ url_for('newsletter', year=year, month=(month-1) if month > 1 else 12) }}"
+       class="btn btn-sm btn-outline-djo no-print">← Vormonat</a>
+    {% if month < 12 or year < 2099 %}
+    <a href="{{ url_for('newsletter', year=year if month < 12 else year+1, month=(month+1) if month < 12 else 1) }}"
+       class="btn btn-sm btn-outline-djo no-print">Nächster →</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Hero -->
+<div class="hero-banner mb-4 text-center">
+{% if current_group and current_group.logo %}
+  <img src="{{ url_for('static', filename='uploads/group_logos/' + current_group.logo) }}"
+       style="width:80px;height:80px;border-radius:50%;object-fit:cover;margin-bottom:.5rem">
+  {% else %}
+  <img src="{{ url_for('static', filename='logo.png') }}"
+       style="width:80px;height:80px;border-radius:50%;object-fit:cover;margin-bottom:.5rem">
+  {% endif %}
+  <h3 class="fw-bold mb-1">{{ current_group.name if current_group else 'De jungen Olen' }}</h3>
+  <div class="lead">Monatsrückblick {{ month_label }}</div>
+</div>
+
+<!-- Stats -->
+<div class="row g-3 mb-4 text-center">
+  <div class="col-4">
+    <div class="stat-box">
+      <div class="stat-number">{{ tours|length }}</div>
+      <div class="stat-label">Touren</div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="stat-box">
+      <div class="stat-number">{{ total_km }}</div>
+      <div class="stat-label">km gesamt</div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="stat-box">
+      <div class="stat-number">{{ milestones.total_km }}</div>
+      <div class="stat-label">km Gesamtgruppe</div>
+    </div>
+  </div>
+</div>
+
+{% if tours %}
+<!-- Tour list -->
+<div class="card mb-4">
+  <div class="card-header card-header-djo">
+    <i class="bi bi-bicycle me-1"></i>Touren diesen Monat
+  </div>
+  <div class="list-group list-group-flush">
+    {% for t in tours %}
+    <a href="{{ url_for('tour_detail', tour_id=t.id) }}"
+       class="list-group-item list-group-item-action">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          <strong>{{ t.title }}</strong>
+          <div class="text-muted small">
+            {{ t.tour_date.strftime('%d.%m.%Y') if (t.tour_date and not t.is_date_open) else 'offen' }}
+            · <span class="badge badge-{{ t.difficulty }}">{{ t.difficulty_label }}</span>
+          </div>
+        </div>
+        <div class="text-end text-muted small">
+          {% if t.gpx_km %}<div>📏 {{ t.gpx_km }} km</div>{% endif %}
+          <div>👥 {{ t.attending_count }} Teilnehmer</div>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info">Keine abgeschlossenen Touren in {{ month_label }}.</div>
+{% endif %}
+
+<!-- Upcoming tours -->
+{% if upcoming %}
+<div class="card mb-4">
+  <div class="card-header card-header-djo">
+    <i class="bi bi-calendar3 me-1"></i>Nächste Touren
+  </div>
+  <ul class="list-group list-group-flush">
+    {% for t in upcoming %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+      <div>
+        <strong>{{ t.title }}</strong>
+        <div class="text-muted small">{{ t.tour_date | de_date }}{% if t.start_time %} · {{ t.start_time }} Uhr{% endif %}</div>
+      </div>
+      <span class="badge badge-{{ t.difficulty }}">{{ t.difficulty_label }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<!-- Group milestones -->
+{% if milestones.next_km %}
+<div class="card mb-4">
+  <div class="card-header card-header-djo">
+    <i class="bi bi-trophy me-1"></i>Gruppen-Meilensteine
+  </div>
+  <div class="card-body">
+    <div class="mb-3">
+      <div class="d-flex justify-content-between mb-1">
+        <span>Nächstes km-Ziel: <strong>{{ milestones.next_km }} km</strong></span>
+        <span class="fw-bold">{{ milestones.total_km }} / {{ milestones.next_km }} km</span>
+      </div>
+      <div class="progress" style="height:12px">
+        <div class="progress-bar" role="progressbar"
+             style="width:{{ milestones.pct_km }}%;background:var(--djo-navy)"
+             aria-valuenow="{{ milestones.pct_km }}" aria-valuemin="0" aria-valuemax="100">
+          {{ milestones.pct_km }}%
+        </div>
+      </div>
+    </div>
+    {% if milestones.achieved_km %}
+    <div>
+      Erreichte Meilensteine:
+      {% for m in milestones.achieved_km %}
+      <span class="badge bg-success me-1">🏅 {{ m }} km</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="text-muted text-center small mt-4">
+  🚴 {{ current_group.name if current_group else 'De jungen Olen' }} · {{ month_label }} ·
+  <a href="{{ url_for('rueckblick', year=year) }}">Jahresrückblick {{ year }}</a>
+</div>
+
+{% endblock %}

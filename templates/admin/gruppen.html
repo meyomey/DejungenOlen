@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Gruppen verwalten{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
+    <i class="bi bi-grid me-2"></i>Gruppen
+  </h2>
+  <a href="{{ url_for('group_create') }}" class="btn btn-djo btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>Neue Gruppe
+  </a>
+</div>
+
+<div class="row g-3">
+  {% for g in groups %}
+  <div class="col-12 col-md-6 col-xl-4">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div class="d-flex align-items-center gap-2">
+            {% if g.logo %}
+            <img src="{{ url_for('static', filename='uploads/group_logos/' + g.logo) }}"
+                 style="width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0"
+                 alt="{{ g.name }} Logo">
+            {% else %}
+            <div style="width:44px;height:44px;border-radius:50%;background:var(--djo-navy);
+                        display:flex;align-items:center;justify-content:center;
+                        color:#fff;font-weight:700;font-size:1.1rem;flex-shrink:0">
+              {{ g.name[:1].upper() }}
+            </div>
+            {% endif %}
+            <div>
+              <h5 class="fw-bold mb-0">{{ g.name }}</h5>
+              <div class="text-muted small"><code>/{{ g.slug }}</code></div>
+            </div>
+          </div>
+          <span class="badge {% if g.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+            {% if g.is_active %}aktiv{% else %}inaktiv{% endif %}
+          </span>
+        </div>
+        {% if g.description %}
+        <p class="text-muted small mb-3">{{ g.description }}</p>
+        {% endif %}
+        <div class="d-flex gap-3 small text-muted mb-2">
+          <span><i class="bi bi-people me-1"></i>{{ g.member_count }} Mitglieder</span>
+          <span><i class="bi bi-calendar3 me-1"></i>{{ g.tours.count() }} Touren</span>
+        </div>
+        <form method="post" action="{{ url_for('group_logo_upload', group_id=g.id) }}"
+              enctype="multipart/form-data" class="mb-3">
+          <div class="input-group input-group-sm">
+            <input type="file" id="logo-upload-{{ g.id }}" name="logo"
+                   class="form-control form-control-sm logo-crop-input"
+                   accept="image/png,image/jpeg,image/webp">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+              <i class="bi bi-upload"></i>
+            </button>
+          </div>
+          <div class="form-text">Nach Auswahl Ausschnitt anpassen, dann hochladen.</div>
+        </form>
+        <div class="d-flex gap-2">
+          <form method="post" action="{{ url_for('switch_group', group_id=g.id) }}" class="flex-grow-1">
+            <button type="submit" class="btn btn-djo btn-sm w-100">
+              <i class="bi bi-box-arrow-in-right me-1"></i>Wechseln
+            </button>
+          </form>
+          {% if groups|length > 1 %}
+          <div class="dropdown">
+            <button class="btn btn-sm btn-outline-danger" data-bs-toggle="dropdown" title="Löschen">
+              <i class="bi bi-trash3"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end p-2" style="min-width:260px">
+              {% if g.member_count == 0 and g.tours.count() == 0 %}
+              <li>
+                <form method="post" action="{{ url_for('group_delete', group_id=g.id) }}"
+                      onsubmit="return confirm('Leere Gruppe „{{ g.name }}\" wirklich löschen?')">
+                  <button type="submit" class="dropdown-item text-danger small">
+                    <i class="bi bi-trash3 me-1"></i>Löschen (Gruppe ist leer)
+                  </button>
+                </form>
+              </li>
+              {% else %}
+              <li class="px-2 py-1 small text-muted">
+                Gruppe hat noch {{ g.member_count }} Mitglied(er) und {{ g.tours.count() }} Tour(en).
+              </li>
+              <li>
+                <form method="post" action="{{ url_for('group_delete', group_id=g.id) }}"
+                      onsubmit="return confirm('ACHTUNG: Das löscht unwiderruflich ALLE {{ g.member_count }} Mitglieder, {{ g.tours.count() }} Touren, Fotos und Kommentare der Gruppe „{{ g.name }}\"!\\n\\nWirklich fortfahren?')">
+                  <input type="hidden" name="force" value="1">
+                  <button type="submit" class="dropdown-item text-danger small fw-bold">
+                    <i class="bi bi-exclamation-triangle me-1"></i>Endgültig löschen (inkl. aller Daten)
+                  </button>
+                </form>
+              </li>
+              {% endif %}
+            </ul>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

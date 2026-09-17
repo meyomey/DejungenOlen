@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}{{ member.display_name }} – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+  <!-- ── Linke Spalte ──────────────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-4">
+
+    <!-- Profilkarte -->
+    <div class="card mb-3">
+      <div class="card-body text-center pt-4 pb-3">
+        {% if member.avatar %}
+        <img src="{{ url_for('static', filename='uploads/avatars/' + member.avatar) }}"
+             alt="{{ member.display_name }}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+             style="width:90px;height:90px;border-radius:50%;object-fit:cover;
+                    border:3px solid var(--djo-navy);margin:0 auto 1rem;display:block">
+        {% else %}
+        <div class="participant-avatar mx-auto mb-3" style="width:90px;height:90px;font-size:2.5rem">
+          {{ member.display_name[0].upper() }}
+        </div>
+        {% endif %}
+
+        <h4 class="fw-bold mb-1">{{ member.name }}</h4>
+        {% if member.nickname and member.nickname != member.name %}
+        <div class="text-muted fst-italic mb-1">"{{ member.nickname }}"</div>
+        {% endif %}
+
+        <div class="d-flex justify-content-center gap-2 flex-wrap mt-2">
+          <span class="badge bg-secondary">
+            {{ {'admin':'👑 Admin','organizer':'🗓 Organisator','member':'👤 Mitglied'}.get(member.role, member.role) }}
+          </span>
+          <span class="badge bg-light text-dark border">
+            {{ {'trekking':'🚲 Trekking','rennrad':'🚴 Rennrad','mtb':'🚵 MTB','ebike':'⚡ E-Bike'}.get(member.bicycle_type, member.bicycle_type or '–') }}{% if member.is_ebike %} ⚡{% endif %}
+          </span>
+        </div>
+
+        <div class="text-muted small mt-2">
+          <i class="bi bi-calendar3 me-1"></i>Dabei seit {{ member.created_at.strftime('%B %Y') }}
+          {% if member.id == current_user.id and member.last_login %}
+          &nbsp;·&nbsp;<i class="bi bi-clock-history me-1"></i>Letzter Login: {{ member.last_login.strftime('%d.%m.%Y %H:%M') }} Uhr
+          {% endif %}
+        </div>
+
+        {% if member.id == current_user.id %}
+        <div class="d-flex gap-2 justify-content-center mt-3 pt-3 border-top">
+          <a href="{{ url_for('profil_edit') }}" class="btn btn-outline-djo btn-sm">
+            <i class="bi bi-pencil me-1"></i>Bearbeiten
+          </a>
+          <a href="{{ url_for('profil_export') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-download me-1"></i>Export
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Statistik -->
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-bar-chart me-1"></i>Statistik
+      </div>
+      <div class="card-body p-0">
+        <div class="row g-0 text-center">
+          <div class="col-6 p-3 border-end border-bottom">
+            <div class="stat-number">{{ stats.tour_count }}</div>
+            <div class="stat-label">Touren</div>
+          </div>
+          <div class="col-6 p-3 border-bottom">
+            <div class="stat-number">{{ stats.total_km }}</div>
+            <div class="stat-label">km gesamt</div>
+          </div>
+          <div class="col-6 p-3 border-end">
+            <div class="stat-number">{{ stats.rsvp_count }}</div>
+            <div class="stat-label">Anmeldungen</div>
+          </div>
+          <div class="col-6 p-3">
+            <div class="stat-number">
+              {{ (stats.total_km / stats.tour_count)|round(1) if stats.tour_count else '–' }}
+            </div>
+            <div class="stat-label">Ø km / Tour</div>
+          </div>
+        </div>
+        <!-- Dieses Jahr -->
+            {% if stats.year_count %}
+            <div class="card mb-3 border-success">
+              <div class="card-body py-2">
+                <div class="small fw-semibold text-success mb-1">
+                  🗓️ {{ stats.this_year }} – dieses Jahr
+                </div>
+                <div class="d-flex gap-3 flex-wrap">
+                  <span><strong>{{ stats.year_count }}</strong> Touren</span>
+                  {% if stats.year_km %}<span><strong>{{ stats.year_km }}</strong> km</span>{% endif %}
+                  {% if stats.year_ascent %}<span>⛰️ <strong>{{ stats.year_ascent|int }}</strong> m</span>{% endif %}
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            {% if stats.tours_by_year %}
+        <div class="px-3 pb-3 pt-1">
+          <div class="small text-muted fw-semibold mb-1 mt-2">Nach Jahr</div>
+          {% for y, data in stats.tours_by_year | dictsort | reverse %}
+          <div class="d-flex justify-content-between align-items-center py-1 border-top gap-2">
+            <span class="text-muted">{{ y }}</span>
+            <span class="fw-semibold">{{ data.count }} Tour{{ 'en' if data.count != 1 }}</span>
+            {% if data.km %}<span class="text-muted small">{{ data.km|round(1) }} km</span>{% endif %}
+            {% if data.ascent %}<span class="text-muted small">⛰️ {{ data.ascent|int }} m</span>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Abzeichen -->
+    <div class="card">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-award me-1"></i>Abzeichen</span>
+        {% if badges %}<span class="badge bg-warning text-dark">{{ badges|length }}</span>{% endif %}
+      </div>
+      <div class="card-body">
+        {% if badges %}
+        <div class="row g-3">
+          {% for b in badges %}
+          <div class="col-4 text-center" title="{{ b.desc }}">
+            <div style="font-size:2rem">{{ b.icon }}</div>
+            <div class="small fw-semibold text-muted" style="font-size:.72rem;line-height:1.2">{{ b.label }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">
+          Noch keine Abzeichen.{% if member.id == current_user.id %} Nimm an Touren teil um Abzeichen zu verdienen!{% endif %}
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div><!-- /col-lg-4 -->
+
+  <!-- ── Rechte Spalte: Tourenlogbuch ────────────────────────────────────── -->
+  <div class="col-12 col-lg-8">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <h4 class="fw-bold mb-0" style="color:var(--djo-navy)">
+        <i class="bi bi-journal-richtext me-2"></i>
+        {% if member.id == current_user.id %}Mein Logbuch{% else %}Tourenlogbuch{% endif %}
+      </h4>
+      {% if stats.tour_count %}
+      <span class="badge bg-light text-dark border fs-6 fw-normal px-3">
+        {{ stats.tour_count }} Tour{{ 'en' if stats.tour_count != 1 }} &middot; {{ stats.total_km }} km
+      </span>
+      {% endif %}
+    </div>
+
+    {% if participations %}
+    <div class="card">
+
+      <!-- Desktop-Tabelle -->
+      <div class="table-responsive d-none d-md-block">
+        <table class="table table-hover mb-0 align-middle">
+          <thead class="table-admin">
+            <tr>
+              <th>Datum</th>
+              <th>Tour</th>
+              <th>Schwierigkeit</th>
+              <th>Strecke</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in participations %}
+            <tr>
+              <td class="text-nowrap text-muted small">{{ p.tour.tour_date.strftime('%d.%m.%Y') if (p.tour.tour_date and not p.tour.is_date_open) else 'offen' }}</td>
+              <td class="fw-semibold">{{ p.tour.title }}</td>
+              <td><span class="badge badge-{{ p.tour.difficulty }}">{{ p.tour.difficulty_label }}</span></td>
+              <td class="text-nowrap">
+                {% if p.tour.gpx_km %}<i class="bi bi-signpost-2 me-1 text-muted"></i>{{ p.tour.gpx_km }} km
+                {% else %}–{% endif %}
+              </td>
+              <td>
+                <a href="{{ url_for('tour_detail', tour_id=p.tour.id) }}"
+                   class="btn btn-sm btn-outline-djo">Details</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Mobile-Karten -->
+      <div class="d-md-none">
+        {% for p in participations %}
+        <a href="{{ url_for('tour_detail', tour_id=p.tour.id) }}"
+           class="d-block text-decoration-none text-dark p-3 {% if not loop.last %}border-bottom{% endif %}">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div>
+              <div class="fw-semibold">{{ p.tour.title }}</div>
+              <div class="text-muted small mt-1">
+                <i class="bi bi-calendar3 me-1"></i>{{ p.tour.tour_date.strftime('%d.%m.%Y') if (p.tour.tour_date and not p.tour.is_date_open) else 'offen' }}
+                {% if p.tour.gpx_km %}
+                <span class="ms-2"><i class="bi bi-signpost-2 me-1"></i>{{ p.tour.gpx_km }} km</span>
+                {% endif %}
+              </div>
+            </div>
+            <span class="badge badge-{{ p.tour.difficulty }} flex-shrink-0">{{ p.tour.difficulty_label }}</span>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+
+    </div>
+    {% else %}
+    <div class="card">
+      <div class="card-body text-center py-5 text-muted">
+        <div style="font-size:3rem">🚲</div>
+        <h5 class="mt-3">Noch keine Touren im Logbuch</h5>
+        <p class="mb-0">Nimm an Touren teil und lass deine Teilnahme bestätigen.</p>
+      </div>
+    </div>
+    {% endif %}
+
+  </div><!-- /col-lg-8 -->
+
+</div>
+
+{% if member.id == current_user.id %}
+<div class="row mt-3">
+  <div class="col-12">
+    <a href="{{ url_for('geplante_touren') }}" class="btn btn-outline-djo btn-sm">
+      <i class="bi bi-star me-1"></i>Geplante Touren & meine Bewertungen
+    </a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

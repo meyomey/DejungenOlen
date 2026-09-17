@@ -1,0 +1,214 @@
+<div class="row">
+  <div class="col-12">
+    <!-- Photos -->
+    <div class="card mb-3" id="fotos">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-images me-1"></i>Fotos
+          {% if photos %}<span class="badge bg-light text-dark ms-1">{{ photos|length }}</span>{% endif %}
+          {% if tour.status == 'completed' %}
+          <span class="badge bg-secondary ms-1" title="Fotos können auch nach der Tour noch hinzugefügt werden">Archiv</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="card-body">
+        <!-- Photo upload with drag & drop + client-side GPS preservation -->
+        <form id="photo-form" method="post"
+              action="{{ url_for('tour_upload_photos', tour_id=tour.id) }}"
+              enctype="multipart/form-data" class="mb-3">
+          <div id="photo-drop"
+               style="border:2px dashed #adb5bd;border-radius:8px;padding:14px;
+                      text-align:center;cursor:pointer;transition:all .2s;margin-bottom:6px"
+               onclick="document.getElementById('photo-input').click()"
+               ondragover="dzOver(event,'photo-drop')"
+               ondragleave="dzLeave('photo-drop')"
+               ondrop="dzDrop(event,'photo-drop','photo-input',null)">
+            <i class="bi bi-images text-muted" style="font-size:1.6rem;display:block;margin-bottom:4px"></i>
+            <div class="fw-semibold text-muted small">Fotos hierher ziehen</div>
+            <div class="text-muted" style="font-size:.72rem">
+              klicken · <kbd style="font-size:.65rem;padding:1px 4px">Strg+V</kbd> aus Zwischenablage · oder ZIP-Archiv
+            </div>
+            <div id="photo-names" class="small text-success mt-1 fw-semibold"></div>
+          </div>
+          <input type="file" id="photo-input" name="photos" accept="image/*,.zip" multiple
+                 class="d-none" onchange="photoFilesSelected(this)">
+          <div id="gps-hidden-fields"></div>
+          <div id="photo-submit-row" class="d-none d-flex align-items-center gap-2 mt-1">
+            <button type="submit" class="btn btn-sm btn-djo">
+              <i class="bi bi-upload me-1"></i>Hochladen
+            </button>
+            <span id="gps-status" class="text-muted small">GPS-Daten werden automatisch erkannt</span>
+          </div>
+        </form>
+
+        <!-- Photo grid -->
+        {% if photos %}
+        <!-- Bulk controls -->
+        <form method="post" action="{{ url_for('photos_bulk_delete', tour_id=tour.id) }}"
+              id="bulk-form" onsubmit="return confirmBulkDelete()">
+        <div class="d-flex gap-2 mb-2 flex-wrap align-items-center">
+          <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                  onclick="toggleAllPhotos(true)">
+            <i class="bi bi-check-all"></i> Alle
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                  onclick="toggleAllPhotos(false)">
+            Keine
+          </button>
+          <button type="submit" id="bulk-delete-btn"
+                  class="btn btn-sm btn-outline-danger py-0" style="display:none">
+            <i class="bi bi-trash me-1"></i>Löschen
+            (<span id="bulk-count">0</span>)
+          </button>
+        </div>
+        <!-- Photo grid (same layout on all screens, swipe only in lightbox) -->
+        <div class="row g-2" id="photo-grid">
+          {% for p in photos %}
+          <div class="col-6 col-sm-4 col-md-3 photo-item" data-id="{{ p.id }}">
+            <div class="card h-100">
+              {% if tour.created_by == current_user.id or current_user.is_admin %}
+              <div class="drag-handle text-center text-muted py-1" style="cursor:grab;font-size:.7rem;background:#f8f9fa;border-radius:4px 4px 0 0;user-select:none">
+                <i class="bi bi-grip-horizontal"></i>
+              </div>
+              {% endif %}
+              <div class="position-relative"
+                   {% if p.has_gps %}
+                   onmouseenter="highlightMarker({{ p.id }})"
+                   onmouseleave="unhighlightMarker({{ p.id }})"
+                   {% endif %}>
+                <!-- Checkbox for bulk select -->
+                <input type="checkbox" name="photo_ids" value="{{ p.id }}"
+                       class="photo-checkbox form-check-input position-absolute"
+                       style="top:6px;left:6px;z-index:10;width:18px;height:18px;cursor:pointer"
+                       onchange="updateBulkCount()">
+                <img src="{{ url_for('serve_photo', filename=p.filename) }}"
+                     data-lb-src="{{ url_for('serve_photo', filename=p.filename) }}"
+                     data-lb-cap="{{ p.caption|e if p.caption else '' }}"
+                     style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:4px 4px 0 0;cursor:zoom-in;display:block"
+                     alt="{{ p.caption or 'Foto' }}"
+                     title="🔍 Antippen zum Vergrößern{% if p.has_gps %} · GPS vorhanden{% endif %}"
+                     onclick="lbOpenFromEl(this)">
+                {% if p.has_gps %}
+                <span class="badge bg-success position-absolute top-0 end-0 m-1"
+                      title="GPS: {{ p.lat }}, {{ p.lng }}">
+                  <i class="bi bi-geo-alt-fill"></i>
+                </span>
+                {% else %}
+                <span class="badge bg-secondary position-absolute top-0 end-0 m-1" title="Kein GPS">
+                  <i class="bi bi-geo-alt"></i>
+                </span>
+                {% endif %}
+              </div>
+              <div class="p-1">
+                {% set can_edit_photo = current_user.is_admin or current_user.is_organizer or p.user_id == current_user.id or tour.created_by == current_user.id %}
+                {% if can_edit_photo %}
+                <form method="post" action="{{ url_for('photo_caption', photo_id=p.id) }}" class="mb-1">
+                  <div class="input-group input-group-sm">
+                    <input type="text" name="caption" class="form-control"
+                           placeholder="Beschriftung…" value="{{ p.caption or '' }}"
+                           style="font-size:.7rem">
+                    <button class="btn btn-outline-secondary py-0" type="submit" title="OK">✓</button>
+                  </div>
+                </form>
+                {% endif %}
+                <div class="d-flex gap-1 flex-wrap">
+                  {% if can_edit_photo %}
+                  <button class="btn btn-sm py-0 px-1 {% if p.has_gps %}btn-outline-warning{% else %}btn-outline-primary{% endif %}"
+                          style="font-size:.68rem"
+                          onclick="openGpsModal({{ p.id }},{{ p.lat or 'null' }},{{ p.lng or 'null' }})"
+                          title="{% if p.has_gps %}GPS korrigieren{% else %}GPS manuell setzen{% endif %}">
+                    <i class="bi bi-pencil-square"></i>
+                    {% if not p.has_gps %}GPS{% endif %}
+                  </button>
+                  {% if not p.has_gps %}
+                  <button class="btn btn-sm btn-outline-info py-0 px-1"
+                          style="font-size:.68rem"
+                          onclick="reextractGps({{ p.id }}, this)" title="EXIF erneut auslesen">
+                    <i class="bi bi-arrow-repeat"></i>
+                  </button>
+                  {% endif %}
+                  {% if p.has_gps %}
+                  <form method="post" action="{{ url_for('photo_clear_gps', photo_id=p.id) }}"
+                        onsubmit="return confirm('GPS entfernen?')">
+                    <button class="btn btn-sm btn-outline-secondary py-0 px-1"
+                            style="font-size:.68rem" title="GPS entfernen">
+                      <i class="bi bi-geo-alt"></i>✕
+                    </button>
+                  </form>
+                  {% endif %}
+                  <form method="post" action="{{ url_for('photo_delete', photo_id=p.id) }}"
+                        onsubmit="return confirm('Foto löschen?')">
+                    <button class="btn btn-sm btn-outline-danger py-0 px-1"
+                            style="font-size:.68rem" title="Löschen">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+                <div class="text-muted mt-1" style="font-size:.62rem">
+                  {% if p.taken_at %}
+                  📸 {{ p.taken_at.strftime('%d.%m.%Y %H:%M') }}
+                  {% else %}
+                  📤 {{ p.created_at.strftime('%d.%m.%Y %H:%M') }}
+                  {% endif %}
+                  · {{ p.user.display_name }}
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div><!-- end photo-grid -->
+        </form>
+        {% else %}
+        <p class="text-muted small mb-0">Noch keine Fotos hochgeladen.</p>
+        {% endif %}
+        </div><!-- end photo-grid -->
+        {% if photos %}</form>{% endif %}
+      </div>
+    </div>
+
+    <!-- GPS Editor M
+
+    <!-- GPS Editor Modal -->
+    <div class="modal fade" id="gpsModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header card-header-djo">
+            <h5 class="modal-title fw-bold text-white">
+              <i class="bi bi-geo-alt me-2"></i>GPS-Position setzen / korrigieren
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted small mb-2">
+              Klicke auf die Karte oder gib Koordinaten manuell ein. Dann <strong>Speichern</strong>.
+            </p>
+            <div id="gps-modal-map" style="height:300px;border-radius:8px;margin-bottom:1rem"></div>
+            <form id="gpsModalForm" method="post">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold small">Breitengrad (lat)</label>
+                  <input type="number" step="0.000001" id="gps-modal-lat" name="lat"
+                         class="form-control" placeholder="52.963700" required>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label fw-semibold small">Längengrad (lng)</label>
+                  <input type="number" step="0.000001" id="gps-modal-lng" name="lng"
+                         class="form-control" placeholder="9.089100" required>
+                </div>
+                <div class="col-md-4">
+                  <button type="submit" class="btn btn-djo w-100">
+                    <i class="bi bi-check-lg me-1"></i>Speichern
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>  </div>
+</div>
+</div>
+
+<!-- ── Videos ────────────────────────────────────────────────────────────────── -->

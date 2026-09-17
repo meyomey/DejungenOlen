@@ -1,0 +1,434 @@
+/* ─── De jungen Olen – Brand colors ────────────────────────────────────────── */
+:root {
+  --djo-navy:   #2B3F6B;
+  --djo-red:    #C0392B;
+  --djo-olive:  #5D6A2E;
+  --djo-cream:  #D4C895;
+  --djo-light:  #F4F6FB;
+  --djo-border: #dce3f0;
+}
+
+/* ─── Base ──────────────────────────────────────────────────────────────────── */
+body {
+  background-color: var(--djo-light);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: #333;
+}
+
+/* ─── Navbar ────────────────────────────────────────────────────────────────── */
+.navbar-djo {
+  background-color: var(--djo-navy);
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+}
+.navbar-djo .navbar-brand {
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: #fff !important;
+  letter-spacing: .5px;
+}
+.navbar-djo .nav-link {
+  color: rgba(255,255,255,.85) !important;
+  font-size: .93rem;
+  transition: color .15s;
+}
+.navbar-djo .nav-link:hover,
+.navbar-djo .nav-link.active {
+  color: var(--djo-cream) !important;
+}
+.navbar-logo {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: 8px;
+}
+
+/* ─── Cards ─────────────────────────────────────────────────────────────────── */
+.card {
+  border: 1px solid var(--djo-border);
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.06);
+}
+.card-header-djo {
+  background: linear-gradient(135deg, var(--djo-navy), #3d5a96);
+  color: #fff;
+  border-radius: 9px 9px 0 0 !important;
+  font-weight: 600;
+}
+
+/* ─── Tour card ──────────────────────────────────────────────────────────────── */
+.tour-card {
+  transition: transform .15s, box-shadow .15s;
+  border-left: 4px solid var(--djo-navy);
+}
+.tour-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(43,63,107,.18);
+}
+.tour-card.completed {
+  border-left-color: var(--djo-olive);
+  opacity: .85;
+}
+
+/* ─── Difficulty badges ──────────────────────────────────────────────────────── */
+.badge-leicht  { background-color: var(--djo-olive) !important; }
+.badge-mittel  { background-color: #e8a000 !important; color:#fff !important; }
+.badge-schwer  { background-color: var(--djo-red) !important; }
+
+/* ─── Buttons ────────────────────────────────────────────────────────────────── */
+.btn-djo {
+  background-color: var(--djo-navy);
+  color: #fff;
+  border: none;
+}
+.btn-djo:hover {
+  background-color: #1e2f52;
+  color: #fff;
+}
+.btn-outline-djo {
+  border-color: var(--djo-navy);
+  color: var(--djo-navy);
+}
+.btn-outline-djo:hover {
+  background-color: var(--djo-navy);
+  color: #fff;
+}
+
+/* ─── Map ────────────────────────────────────────────────────────────────────── */
+#tour-map {
+  height: 420px;
+  border-radius: 8px;
+  border: 1px solid var(--djo-border);
+  z-index: 1;
+}
+#meeting-map {
+  height: 300px;
+  border-radius: 8px;
+  border: 1px solid var(--djo-border);
+  z-index: 1;
+}
+.leaflet-popup-content b { color: var(--djo-navy); }
+
+/* ─── Elevation chart ────────────────────────────────────────────────────────── */
+#elevation-chart {
+  /* Height controlled by parent div - do not set here */
+}
+
+/* ─── Photo grid ─────────────────────────────────────────────────────────────── */
+.photo-thumb {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.photo-thumb:hover { opacity: .85; }
+.photo-gps-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: .65rem;
+}
+
+/* ─── RSVP buttons ───────────────────────────────────────────────────────────── */
+.rsvp-group .btn { font-size: .88rem; }
+.rsvp-group .btn.active-rsvp { box-shadow: 0 0 0 3px var(--djo-cream); }
+
+/* ─── Hero / Dashboard ───────────────────────────────────────────────────────── */
+.hero-banner {
+  background: linear-gradient(135deg, var(--djo-navy) 0%, #3d5a96 100%);
+  color: #fff;
+  border-radius: 12px;
+  padding: 1.8rem 2rem;
+  margin-bottom: 1.5rem;
+}
+.hero-banner h1 { font-weight: 700; font-size: 1.6rem; }
+.hero-banner .lead { opacity: .85; }
+
+/* ─── Stat badge ─────────────────────────────────────────────────────────────── */
+.stat-box {
+  background: #fff;
+  border: 1px solid var(--djo-border);
+  border-radius: 10px;
+  padding: .9rem 1rem;
+  text-align: center;
+}
+.stat-box .stat-number {
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--djo-navy);
+  line-height: 1;
+}
+.stat-box .stat-label {
+  font-size: .78rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+
+/* ─── Admin table ────────────────────────────────────────────────────────────── */
+.table-admin th {
+  background-color: var(--djo-navy);
+  color: #fff;
+  font-weight: 500;
+  font-size: .88rem;
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────────────────── */
+footer {
+  background-color: var(--djo-navy);
+  color: rgba(255,255,255,.6);
+  font-size: .82rem;
+  padding: .9rem 0;
+  margin-top: 3rem;
+}
+
+/* ─── Flash messages ─────────────────────────────────────────────────────────── */
+.alert { border-radius: 8px; font-size: .93rem; }
+
+/* ─── Participant list ───────────────────────────────────────────────────────── */
+.participant-avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background-color: var(--djo-navy);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: .8rem;
+  margin-right: 4px;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────────── */
+@media (max-width: 576px) {
+  .hero-banner { padding: 1.2rem 1rem; }
+  #tour-map { height: 280px; }
+}
+
+/* ─── Dark Mode ─────────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --djo-navy:   #7b9fd4;   /* Überschriften im Dark Mode: helles Blau statt dunkel */
+  --djo-gold:   #f0c060;
+  --djo-light:  #1a1e2e;
+  --djo-border: #2e3555;
+  color-scheme: dark;
+}
+[data-theme="dark"] body {
+  background-color: #12151f;
+  color: #d8e0f0;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .card {
+  background-color: #1e2235;
+  border-color: #2e3555;
+  color: #d8e0f0;
+}
+[data-theme="dark"] .card-header {
+  background-color: #252a40;
+  border-color: #2e3555;
+  color: #d8e0f0;
+}
+[data-theme="dark"] .card-header.card-header-djo {
+  background: linear-gradient(135deg, #1e3a6e, #2a4a8a);
+  color: #fff;
+}
+[data-theme="dark"] .card-footer,
+[data-theme="dark"] .list-group-item {
+  background-color: #1e2235;
+  border-color: #2e3555;
+  color: #d8e0f0;
+}
+[data-theme="dark"] .list-group-item-action:hover {
+  background-color: #252a40;
+}
+[data-theme="dark"] .bg-light {
+  background-color: #252a40 !important;
+}
+[data-theme="dark"] .bg-white {
+  background-color: #1e2235 !important;
+}
+
+/* ── Text & Überschriften ────────────────────────────────────────────────────*/
+[data-theme="dark"] h1, [data-theme="dark"] h2,
+[data-theme="dark"] h3, [data-theme="dark"] h4,
+[data-theme="dark"] h5, [data-theme="dark"] h6 {
+  color: #d8e0f0;
+}
+/* Inline style="color:var(--djo-navy)" wird durch CSS-Variable automatisch überschrieben */
+[data-theme="dark"] .text-muted    { color: #7a8aaa !important; }
+[data-theme="dark"] .text-dark     { color: #d8e0f0 !important; }
+[data-theme="dark"] .text-black    { color: #d8e0f0 !important; }
+
+/* ── Formulare ──────────────────────────────────────────────────────────────*/
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select {
+  background-color: #161925;
+  border-color: #3a4070;
+  color: #d8e0f0;
+}
+[data-theme="dark"] .form-control:focus,
+[data-theme="dark"] .form-select:focus {
+  background-color: #1a1e30;
+  color: #d8e0f0;
+  border-color: #5b7fd4;
+  box-shadow: 0 0 0 .2rem rgba(91,127,212,.25);
+}
+[data-theme="dark"] .form-control::placeholder { color: #5a6580; }
+[data-theme="dark"] .form-check-input {
+  background-color: #161925;
+  border-color: #3a4070;
+}
+[data-theme="dark"] .input-group-text {
+  background-color: #252a40;
+  border-color: #3a4070;
+  color: #d8e0f0;
+}
+
+/* ── Dropdowns ──────────────────────────────────────────────────────────────*/
+[data-theme="dark"] .dropdown-menu {
+  background-color: #1e2235;
+  border-color: #3a4070;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+}
+[data-theme="dark"] .dropdown-item { color: #d8e0f0; }
+[data-theme="dark"] .dropdown-item:hover { background-color: #2e3555; color: #fff; }
+[data-theme="dark"] .dropdown-header { color: #7a8aaa; }
+[data-theme="dark"] .dropdown-divider { border-color: #2e3555; }
+
+/* ── Tabellen ──────────────────────────────────────────────────────────────*/
+[data-theme="dark"] .table {
+  color: #d8e0f0;
+  border-color: #2e3555;
+  --bs-table-bg: #1e2235;
+  --bs-table-striped-bg: #252a40;
+  --bs-table-hover-bg: rgba(255,255,255,.06);
+  --bs-table-color: #d8e0f0;
+  --bs-table-border-color: #2e3555;
+}
+[data-theme="dark"] .table td,
+[data-theme="dark"] .table th { border-color: #2e3555; }
+[data-theme="dark"] .table-hover > tbody > tr:hover > * {
+  background-color: rgba(255,255,255,.06);
+  color: #d8e0f0;
+}
+[data-theme="dark"] .table-admin,
+[data-theme="dark"] thead { background-color: #252a40; color: #d8e0f0; }
+
+/* ── Badges & Buttons ───────────────────────────────────────────────────────*/
+[data-theme="dark"] .badge.bg-light { background-color: #252a40 !important; color: #d8e0f0 !important; }
+[data-theme="dark"] .btn-outline-secondary { color: #9aaad0; border-color: #3a4070; }
+[data-theme="dark"] .btn-outline-secondary:hover { background-color: #2e3555; color: #fff; }
+[data-theme="dark"] .btn-outline-danger { color: #e09090; border-color: #7a3030; }
+[data-theme="dark"] .btn-light { background-color: #252a40; color: #d8e0f0; border-color: #3a4070; }
+
+/* ── Alerts ─────────────────────────────────────────────────────────────────*/
+[data-theme="dark"] .alert-success { background:#0d2a1a; border-color:#2e7d4f; color:#80d4a0; }
+[data-theme="dark"] .alert-warning { background:#2a1e08; border-color:#8a6000; color:#e0b050; }
+[data-theme="dark"] .alert-info    { background:#0d1e30; border-color:#2060a0; color:#80b0d8; }
+[data-theme="dark"] .alert-danger  { background:#2a0d0d; border-color:#8a2020; color:#d88080; }
+
+/* ── Misc ────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .border,
+[data-theme="dark"] .border-top,
+[data-theme="dark"] .border-bottom,
+[data-theme="dark"] .border-start,
+[data-theme="dark"] .border-end  { border-color: #2e3555 !important; }
+[data-theme="dark"] hr           { border-color: #2e3555; opacity: 1; }
+[data-theme="dark"] .stat-box    { background: #1e2235; border-color: #2e3555; }
+[data-theme="dark"] .hero-banner { background: linear-gradient(135deg,#0d1020,#1e2a45); }
+[data-theme="dark"] .nav-tabs .nav-link         { color: #9aaad0; }
+[data-theme="dark"] .nav-tabs .nav-link.active  { background-color: #1e2235; color: #d8e0f0; border-color: #2e3555; }
+[data-theme="dark"] .pagination .page-link      { background-color: #1e2235; border-color: #2e3555; color: #9aaad0; }
+[data-theme="dark"] .pagination .page-item.active .page-link { background-color: #2b5ea7; border-color: #2b5ea7; color: #fff; }
+[data-theme="dark"] .modal-content  { background-color: #1e2235; color: #d8e0f0; border-color: #2e3555; }
+[data-theme="dark"] .modal-header   { border-color: #2e3555; }
+[data-theme="dark"] .modal-footer   { border-color: #2e3555; }
+[data-theme="dark"] code            { color: #a0c8f0; background: #161925; }
+[data-theme="dark"] .opacity-50     { opacity: .35 !important; }
+[data-theme="dark"] .drag-handle    { background: #252a40 !important; color: #7a8aaa; }
+[data-theme="dark"] #sticky-save    { background: rgba(18,21,31,.95) !important; border-color: #2e3555; }
+
+/* Stat-Zahlen im Profil */
+[data-theme="dark"] .stat-number { color: #7b9fd4; }
+[data-theme="dark"] .stat-label  { color: #7a8aaa; }
+
+/* ─── Print styles ──────────────────────────────────────────────────────────── */
+@media print {
+  .navbar-djo, footer, .btn, .card-footer form,
+  .rsvp-group, #weather-card, .alert { display: none !important; }
+  body  { background: white !important; }
+  .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+  #tour-map { height: 300px !important; }
+}
+
+/* ─── Navbar labels: hidden in narrow horizontal bar, visible when expanded ─── */
+.nav-label {
+  display: none;
+}
+/* Show labels when navbar is expanded (hamburger open) */
+.navbar-collapse.show .nav-label,
+.navbar-collapse.collapsing .nav-label {
+  display: inline !important;
+}
+/* On large screens: always show */
+@media (min-width: 992px) {
+  .nav-label {
+    display: inline !important;
+  }
+}
+
+/* ─── Leaflet: prevent map from escaping Bootstrap columns ─────────────────── */
+.leaflet-container {
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+.leaflet-map-pane,
+.leaflet-tile-pane {
+  max-width: none; /* tiles can be wider than container, clipped by overflow:hidden */
+}
+
+/* ── Dark Mode: neue Elemente ────────────────────────────────────────────── */
+[data-bs-theme="dark"] #video-drop-zone {
+  border-color: #495057 !important;
+  background: #1a1a2e;
+  color: #adb5bd;
+}
+[data-bs-theme="dark"] #video-drop-zone:hover {
+  border-color: var(--djo-navy) !important;
+  background: rgba(123,159,212,.1);
+}
+[data-bs-theme="dark"] .rating-btn {
+  border-color: #495057;
+  color: #adb5bd;
+  background: #2a2a3e;
+}
+[data-bs-theme="dark"] .rating-btn:hover {
+  opacity: .9;
+}
+[data-bs-theme="dark"] #video-upload-form .form-control {
+  background: #2a2a3e;
+  border-color: #495057;
+  color: #e9ecef;
+}
+[data-bs-theme="dark"] #lightboxModal .modal-header {
+  background: #111 !important;
+}
+[data-bs-theme="dark"] #lb-body {
+  background: #000 !important;
+}
+[data-bs-theme="dark"] .format-btn {
+  border-color: #495057;
+  color: #adb5bd;
+}
+[data-bs-theme="dark"] .active-format {
+  background: var(--djo-navy) !important;
+  color: #fff !important;
+}
+[data-bs-theme="dark"] #date-setter input {
+  background: #2a2a3e;
+  border-color: #495057;
+  color: #e9ecef;
+}

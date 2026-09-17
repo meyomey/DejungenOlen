@@ -1,0 +1,88 @@
+{% if videos or True %}
+<div class="row mt-3">
+  <div class="col-12">
+    <div class="card mb-3" id="videos">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span>
+          <i class="bi bi-camera-video me-1"></i>Videos
+          {% if videos %}<span class="badge bg-light text-dark ms-1">{{ videos|length }}</span>{% endif %}
+        </span>
+      </div>
+      <div class="card-body">
+
+        <!-- Vorhandene Videos -->
+        {% if videos %}
+        <div class="row g-3 mb-3">
+          {% for v in videos %}
+          <div class="col-12 col-lg-6">
+            <div class="card h-100">
+              <video controls preload="metadata"
+                     style="width:100%;background:#000;border-radius:6px 6px 0 0;
+                            display:block;max-height:85vh;
+                            object-fit:contain"
+                     playsinline>
+                <source src="{{ url_for('static', filename='uploads/videos/' + v.filename) }}"
+                        type="video/mp4">
+                Dein Browser unterstützt kein HTML5-Video.
+                <a href="{{ url_for('static', filename='uploads/videos/' + v.filename) }}" download>
+                  Video herunterladen
+                </a>
+              </video>
+              <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+                <div>
+                  <div class="fw-semibold small">{{ v.title or v.filename }}</div>
+                  <div class="text-muted" style="font-size:.72rem">
+                    {{ v.user.display_name }} · {{ v.created_at.strftime('%d.%m.%Y') }}
+                    {% if v.filesize %} · {{ (v.filesize / 1024 / 1024)|round(1) }} MB{% endif %}
+                  </div>
+                </div>
+                <div class="d-flex gap-1 ms-2">
+                  <a href="{{ url_for('static', filename='uploads/videos/' + v.filename) }}"
+                     download class="btn btn-outline-secondary btn-sm py-0 px-2" title="Herunterladen">
+                    <i class="bi bi-download"></i>
+                  </a>
+                  {% set can_del = current_user.is_admin or current_user.is_organizer
+                                   or v.user_id == current_user.id
+                                   or tour.created_by == current_user.id %}
+                  {% if can_del %}
+                  <form method="post" action="{{ url_for('tour_delete_video', video_id=v.id) }}"
+                        onsubmit="return confirm('Video löschen?')">
+                    <button class="btn btn-outline-danger btn-sm py-0 px-2">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Upload-Bereich -->
+        <form method="post" action="{{ url_for('tour_upload_video', tour_id=tour.id) }}"
+              enctype="multipart/form-data">
+          <div class="mb-2">
+            <label class="form-label fw-semibold small">Video-Titel (optional)</label>
+            <input type="text" name="video_title" class="form-control form-control-sm"
+                   placeholder="z.B. Tourfilm April 2026">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Video auswählen</label>
+            <input type="file" name="video" class="form-control"
+                   accept=".mp4,.mov,.avi,.mkv,.m4v">
+            <div class="form-text">MP4, MOV, AVI, MKV · max. 500 MB</div>
+          </div>
+          <button type="submit" class="btn btn-djo">
+            <i class="bi bi-upload me-1"></i>Video hochladen
+          </button>
+        </form>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Kommentare (volle Breite) ─────────────────────────────────────────── -->

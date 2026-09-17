@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Pakete installieren – Admin{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <a href="{{ url_for('admin_dashboard') }}" class="text-muted small">
+    <i class="bi bi-arrow-left me-1"></i>Admin
+  </a>
+</div>
+
+<h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
+  <i class="bi bi-box-seam me-2"></i>Python-Pakete installieren
+</h2>
+
+{% if venv_target %}
+<div class="alert alert-info small mb-3">
+  <i class="bi bi-folder me-1"></i>Ziel-Pfad: <code>{{ venv_target }}</code>
+</div>
+{% else %}
+<div class="alert alert-warning small mb-3">
+  <i class="bi bi-exclamation-triangle me-1"></i>Kein site-packages Pfad gefunden – Installation direkt in System-Python.
+</div>
+{% endif %}
+
+<div class="card mb-4">
+  <div class="card-header card-header-djo">Status</div>
+  <div class="list-group list-group-flush">
+    {% for r in results %}
+    <div class="list-group-item d-flex justify-content-between align-items-center">
+      <div>
+        <div class="fw-semibold">{{ r.pkg }}</div>
+        {% if r.location %}<div class="text-muted" style="font-size:.72rem"><code>{{ r.location }}</code></div>{% endif %}
+        {% if r.log %}
+        <pre class="text-danger small mb-0" style="white-space:pre-wrap;font-size:.7rem">{{ r.log }}</pre>
+        {% endif %}
+      </div>
+      {% if r.ok %}
+        <span class="badge bg-success">✅ {{ r.status }}</span>
+      {% else %}
+        <span class="badge bg-warning text-dark">⚠️ {{ r.status }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('admin_install_packages') }}">
+  <button type="submit" class="btn btn-djo">
+    <i class="bi bi-download me-1"></i>Pakete installieren / aktualisieren
+  </button>
+  <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary ms-2">Zurück</a>
+</form>
+{% endblock %}
