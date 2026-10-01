@@ -119,11 +119,17 @@
             <i class="bi bi-cup-hot me-1"></i><span class="nav-label">Gastro</span>
           </a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'global_map' %}active{% endif %}"
-             href="{{ url_for('global_map') }}">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ['global_map','explore_map'] %}active{% endif %}"
+             href="#" data-bs-toggle="dropdown">
             <i class="bi bi-map me-1"></i><span class="nav-label">Karte</span>
           </a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('global_map') }}">
+              <i class="bi bi-geo-alt me-2"></i>Live-Karte</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('explore_map') }}">
+              <i class="bi bi-trophy me-2"></i>Unsere Landkarte</a></li>
+          </ul>
         </li>
 
         <!-- Mehr-Dropdown (Desktop) -->
@@ -137,8 +143,6 @@
             <li><h6 class="dropdown-header small">Orte & Entdeckungen</h6></li>
             <li><a class="dropdown-item" href="{{ url_for('poi_list') }}">
               <i class="bi bi-geo-alt me-2"></i>Orte & POIs</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('gastro_list') }}">
-              <i class="bi bi-cup-hot me-2"></i>Gastronomie</a></li>
             <li><hr class="dropdown-divider"></li>
             <li><h6 class="dropdown-header small">Community</h6></li>
             <li><a class="dropdown-item" href="{{ url_for('rangliste') }}">
@@ -153,11 +157,17 @@
         </li>
 
         {% if current_user.is_organizer %}
-        <li class="nav-item d-none d-lg-block">
-          <a class="nav-link {% if request.endpoint == 'tour_create' %}active{% endif %}"
-             href="{{ url_for('tour_create') }}">
-            <i class="bi bi-plus-circle me-1"></i>Neue Tour
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ['tour_create','tour_templates'] %}active{% endif %}"
+             href="#" data-bs-toggle="dropdown">
+            <i class="bi bi-plus-circle me-1"></i><span class="nav-label">Neue Tour</span>
           </a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('tour_create') }}">
+              <i class="bi bi-plus-lg me-2"></i>Von Grund auf</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('tour_templates') }}">
+              <i class="bi bi-file-earmark-text me-2"></i>Aus Vorlage</a></li>
+          </ul>
         </li>
         {% endif %}
         {% if current_user.is_admin %}
@@ -170,6 +180,8 @@
           <ul class="dropdown-menu">
             <li><a class="dropdown-item" href="{{ url_for('admin_dashboard') }}">
               <i class="bi bi-speedometer2 me-2"></i>Dashboard</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('admin_tools') }}">
+              <i class="bi bi-tools me-2"></i>Admin-Werkzeuge</a></li>
             <li><hr class="dropdown-divider"></li>
             <li><h6 class="dropdown-header small">
               Gruppe: {{ current_group.name if current_group else '–' }}
@@ -193,40 +205,47 @@
         </li>
         {% endif %}
 
-        <!-- ── Mobile-only: direkte Links (kein nested Dropdown) ─────────── -->
+        <!-- ── Mobile-only: Account-Sammeldropdown (bündelt, was Desktop im
+             User-Dropdown rechts zeigt – ein Eintrag statt sechs einzelner) ── -->
         <li class="d-lg-none"><hr class="dropdown-divider" style="border-color:rgba(255,255,255,.2)"></li>
-        <li class="nav-item d-lg-none">
-          <a class="nav-link" href="{{ url_for('my_profil') }}">
-            <i class="bi bi-person-badge me-2"></i>Mein Profil
+        <li class="nav-item dropdown d-lg-none">
+          <a class="nav-link dropdown-toggle
+             {% if request.endpoint in ['my_profil','profil_edit','hilfe'] %}active{% endif %}"
+             href="#" data-bs-toggle="dropdown">
+            {% if current_user.avatar %}
+            <img src="{{ url_for('static', filename='uploads/avatars/' + current_user.avatar) }}"
+                 style="width:20px;height:20px;border-radius:50%;object-fit:cover" class="me-2"
+                 onerror="this.style.display='none'">
+            {% else %}
+            <i class="bi bi-person-circle me-2"></i>
+            {% endif %}
+            {{ current_user.display_name }}
           </a>
-        </li>
-        <li class="nav-item d-lg-none">
-          <a class="nav-link" href="{{ url_for('profil_edit') }}">
-            <i class="bi bi-pencil-square me-2"></i>Profil bearbeiten
-          </a>
-        </li>
-        <li class="nav-item d-lg-none">
-          <a class="nav-link" href="{{ url_for('hilfe') }}">
-            <i class="bi bi-question-circle me-2"></i>Hilfe & Info
-          </a>
-        </li>
-        {% if telegram_link %}
-        <li class="nav-item d-lg-none">
-          <a class="nav-link" href="{{ telegram_link }}">
-            <i class="bi bi-telegram me-2"></i>Telegram-Gruppe
-          </a>
-        </li>
-        {% endif %}
-        <li class="nav-item d-lg-none">
-          <a class="nav-link" href="#" onclick="toggleDark(event)">
-            <i class="bi bi-moon-stars me-2" id="dark-icon-mobile"></i>
-            <span id="dark-label-mobile">Dark Mode</span>
-          </a>
-        </li>
-        <li class="nav-item d-lg-none">
-          <a class="nav-link text-danger" href="{{ url_for('logout') }}">
-            <i class="bi bi-box-arrow-right me-2"></i>Abmelden
-          </a>
+          <ul class="dropdown-menu">
+            <li><h6 class="dropdown-header small">{{ current_user.email }}</h6></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{{ url_for('my_profil') }}">
+              <i class="bi bi-person-badge me-2"></i>Mein Profil</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('profil_edit') }}">
+              <i class="bi bi-pencil-square me-2"></i>Profil bearbeiten</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="#" onclick="toggleDark(event)">
+              <i class="bi bi-moon-stars me-2" id="dark-icon-mobile"></i>
+              <span id="dark-label-mobile">Dark Mode</span></a></li>
+            <li><a class="dropdown-item" href="{{ url_for('hilfe') }}">
+              <i class="bi bi-question-circle me-2"></i>Hilfe & Info</a></li>
+            {% if telegram_link %}
+            <li><a class="dropdown-item" href="{{ telegram_link }}" target="_blank">
+              <i class="bi bi-telegram me-2"></i>Telegram-Gruppe</a></li>
+            {% endif %}
+            {% if whatsapp_link %}
+            <li><a class="dropdown-item" href="{{ whatsapp_link }}" target="_blank">
+              <i class="bi bi-whatsapp me-2" style="color:#25D366"></i>WhatsApp-Gruppe</a></li>
+            {% endif %}
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+              <i class="bi bi-box-arrow-right me-2"></i>Abmelden</a></li>
+          </ul>
         </li>
       </ul>
 
@@ -258,7 +277,7 @@
           <input type="text" name="q" class="form-control"
                  placeholder="Suchen…" style="width:140px"
                  value="{{ request.args.get('q','') }}">
-          <button class="btn btn-outline-light btn-sm" type="submit">
+          <button class="btn btn-outline-light btn-sm" type="submit" title="Suchen">
             <i class="bi bi-search"></i>
           </button>
         </div>
@@ -295,6 +314,10 @@
           <li><a class="dropdown-item" href="{{ telegram_link }}" target="_blank">
             <i class="bi bi-telegram me-2"></i>Telegram-Gruppe</a></li>
           {% endif %}
+          {% if whatsapp_link %}
+          <li><a class="dropdown-item" href="{{ whatsapp_link }}" target="_blank">
+            <i class="bi bi-whatsapp me-2" style="color:#25D366"></i>WhatsApp-Gruppe</a></li>
+          {% endif %}
           <li><hr class="dropdown-divider"></li>
           <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
             <i class="bi bi-box-arrow-right me-1"></i>Abmelden</a></li>
@@ -311,11 +334,11 @@
     <input type="text" name="q" class="form-control form-control-sm"
            placeholder="Suchen…" id="mobile-search-input"
            value="{{ request.args.get('q','') }}" autofocus>
-    <button class="btn btn-warning btn-sm fw-bold" type="submit">
+    <button class="btn btn-warning btn-sm fw-bold" type="submit" title="Suchen">
       <i class="bi bi-search"></i>
     </button>
     <button type="button" class="btn btn-outline-light btn-sm"
-            onclick="toggleMobileSearch()">✕</button>
+            onclick="toggleMobileSearch()" title="Suche schließen">✕</button>
   </form>
 </div>
 {% endif %}
@@ -578,7 +601,7 @@ updateDarkUI();
   </a>
   {% if current_user.is_organizer %}
   <a href="{{ url_for('tour_create') }}"
-     class="bottom-nav-item bottom-nav-create">
+     class="bottom-nav-item bottom-nav-create" title="Neue Tour erstellen">
     <i class="bi bi-plus-lg"></i>
   </a>
   {% else %}
@@ -621,6 +644,36 @@ updateDarkUI();
 /* Platz für Bottom Nav auf Mobile */
 @media (max-width: 991px) {
   body { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+
+  /* Ausgeklapptes Hamburger-Menü: scrollbar statt vom Bottom-Nav
+     abgeschnitten zu werden. Höhe = Bildschirm minus oberer Navbar minus
+     Bottom-Nav minus etwas Sicherheitsabstand. */
+  #navMenu.show {
+    max-height: calc(100vh - 56px - 62px - env(safe-area-inset-bottom) - 10px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: .5rem;
+  }
+
+  /* Verschachtelte Dropdowns (Karte, Mehr, Admin, Account, …) im Mobile-Menü
+     NICHT als schwebendes Overlay (position:absolute) rendern – das kann vom
+     fix positionierten Bottom-Nav (z-index:1030) verdeckt/abgeschnitten
+     werden. Stattdessen fließen sie normal im Menü mit, dann greift das
+     Scrollen des gesamten Menüs zuverlässig für ALLE Einträge. */
+  #navMenu .dropdown-menu {
+    position: static !important;
+    float: none;
+    width: 100%;
+    box-shadow: none;
+    background: #fff;
+    border: none;
+    border-radius: .5rem;
+    margin: .25rem 0 .5rem;
+    padding: .4rem 0;
+  }
+  #navMenu .dropdown-menu .dropdown-header {
+    color: #6c757d;
+  }
 }
 </style>
 

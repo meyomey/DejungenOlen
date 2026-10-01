@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Benachrichtigungen – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+
+<h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
+  <i class="bi bi-bell me-2"></i>Benachrichtigungen
+</h2>
+
+<!-- Telegram -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+      <h6 class="fw-bold mb-0">
+        <i class="bi bi-telegram me-2" style="color:#229ED9"></i>Telegram
+      </h6>
+      {% if telegram_configured %}
+      <span class="badge bg-success">Konfiguriert</span>
+      {% else %}
+      <span class="badge bg-secondary">Nicht eingerichtet</span>
+      {% endif %}
+    </div>
+    {% if telegram_configured %}
+    <p class="text-muted small mb-2">
+      Neue Touren, Kommentare und Tourtag-Erinnerungen gehen automatisch an
+      die konfigurierte Telegram-Gruppe.
+    </p>
+    <form method="post" action="{{ url_for('admin_telegram_test') }}">
+      <button type="submit" class="btn btn-outline-djo btn-sm">
+        <i class="bi bi-send me-1"></i>Testnachricht senden
+      </button>
+    </form>
+    {% else %}
+    <p class="text-muted small mb-2">
+      Noch kein Bot-Token/Chat-ID hinterlegt.
+    </p>
+    <a href="{{ url_for('admin_settings') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-sliders me-1"></i>In Einstellungen einrichten
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Push -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+      <h6 class="fw-bold mb-0">
+        <i class="bi bi-phone-vibrate me-2" style="color:var(--djo-navy)"></i>Push-Benachrichtigungen
+      </h6>
+      {% if push_available %}
+      <span class="badge bg-success">Verfügbar</span>
+      {% else %}
+      <span class="badge bg-secondary">Pakete fehlen</span>
+      {% endif %}
+    </div>
+    {% if push_available %}
+    <p class="text-muted small mb-2">
+      {{ push_sub_count }} aktive Subscription(en) in dieser Gruppe.
+      Jedes Mitglied aktiviert Push-Nachrichten selbst in seinem Profil.
+    </p>
+    <a href="{{ url_for('profil_edit') }}" class="btn btn-outline-djo btn-sm">
+      <i class="bi bi-person me-1"></i>Zu meinem Profil (eigene Test-Nachricht)
+    </a>
+    {% else %}
+    <p class="text-muted small mb-2">
+      Benötigt die Pakete <code>pywebpush</code> und <code>cryptography</code>.
+    </p>
+    <a href="{{ url_for('admin_install_packages') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-box-seam me-1"></i>Pakete installieren
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Tourtag-Erinnerung -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-1">
+      <i class="bi bi-calendar-check me-2" style="color:var(--djo-navy)"></i>Tourtag-Erinnerung testen
+    </h6>
+    <p class="text-muted small mb-3">
+      Verschickt sofort Telegram + Push für die gewählte Tour, unabhängig
+      davon ob sie heute stattfindet.
+    </p>
+    {% if tours %}
+    <div class="list-group">
+      {% for t in tours %}
+      <form method="post" action="{{ url_for('admin_reminder_test') }}"
+            class="list-group-item list-group-item-action d-flex
+                   justify-content-between align-items-center flex-wrap gap-2"
+            onsubmit="return confirm('Test-Erinnerung für „{{ t.title }}\" jetzt senden?')">
+        <input type="hidden" name="tour_id" value="{{ t.id }}">
+        <div>
+          <div class="fw-semibold small">{{ t.title }}</div>
+          <div class="text-muted" style="font-size:.72rem">
+            {{ t.tour_date.strftime('%d.%m.%Y') if t.tour_date and not t.is_date_open else 'Datum offen' }}
+            {% if t.start_time %} · {{ t.start_time }} Uhr{% endif %}
+          </div>
+        </div>
+        <button type="submit" class="btn btn-outline-djo btn-sm">
+          <i class="bi bi-send me-1"></i>Test senden
+        </button>
+      </form>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted small mb-0">Keine anstehenden Touren mit Termin gefunden.</p>
+    {% endif %}
+  </div>
+</div>
+
+<a href="{{ url_for('admin_tools') }}" class="btn btn-outline-djo btn-sm">
+  <i class="bi bi-arrow-left me-1"></i>Zurück zu Admin-Werkzeuge
+</a>
+
+{% endblock %}

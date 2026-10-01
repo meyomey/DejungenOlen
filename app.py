@@ -1,5 +1,6 @@
 import os
 import re
+import io
 import secrets
 import json
 from datetime import datetime, date, timedelta
@@ -42,12 +43,18 @@ from config import Config
 from models import (db, Group, User, InviteToken, Tour, TourParticipant, TourPhoto, TourVideo,
                     GastroPhoto, TimeVote, LiveLocation,
                     PasswordReset, GastroSpot, GastroReview, POI, TourComment, SiteConfig,
-                    RouteRating)
+                    RouteRating, TourTemplate, PushSubscription, Announcement)
 
 # ─── App setup ────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.config.from_object(Config)
 app.config.setdefault('SESSION_COOKIE_HTTPONLY', True)
+
+# .m4a wird von manchen Servern/Systemen falsch oder gar nicht als Audio erkannt,
+# was Browser-seitiges decodeAudioData() unzuverlässig macht. Explizit registrieren.
+import mimetypes as _mimetypes
+_mimetypes.add_type('audio/mp4', '.m4a')
+_mimetypes.add_type('audio/aac', '.aac')
 
 db.init_app(app)
 
@@ -122,6 +129,27 @@ def organizer_required(f):
     return decorated
 
 
+def _tile_xy(lat, lng, zoom):
+    """OSM-Kachel-Koordinaten (x,y) für eine Position bei gegebenem Zoom-Level."""
+    import math
+    n = 2 ** zoom
+    x = int((lng + 180.0) / 360.0 * n)
+    y = int((1.0 - math.log(math.tan(lat*math.pi/180.0) + 1.0/math.cos(lat*math.pi/180.0)) / math.pi) / 2.0 * n)
+    return x, y
+
+
+def _tile_bounds(x, y, zoom):
+    """Lat/Lng-Grenzen einer Kachel (für die Kartendarstellung)."""
+    import math
+    n = 2 ** zoom
+    lng1 = x / n * 360.0 - 180.0
+    lng2 = (x+1) / n * 360.0 - 180.0
+    lat1 = math.degrees(math.atan(math.sinh(math.pi * (1 - 2*y/n))))
+    lat2 = math.degrees(math.atan(math.sinh(math.pi * (1 - 2*(y+1)/n))))
+    return {'south': min(lat1,lat2), 'north': max(lat1,lat2),
+            'west': lng1, 'east': lng2}
+
+
 def cfg(key):
     """Read SiteConfig; fall back to DEFAULTS or .env. Never raises."""
     try:
@@ -172,6 +200,157 @@ def send_mail(to: str, subject: str, body: str) -> bool:
         app.logger.warning(f'Mail send failed: {e}')
         return False
 
+
+
+def _get_vapid_keys():
+    """Holt (oder erzeugt einmalig) das VAPID-Schlüsselpaar für Web Push,
+    gespeichert in SiteConfig. Gibt (private_key_b64url, public_key_b64url)
+    zurück, oder (None, None) wenn 'pywebpush'/'cryptography' nicht installiert
+    sind.
+
+    WICHTIG: pywebpush's Vapid.from_string() erwartet den ROHEN, base64url-
+    kodierten privaten Schlüssel (32 Byte) – KEIN PEM-Format! Ein PEM-String
+    lässt sich damit nicht deserialisieren."""
+    try:
+        from py_vapid import Vapid02 as Vapid
+    except Exception:
+        return None, None
+
+    priv = cfg('vapid_private_key')
+    pub  = cfg('vapid_public_key')
+
+    # Selbstreparatur: eine ältere Version dieser Funktion hat fälschlich das
+    # PEM-Format gespeichert (mit "-----BEGIN..."), das pywebpush nicht lesen
+    # kann. Prüfen ob der gespeicherte Wert wirklich ein roher base64url-String
+    # ist (kein PEM-Header, plausible Länge) – sonst verwerfen und neu erzeugen.
+    def _looks_valid_raw_key(k, expected_len):
+        if not k or '-----BEGIN' in k or '\n' in k:
+            return False
+        return abs(len(k) - expected_len) <= 2  # etwas Toleranz für Padding
+
+    if priv and pub and not (_looks_valid_raw_key(priv, 43) and _looks_valid_raw_key(pub, 87)):
+        app.logger.warning('VAPID-Schlüssel im alten/ungültigen Format gefunden – werden neu erzeugt.')
+        priv, pub = None, None
+        # Alle bestehenden Subscriptions sind an den ALTEN (nie funktionsfähigen)
+        # Public Key gebunden und damit ohnehin nutzlos – aufräumen, damit
+        # Nutzer sauber neu aktivieren statt auf eine kaputte Subscription zu treffen.
+        try:
+            PushSubscription.query.delete()
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    if priv and pub:
+        return priv, pub
+
+    try:
+        import base64
+        from cryptography.hazmat.primitives import serialization
+
+        vapid = Vapid()
+        vapid.generate_keys()
+
+        # Privaten Schlüssel als rohe 32-Byte-Zahl, base64url-kodiert
+        priv_numbers = vapid.private_key.private_numbers()
+        raw_priv = priv_numbers.private_value.to_bytes(32, 'big')
+        priv_b64 = base64.urlsafe_b64encode(raw_priv).decode().rstrip('=')
+
+        # Öffentlichen Schlüssel als unkomprimierten EC-Punkt (65 Byte), base64url
+        raw_pub = vapid.public_key.public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.UncompressedPoint
+        )
+        pub_b64 = base64.urlsafe_b64encode(raw_pub).decode().rstrip('=')
+
+        SiteConfig.set('vapid_private_key', priv_b64)
+        SiteConfig.set('vapid_public_key', pub_b64)
+        db.session.commit()
+        return priv_b64, pub_b64
+    except Exception as e:
+        app.logger.warning(f'VAPID-Schlüsselerzeugung fehlgeschlagen: {e}')
+        return None, None
+
+
+def send_push(subscription, title, body, url=None):
+    """Sendet eine einzelne Web-Push-Benachrichtigung.
+    Gibt (erfolgreich: bool, grund: str) zurück – der Grund hilft beim
+    Debuggen, falls der Versand fehlschlägt."""
+    try:
+        from pywebpush import webpush, WebPushException
+    except Exception as e:
+        return False, f'pywebpush nicht installiert ({e})'
+
+    priv_key, pub_key = _get_vapid_keys()
+    if not priv_key:
+        return False, 'VAPID-Schlüssel konnten nicht erzeugt werden (py_vapid/cryptography fehlt?)'
+
+    payload = json.dumps({
+        'title': title, 'body': body,
+        'url': url or '/', 'icon': '/static/logo.png',
+    })
+    try:
+        webpush(
+            subscription_info={
+                'endpoint': subscription.endpoint,
+                'keys': {'p256dh': subscription.p256dh, 'auth': subscription.auth},
+            },
+            data=payload,
+            vapid_private_key=priv_key,
+            vapid_claims={'sub': f'mailto:{cfg("admin_email") or "admin@example.de"}'},
+        )
+        return True, 'ok'
+    except WebPushException as e:
+        status = getattr(e.response, 'status_code', None)
+        body_text = ''
+        try:
+            body_text = e.response.text[:200] if e.response is not None else ''
+        except Exception:
+            pass
+        if status in (404, 410):
+            # Subscription ist nicht mehr gültig (Browser abgemeldet, App deinstalliert etc.)
+            try:
+                db.session.delete(subscription)
+                db.session.commit()
+            except Exception:
+                pass
+            return False, f'Subscription ungültig (HTTP {status}) – wurde entfernt, bitte neu aktivieren'
+        app.logger.warning(f'Push-Fehler ({status}): {e}')
+        return False, f'HTTP {status}: {body_text or str(e)[:200]}'
+    except Exception as e:
+        app.logger.warning(f'Push-Fehler: {e}')
+        return False, f'{type(e).__name__}: {str(e)[:200]}'
+
+
+def send_push_to_user(user, title, body, url=None):
+    """Sendet eine Push-Benachrichtigung an alle Geräte eines Nutzers.
+    Gibt (anzahl_erfolgreich, liste_der_gründe) zurück – letztere hilft beim
+    Debuggen, falls kein Versand geklappt hat."""
+    subs = PushSubscription.query.filter_by(user_id=user.id).all()
+    sent = 0
+    reasons = []
+    if not subs:
+        return 0, ['Keine Push-Subscription für diesen Nutzer gespeichert. '
+                    'Erst „Benachrichtigungen aktivieren" anklicken.']
+    for sub in subs:
+        ok, reason = send_push(sub, title, body, url)
+        if ok:
+            sent += 1
+        reasons.append(reason)
+    return sent, reasons
+
+
+def send_push_to_group(group_id, title, body, url=None, exclude_user_id=None):
+    """Sendet eine Push-Benachrichtigung an alle Mitglieder einer Gruppe."""
+    if not group_id:
+        return 0
+    users = User.query.filter_by(group_id=group_id, is_active=True).all()
+    sent = 0
+    for u in users:
+        if exclude_user_id and u.id == exclude_user_id:
+            continue
+        n, _ = send_push_to_user(u, title, body, url)
+        sent += n
+    return sent
 
 
 def send_telegram(text):
@@ -406,6 +585,7 @@ def inject_globals():
     tg_user   = ''
     tg_invite = ''
     tg_link   = ''
+    wa_link   = ''
     if current_user.is_authenticated:
         today = date.today()
         upcoming = _gq(Tour).filter(
@@ -419,10 +599,15 @@ def inject_globals():
             tg_link = tg_invite if tg_invite else (f'https://t.me/{tg_user}' if tg_user else '')
         except Exception:
             pass
+        try:
+            wa_link = (cfg('whatsapp_group_link') or '').strip()
+        except Exception:
+            pass
     return dict(upcoming_tours=upcoming, today_date=date.today(),
                 telegram_username=tg_user,
                 telegram_invite_link=tg_invite,
-                telegram_link=tg_link)
+                telegram_link=tg_link,
+                whatsapp_link=wa_link)
 
 # Make Python's enumerate available in templates
 app.jinja_env.globals['enumerate'] = enumerate
@@ -434,6 +619,10 @@ app.jinja_env.globals['hasattr']   = hasattr
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
+    # Öffentliche Ankündigungen – ohne group_id = gruppenübergreifend, da vor dem
+    # Login noch kein Gruppen-Kontext feststeht
+    login_announcements = get_visible_announcements(group_id=None, context='logged_out')
+    login_contact_email = cfg('contact_email')
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
         pw    = request.form.get('password', '')
@@ -441,7 +630,8 @@ def login():
         ip = request.remote_addr or 'unknown'
         if _rate_limit(f'login:{ip}', max_calls=10, window=60):
             flash('Zu viele Versuche. Bitte eine Minute warten.', 'danger')
-            return render_template('auth/login.html')
+            return render_template('auth/login.html', announcements=login_announcements,
+                                   contact_email=login_contact_email)
         user  = User.query.filter_by(email=email).first()
         if user and user.check_password(pw):
             if not user.is_active:
@@ -456,7 +646,8 @@ def login():
                 pass
             return redirect(request.args.get('next') or url_for('index'))
         flash('E-Mail oder Passwort falsch.', 'danger')
-    return render_template('auth/login.html')
+    return render_template('auth/login.html', announcements=login_announcements,
+                           contact_email=login_contact_email)
 
 
 @app.route('/logout')
@@ -490,7 +681,8 @@ def register(token):
             return render_template('auth/register.html', invite=invite)
 
         user = User(email=email, name=name, nickname=nickname,
-                    bicycle_type=bicycle, is_ebike=ebike)
+                    bicycle_type=bicycle, is_ebike=ebike,
+                    group_id=invite.group_id)
         user.set_password(pw)
         # First user gets admin role
         if User.query.count() == 0:
@@ -597,13 +789,16 @@ def index():
                 cover_photos[p.tour_id] = p
                 seen.add(p.tour_id)
 
+    from flask import g as _g_idx
+    _grp_idx = getattr(_g_idx, 'group', None)
     return render_template('index.html', upcoming=upcoming, recent=recent,
                            today=today,
                            geplante_touren=geplante,
                            cover_photos=cover_photos,
                            birthdays=upcoming_birthdays(),
                            memories=tours_this_day_past_years(),
-                           milestones=group_milestones())
+                           milestones=group_milestones(),
+                           announcements=get_visible_announcements(_grp_idx.id if _grp_idx else None))
 
 
 # ─── Tour routes ──────────────────────────────────────────────────────────────
@@ -915,6 +1110,118 @@ def tour_list():
                            cover_photos=cover_photos, rating_map=rating_map)
 
 
+@app.route('/touren/vorlagen')
+@login_required
+@organizer_required
+def tour_templates():
+    """Übersicht aller gespeicherten Tour-Vorlagen der aktiven Gruppe."""
+    templates = _gq(TourTemplate).order_by(TourTemplate.name).all()
+    return render_template('touren/vorlagen.html', templates=templates)
+
+
+@app.route('/touren/<int:tour_id>/als-vorlage', methods=['POST'])
+@login_required
+@organizer_required
+def tour_save_as_template(tour_id):
+    """Speichert eine bestehende Tour als wiederverwendbare Vorlage."""
+    tour = Tour.query.get_or_404(tour_id)
+    name = request.form.get('template_name', '').strip() or tour.title
+
+    new_gpx_file = None
+    if tour.gpx_file:
+        src = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
+        if os.path.exists(src):
+            import shutil
+            new_gpx_file = f'template_{secrets.token_hex(6)}.gpx'
+            dst = os.path.join(app.config['UPLOAD_FOLDER_GPX'], new_gpx_file)
+            shutil.copy2(src, dst)
+
+    from flask import g as _g
+    tmpl = TourTemplate(
+        name          = name,
+        title         = tour.title,
+        description   = tour.description,
+        difficulty    = tour.difficulty,
+        approx_km     = tour.approx_km,
+        external_link = tour.external_link,
+        gpx_file      = new_gpx_file,
+        gpx_km        = tour.gpx_km,
+        gpx_ascent    = tour.gpx_ascent,
+        meeting_lat   = tour.meeting_lat,
+        meeting_lng   = tour.meeting_lng,
+        meeting_desc  = tour.meeting_desc,
+        default_start_time = tour.start_time,
+        created_by    = current_user.id,
+        group_id      = getattr(_g, 'group', None).id if getattr(_g, 'group', None) else None,
+    )
+    db.session.add(tmpl)
+    db.session.commit()
+    flash(f'Vorlage „{name}" gespeichert. Für wiederkehrende Touren jetzt unter „Vorlagen" verfügbar.', 'success')
+    return redirect(url_for('tour_detail', tour_id=tour_id))
+
+
+@app.route('/touren/vorlagen/<int:template_id>/loeschen', methods=['POST'])
+@login_required
+@organizer_required
+def tour_template_delete(template_id):
+    """Löscht eine Tour-Vorlage."""
+    tmpl = TourTemplate.query.get_or_404(template_id)
+    if tmpl.gpx_file:
+        try:
+            os.remove(os.path.join(app.config['UPLOAD_FOLDER_GPX'], tmpl.gpx_file))
+        except Exception:
+            pass
+    name = tmpl.name
+    db.session.delete(tmpl)
+    db.session.commit()
+    flash(f'Vorlage „{name}" gelöscht.', 'success')
+    return redirect(url_for('tour_templates'))
+
+
+@app.route('/touren/neu/aus-vorlage/<int:template_id>', methods=['POST'])
+@login_required
+@organizer_required
+def tour_create_from_template(template_id):
+    """Erstellt sofort eine neue Tour (ohne Termin) aus einer Vorlage."""
+    tmpl = TourTemplate.query.get_or_404(template_id)
+
+    new_gpx_file = None
+    if tmpl.gpx_file:
+        src = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tmpl.gpx_file)
+        if os.path.exists(src):
+            import shutil
+            new_gpx_file = f'tour_from_tmpl_{secrets.token_hex(6)}.gpx'
+            dst = os.path.join(app.config['UPLOAD_FOLDER_GPX'], new_gpx_file)
+            shutil.copy2(src, dst)
+
+    from flask import g as _g
+    tour = Tour(
+        title         = tmpl.title,
+        description   = tmpl.description,
+        tour_date     = date(9999, 12, 31),   # Datum noch offen – Organizer legt es fest
+        start_time    = tmpl.default_start_time,
+        difficulty    = tmpl.difficulty,
+        approx_km     = tmpl.approx_km,
+        external_link = tmpl.external_link,
+        gpx_file      = new_gpx_file,
+        gpx_km        = tmpl.gpx_km,
+        gpx_ascent    = tmpl.gpx_ascent,
+        meeting_lat   = tmpl.meeting_lat,
+        meeting_lng   = tmpl.meeting_lng,
+        meeting_desc  = tmpl.meeting_desc,
+        created_by    = current_user.id,
+        group_id      = getattr(_g, 'group', None).id if getattr(_g, 'group', None) else None,
+    )
+    db.session.add(tour)
+
+    tmpl.use_count = (tmpl.use_count or 0) + 1
+    tmpl.last_used_at = datetime.utcnow()
+
+    db.session.commit()
+    flash(f'Tour „{tour.title}" aus Vorlage erstellt. Jetzt Termin festlegen!', 'success')
+    return redirect(url_for('tour_detail', tour_id=tour.id))
+
+
 @app.route('/touren/neu', methods=['GET', 'POST'])
 @login_required
 @organizer_required
@@ -937,6 +1244,8 @@ def tour_create():
         approx_km     = request.form.get('approx_km', '').strip()
         external_link = request.form.get('external_link', '').strip()
 
+        from flask import g as _g_create
+        _grp_create = getattr(_g_create, 'group', None)
         tour = Tour(
             title         = title,
             description   = desc,
@@ -948,7 +1257,8 @@ def tour_create():
             meeting_lat   = float(meet_lat) if meet_lat else None,
             meeting_lng   = float(meet_lng) if meet_lng else None,
             meeting_desc  = meet_desc or None,
-            created_by    = current_user.id
+            created_by    = current_user.id,
+            group_id      = _grp_create.id if _grp_create else None,
         )
         # Marker for "date open" - we use 9999-12-31 as sentinel value
         # because SQLite cannot ALTER COLUMN to remove NOT NULL constraint
@@ -1032,6 +1342,23 @@ def tour_create():
             send_telegram(tg_msg)
         except Exception as e:
             app.logger.warning(f'Telegram notification failed: {e}')
+
+        # Push-Benachrichtigung an alle Gruppenmitglieder (außer Ersteller)
+        try:
+            push_body = f'{tour.difficulty_label}'
+            if not tour.is_date_open:
+                push_body += f' · {tour.tour_date.strftime("%d.%m.%Y")}'
+            if tour.gpx_km:
+                push_body += f' · {tour.gpx_km} km'
+            send_push_to_group(
+                tour.group_id,
+                title=f'🚴 Neue Tour: {title}',
+                body=push_body,
+                url=f'/touren/{tour.id}',
+                exclude_user_id=current_user.id,
+            )
+        except Exception as e:
+            app.logger.warning(f'Push notification (tour_create) failed: {e}')
 
         flash('Tour erfolgreich erstellt!', 'success')
         return redirect(url_for('tour_detail', tour_id=tour.id))
@@ -1606,9 +1933,57 @@ def tour_video(tour_id):
         gpx_path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
         if os.path.exists(gpx_path):
             gpx_data = parse_gpx(gpx_path)
+
+    attending_count = TourParticipant.query.filter_by(
+        tour_id=tour_id, status='attending'
+    ).count()
+    attending_names = [p.user.display_name for p in
+                       TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
+                       .join(User).order_by(User.name).limit(12).all()]
+
+    weather = None
+    if tour.tour_date and not tour.is_date_open and tour.meeting_lat and tour.meeting_lng:
+        try:
+            resp = http_requests.get(
+                'https://api.open-meteo.com/v1/forecast',
+                params={
+                    'latitude': tour.meeting_lat, 'longitude': tour.meeting_lng,
+                    'daily': 'weathercode,temperature_2m_max,temperature_2m_min',
+                    'timezone': 'Europe/Berlin',
+                    'start_date': tour.tour_date.isoformat(),
+                    'end_date': tour.tour_date.isoformat(),
+                },
+                timeout=5
+            )
+            d = resp.json().get('daily', {})
+            if d.get('temperature_2m_max'):
+                wc = (d.get('weathercode') or [None])[0]
+                icon_map = {0:'☀️',1:'🌤️',2:'🌤️',3:'☁️',45:'🌫️',48:'🌫️',
+                            51:'🌦️',53:'🌦️',55:'🌦️',61:'🌧️',63:'🌧️',65:'🌧️',
+                            71:'🌨️',73:'🌨️',75:'🌨️',80:'🌦️',81:'🌧️',82:'⛈️',
+                            95:'⛈️',96:'⛈️',99:'⛈️'}
+                weather = {
+                    'temp_max': round(d['temperature_2m_max'][0]),
+                    'temp_min': round(d['temperature_2m_min'][0]),
+                    'icon': icon_map.get(wc, '🌡️'),
+                }
+        except Exception:
+            pass
+
+    from flask import g as _g
+    default_music_url = None
+    grp = getattr(_g, 'group', None)
+    if grp and grp.default_music:
+        default_music_url = url_for('static', filename='uploads/group_music/' + grp.default_music)
+
     return render_template('touren/video.html',
                            tour=tour, photos=photos,
+                           attending_count=attending_count,
+                           attending_names=attending_names,
+                           weather=weather,
+                           default_music_url=default_music_url,
                            gpx_data=json.dumps(gpx_data) if gpx_data else 'null')
+
 
 
 @app.route('/touren/<int:tour_id>/video/render', methods=['POST'])
@@ -1625,15 +2000,6 @@ def tour_video_render(tour_id):
     if not photos:
         flash('Keine Fotos – Video benötigt mindestens ein Foto.', 'warning')
         return redirect(url_for('tour_video', tour_id=tour_id))
-
-    # Format aus Formular: landscape=1280x720, portrait=720x1280, square=1080x1080
-    fmt = request.form.get('video_format', 'square')
-    canvas_map = {
-        'landscape': (1280, 720),
-        'portrait':  (720, 1280),
-        'square':    (1080, 1080),
-    }
-    cw, ch = canvas_map.get(fmt, (1080, 1080))
 
     # ffmpeg: erst im Projektordner, dann systemweit
     import shutil
@@ -1696,31 +2062,47 @@ def tour_video_render(tour_id):
             if ext in ('mp3', 'aac', 'm4a', 'ogg', 'wav', 'flac'):
                 music_path = os.path.join(tmpdir, f'music.{ext}')
                 music_file.save(music_path)
+        if not music_path:
+            # Fallback: Standardmusik der Gruppe verwenden, falls gesetzt
+            from flask import g as _g
+            grp = getattr(_g, 'group', None)
+            if grp and grp.default_music:
+                default_src = os.path.join(app.root_path, 'static', 'uploads', 'group_music', grp.default_music)
+                if os.path.exists(default_src):
+                    ext = grp.default_music.rsplit('.', 1)[-1].lower()
+                    music_path = os.path.join(tmpdir, f'music.{ext}')
+                    import shutil as _sh2
+                    _sh2.copy2(default_src, music_path)
 
         photo_dur  = int(request.form.get('photo_duration', 5))
         fps        = 25
-        fmt        = request.form.get('video_format', 'portrait')
-        if fmt == 'landscape':
-            W, H   = 1920, 1080
-            SAFE   = 30
-        else:  # portrait (default)
-            W, H   = 1080, 1920
-            SAFE   = 40
+        fmt        = request.form.get('video_format', 'reels')
+        # Plattform-Presets – Auflösung + "Safe Area" (Rand ohne Foto, für Titel/Untertitel-Bereich)
+        FORMAT_PRESETS = {
+            'reels':     (1080, 1920, 40),   # Instagram/TikTok Reels, Stories, WhatsApp Status
+            'shorts':    (1080, 1920, 40),   # YouTube Shorts – gleiche Maße wie Reels
+            'feed':      (1080, 1350, 36),   # Instagram/Facebook Feed-Post 4:5
+            'square':    (1080, 1080, 32),   # Facebook/Instagram quadratisch 1:1
+            'landscape': (1920, 1080, 30),   # YouTube/TV/Desktop 16:9
+        }
+        W, H, SAFE = FORMAT_PRESETS.get(fmt, FORMAT_PRESETS['reels'])
         INNER_H    = H - 2 * SAFE
 
         # ── Jedes Foto vorbereiten (Pillow) ───────────────────────────────────
         # Portrait  → contain auf W×INNER_H, Safe-Area-Padding
         # Landscape → Blur-BG (W×H) + contain FG overlay
         try:
-            from PIL import Image as _PIL, ImageFilter as _ILF
+            from PIL import (Image as _PIL, ImageFilter as _ILF,
+                             ImageFont as _IFO, ImageDraw as _ID_MOD)
             PIL_OK = True
         except Exception:
             PIL_OK = False
 
-        def make_frame(src_path, dst_path):
-            """Erstellt ein fertig skaliertes W×H JPEG für FFmpeg."""
+        def build_photo_canvas(src_path):
+            """Erstellt das fertige W×H-Vollbild (Contain/Blur-BG) und gibt das PIL-Image zurück,
+            OHNE es zu speichern. None bei Fehler."""
             if not PIL_OK:
-                import shutil as _sh; _sh.copy2(src_path, dst_path); return
+                return None
             try:
                 img = _PIL.open(src_path).convert('RGB')
                 iw, ih = img.size
@@ -1752,32 +2134,479 @@ def tour_video_render(tour_id):
                     x = (W - nw) // 2
                     y = SAFE + (INNER_H - nh) // 2
                     canvas.paste(fg, (x, y))
+                return canvas
+            except Exception as e:
+                app.logger.warning(f'build_photo_canvas error: {e}', exc_info=True)
+                return None
+
+        def make_frame(src_path, dst_path):
+            """Erstellt ein einzelnes fertig skaliertes W×H JPEG (Fallback ohne Ken-Burns-Effekt)."""
+            canvas = build_photo_canvas(src_path)
+            if canvas is None:
+                import shutil as _sh; _sh.copy2(src_path, dst_path); return
+            canvas.save(dst_path, 'JPEG', quality=92)
+
+        def image_to_segment(img_path, out_path, duration):
+            """Wandelt ein einzelnes Standbild in ein kurzes, stilles Video-Segment um.
+            Damit besteht die finale Concat-Liste NUR aus einheitlichen Video-Clips
+            (kein Mischen von Bild+Dauer-Eintraegen und echten .mp4-Segmenten mehr,
+            was je nach FFmpeg-Version zu fehlenden/uebersprungenen Eintraegen fuehren kann)."""
+            if not ffmpeg_bin:
+                return False
+            try:
+                n_frames = max(2, int(round(duration * fps)))
+                cmd = [
+                    ffmpeg_bin, '-y', '-loop', '1', '-i', img_path,
+                    '-t', str(duration),
+                    '-r', str(fps),
+                    '-vf', f'scale={W}:{H}',
+                    '-frames:v', str(n_frames),
+                    '-pix_fmt', 'yuv420p',
+                    out_path
+                ]
+                result = subprocess.run(cmd, capture_output=True, timeout=30)
+                return result.returncode == 0 and os.path.exists(out_path)
+            except Exception as e:
+                app.logger.warning(f'image_to_segment error: {e}', exc_info=True)
+                return False
+
+        def frames_to_segment(frame_duration_pairs, out_path):
+            """Wandelt eine Sequenz von Einzelbildern (z.B. die Kartenanimation) in
+            EIN homogenes Video-Segment um, damit die aeussere Concat-Liste
+            ausschliesslich aus .mp4-Dateien besteht."""
+            if not ffmpeg_bin or not frame_duration_pairs:
+                return False
+            try:
+                inner_concat = out_path + '_inner.txt'
+                with open(inner_concat, 'w') as icf:
+                    for fpath, fdur in frame_duration_pairs:
+                        icf.write(f"file '{fpath}'\nduration {fdur}\n")
+                    # Letztes Bild laut FFmpeg-Konvention nochmal ohne duration wiederholen,
+                    # sonst wird die letzte "duration"-Angabe von manchen Versionen ignoriert
+                    last_path = frame_duration_pairs[-1][0]
+                    icf.write(f"file '{last_path}'\n")
+
+                cmd = [
+                    ffmpeg_bin, '-y', '-f', 'concat', '-safe', '0', '-i', inner_concat,
+                    '-r', str(fps),
+                    '-vf', f'scale={W}:{H}',
+                    '-pix_fmt', 'yuv420p',
+                    out_path
+                ]
+                result = subprocess.run(cmd, capture_output=True, timeout=60)
+                try:
+                    os.remove(inner_concat)
+                except Exception:
+                    pass
+                return result.returncode == 0 and os.path.exists(out_path)
+            except Exception as e:
+                app.logger.warning(f'frames_to_segment error: {e}', exc_info=True)
+                return False
+
+        def make_photo_zoom_segment(src_path, out_path, total_dur, zoom_in=True):
+            """Ken-Burns-Effekt: FLUESSIGER Zoom uebers Foto via FFmpeg zoompan-Filter
+            (echte Pro-Frame-Berechnung durch FFmpeg selbst, kein sichtbares Ruckeln
+            wie bei wenigen Einzelbildern). Gibt True bei Erfolg zurueck."""
+            canvas = build_photo_canvas(src_path)
+            if canvas is None or not ffmpeg_bin:
+                return False
+            try:
+                base_jpg = out_path + '_base.jpg'
+                canvas.save(base_jpg, 'JPEG', quality=95)
+
+                n_frames = max(2, int(round(total_dur * fps)))
+                if zoom_in:
+                    z_expr = f"1+0.09*on/{n_frames-1}"
+                else:
+                    z_expr = f"1.09-0.09*on/{n_frames-1}"
+
+                cmd = [
+                    ffmpeg_bin, '-y', '-loop', '1', '-i', base_jpg,
+                    '-vf', (f"scale={W*2}:{H*2},"
+                           f"zoompan=z='{z_expr}':d={n_frames}:s={W}x{H}:fps={fps}"),
+                    '-frames:v', str(n_frames),
+                    '-pix_fmt', 'yuv420p',
+                    out_path
+                ]
+                result = subprocess.run(cmd, capture_output=True, timeout=60)
+                try:
+                    os.remove(base_jpg)
+                except Exception:
+                    pass
+                return result.returncode == 0 and os.path.exists(out_path)
+            except Exception as e:
+                app.logger.warning(f'make_photo_zoom_segment error: {e}', exc_info=True)
+                return False
+
+        # ── Titel-/Stats-/Outro-Folien als eigene Bilder rendern (Pillow) ──────
+        # Damit landet im MP4 dieselbe "Story" wie in der Browser-Vorschau,
+        # nicht nur die reine Foto-Diashow.
+        def _pil_font(size, bold=True):
+            candidates = [
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf' if bold else
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf' if bold else
+                '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+                '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf' if bold else
+                '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
+                '/usr/local/share/fonts/DejaVuSans-Bold.ttf' if bold else
+                '/usr/local/share/fonts/DejaVuSans.ttf',
+                os.path.join(os.path.dirname(__file__), 'static', 'fonts', 'DejaVuSans-Bold.ttf') if bold else
+                os.path.join(os.path.dirname(__file__), 'static', 'fonts', 'DejaVuSans.ttf'),
+            ]
+            for path in candidates:
+                if os.path.exists(path):
+                    try:
+                        return _IFO.truetype(path, size)
+                    except Exception:
+                        pass
+            return _IFO.load_default()
+
+        def _centered_text(draw, cx, y, text, font, fill, stroke_width=0, stroke_fill=None):
+            bbox = draw.textbbox((0, 0), text, font=font)
+            tw = bbox[2] - bbox[0]
+            draw.text((cx - tw/2, y), text, font=font, fill=fill,
+                      stroke_width=stroke_width, stroke_fill=stroke_fill)
+
+        def _cover_photo_bg(canvas_size):
+            """Nimmt das erste verfügbare Foto als unscharfen Vollbild-Hintergrund für Titel/Outro."""
+            bg = _PIL.new('RGB', canvas_size, (30, 45, 80))
+            for p in photos:
+                src = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], p.filename)
+                if not os.path.exists(src):
+                    continue
+                try:
+                    img = _PIL.open(src).convert('RGB')
+                    ratio_fill = max(canvas_size[0]/img.width, canvas_size[1]/img.height)
+                    bw, bh = int(img.width*ratio_fill)+4, int(img.height*ratio_fill)+4
+                    img = img.resize((bw, bh), _PIL.LANCZOS)
+                    img = img.filter(_ILF.GaussianBlur(radius=18))
+                    bx, by = (bw-canvas_size[0])//2, (bh-canvas_size[1])//2
+                    bg = img.crop((bx, by, bx+canvas_size[0], by+canvas_size[1]))
+                    break
+                except Exception:
+                    continue
+            overlay = _PIL.new('RGB', canvas_size, (10, 18, 40))
+            return _PIL.blend(bg, overlay, 0.45)
+
+        def make_title_frame(dst_path):
+            if not PIL_OK:
+                return False
+            try:
+                canvas = _cover_photo_bg((W, H))
+                draw = _ID_MOD.Draw(canvas)
+                cx, cy = W//2, H//2
+                title_font = _pil_font(min(58, int(W/13)))
+                _centered_text(draw, cx, cy-10, tour.title[:40], title_font, (255,255,255),
+                              stroke_width=2, stroke_fill=(0,0,0))
+                date_font = _pil_font(30, bold=False)
+                date_str = tour.tour_date.strftime('%d.%m.%Y') if (tour.tour_date and not tour.is_date_open) else ''
+                if date_str:
+                    _centered_text(draw, cx, cy+60, date_str, date_font, (230,230,230))
+                if tour.gpx_km:
+                    extra = f'{tour.gpx_km} km' + (f'  ·  {int(tour.gpx_ascent)} Hm' if tour.gpx_ascent else '')
+                    _centered_text(draw, cx, cy+105, extra, _pil_font(24, bold=False), (210,210,210))
+                canvas.save(dst_path, 'JPEG', quality=92)
+                return True
+            except Exception as e:
+                app.logger.warning(f'make_title_frame error: {e}', exc_info=True)
+                return False
+
+        def make_stats_frame(dst_path, attending_count, weather):
+            if not PIL_OK:
+                return False
+            try:
+                _ID = _ID_MOD
+                canvas = _PIL.new('RGB', (W, H), (30, 45, 80))
+                draw = _ID.Draw(canvas)
+                cx = W//2
+                _centered_text(draw, cx, int(H*0.10), 'Die Tour in Zahlen',
+                              _pil_font(min(42, int(W/22))), (255,255,255))
+
+                stats = []
+                if tour.gpx_km:    stats.append((f'{tour.gpx_km} km', 'Strecke'))
+                if tour.gpx_ascent: stats.append((f'{int(tour.gpx_ascent)} m', 'Höhenmeter'))
+                stats.append((str(attending_count), 'Dabei gewesen'))
+                if weather:        stats.append((f"{weather['temp_max']}°C", weather['icon'] + ' Wetter'))
+
+                cols = 2
+                tile_w, tile_h = int(W*0.4), int(H*0.15)
+                gap = int(W*0.04)
+                start_x = cx - (cols*tile_w + (cols-1)*gap)//2
+                start_y = int(H*0.28)
+                big_font = _pil_font(min(52, int(W/18)))
+                small_font = _pil_font(22, bold=False)
+                for idx, (val, label) in enumerate(stats):
+                    col, row = idx % cols, idx // cols
+                    x = start_x + col*(tile_w+gap)
+                    y = start_y + row*(tile_h+gap)
+                    draw.rounded_rectangle([x, y, x+tile_w, y+tile_h], radius=16, fill=(58, 74, 108))
+                    _centered_text(draw, x+tile_w//2, y+tile_h//2-38, val, big_font, (255,255,255))
+                    _centered_text(draw, x+tile_w//2, y+tile_h//2+16, label, small_font, (210,210,210))
 
                 canvas.save(dst_path, 'JPEG', quality=92)
+                return True
             except Exception as e:
-                app.logger.warning(f'make_frame error: {e}', exc_info=True)
-                import shutil as _sh; _sh.copy2(src_path, dst_path)
+                app.logger.warning(f'make_stats_frame error: {e}', exc_info=True)
+                return False
+
+        def make_outro_frame(dst_path, group_name):
+            if not PIL_OK:
+                return False
+            try:
+                _ID = _ID_MOD
+                canvas = _cover_photo_bg((W, H))
+                draw = _ID.Draw(canvas)
+                cx, cy = W//2, H//2
+                _centered_text(draw, cx, cy-40, 'Danke fürs Mitfahren!',
+                              _pil_font(min(46, int(W/16))), (255,255,255),
+                              stroke_width=2, stroke_fill=(0,0,0))
+                _centered_text(draw, cx, cy+30, group_name, _pil_font(28, bold=False), (220,220,220))
+                canvas.save(dst_path, 'JPEG', quality=92)
+                return True
+            except Exception as e:
+                app.logger.warning(f'make_outro_frame error: {e}', exc_info=True)
+                return False
+
+        def _lat_lng_to_tile_xy(lat, lng, zoom):
+            import math
+            n = 2 ** zoom
+            x = (lng + 180.0) / 360.0 * n
+            y = (1.0 - math.log(math.tan(lat*math.pi/180.0) + 1.0/math.cos(lat*math.pi/180.0)) / math.pi) / 2.0 * n
+            return x, y
+
+        def build_track_frames(gpx_points, photos_with_gps):
+            """Laedt echte OSM-Kacheln + zeichnet den Track schrittweise animiert.
+            Gibt Liste von (frame_path, duration) zurueck, oder [] bei Fehler/keinen Daten."""
+            if not PIL_OK or not gpx_points or len(gpx_points) < 2:
+                return []
+            try:
+                _ID = _ID_MOD
+                step = max(1, len(gpx_points)//300)
+                pts = gpx_points[::step]
+                lats = [p['lat'] for p in pts]; lngs = [p['lng'] for p in pts]
+                for p in photos_with_gps:
+                    lats.append(p['lat']); lngs.append(p['lng'])
+                min_lat, max_lat = min(lats), max(lats)
+                min_lng, max_lng = min(lngs), max(lngs)
+
+                TILE = 256
+                zoom = 16
+                while zoom > 8:
+                    x1, y1 = _lat_lng_to_tile_xy(min_lat, min_lng, zoom)
+                    x2, y2 = _lat_lng_to_tile_xy(max_lat, max_lng, zoom)
+                    px_w = abs(x2-x1)*TILE; px_h = abs(y1-y2)*TILE
+                    if px_w < W*0.82 and px_h < (H-240)*0.82:
+                        break
+                    zoom -= 1
+
+                center_lat, center_lng = (min_lat+max_lat)/2, (min_lng+max_lng)/2
+                ctx_x, ctx_y = _lat_lng_to_tile_xy(center_lat, center_lng, zoom)
+                tiles_across = W//TILE + 3
+                tiles_down   = H//TILE + 3
+                start_tx = int(ctx_x - tiles_across/2)
+                start_ty = int(ctx_y - tiles_down/2)
+
+                bg = _PIL.new('RGB', (tiles_across*TILE, tiles_down*TILE), (230, 235, 225))
+                subdomains = ['a', 'b', 'c']
+                for tx in range(tiles_across):
+                    for ty in range(tiles_down):
+                        sub = subdomains[(tx*tiles_down+ty) % 3]
+                        url = f'https://{sub}.tile.openstreetmap.org/{zoom}/{start_tx+tx}/{start_ty+ty}.png'
+                        try:
+                            r = http_requests.get(url, timeout=4,
+                                                  headers={'User-Agent': 'DjO-RadgruppenApp/1.0'})
+                            if r.status_code == 200:
+                                tile_img = _PIL.open(io.BytesIO(r.content)).convert('RGB')
+                                bg.paste(tile_img, (tx*TILE, ty*TILE))
+                        except Exception:
+                            pass
+
+                offset_x = (ctx_x - start_tx) * TILE - W/2
+                offset_y = (ctx_y - start_ty) * TILE - (H-240)/2 - 140
+
+                def proj(lat, lng):
+                    px, py = _lat_lng_to_tile_xy(lat, lng, zoom)
+                    return ((px-start_tx)*TILE - offset_x, (py-start_ty)*TILE - offset_y)
+
+                thumb_size = 78
+                photo_thumbs = []
+                for p in photos_with_gps:
+                    src = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], p['filename'])
+                    if not os.path.exists(src):
+                        photo_thumbs.append(None); continue
+                    try:
+                        pimg = _PIL.open(src).convert('RGB')
+                        s = min(pimg.width, pimg.height)
+                        pimg = pimg.crop(((pimg.width-s)//2, (pimg.height-s)//2,
+                                          (pimg.width-s)//2+s, (pimg.height-s)//2+s))
+                        pimg = pimg.resize((thumb_size, thumb_size), _PIL.LANCZOS)
+                        photo_thumbs.append(pimg)
+                    except Exception:
+                        photo_thumbs.append(None)
+
+                N_STEPS = 16
+                frame_paths = []
+                for step_i in range(1, N_STEPS+1):
+                    progress = step_i / N_STEPS
+                    frame = bg.crop((int(offset_x), int(offset_y), int(offset_x)+W, int(offset_y)+H)).copy()
+                    draw = _ID.Draw(frame)
+
+                    end_idx = max(1, int(len(pts) * progress))
+                    line_pts = [proj(pt['lat'], pt['lng']) for pt in pts[:end_idx]]
+                    if len(line_pts) > 1:
+                        draw.line(line_pts, fill=(255,255,255), width=13, joint='curve')
+                        draw.line(line_pts, fill=(240,133,30), width=8, joint='curve')
+
+                    sx, sy = proj(pts[0]['lat'], pts[0]['lng'])
+                    draw.ellipse([sx-13,sy-13,sx+13,sy+13], fill=(46,125,50), outline=(255,255,255), width=4)
+                    if progress >= 0.99:
+                        ex, ey = proj(pts[-1]['lat'], pts[-1]['lng'])
+                        draw.ellipse([ex-13,ey-13,ex+13,ey+13], fill=(198,40,40), outline=(255,255,255), width=4)
+
+                    reached = end_idx / len(pts)
+                    for p, thumb in zip(photos_with_gps, photo_thumbs):
+                        if thumb is None: continue
+                        best_d, best_frac = 1e9, 0
+                        for i, pt in enumerate(pts):
+                            d = (pt['lat']-p['lat'])**2 + (pt['lng']-p['lng'])**2
+                            if d < best_d:
+                                best_d, best_frac = d, i/len(pts)
+                        if best_frac > reached:
+                            continue
+                        x, y = proj(p['lat'], p['lng'])
+                        fx, fy = int(x-thumb_size/2), int(y-thumb_size)
+                        frame.paste(_PIL.new('RGB', (thumb_size+8, thumb_size+8), (255,255,255)),
+                                    (fx-4, fy-4))
+                        frame.paste(thumb, (fx, fy))
+
+                    draw.rounded_rectangle([24,24,W-24,88], radius=10, fill=(20,30,20))
+                    draw.text((42,38), tour.title[:34], font=_pil_font(min(26,int(W/24))), fill=(255,255,255))
+                    pct_text = f'{int(progress*100)}% der Strecke'
+                    draw.text((42,64), pct_text, font=_pil_font(18, bold=False), fill=(220,220,220))
+                    draw.text((W-190, H-34), '\u00A9 OpenStreetMap', font=_pil_font(16, bold=False), fill=(0,0,0))
+
+                    fpath = os.path.join(tmpdir, f'track_{step_i:03d}.jpg')
+                    frame.convert('RGB').save(fpath, 'JPEG', quality=88)
+                    frame_paths.append(fpath)
+
+                per_frame_dur = round(max(2.5, min(9, 3 + len(photos_with_gps))) / N_STEPS, 3)
+                return [(p, per_frame_dur) for p in frame_paths]
+            except Exception as e:
+                app.logger.warning(f'build_track_frames error: {e}', exc_info=True)
+                return []
 
         # ── Fotos verarbeiten ─────────────────────────────────────────────────
         concat_file = os.path.join(tmpdir, 'concat.txt')
         n_valid = 0
+
+        # Zusatzdaten für Stats-Folie (gleiche Werte wie in der Vorschau)
+        _attending_count = TourParticipant.query.filter_by(
+            tour_id=tour_id, status='attending'
+        ).count()
+        _weather = None
+        if tour.tour_date and not tour.is_date_open and tour.meeting_lat and tour.meeting_lng:
+            try:
+                _resp = http_requests.get(
+                    'https://api.open-meteo.com/v1/forecast',
+                    params={'latitude': tour.meeting_lat, 'longitude': tour.meeting_lng,
+                            'daily': 'weathercode,temperature_2m_max,temperature_2m_min',
+                            'timezone': 'Europe/Berlin',
+                            'start_date': tour.tour_date.isoformat(), 'end_date': tour.tour_date.isoformat()},
+                    timeout=5
+                )
+                _d = _resp.json().get('daily', {})
+                if _d.get('temperature_2m_max'):
+                    _icon_map = {0:'☀️',1:'🌤️',2:'🌤️',3:'☁️',45:'🌫️',48:'🌫️',
+                                 51:'🌦️',53:'🌦️',55:'🌦️',61:'🌧️',63:'🌧️',65:'🌧️',
+                                 71:'🌨️',73:'🌨️',75:'🌨️',80:'🌦️',81:'🌧️',82:'⛈️',
+                                 95:'⛈️',96:'⛈️',99:'⛈️'}
+                    _wc = (_d.get('weathercode') or [None])[0]
+                    _weather = {'temp_max': round(_d['temperature_2m_max'][0]), 'icon': _icon_map.get(_wc, '🌡️')}
+            except Exception:
+                pass
+
+        from flask import g as _g_render
+        _grp = getattr(_g_render, 'group', None)
+        _group_name = _grp.name if _grp else 'De jungen Olen'
+
+        show_track = request.form.get('show_track', '1') == '1'
+        show_stats = request.form.get('show_stats', '1') == '1'
+        _slide_secs = 0.0  # Summe aller Folien-Sekunden (für Audio-Fade-Timing)
+
+        # GPX + GPS-Fotos für die Kartenfolie vorbereiten
+        _gpx_points = []
+        if show_track and tour.gpx_file:
+            _gpx_path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
+            if os.path.exists(_gpx_path):
+                _parsed = parse_gpx(_gpx_path)
+                if _parsed:
+                    _gpx_points = _parsed.get('points', [])
+        _photos_with_gps = [{'filename': p.filename, 'lat': p.lat, 'lng': p.lng}
+                            for p in photos if p.lat and p.lng]
+
         with open(concat_file, 'w') as cf:
+            # 1. Titelfolie (3s) – als Video-Segment
+            title_frame = os.path.join(tmpdir, 'slide_title.jpg')
+            title_seg   = os.path.join(tmpdir, 'seg_title.mp4')
+            if make_title_frame(title_frame) and image_to_segment(title_frame, title_seg, 3):
+                cf.write(f"file '{title_seg}'\n")
+                _slide_secs += 3
+
+            # 1b. Kartenfolie: animierter Track, zu EINEM Video-Segment zusammengefasst
+            if show_track and _gpx_points:
+                track_frames = build_track_frames(_gpx_points, _photos_with_gps)
+                if track_frames:
+                    track_seg = os.path.join(tmpdir, 'seg_track.mp4')
+                    track_dur = sum(d for _, d in track_frames)
+                    if frames_to_segment(track_frames, track_seg):
+                        cf.write(f"file '{track_seg}'\n")
+                        _slide_secs += track_dur
+
+            # 2. Statistik-Folie (4s) – als Video-Segment
+            if show_stats:
+                stats_frame = os.path.join(tmpdir, 'slide_stats.jpg')
+                stats_seg   = os.path.join(tmpdir, 'seg_stats.mp4')
+                if make_stats_frame(stats_frame, _attending_count, _weather) and \
+                   image_to_segment(stats_frame, stats_seg, 4):
+                    cf.write(f"file '{stats_seg}'\n")
+                    _slide_secs += 4
+
+            # 3. Fotos (mit flüssigem Ken-Burns-Zoom via FFmpeg zoompan-Filter)
             for i, p in enumerate(photos):
                 src = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], p.filename)
                 if not os.path.exists(src):
                     continue
                 oriented = os.path.join(tmpdir, f'oriented_{i:04d}.jpg')
                 auto_orient(src, oriented)
-                frame = os.path.join(tmpdir, f'frame_{i:04d}.jpg')
-                make_frame(oriented, frame)
-                cf.write(f"file '{frame}'\nduration {photo_dur}\n")
-                n_valid += 1
+                zoom_in = (i % 2 == 0)  # abwechselnd rein-/rauszoomen für Abwechslung
+                segment_path = os.path.join(tmpdir, f'photo_{i:04d}.mp4')
+                if make_photo_zoom_segment(oriented, segment_path, photo_dur, zoom_in=zoom_in):
+                    cf.write(f"file '{segment_path}'\n")
+                    _slide_secs += photo_dur
+                    n_valid += 1
+                else:
+                    # Fallback: Standbild ohne Zoom, als Video-Segment (nicht als Bild-Zeile!)
+                    frame = os.path.join(tmpdir, f'frame_{i:04d}.jpg')
+                    fallback_seg = os.path.join(tmpdir, f'photo_fallback_{i:04d}.mp4')
+                    make_frame(oriented, frame)
+                    if image_to_segment(frame, fallback_seg, photo_dur):
+                        cf.write(f"file '{fallback_seg}'\n")
+                        _slide_secs += photo_dur
+                        n_valid += 1
+
+            # 4. Outro (2s) – als Video-Segment
+            outro_frame = os.path.join(tmpdir, 'slide_outro.jpg')
+            outro_seg   = os.path.join(tmpdir, 'seg_outro.mp4')
+            if make_outro_frame(outro_frame, _group_name) and image_to_segment(outro_frame, outro_seg, 2):
+                cf.write(f"file '{outro_seg}'\n")
+                _slide_secs += 2
 
         if n_valid == 0:
             flash('Foto-Dateien nicht gefunden.', 'danger')
             return redirect(url_for('tour_video', tour_id=tour_id))
 
-        total_secs = n_valid * photo_dur
+        total_secs = _slide_secs
 
         # ── Codec wählen ──────────────────────────────────────────────────────
         vcodec = _pick_ffmpeg_codec(ffmpeg_bin)
@@ -1852,6 +2681,8 @@ def archiv_new():
         if not title:
             flash('Titel ist erforderlich.', 'danger')
             return redirect(url_for('archiv_new'))
+        from flask import g as _g_archiv
+        _grp_archiv = getattr(_g_archiv, 'group', None)
         tour = Tour(
             title        = title,
             description  = request.form.get('description', '').strip() or None,
@@ -1860,6 +2691,7 @@ def archiv_new():
             status       = 'completed',
             created_by   = current_user.id,
             meeting_desc = request.form.get('meeting_desc', '').strip() or None,
+            group_id     = _grp_archiv.id if _grp_archiv else None,
         )
         try:
             tour.gpx_km     = float(request.form['gpx_km'])     if request.form.get('gpx_km')     else None
@@ -2217,20 +3049,22 @@ def global_search():
         db.or_(POI.name.ilike(like), POI.description.ilike(like))
     ).limit(10).all() if hasattr(POI, 'name') else []
 
-    comments = (TourComment.query
+    comments = (TourComment.query.join(Tour, TourComment.tour_id == Tour.id)
                 .filter(TourComment.content.ilike(like))
+                .filter(Tour.id.in_(_gq(Tour).with_entities(Tour.id)))
                 .order_by(TourComment.created_at.desc())
                 .limit(10).all())
 
-    photo_hits = (TourPhoto.query
+    photo_hits = (TourPhoto.query.join(Tour, TourPhoto.tour_id == Tour.id)
                   .filter(TourPhoto.caption.ilike(like),
                           TourPhoto.caption != None)
+                  .filter(Tour.id.in_(_gq(Tour).with_entities(Tour.id)))
                   .limit(8).all())
 
     video_hits = (TourVideo.query
                   .join(Tour, TourVideo.tour_id == Tour.id)
-                  .filter(db.or_(TourVideo.title.ilike(like),
-                                 TourVideo.description.ilike(like)))
+                  .filter(TourVideo.title.ilike(like))
+                  .filter(Tour.id.in_(_gq(Tour).with_entities(Tour.id)))
                   .limit(5).all())
 
     results = {
@@ -2244,6 +3078,69 @@ def global_search():
         'total':    len(tours) + len(geplant_hits) + len(gastro) + len(pois) + len(comments) + len(photo_hits) + len(video_hits),
     }
     return render_template('suche.html', q=q, results=results)
+
+
+def _rotate_backups():
+    """Räumt alte Backups nach Generationen-Prinzip auf:
+    - letzte 7 Tage: alle behalten
+    - letzte 8 Wochen: eine pro Woche behalten
+    - letzte 12 Monate: eine pro Monat behalten
+    - älter: gelöscht
+    Erwartet Dateinamen mit Datum, z.B. backup_2026-05-12_...  – Dateien ohne
+    erkennbares Datum werden nicht angefasst (sicherer Default).
+    """
+    backup_dir = os.path.join(os.path.dirname(__file__), 'backups')
+    if not os.path.isdir(backup_dir):
+        return 0
+    import re as _re
+    date_re = _re.compile(r'(\d{4}-\d{2}-\d{2})')
+    entries = []
+    for fname in os.listdir(backup_dir):
+        fpath = os.path.join(backup_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        m = date_re.search(fname)
+        if not m:
+            continue
+        try:
+            fdate = datetime.strptime(m.group(1), '%Y-%m-%d').date()
+        except ValueError:
+            continue
+        entries.append((fdate, fname, fpath))
+
+    if not entries:
+        return 0
+    entries.sort(key=lambda x: x[0], reverse=True)
+
+    today = date.today()
+    keep = set()
+    seen_weeks = set()
+    seen_months = set()
+    for fdate, fname, fpath in entries:
+        age_days = (today - fdate).days
+        if age_days <= 7:
+            keep.add(fname)
+        elif age_days <= 56:  # 8 Wochen
+            wk = fdate.isocalendar()[:2]  # (Jahr, KW)
+            if wk not in seen_weeks:
+                seen_weeks.add(wk)
+                keep.add(fname)
+        elif age_days <= 365:  # 12 Monate
+            mk = (fdate.year, fdate.month)
+            if mk not in seen_months:
+                seen_months.add(mk)
+                keep.add(fname)
+        # älter als 365 Tage: nicht behalten
+
+    deleted = 0
+    for fdate, fname, fpath in entries:
+        if fname not in keep:
+            try:
+                os.remove(fpath)
+                deleted += 1
+            except Exception:
+                pass
+    return deleted
 
 
 def _run_backup(triggered_by='manuell'):
@@ -2265,6 +3162,13 @@ def _run_backup(triggered_by='manuell'):
             SiteConfig.set('backup_last_trigger', triggered_by)
             db.session.commit()
             msg = result.stdout.strip() or 'Backup erstellt.'
+            # Alte Backups nach Generationen-Prinzip aufräumen
+            try:
+                deleted = _rotate_backups()
+                if deleted:
+                    msg += f' ({deleted} alte Backup(s) aufgeräumt.)'
+            except Exception as e:
+                app.logger.warning(f'Backup-Rotation Fehler: {e}')
             # Optionale E-Mail-Benachrichtigung bei automatischem Lauf
             if triggered_by != 'manuell' and cfg('backup_notify_email') == '1':
                 admin_mail = cfg('admin_email')
@@ -2449,8 +3353,11 @@ def admin_invite():
     email = request.form.get('email', '').strip().lower()
     label = request.form.get('label', '').strip()
     token = secrets.token_urlsafe(32)
+    from flask import g as _g_invite
+    _grp_invite = getattr(_g_invite, 'group', None)
     invite = InviteToken(token=token, email=email or None,
-                         label=label or None, created_by=current_user.id)
+                         label=label or None, created_by=current_user.id,
+                         group_id=_grp_invite.id if _grp_invite else None)
     db.session.add(invite)
     db.session.commit()
     invite_url = url_for('register', token=token, _external=True)
@@ -3280,7 +4187,7 @@ def send_reminders():
 @app.route('/touren/<int:tour_id>/kommentieren', methods=['POST'])
 @login_required
 def tour_comment(tour_id):
-    Tour.query.get_or_404(tour_id)
+    tour = Tour.query.get_or_404(tour_id)
     content   = request.form.get('content','').strip()
     parent_id = request.form.get('parent_id') or None
     if not content:
@@ -3295,6 +4202,36 @@ def tour_comment(tour_id):
     )
     db.session.add(comment)
     db.session.commit()
+
+    # Push-Benachrichtigung an alle zugesagten Teilnehmer (außer dem Kommentator selbst)
+    try:
+        attendee_ids = {p.user_id for p in
+                        TourParticipant.query.filter_by(tour_id=tour_id, status='attending').all()}
+        attendee_ids.discard(current_user.id)
+        preview = content if len(content) <= 80 else content[:77] + '…'
+        for uid in attendee_ids:
+            u = User.query.get(uid)
+            if u:
+                send_push_to_user(
+                    u, title=f'💬 {current_user.display_name} zu „{tour.title}"',
+                    body=preview, url=f'/touren/{tour_id}#kommentare',
+                )
+    except Exception as e:
+        app.logger.warning(f'Push notification (tour_comment) failed: {e}')
+
+    # Telegram-Nachricht in die Gruppe
+    try:
+        tg_preview = content if len(content) <= 200 else content[:197] + '…'
+        tg_msg = (
+            f'💬 <b>Neuer Kommentar</b>\n\n'
+            f'{current_user.display_name} zu <b>{tour.title}</b>:\n'
+            f'"{tg_preview}"\n\n'
+            f'👉 {app.config["BASE_URL"]}/touren/{tour_id}#kommentare'
+        )
+        send_telegram(tg_msg)
+    except Exception as e:
+        app.logger.warning(f'Telegram notification (tour_comment) failed: {e}')
+
     flash('Kommentar gespeichert.', 'success')
     return redirect(url_for('tour_detail', tour_id=tour_id) + '#kommentare')
 
@@ -3555,6 +4492,562 @@ def admin_backup_cron_info():
     token = (app.config.get('SECRET_KEY') or '')[:20]
     trigger_url = url_for('api_backup_trigger', token=token, _external=True)
     return render_template('admin/backup_cron_info.html', trigger_url=trigger_url)
+
+
+@app.route('/admin/backup/aufraeumen', methods=['POST'])
+@login_required
+@admin_required
+def admin_backup_rotate_now():
+    """Manuell alte Backups sofort nach Generationen-Prinzip aufräumen."""
+    try:
+        deleted = _rotate_backups()
+        if deleted:
+            flash(f'{deleted} alte(s) Backup(s) gelöscht.', 'success')
+        else:
+            flash('Nichts zu löschen – alle Backups sind noch innerhalb der Aufbewahrungsfrist.', 'info')
+    except Exception as e:
+        flash(f'Fehler beim Aufräumen: {e}', 'danger')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/reminder-test', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def admin_reminder_test():
+    """Alte URL – leitet zur neuen, zusammengeführten Benachrichtigungs-Testseite."""
+    if request.method == 'POST':
+        tour_id = request.form.get('tour_id')
+        tour = Tour.query.get_or_404(tour_id)
+        attendees, push_sent = _send_morning_reminder_for_tour(tour)
+        flash(f'Test-Erinnerung für „{tour.title}" verschickt: '
+              f'Telegram-Nachricht gesendet, {push_sent} von {attendees} '
+              f'zugesagten Teilnehmer(n) per Push benachrichtigt.', 'success')
+        return redirect(url_for('admin_notifications'))
+    return redirect(url_for('admin_notifications'))
+
+
+def get_visible_announcements(group_id=None, context='logged_in'):
+    """Gibt aktuell sichtbare Ankündigungen zurück.
+    Mit group_id: nur die dieser Gruppe (für eingeloggte Nutzer).
+    Ohne group_id (None): ALLE aktiven Ankündigungen gruppenübergreifend –
+    für den ausgeloggten Login-Screen, wo noch kein Gruppen-Kontext besteht.
+    context: 'logged_in' oder 'logged_out' – filtert nach der je Ankündigung
+    einstellbaren Sichtbarkeit (visibility: 'both'/'logged_in'/'logged_out')."""
+    q = Announcement.query.filter_by(is_active=True)
+    if group_id is not None:
+        q = q.filter_by(group_id=group_id)
+    q = q.filter(db.or_(Announcement.visibility == 'both', Announcement.visibility == context))
+    now = datetime.utcnow()
+    q = q.filter(
+        db.or_(Announcement.starts_at == None, Announcement.starts_at <= now),
+        db.or_(Announcement.expires_at == None, Announcement.expires_at >= now),
+    )
+    return q.order_by(Announcement.created_at.desc()).all()
+
+
+@app.route('/admin/ankuendigungen')
+@login_required
+@admin_required
+def admin_announcements():
+    """Übersicht aller Ankündigungen der aktiven Gruppe."""
+    from flask import g as _g_ann
+    grp = getattr(_g_ann, 'group', None)
+    items = Announcement.query.filter_by(group_id=grp.id if grp else None) \
+                              .order_by(Announcement.created_at.desc()).all()
+    return render_template('admin/announcements.html', items=items)
+
+
+@app.route('/admin/ankuendigungen/neu', methods=['POST'])
+@login_required
+@admin_required
+def announcement_create():
+    """Erstellt eine neue Ankündigung, optional mit Bild."""
+    title = request.form.get('title', '').strip()
+    content = request.form.get('content', '').strip()
+    if not title:
+        flash('Titel ist erforderlich.', 'danger')
+        return redirect(url_for('admin_announcements'))
+
+    from flask import g as _g_ann
+    grp = getattr(_g_ann, 'group', None)
+
+    image_fname = None
+    image_file = request.files.get('image')
+    if image_file and image_file.filename:
+        ext = image_file.filename.rsplit('.', 1)[-1].lower()
+        if ext in ('jpg', 'jpeg', 'png', 'webp'):
+            ann_dir = os.path.join(app.root_path, 'static', 'uploads', 'announcements')
+            os.makedirs(ann_dir, exist_ok=True)
+            image_fname = f'ann_{secrets.token_hex(8)}.{ext}'
+            image_path = os.path.join(ann_dir, image_fname)
+            image_file.save(image_path)
+            try:
+                _resize_photo_if_needed(image_path, max_px=1400)
+            except Exception:
+                pass
+        else:
+            flash('Bild: nur JPG, PNG oder WEBP erlaubt – Ankündigung wurde ohne Bild erstellt.', 'warning')
+
+    starts_at = None
+    expires_at = None
+    if request.form.get('starts_at'):
+        try:
+            starts_at = datetime.strptime(request.form['starts_at'], '%Y-%m-%d')
+        except ValueError:
+            pass
+    if request.form.get('expires_at'):
+        try:
+            expires_at = datetime.strptime(request.form['expires_at'], '%Y-%m-%d') + timedelta(hours=23, minutes=59)
+        except ValueError:
+            pass
+
+    visibility = request.form.get('visibility', 'both')
+    if visibility not in ('both', 'logged_in', 'logged_out'):
+        visibility = 'both'
+
+    ann = Announcement(
+        group_id=grp.id if grp else None,
+        title=title, content=content or None, image=image_fname,
+        visibility=visibility,
+        starts_at=starts_at, expires_at=expires_at,
+        created_by=current_user.id,
+    )
+    db.session.add(ann)
+    db.session.commit()
+    flash(f'Ankündigung „{title}" erstellt.', 'success')
+    return redirect(url_for('admin_announcements'))
+
+
+@app.route('/admin/ankuendigungen/<int:ann_id>/bearbeiten', methods=['POST'])
+@login_required
+@admin_required
+def announcement_edit(ann_id):
+    """Bearbeitet eine bestehende Ankündigung. Bild bleibt erhalten, falls
+    kein neues hochgeladen wird; kann über die Checkbox entfernt werden."""
+    ann = Announcement.query.get_or_404(ann_id)
+
+    title = request.form.get('title', '').strip()
+    if not title:
+        flash('Titel ist erforderlich.', 'danger')
+        return redirect(url_for('admin_announcements'))
+
+    ann.title = title
+    ann.content = request.form.get('content', '').strip() or None
+
+    ann_dir = os.path.join(app.root_path, 'static', 'uploads', 'announcements')
+
+    if request.form.get('remove_image') == '1' and ann.image:
+        old_path = os.path.join(ann_dir, ann.image)
+        if os.path.exists(old_path):
+            try:
+                os.remove(old_path)
+            except OSError:
+                pass
+        ann.image = None
+
+    image_file = request.files.get('image')
+    if image_file and image_file.filename:
+        ext = image_file.filename.rsplit('.', 1)[-1].lower()
+        if ext in ('jpg', 'jpeg', 'png', 'webp'):
+            os.makedirs(ann_dir, exist_ok=True)
+            if ann.image:
+                old_path = os.path.join(ann_dir, ann.image)
+                if os.path.exists(old_path):
+                    try:
+                        os.remove(old_path)
+                    except OSError:
+                        pass
+            new_fname = f'ann_{secrets.token_hex(8)}.{ext}'
+            image_path = os.path.join(ann_dir, new_fname)
+            image_file.save(image_path)
+            try:
+                _resize_photo_if_needed(image_path, max_px=1400)
+            except Exception:
+                pass
+            ann.image = new_fname
+        else:
+            flash('Bild: nur JPG, PNG oder WEBP erlaubt – restliche Änderungen wurden trotzdem gespeichert.', 'warning')
+
+    visibility = request.form.get('visibility', 'both')
+    if visibility not in ('both', 'logged_in', 'logged_out'):
+        visibility = 'both'
+    ann.visibility = visibility
+
+    ann.starts_at = None
+    ann.expires_at = None
+    if request.form.get('starts_at'):
+        try:
+            ann.starts_at = datetime.strptime(request.form['starts_at'], '%Y-%m-%d')
+        except ValueError:
+            pass
+    if request.form.get('expires_at'):
+        try:
+            ann.expires_at = datetime.strptime(request.form['expires_at'], '%Y-%m-%d') + timedelta(hours=23, minutes=59)
+        except ValueError:
+            pass
+
+    db.session.commit()
+    flash(f'Ankündigung „{title}" aktualisiert.', 'success')
+    return redirect(url_for('admin_announcements'))
+
+
+@app.route('/admin/ankuendigungen/<int:ann_id>/loeschen', methods=['POST'])
+@login_required
+@admin_required
+def announcement_delete(ann_id):
+    """Löscht eine Ankündigung inkl. Bild."""
+    ann = Announcement.query.get_or_404(ann_id)
+    if ann.image:
+        img_path = os.path.join(app.root_path, 'static', 'uploads', 'announcements', ann.image)
+        if os.path.exists(img_path):
+            try:
+                os.remove(img_path)
+            except OSError:
+                pass
+    title = ann.title
+    db.session.delete(ann)
+    db.session.commit()
+    flash(f'Ankündigung „{title}" gelöscht.', 'success')
+    return redirect(url_for('admin_announcements'))
+
+
+@app.route('/admin/ankuendigungen/<int:ann_id>/umschalten', methods=['POST'])
+@login_required
+@admin_required
+def announcement_toggle(ann_id):
+    """Aktiviert/deaktiviert eine Ankündigung, ohne sie zu löschen."""
+    ann = Announcement.query.get_or_404(ann_id)
+    ann.is_active = not ann.is_active
+    db.session.commit()
+    flash(f'Ankündigung „{ann.title}" {"aktiviert" if ann.is_active else "deaktiviert"}.', 'success')
+    return redirect(url_for('admin_announcements'))
+
+
+@app.route('/admin/tools')
+@login_required
+@admin_required
+def admin_tools():
+    """Zentrale Übersicht aller Admin-Werkzeuge (Backup, Benachrichtigungen,
+    Gruppen, Diagnose, Pakete) – Sammelstelle statt verstreuter Einzellinks."""
+    backup_count = 0
+    backups_dir = os.path.join(os.path.dirname(__file__), 'backups')
+    if os.path.isdir(backups_dir):
+        backup_count = len([f for f in os.listdir(backups_dir)
+                            if f.startswith('djo_backup_') and f.endswith('.tar.gz')])
+    group_count = Group.query.filter_by(is_active=True).count()
+    _last_run_str = cfg('backup_last_run')
+    _last_run = None
+    if _last_run_str:
+        try:
+            _last_run = datetime.fromisoformat(_last_run_str)
+        except ValueError:
+            pass
+    return render_template('admin/tools.html',
+                           backup_count=backup_count,
+                           group_count=group_count,
+                           backup_last_run=_last_run,
+                           backup_last_status=cfg('backup_last_status'))
+
+
+@app.route('/admin/benachrichtigungen')
+@login_required
+@admin_required
+def admin_notifications():
+    """Zentrale Test- und Statusseite für alle Benachrichtigungswege:
+    Push, Telegram und die Tourtag-Erinnerung."""
+    telegram_configured = bool(cfg('telegram_bot_token') and cfg('telegram_chat_id'))
+    push_available = False
+    try:
+        from py_vapid import Vapid02  # noqa
+        import pywebpush  # noqa
+        push_available = True
+    except Exception:
+        push_available = False
+    from flask import g as _g_notif
+    _grp = getattr(_g_notif, 'group', None)
+    push_sub_count = PushSubscription.query.join(User).filter(
+        User.group_id == (_grp.id if _grp else None)
+    ).count() if push_available else 0
+
+    upcoming = (_gq(Tour)
+                .filter(Tour.status == 'planned', Tour.tour_date >= date.today())
+                .order_by(Tour.tour_date.asc())
+                .limit(10).all())
+
+    return render_template('admin/notifications.html',
+                           telegram_configured=telegram_configured,
+                           push_available=push_available,
+                           push_sub_count=push_sub_count,
+                           tours=upcoming)
+
+
+def _resolve_live_db_path():
+    """Ermittelt den tatsächlichen Dateipfad der aktiven SQLite-Datenbank
+    aus der SQLALCHEMY_DATABASE_URI-Konfiguration.
+
+    WICHTIG: Flask-SQLAlchemy löst relative sqlite:///-Pfade standardmäßig
+    relativ zu app.instance_path auf (üblicherweise <projekt>/instance/),
+    NICHT relativ zum Projekt-Hauptordner! Das war zuvor nicht berücksichtigt."""
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI', '') or ''
+    candidates = []
+
+    if uri.startswith('sqlite:///'):
+        db_path = uri[len('sqlite:///'):]
+        db_path = db_path.split('?')[0]  # eventuelle Query-Parameter abschneiden
+        if not os.path.isabs(db_path):
+            db_path = os.path.join(app.instance_path, db_path)
+        candidates.append(db_path)
+
+    # Fallback-Kandidaten: instance-Ordner zuerst (Flask-Standard), dann Projektroot
+    app_dir = os.path.dirname(__file__)
+    candidates.append(os.path.join(app.instance_path, 'dejungen_olen.db'))
+    candidates.append(os.path.join(app_dir, 'instance', 'dejungen_olen.db'))
+    candidates.append(os.path.join(app_dir, 'dejungen_olen.db'))
+    candidates.append(os.path.join(app_dir, 'djo.sqlite'))
+
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+
+    return candidates[0] if candidates else None
+
+
+@app.route('/admin/db-diagnose')
+@login_required
+@admin_required
+def admin_db_diagnose():
+    """Zeigt, welche Datenbank-Konfiguration aktiv ist und welche
+    .db/.sqlite-Dateien tatsächlich im Projektordner UND im
+    Flask-instance-Ordner liegen (dorthin werden relative sqlite:///-Pfade
+    von Flask-SQLAlchemy standardmäßig aufgelöst)."""
+    app_dir = os.path.dirname(__file__)
+    instance_dir = app.instance_path
+    configured_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '(nicht gesetzt)')
+
+    found_files = []
+    search_dirs = [('Projektordner', app_dir), ('instance-Ordner', instance_dir)]
+    seen_paths = set()
+    for label, directory in search_dirs:
+        if not os.path.isdir(directory):
+            continue
+        for fname in os.listdir(directory):
+            if fname.endswith(('.db', '.sqlite', '.sqlite3')):
+                fpath = os.path.join(directory, fname)
+                if fpath in seen_paths:
+                    continue
+                seen_paths.add(fpath)
+                try:
+                    found_files.append({
+                        'name': fname,
+                        'location': label,
+                        'full_path': fpath,
+                        'size_mb': round(os.path.getsize(fpath) / (1024*1024), 2),
+                        'mtime': datetime.fromtimestamp(os.path.getmtime(fpath)),
+                    })
+                except OSError:
+                    continue
+    found_files.sort(key=lambda x: x['mtime'], reverse=True)
+
+    # Zusätzlich: was SQLAlchemy selbst als aktive Engine-URL führt
+    try:
+        engine_url = str(db.engine.url)
+    except Exception as e:
+        engine_url = f'(Fehler beim Lesen: {e})'
+
+    return render_template('admin/db_diagnose.html',
+                           app_dir=app_dir,
+                           instance_dir=instance_dir,
+                           configured_uri=configured_uri,
+                           engine_url=engine_url,
+                           found_files=found_files)
+
+
+@app.route('/push/vapid-public-key')
+@login_required
+def push_vapid_public_key():
+    """Liefert den öffentlichen VAPID-Schlüssel für die Browser-Subscription."""
+    _, pub = _get_vapid_keys()
+    if not pub:
+        return jsonify({'error': 'Push-Benachrichtigungen sind serverseitig nicht verfügbar '
+                                  '(pywebpush/cryptography nicht installiert). '
+                                  'Admin → Pakete installieren.'}), 503
+    return jsonify({'publicKey': pub})
+
+
+@app.route('/push/subscribe', methods=['POST'])
+@login_required
+def push_subscribe():
+    """Speichert eine neue Browser-Push-Subscription für den aktuellen Nutzer."""
+    data = request.get_json(silent=True) or {}
+    endpoint = data.get('endpoint')
+    keys = data.get('keys', {})
+    p256dh = keys.get('p256dh')
+    auth = keys.get('auth')
+    if not endpoint or not p256dh or not auth:
+        return jsonify({'error': 'Unvollständige Subscription-Daten'}), 400
+
+    existing = PushSubscription.query.filter_by(endpoint=endpoint).first()
+    if existing:
+        existing.user_id = current_user.id
+        existing.p256dh = p256dh
+        existing.auth = auth
+    else:
+        db.session.add(PushSubscription(
+            user_id=current_user.id, endpoint=endpoint, p256dh=p256dh, auth=auth
+        ))
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/push/unsubscribe', methods=['POST'])
+@login_required
+def push_unsubscribe():
+    """Entfernt eine Push-Subscription (z.B. wenn der Nutzer Benachrichtigungen abschaltet)."""
+    data = request.get_json(silent=True) or {}
+    endpoint = data.get('endpoint')
+    if endpoint:
+        PushSubscription.query.filter_by(endpoint=endpoint, user_id=current_user.id).delete()
+        db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/push/test', methods=['POST'])
+@login_required
+def push_test():
+    """Sendet eine Test-Benachrichtigung an den aktuellen Nutzer."""
+    sent, reasons = send_push_to_user(current_user, 'Testbenachrichtigung 🔔',
+                                      'Push-Benachrichtigungen funktionieren!', url='/')
+    if sent:
+        return jsonify({'ok': True, 'sent': sent})
+    detail = '; '.join(reasons) if reasons else 'Unbekannter Fehler'
+    return jsonify({'ok': False, 'error': f'Versand fehlgeschlagen: {detail}'}), 400
+
+
+@app.route('/admin/backups')
+@login_required
+@admin_required
+def admin_backups_list():
+    """Übersicht aller verfügbaren Backups zum Wiederherstellen."""
+    backups_dir = os.path.join(os.path.dirname(__file__), 'backups')
+    entries = []
+    if os.path.isdir(backups_dir):
+        for fname in sorted(os.listdir(backups_dir), reverse=True):
+            if not fname.startswith('djo_backup_') or not fname.endswith('.tar.gz'):
+                continue
+            fpath = os.path.join(backups_dir, fname)
+            try:
+                size_mb = round(os.path.getsize(fpath) / (1024*1024), 1)
+                mtime = datetime.fromtimestamp(os.path.getmtime(fpath))
+                entries.append({'filename': fname, 'size_mb': size_mb, 'mtime': mtime})
+            except OSError:
+                continue
+    return render_template('admin/backups_list.html', backups=entries,
+                           backup_interval=cfg('backup_interval') or 'off',
+                           backup_notify_email=cfg('backup_notify_email') or '0')
+
+
+@app.route('/admin/backups/<path:filename>/wiederherstellen', methods=['POST'])
+@login_required
+@admin_required
+def admin_backup_restore(filename):
+    """Stellt ein Backup wieder her: Datenbank + Uploads (fehlende Dateien ergänzt).
+    Erstellt vorher automatisch eine Sicherheitskopie der aktuellen Datenbank.
+    ACHTUNG: Ersetzt die aktuelle Datenbank – erfordert getippte Bestätigung."""
+    if request.form.get('confirm_text', '').strip() != 'WIEDERHERSTELLEN':
+        flash('Bestätigung fehlgeschlagen – bitte exakt "WIEDERHERSTELLEN" eingeben.', 'danger')
+        return redirect(url_for('admin_backups_list'))
+
+    backups_dir = os.path.join(os.path.dirname(__file__), 'backups')
+    safe_name = os.path.basename(filename)  # Schutz vor Path-Traversal
+    backup_path = os.path.join(backups_dir, safe_name)
+    if not os.path.exists(backup_path) or not backup_path.startswith(backups_dir):
+        flash('Backup-Datei nicht gefunden.', 'danger')
+        return redirect(url_for('admin_backups_list'))
+
+    live_db_path = _resolve_live_db_path()
+    if not live_db_path or not os.path.exists(live_db_path):
+        flash(f'Aktuelle Datenbankdatei konnte nicht ermittelt werden. '
+              f'Versuchter Pfad: {live_db_path or "kein Kandidat gefunden"}. '
+              f'Bitte prüfen, ob die Datei dort tatsächlich liegt, oder DATABASE_URL '
+              f'in der .env kontrollieren.', 'danger')
+        return redirect(url_for('admin_backups_list'))
+
+    import tarfile, tempfile, glob as _glob, shutil
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp_extract:
+            with tarfile.open(backup_path, 'r:gz') as tf:
+                tf.extractall(tmp_extract)
+
+            sqlite_files = _glob.glob(os.path.join(tmp_extract, '*.sqlite'))
+            if not sqlite_files:
+                flash('Im Backup wurde keine Datenbank-Datei gefunden.', 'danger')
+                return redirect(url_for('admin_backups_list'))
+            backup_db = sqlite_files[0]
+
+            # 1. Sicherheitskopie der AKTUELLEN Datenbank anlegen (vor jedem Restore)
+            os.makedirs(backups_dir, exist_ok=True)
+            pre_restore_name = f'pre_restore_{datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")}.db'
+            shutil.copy2(live_db_path, os.path.join(backups_dir, pre_restore_name))
+
+            # 2. Alle DB-Verbindungen schließen, bevor die Datei ausgetauscht wird
+            db.session.remove()
+            db.engine.dispose()
+
+            # 3. Atomarer Dateiwechsel: erst danebenkopieren, dann umbenennen
+            #    (os.replace ist auf demselben Dateisystem atomar – kein
+            #    Moment, in dem die Datei halb geschrieben/leer wäre)
+            tmp_target = live_db_path + '.restoring'
+            shutil.copy2(backup_db, tmp_target)
+            os.replace(tmp_target, live_db_path)
+
+            # 4. Alte WAL/SHM-Dateien der VORHERIGEN Datenbank entfernen – sie
+            #    gehören zum alten Inhalt und dürfen nicht mit der neuen
+            #    Datenbank vermischt werden
+            for suffix in ('-wal', '-shm'):
+                stale = live_db_path + suffix
+                if os.path.exists(stale):
+                    try:
+                        os.remove(stale)
+                    except OSError:
+                        pass
+
+            # 5. Uploads ergänzen (nur fehlende Dateien, nichts Neueres überschreiben)
+            backup_uploads = os.path.join(tmp_extract, 'static', 'uploads')
+            restored_files = 0
+            if os.path.isdir(backup_uploads):
+                live_uploads = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
+                for root, _dirs, files in os.walk(backup_uploads):
+                    rel = os.path.relpath(root, backup_uploads)
+                    target_dir = os.path.join(live_uploads, rel) if rel != '.' else live_uploads
+                    os.makedirs(target_dir, exist_ok=True)
+                    for fname in files:
+                        src_f = os.path.join(root, fname)
+                        dst_f = os.path.join(target_dir, fname)
+                        if not os.path.exists(dst_f):
+                            try:
+                                shutil.copy2(src_f, dst_f)
+                                restored_files += 1
+                            except OSError:
+                                pass
+
+        # 6. Passenger-Neustart auslösen, damit alle Worker die neue DB sauber laden
+        try:
+            tmp_dir = os.path.join(os.path.dirname(__file__), 'tmp')
+            os.makedirs(tmp_dir, exist_ok=True)
+            with open(os.path.join(tmp_dir, 'restart.txt'), 'w') as f:
+                f.write(datetime.utcnow().isoformat())
+            restart_note = ' Die App wurde zum Neustart aufgefordert.'
+        except Exception:
+            restart_note = ' Bitte die App JETZT manuell in Plesk neu starten!'
+
+        flash(f'Wiederherstellung erfolgreich! {restored_files} fehlende Datei(en) ergänzt. '
+              f'Sicherheitskopie der vorherigen Datenbank: {pre_restore_name}.{restart_note}', 'success')
+    except Exception as e:
+        app.logger.error(f'Restore error: {e}', exc_info=True)
+        flash(f'Fehler bei der Wiederherstellung: {e}', 'danger')
+
+    return redirect(url_for('admin_backups_list'))
 
 
 @app.route('/api/docs')
@@ -3917,7 +5410,7 @@ def admin_settings():
     if request.method == 'POST':
         keys = [
             'telegram_bot_token', 'telegram_chat_id', 'telegram_chat_username',
-            'telegram_invite_link',
+            'telegram_invite_link', 'whatsapp_group_link', 'contact_email',
             'default_start_time', 'default_meeting_desc',
             'default_meeting_lat', 'default_meeting_lng',
             'morning_opener_until', 'site_name', 'base_url',
@@ -4315,6 +5808,86 @@ def group_logo_upload(group_id):
     return redirect(url_for('admin_groups'))
 
 
+@app.route('/gruppe/<int:group_id>/musik', methods=['POST'])
+@login_required
+def group_music_upload(group_id):
+    """Standard-Hintergrundmusik für Tour-Videos einer Gruppe festlegen (nur Super-Admin)."""
+    if current_user.role != 'admin':
+        abort(403)
+    group = Group.query.get_or_404(group_id)
+    music_file = request.files.get('default_music')
+    if not music_file or not music_file.filename:
+        flash('Keine Datei ausgewählt.', 'warning')
+        return redirect(url_for('admin_groups'))
+    ext = music_file.filename.rsplit('.', 1)[-1].lower()
+    if ext not in ('mp3', 'aac', 'm4a', 'wav', 'ogg'):
+        flash('Nur MP3, AAC, M4A, WAV oder OGG erlaubt.', 'danger')
+        return redirect(url_for('admin_groups'))
+
+    music_dir = os.path.join(app.root_path, 'static', 'uploads', 'group_music')
+    os.makedirs(music_dir, exist_ok=True)
+
+    if group.default_music:
+        old_path = os.path.join(music_dir, group.default_music)
+        if os.path.exists(old_path):
+            try:
+                os.remove(old_path)
+            except Exception:
+                pass
+
+    music_fname = f'group_{group.id}_{secrets.token_hex(6)}.{ext}'
+    music_path  = os.path.join(music_dir, music_fname)
+    music_file.save(music_path)
+    group.default_music = music_fname
+    db.session.commit()
+    flash(f'Standardmusik für „{group.name}" gesetzt.', 'success')
+    return redirect(url_for('admin_groups'))
+
+
+@app.route('/gruppe/<int:group_id>/musik/loeschen', methods=['POST'])
+@login_required
+def group_music_delete(group_id):
+    """Entfernt die Standardmusik einer Gruppe wieder."""
+    if current_user.role != 'admin':
+        abort(403)
+    group = Group.query.get_or_404(group_id)
+    if group.default_music:
+        music_dir = os.path.join(app.root_path, 'static', 'uploads', 'group_music')
+        old_path = os.path.join(music_dir, group.default_music)
+        if os.path.exists(old_path):
+            try:
+                os.remove(old_path)
+            except Exception:
+                pass
+        group.default_music = None
+        db.session.commit()
+        flash('Standardmusik entfernt.', 'success')
+    return redirect(url_for('admin_groups'))
+
+
+@app.route('/gruppe/<int:group_id>/umbenennen', methods=['POST'])
+@login_required
+def group_rename(group_id):
+    """Name und Beschreibung einer Gruppe ändern (nur Super-Admin)."""
+    if current_user.role != 'admin':
+        abort(403)
+    group = Group.query.get_or_404(group_id)
+    new_name = request.form.get('name', '').strip()
+    new_desc = request.form.get('description', '').strip()
+    if not new_name:
+        flash('Name darf nicht leer sein.', 'danger')
+        return redirect(url_for('admin_groups'))
+    old_name = group.name
+    group.name = new_name
+    group.description = new_desc or None
+    db.session.commit()
+    if old_name != new_name:
+        flash(f'Gruppe „{old_name}" wurde in „{new_name}" umbenannt.', 'success')
+    else:
+        flash(f'Gruppe „{new_name}" aktualisiert.', 'success')
+    return redirect(url_for('admin_groups'))
+
+
 @app.route('/admin/gruppen')
 @login_required
 def admin_groups():
@@ -4679,6 +6252,71 @@ def _self_trigger_backup():
             _run_backup(triggered_by='auto')
     except Exception as e:
         app.logger.warning(f'Self-trigger backup error: {e}')
+
+
+# ── Selbst-Trigger für Tourtag-Erinnerung per Push ───────────────────────────
+# Prüft mit geringer Wahrscheinlichkeit, ob heute eine Tour stattfindet, für
+# die noch keine Morgen-Erinnerung verschickt wurde. Ein SiteConfig-Eintrag
+# pro Tour+Datum verhindert Doppelversand, auch bei mehreren Anfragen.
+def _send_morning_reminder_for_tour(tour):
+    """Verschickt die Tourtag-Erinnerung (Telegram + Push) für eine einzelne
+    Tour. Wiederverwendet vom automatischen Selbst-Trigger UND vom manuellen
+    Admin-Test, damit beide garantiert denselben Nachrichtentext erzeugen."""
+    attendee_ids = {p.user_id for p in
+                    TourParticipant.query.filter_by(tour_id=tour.id, status='attending').all()}
+
+    try:
+        tg_msg = (
+            f'⏰ <b>Heute ist Tourtag!</b>\n\n'
+            f'🚴 <b>{tour.title}</b>\n'
+            f'{"🕐 " + tour.start_time + " Uhr" + chr(10) if tour.start_time else ""}'
+            f'👥 {len(attendee_ids)} Teilnehmer angemeldet\n'
+        )
+        if tour.meeting_desc:
+            tg_msg += f'📍 Treffpunkt: {tour.meeting_desc}\n'
+        tg_msg += f'\n👉 {app.config["BASE_URL"]}/touren/{tour.id}'
+        send_telegram(tg_msg)
+    except Exception as e:
+        app.logger.warning(f'Telegram morning reminder failed: {e}')
+
+    push_sent = 0
+    if attendee_ids:
+        body = f'Heute{" um " + tour.start_time + " Uhr" if tour.start_time else ""}: {tour.title}'
+        if tour.meeting_desc:
+            body += f' · {tour.meeting_desc}'
+        for uid in attendee_ids:
+            u = User.query.get(uid)
+            if u:
+                n, _ = send_push_to_user(u, title='🚴 Tour heute!', body=body, url=f'/touren/{tour.id}')
+                push_sent += n
+    return len(attendee_ids), push_sent
+
+
+@app.before_request
+def _self_trigger_morning_reminder():
+    if request.endpoint in ('static', 'service_worker', 'api_backup_trigger'):
+        return
+    import random
+    if random.random() > 0.03:  # ~3% Chance pro Request
+        return
+    try:
+        today = date.today()
+        flag_key = f'morning_reminder_sent_{today.isoformat()}'
+        if cfg(flag_key) == '1':
+            return  # heute schon für alle fälligen Touren verschickt
+
+        due_tours = Tour.query.filter(
+            Tour.status == 'planned',
+            Tour.tour_date == today,
+        ).all()
+
+        for tour in due_tours:
+            _send_morning_reminder_for_tour(tour)
+
+        SiteConfig.set(flag_key, '1')
+        db.session.commit()
+    except Exception as e:
+        app.logger.warning(f'Self-trigger morning reminder error: {e}')
 
 
 @app.route('/archiv/suche')
@@ -5133,6 +6771,59 @@ def api_heatmap():
     return jsonify({'tracks': tracks})
 
 
+@app.route('/karte/erkundung')
+@login_required
+def explore_map():
+    """'Unsere Landkarte': zeigt anhand aller gefahrenen GPX-Tracks, welche
+    Kacheln (ca. 1×1 km bei unseren Breitengraden) die Gruppe schon 'erobert'
+    hat – nach dem bekannten Strava-Kachel-Prinzip."""
+    ZOOM = 14  # ca. 1-1.5 km Kachelgröße bei mitteleuropäischen Breitengraden
+
+    tours = (_gq(Tour)
+             .filter(Tour.status == 'completed', Tour.gpx_file != None)
+             .all())
+
+    visited_tiles = set()
+    total_km = 0.0
+    for t in tours:
+        gpx_path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], t.gpx_file)
+        if not os.path.exists(gpx_path):
+            continue
+        parsed = parse_gpx(gpx_path)
+        if not parsed or not parsed.get('points'):
+            continue
+        if t.gpx_km:
+            total_km += t.gpx_km
+        # Jeden 4. Punkt reicht für die Kachel-Erkennung (Performance)
+        for p in parsed['points'][::4]:
+            visited_tiles.add(_tile_xy(p['lat'], p['lng'], ZOOM))
+
+    tile_rects = [_tile_bounds(x, y, ZOOM) for x, y in visited_tiles]
+
+    # Heimregion: 40km-Radius um den Standard-Treffpunkt, zur Prozent-Angabe
+    home_lat = float(cfg('default_meeting_lat') or 52.9637)
+    home_lng = float(cfg('default_meeting_lng') or 9.0891)
+    home_x, home_y = _tile_xy(home_lat, home_lng, ZOOM)
+    # Grobe Schätzung: wie viele Kacheln passen in einen 40km-Radius bei diesem Zoom
+    import math
+    km_per_tile = 111.32 * math.cos(math.radians(home_lat)) * (360 / (2**ZOOM)) / 1
+    tiles_radius = max(1, int(40 / max(km_per_tile, 0.1)))
+    total_region_tiles = (2*tiles_radius + 1) ** 2
+    visited_in_region = sum(
+        1 for (x,y) in visited_tiles
+        if abs(x-home_x) <= tiles_radius and abs(y-home_y) <= tiles_radius
+    )
+    region_pct = round(100 * visited_in_region / total_region_tiles, 1) if total_region_tiles else 0
+
+    return render_template('karte_erkundung.html',
+                           tile_count=len(visited_tiles),
+                           total_km=round(total_km, 1),
+                           tour_count=len(tours),
+                           region_pct=region_pct,
+                           tile_rects_json=json.dumps(tile_rects),
+                           home_lat=home_lat, home_lng=home_lng)
+
+
 # ─── Phase 4: Dashboard context – Birthdays + "Vor X Jahren" ─────────────────
 
 def upcoming_birthdays(days=30):
@@ -5162,15 +6853,42 @@ def upcoming_birthdays(days=30):
 
 
 def tours_this_day_past_years():
-    """Tours from approx. same month in previous years, in the active group."""
+    """Touren von ungefähr diesem Tag (±3 Tage) in vergangenen Jahren,
+    inkl. Titelfoto für einen ansprechenderen Rückblick."""
     try:
-        today   = date.today()
-        tours   = _gq(Tour).filter(
+        from datetime import timedelta as _td
+        today = date.today()
+        tours = _gq(Tour).filter(
             Tour.status == 'completed',
-            db.extract('month', Tour.tour_date) == today.month,
-            db.extract('year',  Tour.tour_date) <  today.year,
-        ).order_by(Tour.tour_date.desc()).limit(5).all()
-        return [{'tour': t, 'years_ago': today.year - t.tour_date.year if t.tour_date else 0} for t in tours]
+            Tour.tour_date != None,
+        ).order_by(Tour.tour_date.desc()).all()
+
+        results = []
+        for t in tours:
+            if t.tour_date.year >= today.year:
+                continue
+            # Tag-genauer Vergleich (±3 Tage), Jahresgrenze berücksichtigen
+            this_year_date = t.tour_date.replace(year=today.year)
+            delta_days = abs((this_year_date - today).days)
+            # Auch über Jahreswechsel hinweg prüfen (z.B. 30.12. vs 02.01.)
+            delta_days = min(delta_days, 365 - delta_days)
+            if delta_days > 3:
+                continue
+
+            cover = t.photos.order_by(
+                db.text('COALESCE(sort_order, 999999) ASC'),
+                TourPhoto.taken_at.asc().nullslast(),
+                TourPhoto.created_at.asc()
+            ).first()
+
+            results.append({
+                'tour': t,
+                'years_ago': today.year - t.tour_date.year,
+                'cover': cover,
+            })
+            if len(results) >= 3:
+                break
+        return results
     except Exception:
         return []
 
@@ -5256,7 +6974,9 @@ def setup_wizard(key=''):
 
     try:
         # Admin-User erstellen
-        user = User(email=email, name=name, role='admin')
+        _default_grp = Group.query.order_by(Group.created_at).first()
+        user = User(email=email, name=name, role='admin',
+                   group_id=_default_grp.id if _default_grp else None)
         user.set_password(pw)
         db.session.add(user)
 
@@ -5293,7 +7013,9 @@ def create_admin():
     if User.query.filter_by(email=email).first():
         print('E-Mail bereits registriert.')
         return
-    user = User(email=email, name=name, role='admin')
+    _default_grp = Group.query.order_by(Group.created_at).first()
+    user = User(email=email, name=name, role='admin',
+               group_id=_default_grp.id if _default_grp else None)
     user.set_password(pw)
     db.session.add(user)
     db.session.commit()
@@ -5335,6 +7057,20 @@ with app.app_context():
                     _conn.execute(_text(f"UPDATE {_tbl} SET group_id={_gid} WHERE group_id IS NULL"))
                 except Exception:
                     pass
+
+            # default_music Spalte für bestehende groups-Tabelle nachrüsten
+            try:
+                _conn.execute(_text("ALTER TABLE groups ADD COLUMN default_music VARCHAR(150)"))
+            except Exception:
+                pass  # Spalte existiert bereits
+
+            # visibility Spalte für bestehende announcements-Tabelle nachrüsten
+            # (falls die Tabelle schon vor Einführung dieser Spalte angelegt wurde)
+            try:
+                _conn.execute(_text("ALTER TABLE announcements ADD COLUMN visibility VARCHAR(20) DEFAULT 'both'"))
+            except Exception:
+                pass  # Spalte existiert bereits oder Tabelle existiert noch nicht (wird gleich von db.create_all() angelegt)
+
             _conn.commit()
 
         db.create_all()

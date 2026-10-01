@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Backups – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+
+<h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
+  <i class="bi bi-clock-history me-2"></i>Backups wiederherstellen
+</h2>
+
+<!-- Einstellungen -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">Automatisches Backup</h6>
+    <form method="post" action="{{ url_for('admin_backup_settings') }}"
+          class="d-flex align-items-center gap-3 flex-wrap mb-2">
+      <select name="backup_interval" class="form-select form-select-sm" style="width:auto"
+              onchange="this.form.submit()">
+        <option value="off"     {% if backup_interval == 'off'     %}selected{% endif %}>Aus</option>
+        <option value="daily"   {% if backup_interval == 'daily'   %}selected{% endif %}>Täglich</option>
+        <option value="weekly"  {% if backup_interval == 'weekly'  %}selected{% endif %}>Wöchentlich</option>
+        <option value="monthly" {% if backup_interval == 'monthly' %}selected{% endif %}>Monatlich</option>
+      </select>
+      <div class="form-check form-check-inline mb-0">
+        <input class="form-check-input" type="checkbox" name="backup_notify_email" value="1"
+               id="backupNotify" {% if backup_notify_email == '1' %}checked{% endif %}
+               onchange="this.form.submit()">
+        <label class="form-check-label small" for="backupNotify">
+          <i class="bi bi-envelope me-1"></i>E-Mail bei jedem automatischen Backup
+        </label>
+      </div>
+    </form>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <form method="post" action="{{ url_for('admin_backup') }}"
+            onsubmit="return confirm('Backup jetzt erstellen?')">
+        <button class="btn btn-djo btn-sm">
+          <i class="bi bi-cloud-arrow-down me-1"></i>Jetzt erstellen
+        </button>
+      </form>
+      <form method="post" action="{{ url_for('admin_backup_rotate_now') }}"
+            onsubmit="return confirm('Alte Backups jetzt aufräumen?')">
+        <button type="submit" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-trash3 me-1"></i>Alte aufräumen
+        </button>
+      </form>
+    </div>
+    {% if backup_interval != 'off' %}
+    <div class="text-muted small mt-2">
+      <i class="bi bi-info-circle me-1"></i>Läuft automatisch beim nächsten Seitenaufruf nach Ablauf des Intervalls.
+      Für zuverlässigere Auslösung unabhängig von Besuchen:
+      <a href="{{ url_for('admin_backup_cron_info') }}">Cronjob-Anleitung</a>.
+      Alte Backups werden automatisch aufgeräumt (7 Tage täglich, 8 Wochen wöchentlich, 12 Monate monatlich).
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="alert alert-warning border-0 mb-4">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  <strong>Vorsicht:</strong> Eine Wiederherstellung ersetzt die aktuelle Datenbank
+  komplett durch den Stand des gewählten Backups. Alles, was seither neu
+  hinzugekommen ist (neue Touren, Kommentare, Mitglieder), geht dabei verloren –
+  außer Fotos/GPX-Dateien, die werden ergänzt statt überschrieben.
+  Vor jeder Wiederherstellung wird automatisch eine Sicherheitskopie der
+  aktuellen Datenbank angelegt.
+</div>
+
+{% if backups %}
+<div class="table-responsive">
+  <table class="table table-hover align-middle">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Größe</th>
+        <th class="text-end">Aktion</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in backups %}
+      <tr>
+        <td>{{ b.mtime.strftime('%d.%m.%Y %H:%M') }} Uhr</td>
+        <td>{{ b.size_mb }} MB</td>
+        <td class="text-end">
+          <button type="button" class="btn btn-sm btn-outline-danger"
+                  data-bs-toggle="modal" data-bs-target="#restoreModal"
+                  onclick="prepRestore('{{ b.filename }}', '{{ b.mtime.strftime('%d.%m.%Y %H:%M') }} Uhr')">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>Wiederherstellen
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox" style="font-size:3rem;opacity:.3"></i>
+  <p class="mt-3 mb-0">Noch keine Backups vorhanden.</p>
+</div>
+{% endif %}
+
+<a href="{{ url_for('admin_tools') }}" class="btn btn-outline-djo btn-sm mt-3">
+  <i class="bi bi-arrow-left me-1"></i>Zurück zu Admin-Werkzeuge
+</a>
+<a href="{{ url_for('admin_db_diagnose') }}" class="btn btn-outline-secondary btn-sm mt-3">
+  <i class="bi bi-search me-1"></i>Datenbank-Diagnose
+</a>
+
+<!-- Bestätigungs-Modal -->
+<div class="modal fade" id="restoreModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" id="restoreForm">
+        <div class="modal-header border-0">
+          <h6 class="modal-title text-danger">
+            <i class="bi bi-exclamation-triangle me-1"></i>Wiederherstellung bestätigen
+          </h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p>
+            Backup vom <strong id="restoreDate"></strong> wiederherstellen?
+            Die aktuelle Datenbank wird ersetzt (vorher automatisch gesichert).
+          </p>
+          <label class="form-label small fw-semibold">
+            Zum Bestätigen <code>WIEDERHERSTELLEN</code> eingeben:
+          </label>
+          <input type="text" name="confirm_text" class="form-control"
+                 autocomplete="off" required>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Abbrechen</button>
+          <button type="submit" class="btn btn-danger btn-sm">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>Jetzt wiederherstellen
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function prepRestore(filename, dateStr) {
+  document.getElementById('restoreDate').textContent = dateStr;
+  document.getElementById('restoreForm').action =
+    '/admin/backups/' + encodeURIComponent(filename) + '/wiederherstellen';
+}
+</script>
+{% endblock %}

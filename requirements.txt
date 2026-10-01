@@ -10,5 +10,11 @@ piexif>=1.1.3
 requests>=2.31.0
 python-dotenv>=1.0.0
 itsdangerous>=2.1.0
-pywebpush>=2.0.0
-cryptography>=41.0.0
+
+# Optional: Push-Benachrichtigungen (Web Push). Nicht zwingend erforderlich –
+# ohne diese Pakete funktioniert die App normal weiter, nur Push-Nachrichten
+# bleiben deaktiviert. Können bequem über Admin → Pakete installieren
+# nachinstalliert werden (kein SSH nötig).
+# pywebpush>=2.0.0
+# cryptography>=41.0.0
+# py-vapid>=1.9.0

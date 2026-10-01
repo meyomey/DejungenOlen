@@ -135,6 +135,112 @@
         <a href="{{ url_for('my_profil') }}" class="btn btn-outline-secondary">Abbrechen</a>
       </div>
     </form>
+
+    <!-- Push-Benachrichtigungen -->
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1"><i class="bi bi-bell me-2"></i>Benachrichtigungen</h6>
+        <p class="text-muted small mb-3">
+          Push-Nachrichten direkt aufs Handy/Desktop bei neuen Touren, Kommentaren
+          und am Tourtag – auch wenn die App nicht geöffnet ist.
+        </p>
+        <div id="push-status" class="mb-2"></div>
+        <button type="button" id="push-toggle-btn" class="btn btn-outline-djo btn-sm">
+          <i class="bi bi-bell me-1"></i>Benachrichtigungen aktivieren
+        </button>
+        <button type="button" id="push-test-btn" class="btn btn-outline-secondary btn-sm d-none">
+          <i class="bi bi-send me-1"></i>Testnachricht senden
+        </button>
+      </div>
+    </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
+
+const pushStatusEl = document.getElementById('push-status');
+const pushToggleBtn = document.getElementById('push-toggle-btn');
+const pushTestBtn = document.getElementById('push-test-btn');
+
+function setPushStatus(text, cls) {
+  pushStatusEl.innerHTML = `<span class="badge bg-${cls}">${text}</span>`;
+}
+
+async function refreshPushUI() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    setPushStatus('Push wird von diesem Browser nicht unterstützt', 'secondary');
+    pushToggleBtn.classList.add('d-none');
+    return;
+  }
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) {
+    setPushStatus('Aktiv', 'success');
+    pushToggleBtn.innerHTML = '<i class="bi bi-bell-slash me-1"></i>Benachrichtigungen deaktivieren';
+    pushTestBtn.classList.remove('d-none');
+  } else {
+    setPushStatus('Nicht aktiviert', 'secondary');
+    pushToggleBtn.innerHTML = '<i class="bi bi-bell me-1"></i>Benachrichtigungen aktivieren';
+    pushTestBtn.classList.add('d-none');
+  }
+}
+
+pushToggleBtn.addEventListener('click', async () => {
+  const reg = await navigator.serviceWorker.ready;
+  const existing = await reg.pushManager.getSubscription();
+
+  if (existing) {
+    await fetch('{{ url_for("push_unsubscribe") }}', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({endpoint: existing.endpoint})
+    });
+    await existing.unsubscribe();
+    await refreshPushUI();
+    return;
+  }
+
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') {
+    setPushStatus('Berechtigung verweigert', 'danger');
+    return;
+  }
+
+  const keyResp = await fetch('{{ url_for("push_vapid_public_key") }}');
+  const keyData = await keyResp.json();
+  if (!keyData.publicKey) {
+    setPushStatus(keyData.error || 'Server unterstützt Push aktuell nicht', 'danger');
+    return;
+  }
+
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
+  });
+
+  await fetch('{{ url_for("push_subscribe") }}', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(sub.toJSON())
+  });
+
+  await refreshPushUI();
+});
+
+pushTestBtn.addEventListener('click', async () => {
+  pushTestBtn.disabled = true;
+  const resp = await fetch('{{ url_for("push_test") }}', {method: 'POST'});
+  const data = await resp.json();
+  pushTestBtn.disabled = false;
+  if (!data.ok) alert(data.error || 'Fehler beim Senden.');
+});
+
+refreshPushUI();
+</script>
 {% endblock %}

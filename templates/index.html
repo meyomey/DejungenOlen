@@ -3,20 +3,107 @@
 
 {% block content %}
 
-<!-- ① Begrüßung ──────────────────────────────────────────────────────────── -->
-<div class="hero-banner d-flex align-items-center gap-3 mb-3" style="padding:0.75rem 1.2rem">
-  {% if current_group and current_group.logo %}
-  <img src="{{ url_for('static', filename='uploads/group_logos/' + current_group.logo) }}"
-       alt="Logo" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0">
-  {% else %}
-  <img src="{{ url_for('static', filename='logo.png') }}"
-       alt="Logo" style="width:52px;height:52px;border-radius:50%;object-fit:cover;flex-shrink:0">
+<!-- ⓪ Ankündigungen ──────────────────────────────────────────────────────── -->
+{% if announcements %}
+{% for a in announcements %}
+<div class="card border-0 shadow-sm mb-3 overflow-hidden">
+  {% if a.image %}
+  <img src="{{ url_for('static', filename='uploads/announcements/' + a.image) }}"
+       title="Klicken zum Vergrößern"
+       style="width:100%;max-height:480px;object-fit:contain;background:#f0f0f0;
+              cursor:zoom-in;transition:max-height .25s"
+       onclick="if(this.style.maxHeight!=='none'){this.style.maxHeight='none';this.style.cursor='zoom-out';this.title='Klicken zum Verkleinern';this.scrollIntoView({behavior:'smooth',block:'nearest'});}else{this.style.maxHeight='480px';this.style.cursor='zoom-in';this.title='Klicken zum Vergrößern';}">
   {% endif %}
-  <div>
-    <h5 class="mb-0 fw-bold">Moin, {{ current_user.display_name }}! 🚴</h5>
-    <div class="small opacity-75">{{ current_group.name if current_group else 'De jungen Olen' }}{% if current_group and current_group.description %} – {{ current_group.description }}{% endif %}</div>
+  <div class="card-body" style="border-left:4px solid var(--djo-olive)">
+    <div class="d-flex align-items-start gap-2">
+      <i class="bi bi-megaphone-fill flex-shrink-0 mt-1" style="color:var(--djo-olive)"></i>
+      <div>
+        <div class="fw-bold" style="color:var(--djo-navy)">{{ a.title }}</div>
+        {% if a.content %}
+        <div class="small text-muted mt-1" style="white-space:pre-wrap">{{ a.content }}</div>
+        {% endif %}
+      </div>
+    </div>
   </div>
 </div>
+{% endfor %}
+{% endif %}
+
+<!-- ① Begrüßung ──────────────────────────────────────────────────────────── -->
+<div class="hero-banner-v2 mb-3">
+  <div class="hero-banner-v2-inner">
+    <div class="d-flex align-items-center gap-3">
+      {% if current_group and current_group.logo %}
+      <img src="{{ url_for('static', filename='uploads/group_logos/' + current_group.logo) }}"
+           alt="Logo" class="hero-avatar">
+      {% else %}
+      <img src="{{ url_for('static', filename='logo.png') }}"
+           alt="Logo" class="hero-avatar">
+      {% endif %}
+      <div class="flex-grow-1 min-w-0">
+        <h4 class="mb-0 fw-bold text-white">Moin, {{ current_user.display_name }}! 🚴</h4>
+        <div class="small text-white-50">
+          {{ current_group.name if current_group else 'De jungen Olen' }}{% if current_group and current_group.description %} – {{ current_group.description }}{% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if upcoming %}
+    {% set next_tour = upcoming[0] %}
+    {% set days_until = (next_tour.tour_date - today).days %}
+    <a href="{{ url_for('tour_detail', tour_id=next_tour.id) }}" class="hero-next-tour">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-calendar-event"></i>
+        <span>
+          {% if days_until == 0 %}<strong>Heute:</strong>
+          {% elif days_until == 1 %}<strong>Morgen:</strong>
+          {% else %}in {{ days_until }} Tagen:{% endif %}
+          {{ next_tour.title }}
+        </span>
+      </div>
+      <i class="bi bi-arrow-right"></i>
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<style>
+.hero-banner-v2 {
+  background: linear-gradient(135deg, var(--djo-navy) 0%, #3d5a8a 100%);
+  border-radius: .75rem;
+  overflow: hidden;
+  position: relative;
+}
+.hero-banner-v2::before {
+  content: "";
+  position: absolute; top: -20px; right: -20px;
+  width: 140px; height: 140px;
+  background: rgba(255,255,255,.06);
+  border-radius: 50%;
+}
+.hero-banner-v2::after {
+  content: "";
+  position: absolute; bottom: -40px; right: 60px;
+  width: 90px; height: 90px;
+  background: rgba(255,255,255,.05);
+  border-radius: 50%;
+}
+.hero-banner-v2-inner { position: relative; padding: 1.1rem 1.2rem; }
+.hero-avatar {
+  width: 60px; height: 60px; border-radius: 50%; object-fit: cover;
+  flex-shrink: 0; border: 2px solid rgba(255,255,255,.3);
+}
+.min-w-0 { min-width: 0; }
+.hero-next-tour {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem; margin-top: .85rem; padding: .55rem .85rem;
+  background: rgba(255,255,255,.12); border-radius: .5rem;
+  color: #fff; text-decoration: none; font-size: .85rem;
+  transition: background .15s;
+}
+.hero-next-tour:hover { background: rgba(255,255,255,.2); color: #fff; }
+.hero-next-tour i.bi-arrow-right { opacity: .7; }
+</style>
 
 <!-- Geburtstag & Erinnerungen -->
 {% if birthdays %}
@@ -31,28 +118,56 @@
 </div>
 {% endif %}
 {% if memories %}
-<div class="alert alert-info py-2 mb-3">
-  <i class="bi bi-clock-history me-2"></i>
-  {% for m in memories[:2] %}
-    Vor {{ m.years_ago }} Jahr{% if m.years_ago != 1 %}en{% endif %}:
-    <a href="{{ url_for('tour_detail', tour_id=m.tour.id) }}" class="alert-link">{{ m.tour.title }}</a>
-    ({{ m.tour.tour_date.strftime('%d.%m.%Y') if (m.tour.tour_date and not m.tour.is_date_open) else 'offen' }}){% if not loop.last %} &middot; {% endif %}
-  {% endfor %}
+<div class="mb-3">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <i class="bi bi-clock-history" style="color:var(--djo-navy)"></i>
+    <span class="fw-semibold small" style="color:var(--djo-navy)">Vor Jahren an diesem Tag</span>
+  </div>
+  <div class="d-flex gap-2 overflow-auto pb-1" style="scrollbar-width:thin">
+    {% for m in memories %}
+    <a href="{{ url_for('tour_detail', tour_id=m.tour.id) }}"
+       class="text-decoration-none flex-shrink-0" style="width:200px">
+      <div class="card border-0 shadow-sm h-100">
+        {% if m.cover %}
+        <img src="{{ url_for('serve_photo', filename=m.cover.filename) }}"
+             style="height:110px;object-fit:cover;border-radius:.375rem .375rem 0 0">
+        {% else %}
+        <div style="height:110px;background:linear-gradient(135deg,var(--djo-navy),#3d5a8a);
+                    border-radius:.375rem .375rem 0 0;display:flex;align-items:center;justify-content:center">
+          <i class="bi bi-bicycle text-white" style="font-size:1.8rem;opacity:.6"></i>
+        </div>
+        {% endif %}
+        <div class="card-body py-2 px-2">
+          <div class="text-muted" style="font-size:.68rem">
+            Vor {{ m.years_ago }} Jahr{% if m.years_ago != 1 %}en{% endif %}
+          </div>
+          <div class="fw-semibold small text-dark text-truncate">{{ m.tour.title }}</div>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
 </div>
 {% endif %}
 
 <!-- ② Gesamtkilometer · Touren · Nächstes Ziel ──────────────────────────── -->
 {% if milestones.total_tours > 0 %}
-<div class="card mb-3" style="border-left:4px solid var(--djo-olive)">
-  <div class="card-body py-2">
-    <div class="d-flex align-items-center gap-3 flex-wrap">
-      <div class="text-center" style="min-width:65px">
-        <div style="font-size:1.4rem;font-weight:700;color:var(--djo-navy)">{{ milestones.total_km }}</div>
-        <div class="stat-label">km gesamt</div>
+<div class="card mb-3 border-0 shadow-sm" style="border-left:4px solid var(--djo-olive) !important">
+  <div class="card-body py-3">
+    <div class="d-flex align-items-center gap-4 flex-wrap">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-speedometer2" style="font-size:1.6rem;color:var(--djo-olive)"></i>
+        <div>
+          <div style="font-size:1.5rem;font-weight:700;color:var(--djo-navy);line-height:1.1">{{ milestones.total_km }}</div>
+          <div class="stat-label">km gesamt</div>
+        </div>
       </div>
-      <div class="text-center" style="min-width:60px">
-        <div style="font-size:1.4rem;font-weight:700;color:var(--djo-navy)">{{ milestones.total_tours }}</div>
-        <div class="stat-label">Touren</div>
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-bicycle" style="font-size:1.6rem;color:var(--djo-olive)"></i>
+        <div>
+          <div style="font-size:1.5rem;font-weight:700;color:var(--djo-navy);line-height:1.1">{{ milestones.total_tours }}</div>
+          <div class="stat-label">Touren</div>
+        </div>
       </div>
       {% if milestones.next_km %}
       <div class="flex-grow-1" style="min-width:180px">
@@ -60,8 +175,8 @@
           <span class="text-muted">Nächstes Ziel: <strong>{{ milestones.next_km }} km</strong></span>
           <span class="fw-semibold" style="color:var(--djo-navy)">{{ milestones.pct_km }}%</span>
         </div>
-        <div class="progress" style="height:8px">
-          <div class="progress-bar" style="width:{{ milestones.pct_km }}%;background:var(--djo-navy)"></div>
+        <div class="progress" style="height:8px;border-radius:4px">
+          <div class="progress-bar" style="width:{{ milestones.pct_km }}%;background:linear-gradient(90deg,var(--djo-olive),var(--djo-navy))"></div>
         </div>
       </div>
       {% endif %}
@@ -79,19 +194,23 @@
 <div class="row g-2 mb-4">
   <div class="col-6">
     <a href="{{ url_for('tour_list') }}"
-       class="btn btn-djo w-100 py-3 d-flex flex-column align-items-center gap-1">
+       class="btn btn-djo w-100 py-3 d-flex flex-column align-items-center gap-1 index-quick-btn">
       <i class="bi bi-calendar3 fs-4"></i>
       <span class="fw-semibold">Touren</span>
     </a>
   </div>
   <div class="col-6">
     <a href="{{ url_for('archiv') }}"
-       class="btn btn-outline-djo w-100 py-3 d-flex flex-column align-items-center gap-1">
+       class="btn btn-outline-djo w-100 py-3 d-flex flex-column align-items-center gap-1 index-quick-btn">
       <i class="bi bi-archive fs-4"></i>
       <span class="fw-semibold">Archiv</span>
     </a>
   </div>
 </div>
+<style>
+.index-quick-btn { transition: transform .12s, box-shadow .12s; }
+.index-quick-btn:hover { transform: translateY(-2px); box-shadow: 0 .4rem .8rem rgba(0,0,0,.12); }
+</style>
 
 <!-- ④ Touren ohne Termin ──────────────────────────────────────────────────── -->
 {% if geplante_touren %}

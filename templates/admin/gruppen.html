@@ -28,8 +28,14 @@
               {{ g.name[:1].upper() }}
             </div>
             {% endif %}
-            <div>
-              <h5 class="fw-bold mb-0">{{ g.name }}</h5>
+            <div class="flex-grow-1" id="name-block-{{ g.id }}">
+              <div class="d-flex align-items-center gap-2">
+                <h5 class="fw-bold mb-0" id="name-display-{{ g.id }}">{{ g.name }}</h5>
+                <button type="button" class="btn btn-sm btn-link p-0 text-muted"
+                        onclick="toggleGroupEdit({{ g.id }})" title="Umbenennen">
+                  <i class="bi bi-pencil"></i>
+                </button>
+              </div>
               <div class="text-muted small"><code>/{{ g.slug }}</code></div>
             </div>
           </div>
@@ -37,8 +43,32 @@
             {% if g.is_active %}aktiv{% else %}inaktiv{% endif %}
           </span>
         </div>
+
+        <!-- Bearbeitungsformular: Name + Beschreibung ändern -->
+        <form method="post" action="{{ url_for('group_rename', group_id=g.id) }}"
+              id="edit-form-{{ g.id }}" class="d-none mb-3">
+          <div class="mb-2">
+            <label class="form-label small fw-semibold mb-1">Name</label>
+            <input type="text" name="name" class="form-control form-control-sm"
+                   value="{{ g.name }}" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold mb-1">Beschreibung</label>
+            <textarea name="description" class="form-control form-control-sm" rows="2">{{ g.description or '' }}</textarea>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-djo btn-sm">
+              <i class="bi bi-check-lg me-1"></i>Speichern
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm"
+                    onclick="toggleGroupEdit({{ g.id }})">
+              Abbrechen
+            </button>
+          </div>
+        </form>
+
         {% if g.description %}
-        <p class="text-muted small mb-3">{{ g.description }}</p>
+        <p class="text-muted small mb-3" id="desc-display-{{ g.id }}">{{ g.description }}</p>
         {% endif %}
         <div class="d-flex gap-3 small text-muted mb-2">
           <span><i class="bi bi-people me-1"></i>{{ g.member_count }} Mitglieder</span>
@@ -50,12 +80,46 @@
             <input type="file" id="logo-upload-{{ g.id }}" name="logo"
                    class="form-control form-control-sm logo-crop-input"
                    accept="image/png,image/jpeg,image/webp">
-            <button type="submit" class="btn btn-outline-secondary btn-sm">
+            <button type="submit" class="btn btn-outline-secondary btn-sm" title="Logo hochladen">
               <i class="bi bi-upload"></i>
             </button>
           </div>
           <div class="form-text">Nach Auswahl Ausschnitt anpassen, dann hochladen.</div>
         </form>
+
+        <!-- Standardmusik für Tour-Videos -->
+        <div class="mb-3">
+          <label class="small fw-semibold mb-1 d-block">
+            <i class="bi bi-music-note-beamed me-1"></i>Standardmusik für Tour-Videos
+          </label>
+          {% if g.default_music %}
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <audio controls style="height:30px;max-width:200px">
+              <source src="{{ url_for('static', filename='uploads/group_music/' + g.default_music) }}">
+            </audio>
+            <form method="post" action="{{ url_for('group_music_delete', group_id=g.id) }}"
+                  onsubmit="return confirm('Standardmusik entfernen?')">
+              <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Entfernen">
+                <i class="bi bi-x"></i>
+              </button>
+            </form>
+          </div>
+          <div class="form-text mb-2">Wird bei jedem neuen Tour-Video automatisch vorgeschlagen.</div>
+          {% else %}
+          <div class="form-text mb-1">Noch keine Standardmusik gesetzt.</div>
+          {% endif %}
+          <form method="post" action="{{ url_for('group_music_upload', group_id=g.id) }}"
+                enctype="multipart/form-data">
+            <div class="input-group input-group-sm">
+              <input type="file" name="default_music" class="form-control form-control-sm"
+                     accept="audio/mpeg,audio/aac,audio/mp4,audio/wav,audio/ogg,.mp3,.aac,.m4a,.wav,.ogg">
+              <button type="submit" class="btn btn-outline-secondary btn-sm" title="Musik hochladen">
+                <i class="bi bi-upload"></i>
+              </button>
+            </div>
+            <div class="form-text">{{ 'Ersetzt die aktuelle Musik.' if g.default_music else 'MP3, AAC, M4A, WAV oder OGG.' }}</div>
+          </form>
+        </div>
         <div class="d-flex gap-2">
           <form method="post" action="{{ url_for('switch_group', group_id=g.id) }}" class="flex-grow-1">
             <button type="submit" class="btn btn-djo btn-sm w-100">
@@ -100,4 +164,19 @@
   </div>
   {% endfor %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleGroupEdit(groupId) {
+  const form = document.getElementById('edit-form-' + groupId);
+  const nameBlock = document.getElementById('name-block-' + groupId);
+  const hiding = !form.classList.contains('d-none');
+  form.classList.toggle('d-none');
+  if (nameBlock) nameBlock.style.display = hiding ? '' : 'none';
+  if (!form.classList.contains('d-none')) {
+    form.querySelector('input[name="name"]').focus();
+  }
+}
+</script>
 {% endblock %}

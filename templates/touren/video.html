@@ -81,6 +81,10 @@
           <label class="form-check-label small" for="show-track">Track-Animation zeigen</label>
         </div>
         <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="show-stats" checked>
+          <label class="form-check-label small" for="show-stats">📊 Statistik-Folie zeigen</label>
+        </div>
+        <div class="form-check mb-2">
           <input class="form-check-input" type="checkbox" id="show-profile" checked>
           <label class="form-check-label small" for="show-profile">Höhenprofil zeigen</label>
         </div>
@@ -88,7 +92,16 @@
         <label class="form-label small fw-semibold">
           🎵 Hintergrundmusik <span class="text-muted fw-normal">(optional)</span>
         </label>
-        <div id="music-drop"
+        {% if default_music_url %}
+        <div id="default-music-banner" class="alert alert-success py-2 px-2 small mb-2 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-music-note-beamed me-1"></i>Standardmusik der Gruppe aktiv</span>
+          <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                  onclick="document.getElementById('music-input').click()">
+            Ändern
+          </button>
+        </div>
+        {% endif %}
+        <div id="music-drop" {% if default_music_url %}style="display:none"{% endif %}
              style="border:2px dashed #adb5bd;border-radius:6px;padding:10px;
                     text-align:center;cursor:pointer;transition:all .2s;font-size:.8rem"
              onclick="document.getElementById('music-input').click()"
@@ -103,7 +116,8 @@
           </div>
         </div>
         <input type="file" id="music-input" accept="audio/*" class="d-none"
-               onchange="pickMusic(this.files[0])">
+               onchange="pickMusic(this.files[0]); document.getElementById('music-drop').style.display='block';
+                         const b = document.getElementById('default-music-banner'); if (b) b.style.display='none';">
         <div class="form-check mt-2">
           <input class="form-check-input" type="checkbox" id="music-loop" checked>
           <label class="form-check-label small" for="music-loop">Musik wiederholen</label>
@@ -131,6 +145,8 @@
         <form method="post" action="{{ url_for('tour_video_render', tour_id=tour.id) }}"
               enctype="multipart/form-data" id="server-form">
           <input type="hidden" name="photo_duration" id="server-photo-duration" value="5">
+          <input type="hidden" name="show_track" id="server-show-track" value="1">
+          <input type="hidden" name="show_stats" id="server-show-stats" value="1">
           <input type="file" id="server-music" name="music" accept="audio/*" class="d-none">
           <button type="button" class="btn btn-outline-secondary w-100 mb-2 btn-sm"
                   onclick="document.getElementById('server-music').click()"
@@ -138,26 +154,68 @@
             <i class="bi bi-music-note me-1"></i>Musik für MP4 wählen
           </button>
           <div id="server-music-name" class="small text-success mb-2 text-center"></div>
+          {% if default_music_url %}
+          <div class="text-muted small mb-2 text-center">
+            <i class="bi bi-info-circle me-1"></i>Ohne Auswahl wird die Standardmusik der Gruppe verwendet.
+          </div>
+          {% endif %}
           <div class="mb-2">
-            <label class="form-label small fw-semibold mb-1">Format</label>
-            <div class="d-flex gap-2">
-              <label class="flex-fill">
-                <input type="radio" name="video_format" value="portrait" checked class="d-none">
-                <div class="btn btn-outline-djo w-100 small format-btn active-format">
-                  📱 Hochformat<br><small class="text-muted">1080×1920 · Reels/Stories</small>
-                </div>
-              </label>
-              <label class="flex-fill">
-                <input type="radio" name="video_format" value="landscape" class="d-none">
-                <div class="btn btn-outline-djo w-100 small format-btn">
-                  🖥️ Querformat<br><small class="text-muted">1920×1080 · TV/Desktop</small>
-                </div>
-              </label>
+            <label class="form-label small fw-semibold mb-1">Format für</label>
+            <div class="row g-2">
+              <div class="col-4">
+                <label class="d-block">
+                  <input type="radio" name="video_format" value="reels" checked class="d-none">
+                  <div class="btn btn-outline-djo w-100 small format-btn active-format py-2">
+                    <div style="font-size:1.2rem">📱</div>
+                    Reels / Story<br><small class="text-muted">Insta · TikTok · WhatsApp</small>
+                  </div>
+                </label>
+              </div>
+              <div class="col-4">
+                <label class="d-block">
+                  <input type="radio" name="video_format" value="feed" class="d-none">
+                  <div class="btn btn-outline-djo w-100 small format-btn py-2">
+                    <div style="font-size:1.2rem">🖼️</div>
+                    Feed-Post<br><small class="text-muted">Insta · Facebook 4:5</small>
+                  </div>
+                </label>
+              </div>
+              <div class="col-4">
+                <label class="d-block">
+                  <input type="radio" name="video_format" value="square" class="d-none">
+                  <div class="btn btn-outline-djo w-100 small format-btn py-2">
+                    <div style="font-size:1.2rem">◻️</div>
+                    Quadratisch<br><small class="text-muted">Facebook · Insta 1:1</small>
+                  </div>
+                </label>
+              </div>
+              <div class="col-4">
+                <label class="d-block">
+                  <input type="radio" name="video_format" value="landscape" class="d-none">
+                  <div class="btn btn-outline-djo w-100 small format-btn py-2">
+                    <div style="font-size:1.2rem">🖥️</div>
+                    Quer / TV<br><small class="text-muted">YouTube · Desktop</small>
+                  </div>
+                </label>
+              </div>
+              <div class="col-4">
+                <label class="d-block">
+                  <input type="radio" name="video_format" value="shorts" class="d-none">
+                  <div class="btn btn-outline-djo w-100 small format-btn py-2">
+                    <div style="font-size:1.2rem">▶️</div>
+                    Shorts<br><small class="text-muted">YouTube Shorts</small>
+                  </div>
+                </label>
+              </div>
             </div>
+            <div class="text-muted small mt-2" id="format-detail">1080 × 1920 px · 9:16</div>
           </div>
           <button type="submit" class="btn btn-djo w-100">
             <i class="bi bi-file-earmark-play-fill me-1"></i>MP4 erstellen (Server)
           </button>
+          <div class="text-muted small mt-1 text-center">
+            <i class="bi bi-clock-history me-1"></i>Fotos werden leicht bewegt (Ken-Burns-Effekt). Mit Kartenfolie dauert die Erstellung entsprechend länger.
+          </div>
         </form>
         <div class="text-muted small mt-1 text-center">
           {{ photos|length }} Foto{{ 's' if photos|length != 1 }},
@@ -193,7 +251,9 @@ const PHOTOS   = [
   {% for p in photos %}
   { src: "{{ url_for('serve_photo', filename=p.filename) }}",
     cap: {{ (p.caption or '')|tojson }},
-    date: "{{ (p.taken_at or p.created_at).strftime('%d.%m.%Y') }}" },
+    date: "{{ (p.taken_at or p.created_at).strftime('%d.%m.%Y') }}",
+    lat: {{ p.lat if p.lat else 'null' }},
+    lng: {{ p.lng if p.lng else 'null' }} },
   {% endfor %}
 ];
 const TOUR_TITLE = {{ tour.title|tojson }};
@@ -201,6 +261,10 @@ const TOUR_DATE  = "{{ tour.tour_date | de_date }}";
 const TOUR_KM    = {{ tour.gpx_km or 'null' }};
 const TOUR_ASC   = {{ tour.gpx_ascent or 'null' }};
 const GROUP_NAME = {{ (current_group.name if current_group else 'De jungen Olen')|tojson }};
+const ATTENDING_COUNT = {{ attending_count }};
+const ATTENDING_NAMES = {{ attending_names|tojson }};
+const WEATHER = {{ weather|tojson if weather else 'null' }};
+const DEFAULT_MUSIC_URL = {{ default_music_url|tojson if default_music_url else 'null' }};
 
 const canvas = document.getElementById('video-canvas');
 const ctx    = canvas.getContext('2d');
@@ -258,17 +322,34 @@ function drawTitle(alpha=1, bgImg=null) {
     ctx.fillText(`📏 ${TOUR_KM} km${TOUR_ASC ? '  ⛰️ ' + TOUR_ASC + ' m' : ''}`, W/2, H/2 + 118);
   }
 
+  let extraBits = [];
+  if (WEATHER) extraBits.push(WEATHER.icon + ' ' + WEATHER.temp_max + '°C');
+  if (ATTENDING_COUNT) extraBits.push('👥 ' + ATTENDING_COUNT + ' dabei');
+  if (extraBits.length) {
+    ctx.font = '20px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,.7)';
+    ctx.fillText(extraBits.join('   '), W/2, H/2 + 152);
+  }
+
   ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
 }
 
-function drawPhotoFrame(img, caption, dateStr, alpha=1) {
+function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, zoomIn=true) {
   ctx.globalAlpha = alpha;
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-  // Scale image to fit
-  const scale = Math.min(W/img.width, (H-80)/img.height);
+
+  // Ken-Burns-Effekt: dezenter Zoom über die Anzeigedauer (9% gesamt)
+  const MAX_ZOOM = 1.09;
+  const t = Math.max(0, Math.min(1, progress));
+  const zoom = zoomIn ? 1 + t*(MAX_ZOOM-1) : MAX_ZOOM - t*(MAX_ZOOM-1);
+
+  const baseScale = Math.min(W/img.width, (H-80)/img.height);
+  const scale = baseScale * zoom;
   const dw = img.width*scale, dh = img.height*scale;
-  ctx.drawImage(img, (W-dw)/2, (H-80-dh)/2+10, dw, dh);
+  const dx = (W-dw)/2, dy = (H-80-dh)/2+10;
+  ctx.drawImage(img, dx, dy, dw, dh);
+
   // Bottom bar
   ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(0, H-70, W, 70);
   ctx.fillStyle = '#fff'; ctx.font = 'bold 22px sans-serif';
@@ -280,38 +361,233 @@ function drawPhotoFrame(img, caption, dateStr, alpha=1) {
   ctx.globalAlpha = 1;
 }
 
-function drawTrackFrame(progress) {
-  drawBackground();
-  if (!GPX_DATA || !GPX_DATA.points) return;
-  const pts = GPX_DATA.points.filter((_,i)=>i%Math.max(1,Math.floor(GPX_DATA.points.length/300))===0);
+// ── Karten-Folie: Track + Foto-Marker an ihrer echten GPS-Position ──────────
+let _trackProj = null; // gecachte Projektion (min/max + proj-Funktion), einmal berechnet
+let _mapTileCanvas = null; // gecachtes, zusammengesetztes Kachel-Hintergrundbild
+let _mapTileLoading = false;
+
+function latLngToTileXY(lat, lng, zoom) {
+  const n = Math.pow(2, zoom);
+  const x = (lng + 180) / 360 * n;
+  const y = (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n;
+  return { x, y };
+}
+
+async function loadMapTileBackground() {
+  if (_mapTileCanvas || _mapTileLoading) return;
+  if (!GPX_DATA || !GPX_DATA.points || !GPX_DATA.points.length) return;
+  _mapTileLoading = true;
+  try {
+    const { pts } = computeTrackProjection();
+    const lats = pts.map(p => p.lat), lngs = pts.map(p => p.lng);
+    PHOTOS.forEach(p => { if (p.lat) { lats.push(p.lat); lngs.push(p.lng); } });
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+
+    // Passenden Zoom-Level finden, der den Track komfortabel ins Canvas passt
+    const TILE = 256;
+    let zoom = 16;
+    for (; zoom > 8; zoom--) {
+      const p1 = latLngToTileXY(minLat, minLng, zoom);
+      const p2 = latLngToTileXY(maxLat, maxLng, zoom);
+      const pxW = Math.abs(p2.x - p1.x) * TILE, pxH = Math.abs(p1.y - p2.y) * TILE;
+      if (pxW < W * 0.82 && pxH < (H - 240) * 0.82) break; // etwas Rand für Kopfzeile/Marker
+    }
+
+    const centerLat = (minLat + maxLat) / 2, centerLng = (minLng + maxLng) / 2;
+    const centerTile = latLngToTileXY(centerLat, centerLng, zoom);
+    const tilesAcross = Math.ceil(W / TILE) + 2;
+    const tilesDown   = Math.ceil(H / TILE) + 2;
+    const startTx = Math.floor(centerTile.x - tilesAcross / 2);
+    const startTy = Math.floor(centerTile.y - tilesDown / 2);
+
+    const off = document.createElement('canvas');
+    off.width = tilesAcross * TILE; off.height = tilesDown * TILE;
+    const octx = off.getContext('2d');
+    const subdomains = ['a', 'b', 'c'];
+    let i = 0;
+    const loads = [];
+    for (let tx = 0; tx < tilesAcross; tx++) {
+      for (let ty = 0; ty < tilesDown; ty++) {
+        const sub = subdomains[i++ % 3];
+        const url = `https://${sub}.tile.openstreetmap.org/${zoom}/${startTx+tx}/${startTy+ty}.png`;
+        loads.push(new Promise(res => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => { octx.drawImage(img, tx*TILE, ty*TILE); res(); };
+          img.onerror = () => res(); // Kachel einfach leer lassen bei Fehler
+          img.src = url;
+        }));
+      }
+    }
+    await Promise.all(loads);
+
+    // Referenzpunkt für die Umrechnung Bild-Pixel → Canvas-Projektion merken
+    const originTile = { x: startTx, y: startTy, zoom, TILE };
+    _mapTileCanvas = { img: off, originTile, centerLat, centerLng, W: off.width, H: off.height };
+
+    // Bestehende proj()-Funktion so anpassen, dass sie zur Kachel-Pixelwelt passt,
+    // und den Bildausschnitt für drawImage vorberechnen
+    const offCenterPx = latLngToTileXY(centerLat, centerLng, zoom);
+    const offCenterX = (offCenterPx.x - startTx) * TILE;
+    const offCenterY = (offCenterPx.y - startTy) * TILE;
+    _mapTileCanvas.drawOffsetX = offCenterX - W/2;
+    _mapTileCanvas.drawOffsetY = offCenterY - (H - 240)/2 - 140; // an Kopfzeilen-Layout angepasst
+
+    // proj() ersetzen: rechnet jetzt direkt über Zoom/Tile-Mathematik (deckungsgleich mit dem Kachelbild)
+    _trackProj.proj = (lat, lng) => {
+      const p = latLngToTileXY(lat, lng, zoom);
+      const px = (p.x - startTx) * TILE - _mapTileCanvas.drawOffsetX;
+      const py = (p.y - startTy) * TILE - _mapTileCanvas.drawOffsetY;
+      return [px, py];
+    };
+  } catch (e) {
+    console.warn('Kartenkacheln konnten nicht geladen werden, nutze Fallback-Hintergrund:', e);
+  } finally {
+    _mapTileLoading = false;
+  }
+}
+
+function computeTrackProjection() {
+  if (_trackProj) return _trackProj;
+  const pts = GPX_DATA.points.filter((_,i)=>i%Math.max(1,Math.floor(GPX_DATA.points.length/400))===0);
   const lats=pts.map(p=>p.lat), lngs=pts.map(p=>p.lng);
+  // Foto-Positionen mit einbeziehen, damit Marker nie aus dem Bild ragen
+  PHOTOS.forEach(p => { if (p.lat) { lats.push(p.lat); lngs.push(p.lng); } });
   const minLat=Math.min(...lats), maxLat=Math.max(...lats);
   const minLng=Math.min(...lngs), maxLng=Math.max(...lngs);
-  const pad=80;
-  const proj=(lat,lng)=>[
-    pad + (lng-minLng)/(maxLng-minLng||1)*(W-2*pad),
-    H/2 + (1-(lat-minLat)/(maxLat-minLat||1))*(H/2-pad)
-  ];
-  const end=Math.floor(pts.length*Math.min(progress,1));
-  ctx.lineWidth=4; ctx.lineJoin='round'; ctx.strokeStyle='#64b5f6';
-  ctx.shadowBlur=8; ctx.shadowColor='#42a5f5';
-  ctx.beginPath();
-  for(let i=0;i<end;i++){
-    const[x,y]=proj(pts[i].lat,pts[i].lng);
-    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  const pad=110;
+  const latRange = maxLat-minLat || 0.001, lngRange = maxLng-minLng || 0.001;
+  // Seitenverhältnis erhalten (keine Verzerrung) – kleinere Achse begrenzt
+  const availW = W - 2*pad, availH = H - 2*pad - 100; // Platz für Kopfzeile oben
+  const scale = Math.min(availW/lngRange, availH/latRange);
+  const cx = pad + availW/2, cy = 140 + availH/2;
+  const midLat = (minLat+maxLat)/2, midLng = (minLng+maxLng)/2;
+  _trackProj = {
+    pts,
+    proj: (lat,lng) => [cx + (lng-midLng)*scale, cy - (lat-midLat)*scale]
+  };
+  return _trackProj;
+}
+
+function drawMapBackground() {
+  // Heller, kartenartiger Hintergrund statt dunklem Navy (besser lesbar, näher am echten Kartenlook)
+  const grad = ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0, '#eef2e8');
+  grad.addColorStop(1, '#e4ecdf');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+  // dezentes Rasterlinien-Muster, erinnert an Kartengitter
+  ctx.strokeStyle = 'rgba(0,0,0,.04)'; ctx.lineWidth = 1;
+  for (let x=0; x<W; x+=60) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y=0; y<H; y+=60) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+}
+
+function drawTrackFrame(progress) {
+  if (!GPX_DATA || !GPX_DATA.points || !GPX_DATA.points.length) { drawBackground(); return; }
+  computeTrackProjection(); // stellt sicher, dass _trackProj existiert (proj wird ggf. unten überschrieben)
+
+  if (_mapTileCanvas) {
+    // Echte OSM-Kartenkacheln als Hintergrund zeichnen
+    ctx.drawImage(_mapTileCanvas.img, -_mapTileCanvas.drawOffsetX, -_mapTileCanvas.drawOffsetY);
+    // Leichtes Abdunkeln für bessere Lesbarkeit von Track/Text darüber
+    ctx.fillStyle = 'rgba(255,255,255,.15)';
+    ctx.fillRect(0,0,W,H);
+  } else {
+    drawMapBackground(); // synthetischer Kartenlook als Fallback, während Kacheln laden/falls sie fehlschlagen
   }
-  ctx.stroke(); ctx.shadowBlur=0;
-  // Start dot
-  const[sx,sy]=proj(pts[0].lat,pts[0].lng);
-  ctx.beginPath();ctx.arc(sx,sy,8,0,Math.PI*2);
-  ctx.fillStyle='#4caf50';ctx.fill();
-  // Stats overlay
-  ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(20,20,300,80);
-  ctx.fillStyle='#fff'; ctx.font='bold 20px sans-serif';
-  ctx.textAlign='left'; ctx.textBaseline='middle';
-  ctx.fillText(TOUR_TITLE, 35, 48);
-  ctx.fillStyle='rgba(255,255,255,.7)'; ctx.font='16px sans-serif';
-  ctx.fillText(`${Math.round(progress*100)}% der Strecke`, 35, 78);
+
+  const { pts, proj } = computeTrackProjection();
+  const end = Math.max(1, Math.floor(pts.length * Math.min(progress, 1)));
+
+  // Track: weißer Untergrund + orange Linie (wie die echte Tourenkarte)
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 13;
+  ctx.beginPath();
+  for (let i=0;i<end;i++){ const [x,y]=proj(pts[i].lat,pts[i].lng); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+  ctx.stroke();
+  ctx.strokeStyle = '#f0851e'; ctx.lineWidth = 8;
+  ctx.beginPath();
+  for (let i=0;i<end;i++){ const [x,y]=proj(pts[i].lat,pts[i].lng); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+  ctx.stroke();
+
+  // Start-Marker (grün)
+  const [sx,sy] = proj(pts[0].lat, pts[0].lng);
+  ctx.beginPath(); ctx.arc(sx,sy,13,0,Math.PI*2);
+  ctx.fillStyle = '#2e7d32'; ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.stroke();
+
+  // Ziel-Marker (rot) sobald erreicht
+  if (progress >= 0.995) {
+    const [ex,ey] = proj(pts[pts.length-1].lat, pts[pts.length-1].lng);
+    ctx.beginPath(); ctx.arc(ex,ey,13,0,Math.PI*2);
+    ctx.fillStyle = '#c62828'; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.stroke();
+  }
+
+  // Foto-Marker: erscheinen sobald der Track ihre Position erreicht hat
+  const reachedFrac = end / pts.length;
+  PHOTOS.forEach((p, idx) => {
+    if (!p.lat || !p.lng) return;
+    // Position des Fotos entlang des Tracks grob per nächstem Punkt bestimmen
+    let bestI = 0, bestD = Infinity;
+    for (let i=0;i<pts.length;i+=4) {
+      const d = Math.hypot(pts[i].lat-p.lat, pts[i].lng-p.lng);
+      if (d < bestD) { bestD = d; bestI = i; }
+    }
+    const photoFrac = bestI / pts.length;
+    if (photoFrac > reachedFrac) return; // noch nicht erreicht
+    const appearAge = reachedFrac - photoFrac;
+    const popScale = appearAge < 0.03 ? Math.min(1, appearAge/0.03) : 1; // kurzer Pop-Effekt
+
+    const [x,y] = proj(p.lat, p.lng);
+    const img = imgs[idx];
+    if (!img) return;
+    const thumbSize = 78 * popScale;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 10;
+    // Weißer Rahmen
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x-thumbSize/2-4, y-thumbSize-4, thumbSize+8, thumbSize+8, 8);
+    else ctx.rect(x-thumbSize/2-4, y-thumbSize-4, thumbSize+8, thumbSize+8);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // Foto-Thumbnail (quadratisch zugeschnitten)
+    ctx.save();
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x-thumbSize/2, y-thumbSize, thumbSize, thumbSize, 5);
+    else ctx.rect(x-thumbSize/2, y-thumbSize, thumbSize, thumbSize);
+    ctx.clip();
+    const s = Math.min(img.width, img.height);
+    ctx.drawImage(img, (img.width-s)/2, (img.height-s)/2, s, s, x-thumbSize/2, y-thumbSize, thumbSize, thumbSize);
+    ctx.restore();
+    // kleiner Zeiger nach unten zur Position
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(x-7, y-2); ctx.lineTo(x+7, y-2); ctx.lineTo(x, y+8);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  });
+
+  // Pflicht-Hinweis bei Nutzung echter OSM-Kacheln
+  if (_mapTileCanvas) {
+    ctx.font = '13px sans-serif';
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.fillText('© OpenStreetMap', W - 10, H - 8);
+  }
+
+  // Kopfzeile mit Titel + Fortschritt
+  ctx.fillStyle = 'rgba(20,30,20,.78)';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(24,24,W-48,64,10); else ctx.rect(24,24,W-48,64);
+  ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText('🗺️ ' + TOUR_TITLE, 42, 48);
+  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '17px sans-serif';
+  ctx.fillText(`${Math.round(progress*100)}% der Strecke${TOUR_KM ? ' · ' + (TOUR_KM*Math.min(progress,1)).toFixed(1) + ' / ' + TOUR_KM + ' km' : ''}`, 42, 74);
 }
 
 function drawProfileFrame(progress) {
@@ -352,6 +628,88 @@ function drawProfileFrame(progress) {
   if(TOUR_KM) ctx.fillText(TOUR_KM+' km', W/2, H-20);
 }
 
+// ── Stats-Folie: animierte Zahlen + interessante Fakten ─────────────────────
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+function drawStatsFrame(progress) {
+  drawBackground();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 10;
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 36px sans-serif';
+  ctx.fillText('📊 Die Tour in Zahlen', W/2, 90);
+  ctx.shadowBlur = 0;
+
+  // Zahlen zählen animiert bis zum Zielwert hoch (erste 60% der Zeit)
+  const countP = Math.min(1, progress / 0.6);
+  const eased = easeOutCubic(countP);
+
+  const stats = [];
+  if (TOUR_KM)    stats.push({val: (TOUR_KM * eased).toFixed(1), unit: 'km', label: 'Strecke'});
+  if (TOUR_ASC)   stats.push({val: Math.round(TOUR_ASC * eased), unit: 'm', label: 'Höhenmeter'});
+  stats.push({val: Math.round(ATTENDING_COUNT * eased), unit: '', label: 'Dabei gewesen'});
+  if (WEATHER)    stats.push({val: Math.round(WEATHER.temp_max * eased), unit: '°C', label: WEATHER.icon + ' Wetter'});
+
+  const cols = Math.min(stats.length, 2);
+  const tileW = 460, tileH = 150, gapX = 40, gapY = 30;
+  const startX = W/2 - (cols * tileW + (cols-1) * gapX) / 2;
+  const startY = 160;
+
+  stats.forEach((s, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = startX + col * (tileW + gapX);
+    const y = startY + row * (tileH + gapY);
+    const tileAlpha = Math.min(1, Math.max(0, (progress - i*0.08) * 5));
+
+    ctx.globalAlpha = tileAlpha;
+    ctx.fillStyle = 'rgba(255,255,255,.08)';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, tileW, tileH, 16); else ctx.rect(x, y, tileW, tileH);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 52px sans-serif';
+    ctx.fillText(s.val + s.unit, x + tileW/2, y + tileH/2 - 20);
+    ctx.font = '22px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.75)';
+    ctx.fillText(s.label, x + tileW/2, y + tileH/2 + 40);
+    ctx.globalAlpha = 1;
+  });
+
+  // Teilnehmer-Namen unten einblenden (zweite Hälfte der Zeit)
+  if (ATTENDING_NAMES.length && progress > 0.55) {
+    const nameAlpha = Math.min(1, (progress - 0.55) * 3);
+    ctx.globalAlpha = nameAlpha;
+    ctx.font = '20px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    let names = ATTENDING_NAMES.slice(0, 8).join(' · ');
+    if (ATTENDING_NAMES.length > 8) names += ` +${ATTENDING_NAMES.length - 8}`;
+    ctx.fillText(names, W/2, H - 60);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawOutroFrame(alpha, bgImg) {
+  ctx.globalAlpha = alpha;
+  const cover = bgImg;
+  if (cover) {
+    const scale = Math.max(W / cover.width, H / cover.height);
+    const dw = cover.width * scale, dh = cover.height * scale;
+    ctx.drawImage(cover, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    ctx.fillStyle = 'rgba(8,16,42,.72)';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    drawBackground();
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 14;
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 46px sans-serif';
+  ctx.fillText('🚴 Danke fürs Mitfahren!', W/2, H/2 - 30);
+  ctx.font = '28px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.fillText(GROUP_NAME, W/2, H/2 + 30);
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+}
+
 // ── Music handling ────────────────────────────────────────────────────────────
 let musicBuffer = null, audioCtx = null, musicSource = null, gainNode = null;
 let musicStream = null;
@@ -368,8 +726,45 @@ function pickMusic(file) {
   reader.readAsArrayBuffer(file);
 }
 
+let defaultMusicLoaded = false;
+
+async function loadDefaultMusic() {
+  if (!DEFAULT_MUSIC_URL || defaultMusicLoaded) return;
+  const banner = document.getElementById('default-music-banner');
+  try {
+    const resp = await fetch(DEFAULT_MUSIC_URL);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const buf = await resp.arrayBuffer();
+    if (!buf.byteLength) throw new Error('Datei ist leer');
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    musicBuffer = await audioCtx.decodeAudioData(buf);
+    defaultMusicLoaded = true;
+    document.getElementById('music-fade-hint').style.display = 'block';
+  } catch (e) {
+    console.warn('Standardmusik konnte nicht geladen werden:', e);
+    if (banner) {
+      banner.classList.remove('alert-success');
+      banner.classList.add('alert-warning');
+      banner.querySelector('span').innerHTML =
+        '<i class="bi bi-exclamation-triangle me-1"></i>Standardmusik konnte nicht geladen werden (' +
+        (e.message || 'unbekannter Fehler') + ') – bitte eigene Datei wählen';
+    }
+  }
+}
+
+// Standardmusik erst bei der ersten echten Nutzeraktion laden (Klick/Touch),
+// da Browser AudioContext ohne Nutzerinteraktion oft blockieren/verzögern.
+function armDefaultMusicLoad() {
+  if (!DEFAULT_MUSIC_URL || defaultMusicLoaded) return;
+  const trigger = () => { loadDefaultMusic(); };
+  document.addEventListener('click', trigger, {once: true});
+  document.addEventListener('touchstart', trigger, {once: true});
+}
+
 // Show server music file name
 document.addEventListener('DOMContentLoaded', () => {
+  armDefaultMusicLoad();
   const si = document.getElementById('server-music');
   if (si) si.onchange = () => {
     const el = document.getElementById('server-music-name');
@@ -377,6 +772,17 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const md = document.getElementById('music-drop');
   if (md) md.addEventListener('dragover', e => e.preventDefault());
+
+  // MP4-Formular: Kartenfolie/Statistik-Einstellungen aus der Vorschau übernehmen
+  const serverForm = document.getElementById('server-form');
+  if (serverForm) {
+    serverForm.addEventListener('submit', () => {
+      const track = document.getElementById('show-track');
+      const stats = document.getElementById('show-stats');
+      document.getElementById('server-show-track').value = (track && track.checked) ? '1' : '0';
+      document.getElementById('server-show-stats').value = (stats && stats.checked) ? '1' : '0';
+    });
+  }
 });
 
 function startMusic(totalSecs) {
@@ -444,43 +850,57 @@ const progress = document.getElementById('video-progress');
 
 async function preloadImages() {
   status.textContent = 'Lade Fotos…';
+  const showTrack = document.getElementById('show-track')?.checked;
+  const tilesPromise = showTrack ? loadMapTileBackground() : Promise.resolve();
   imgs = await Promise.all(PHOTOS.map(p => new Promise((res,rej) => {
     const i = new Image(); i.crossOrigin='anonymous';
     i.onload=()=>res(i); i.onerror=()=>res(null);
     i.src = p.src;
   })));
+  await tilesPromise;
   status.textContent = 'Bereit';
+}
+
+function trackSlideDuration() {
+  const gpsPhotoCount = PHOTOS.filter(p => p.lat && p.lng).length;
+  return Math.min(10, Math.max(3, 3 + gpsPhotoCount));
 }
 
 function calcTotalSecs() {
   const photoDur  = parseInt(document.getElementById('photo-duration').value);
   const showTrack = document.getElementById('show-track').checked;
   const showProf  = document.getElementById('show-profile').checked;
+  const showStats = document.getElementById('show-stats').checked;
   let secs = 3; // Titelfolie
-  if (showTrack && GPX_DATA) secs += 3;
+  if (showTrack && GPX_DATA) secs += trackSlideDuration();
+  if (showStats) secs += 4;
   secs += PHOTOS.length * photoDur;
   if (showProf && GPX_DATA) secs += 3;
   secs += 2; // Outro
   return secs;
 }
 
+const PREVIEW_FRAME_MS = 1000 / 30; // feste 30fps-Taktung, unabhängig von der Bildschirm-Wiederholrate
+
 async function waitFrame() {
   while (isPaused && !stopRequested) {
     await new Promise(r => setTimeout(r, 100));
   }
   if (stopRequested) throw new Error('stopped');
-  return new Promise(r => { animId = requestAnimationFrame(r); });
+  return new Promise(r => setTimeout(r, PREVIEW_FRAME_MS));
 }
 
 async function runSequence(onFrame) {
   const showTrack  = document.getElementById('show-track').checked;
   const showProf   = document.getElementById('show-profile').checked;
+  const showStats  = document.getElementById('show-stats').checked;
   const photoDur   = parseInt(document.getElementById('photo-duration').value);
   const FPS        = 30;
   const transition = document.getElementById('transition').value;
 
   let totalFrames = FPS * 3; // Titelfolie
-  if (showTrack && GPX_DATA) totalFrames += FPS * 3;
+  if (showTrack && GPX_DATA) totalFrames += FPS * trackSlideDuration();
+  if (showStats) totalFrames += FPS * 4;
   totalFrames += PHOTOS.length * FPS * photoDur;
   if (showProf && GPX_DATA) totalFrames += FPS * 3;
   totalFrames += FPS * 2; // outro
@@ -507,20 +927,27 @@ async function runSequence(onFrame) {
   // 2. Track (3s)
   if (showTrack && GPX_DATA) {
     status.textContent = 'Track-Animation…';
-    await next(FPS*3, (f,tot) => drawTrackFrame(f/tot));
+    await next(FPS*trackSlideDuration(), (f,tot) => drawTrackFrame(f/tot));
   }
 
-  // 3. Photos
+  // 2b. Stats (4s) – animierte Zahlen
+  if (showStats) {
+    status.textContent = 'Statistik…';
+    await next(FPS*4, (f,tot) => drawStatsFrame(f/tot));
+  }
+
+  // 3. Photos (mit leichtem Ken-Burns-Zoom, passend zum Server-MP4-Export)
   for (let pi=0; pi<PHOTOS.length; pi++) {
     const img = imgs[pi]; if(!img) continue;
     const p = PHOTOS[pi];
+    const zoomIn = (pi % 2 === 0);
     status.textContent = `Foto ${pi+1}/${PHOTOS.length}…`;
     await next(FPS*photoDur, (f,tot) => {
       const fadeDur = FPS*0.4;
       const a = transition==='none' ? 1
         : f < fadeDur ? f/fadeDur
         : f > tot-fadeDur ? (tot-f)/fadeDur : 1;
-      drawPhotoFrame(img, p.cap, p.date, a);
+      drawPhotoFrame(img, p.cap, p.date, a, f/tot, zoomIn);
     });
   }
 
@@ -535,7 +962,7 @@ async function runSequence(onFrame) {
   status.textContent = 'Outro…';
   await next(FPS*2, (f,tot) => {
     const a = f < FPS*.5 ? f/(FPS*.5) : 1;
-    drawTitle(a * (f<tot*.5 ? 1 : (tot-f)/(tot*.5)), outroBg);
+    drawOutroFrame(a, outroBg);
   });
 
   progress.style.width='100%';
@@ -543,6 +970,7 @@ async function runSequence(onFrame) {
 
 async function startPreview() {
   if (!imgs.length) await preloadImages();
+  if (DEFAULT_MUSIC_URL && !defaultMusicLoaded) await loadDefaultMusic();
   if (animId) cancelAnimationFrame(animId);
   stopMusic();
   isPaused = false;
@@ -609,16 +1037,28 @@ async function startRecording() {
 drawTitle();
 preloadImages();
 // Format-Button Toggle
+const FORMAT_DETAILS = {
+  reels:     '1080 × 1920 px · 9:16',
+  feed:      '1080 × 1350 px · 4:5',
+  square:    '1080 × 1080 px · 1:1',
+  landscape: '1920 × 1080 px · 16:9',
+  shorts:    '1080 × 1920 px · 9:16',
+};
 document.querySelectorAll('.format-btn').forEach(btn => {
-  btn.closest('label').querySelector('input').addEventListener('change', () => {
+  const input = btn.closest('label').querySelector('input');
+  input.addEventListener('change', () => {
     document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active-format', 'btn-djo'));
     document.querySelectorAll('.format-btn').forEach(b => b.classList.add('btn-outline-djo'));
     btn.classList.add('active-format', 'btn-djo');
     btn.classList.remove('btn-outline-djo');
+    const detail = document.getElementById('format-detail');
+    if (detail) detail.textContent = FORMAT_DETAILS[input.value] || '';
   });
 });
 </script>
 <style>
 .active-format { background: var(--djo-navy) !important; color: #fff !important; }
+.active-format small.text-muted,
+.active-format .text-muted { color: rgba(255,255,255,.8) !important; }
 </style>
 {% endblock %}

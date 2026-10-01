@@ -72,6 +72,37 @@
     </div>
   </div>
 
+  <!-- ── WhatsApp & Kontakt ───────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-6">
+    <div class="card">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-whatsapp me-1"></i>WhatsApp &amp; Kontakt
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">WhatsApp-Gruppenlink</label>
+          <input type="url" name="whatsapp_group_link" class="form-control"
+                 value="{{ settings.get('whatsapp_group_link','') }}"
+                 placeholder="https://chat.whatsapp.com/AbCdEfGhIjKlMnOp">
+          <div class="form-text">
+            In WhatsApp: Gruppe öffnen → Gruppeninfo → Einladen über Link.
+            Erscheint eingeloggt oben in der Navigation.
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Kontakt-E-Mail für Einladungsanfragen</label>
+          <input type="email" name="contact_email" class="form-control"
+                 value="{{ settings.get('contact_email','') }}"
+                 placeholder="kontakt@dejungenolen.de">
+          <div class="form-text">
+            Wird auf dem Login-Bildschirm angezeigt, damit Interessierte nach
+            einer Einladung fragen können. Leer lassen zum Ausblenden.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Standard-Tour-Einstellungen ──────────────────────────────────────── -->
   <div class="col-12 col-lg-6">
     <div class="card">

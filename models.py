@@ -13,6 +13,7 @@ class Group(db.Model):
     name        = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
     logo        = db.Column(db.String(120))
+    default_music = db.Column(db.String(150))   # Dateiname der Standard-Hintergrundmusik
     created_at  = db.Column(db.DateTime, default=datetime.utcnow)
     is_active   = db.Column(db.Boolean, default=True)
 
@@ -422,7 +423,68 @@ class SiteConfig(db.Model):
         'telegram_chat_id':      '',
         'telegram_chat_username': '',      # @groupname for embed widget
         'telegram_invite_link':   '',      # https://t.me/+xxxx for private groups
+        'whatsapp_group_link':    '',      # https://chat.whatsapp.com/xxxx
+        'contact_email':          '',      # für Einladungsanfragen auf dem Login-Screen
         'site_name':             'De jungen Olen',
         'base_url':              '',
     }
 
+
+class TourTemplate(db.Model):
+    """Wiederverwendbare Vorlage für wiederkehrende Touren."""
+    __tablename__ = 'tour_templates'
+    id           = db.Column(db.Integer, primary_key=True)
+    name         = db.Column(db.String(120), nullable=False)   # Vorlagenname (frei wählbar)
+    title        = db.Column(db.String(120), nullable=False)
+    description  = db.Column(db.Text, nullable=True)
+    difficulty   = db.Column(db.String(20), default='mittel')
+    approx_km    = db.Column(db.Float, nullable=True)
+    external_link = db.Column(db.String(500), nullable=True)
+    gpx_file     = db.Column(db.String(200), nullable=True)
+    gpx_km       = db.Column(db.Float, nullable=True)
+    gpx_ascent   = db.Column(db.Float, nullable=True)
+    meeting_lat  = db.Column(db.Float, nullable=True)
+    meeting_lng  = db.Column(db.Float, nullable=True)
+    meeting_desc = db.Column(db.String(200), nullable=True)
+    default_start_time = db.Column(db.String(5), nullable=True)
+    created_by   = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    group_id     = db.Column(db.Integer, db.ForeignKey('groups.id'), nullable=True)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    use_count    = db.Column(db.Integer, default=0)   # wie oft aus dieser Vorlage erstellt wurde
+    last_used_at = db.Column(db.DateTime, nullable=True)
+
+    creator = db.relationship('User')
+
+    @property
+    def difficulty_label(self):
+        return {'leicht': 'Leicht', 'mittel': 'Mittel', 'schwer': 'Schwer'}.get(self.difficulty, self.difficulty)
+
+
+class Announcement(db.Model):
+    """Ankündigung mit Text und optionalem Bild – sichtbar ein- und ausgeloggt."""
+    __tablename__ = 'announcements'
+    id          = db.Column(db.Integer, primary_key=True)
+    group_id    = db.Column(db.Integer, db.ForeignKey('groups.id'), nullable=True)
+    title       = db.Column(db.String(200), nullable=False)
+    content     = db.Column(db.Text, nullable=True)
+    image       = db.Column(db.String(200), nullable=True)
+    visibility  = db.Column(db.String(20), default='both')  # 'both' | 'logged_in' | 'logged_out'
+    is_active   = db.Column(db.Boolean, default=True)
+    starts_at   = db.Column(db.DateTime, nullable=True)   # optional: erst ab X sichtbar
+    expires_at  = db.Column(db.DateTime, nullable=True)   # optional: automatisch ausblenden
+    created_by  = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
+    creator = db.relationship('User')
+    group   = db.relationship('Group')
+
+    @property
+    def is_currently_visible(self):
+        if not self.is_active:
+            return False
+        now = datetime.utcnow()
+        if self.starts_at and now < self.starts_at:
+            return False
+        if self.expires_at and now > self.expires_at:
+            return False
+        return True

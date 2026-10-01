@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Admin-Werkzeuge – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+
+<h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
+  <i class="bi bi-tools me-2"></i>Admin-Werkzeuge
+</h2>
+
+<div class="row g-3">
+
+  <div class="col-12 col-md-6 col-xl-4">
+    <a href="{{ url_for('admin_backups_list') }}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100 admin-tool-card">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-archive" style="font-size:1.4rem;color:var(--djo-navy)"></i>
+            <h6 class="fw-bold mb-0 text-dark">Backup &amp; Wiederherstellung</h6>
+          </div>
+          <p class="text-muted small mb-0">
+            {{ backup_count }} Backup(s) gespeichert.
+            {% if backup_last_run %}
+              Letztes: {{ backup_last_run.strftime('%d.%m.%Y %H:%M') }} Uhr
+              {% if backup_last_status == 'ok' %}✓{% else %}✗{% endif %}
+            {% else %}
+              Noch kein Backup gelaufen.
+            {% endif %}
+          </p>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-4">
+    <a href="{{ url_for('admin_notifications') }}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100 admin-tool-card">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-bell" style="font-size:1.4rem;color:var(--djo-navy)"></i>
+            <h6 class="fw-bold mb-0 text-dark">Benachrichtigungen</h6>
+          </div>
+          <p class="text-muted small mb-0">
+            Push &amp; Telegram testen, Tourtag-Erinnerung manuell auslösen.
+          </p>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-4">
+    <a href="{{ url_for('admin_groups') }}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100 admin-tool-card">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-grid" style="font-size:1.4rem;color:var(--djo-navy)"></i>
+            <h6 class="fw-bold mb-0 text-dark">Gruppen verwalten</h6>
+          </div>
+          <p class="text-muted small mb-0">
+            {{ group_count }} aktive Gruppe(n). Neue Gruppe anlegen, Logo &amp; Musik ändern.
+          </p>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-4">
+    <a href="{{ url_for('admin_settings') }}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100 admin-tool-card">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-sliders" style="font-size:1.4rem;color:var(--djo-navy)"></i>
+            <h6 class="fw-bold mb-0 text-dark">Einstellungen</h6>
+          </div>
+          <p class="text-muted small mb-0">
+            Standard-Treffpunkt, Telegram-Zugangsdaten, Startzeiten.
+          </p>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-4">
+    <a href="{{ url_for('admin_install_packages') }}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100 admin-tool-card">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-box-seam" style="font-size:1.4rem;color:var(--djo-navy)"></i>
+            <h6 class="fw-bold mb-0 text-dark">Pakete installieren</h6>
+          </div>
+          <p class="text-muted small mb-0">
+            Fehlende Python-Pakete (z.B. für Push) ohne SSH nachrüsten.
+          </p>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-4">
+    <a href="{{ url_for('admin_db_diagnose') }}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100 admin-tool-card">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-search" style="font-size:1.4rem;color:var(--djo-navy)"></i>
+            <h6 class="fw-bold mb-0 text-dark">Datenbank-Diagnose</h6>
+          </div>
+          <p class="text-muted small mb-0">
+            Zeigt Konfiguration und gefundene Datenbankdateien – hilfreich bei Problemen.
+          </p>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-4">
+    <a href="{{ url_for('admin_export_members') }}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100 admin-tool-card">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-people" style="font-size:1.4rem;color:var(--djo-navy)"></i>
+            <h6 class="fw-bold mb-0 text-dark">Mitglieder exportieren</h6>
+          </div>
+          <p class="text-muted small mb-0">
+            Alle Mitglieder als CSV herunterladen.
+          </p>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-4">
+    <a href="{{ url_for('admin_export_tours') }}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100 admin-tool-card">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-calendar3" style="font-size:1.4rem;color:var(--djo-navy)"></i>
+            <h6 class="fw-bold mb-0 text-dark">Touren exportieren</h6>
+          </div>
+          <p class="text-muted small mb-0">
+            Alle Touren als CSV herunterladen.
+          </p>
+        </div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-4">
+    <a href="{{ url_for('admin_announcements') }}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100 admin-tool-card">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-megaphone" style="font-size:1.4rem;color:var(--djo-navy)"></i>
+            <h6 class="fw-bold mb-0 text-dark">Ankündigungen</h6>
+          </div>
+          <p class="text-muted small mb-0">
+            Text &amp; Bild veröffentlichen – sichtbar ein- und ausgeloggt.
+          </p>
+        </div>
+      </div>
+    </a>
+  </div>
+
+</div>
+
+<a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-djo btn-sm mt-4">
+  <i class="bi bi-arrow-left me-1"></i>Zurück zum Admin-Dashboard
+</a>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+.admin-tool-card { transition: transform .1s, box-shadow .1s; }
+.admin-tool-card:hover { transform: translateY(-2px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.1) !important; }
+</style>
+{% endblock %}

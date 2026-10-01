@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}DB-Diagnose – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+
+<h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
+  <i class="bi bi-search me-2"></i>Datenbank-Diagnose
+</h2>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">Konfiguration</h6>
+    <table class="table table-sm">
+      <tr>
+        <td class="text-muted" style="width:220px">Projektordner</td>
+        <td><code style="word-break:break-all">{{ app_dir }}</code></td>
+      </tr>
+      <tr>
+        <td class="text-muted">Flask instance-Ordner</td>
+        <td><code style="word-break:break-all">{{ instance_dir }}</code></td>
+      </tr>
+      <tr>
+        <td class="text-muted">SQLALCHEMY_DATABASE_URI</td>
+        <td><code style="word-break:break-all">{{ configured_uri }}</code></td>
+      </tr>
+      <tr>
+        <td class="text-muted">Aktive Engine-URL (SQLAlchemy)</td>
+        <td><code style="word-break:break-all">{{ engine_url }}</code></td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">
+      Gefundene Datenbank-Dateien im Projektordner
+      <span class="badge bg-secondary">{{ found_files|length }}</span>
+    </h6>
+    {% if found_files %}
+    <table class="table table-sm table-hover">
+      <thead>
+        <tr><th>Dateiname</th><th>Ort</th><th>Größe</th><th>Zuletzt geändert</th></tr>
+      </thead>
+      <tbody>
+        {% for f in found_files %}
+        <tr>
+          <td><code>{{ f.name }}</code></td>
+          <td><span class="badge bg-secondary">{{ f.location }}</span></td>
+          <td>{{ f.size_mb }} MB</td>
+          <td>{{ f.mtime.strftime('%d.%m.%Y %H:%M') }} Uhr</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="text-muted small mb-0">
+      <i class="bi bi-info-circle me-1"></i>
+      Die Datei mit dem <strong>aktuellsten</strong> Änderungsdatum und einer
+      plausiblen Größe (mehrere hundert KB bis MB) ist mit hoher
+      Wahrscheinlichkeit die echte, aktive Datenbank.
+    </p>
+    {% else %}
+    <p class="text-muted mb-0">Keine .db/.sqlite-Dateien im Projektordner gefunden.</p>
+    {% endif %}
+  </div>
+</div>
+
+<a href="{{ url_for('admin_backups_list') }}" class="btn btn-outline-djo btn-sm">
+  <i class="bi bi-arrow-left me-1"></i>Zurück zu Backups
+</a>
+
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Unsere Landkarte – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block content %}
+
+<h2 class="fw-bold mb-1" style="color:var(--djo-navy)">
+  <i class="bi bi-map me-2"></i>Unsere Landkarte
+</h2>
+<p class="text-muted small mb-4">
+  Jede Kachel, die ihr schon einmal durchfahren habt, ist hier eingefärbt –
+  je mehr Touren, desto größer das erkundete Gebiet.
+</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-3">
+      <div class="fw-bold fs-4" style="color:var(--djo-navy)">{{ tile_count }}</div>
+      <div class="text-muted small">Kacheln erobert</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-3">
+      <div class="fw-bold fs-4" style="color:var(--djo-navy)">{{ region_pct }}%</div>
+      <div class="text-muted small">der Heimregion (40km)</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-3">
+      <div class="fw-bold fs-4" style="color:var(--djo-navy)">{{ total_km }}</div>
+      <div class="text-muted small">km gesamt</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-3">
+      <div class="fw-bold fs-4" style="color:var(--djo-navy)">{{ tour_count }}</div>
+      <div class="text-muted small">Touren mit GPX</div>
+    </div>
+  </div>
+</div>
+
+<div id="exploreMap" style="height:60vh;border-radius:10px;overflow:hidden"></div>
+
+<p class="text-muted small mt-3">
+  <i class="bi bi-info-circle me-1"></i>
+  Jede Kachel ist ca. 1×1 km groß. Der Prozentsatz bezieht sich auf ein
+  40-km-Quadrat rund um euren Standard-Treffpunkt – reine Spielerei, keine
+  offizielle Vermessung 😉
+</p>
+
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const TILE_RECTS = {{ tile_rects_json | safe }};
+const HOME = [{{ home_lat }}, {{ home_lng }}];
+
+const map = L.map('exploreMap').setView(HOME, 10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap',
+  maxZoom: 18
+}).addTo(map);
+
+TILE_RECTS.forEach(t => {
+  L.rectangle([[t.south, t.west], [t.north, t.east]], {
+    color: '#f0851e',
+    weight: 0.5,
+    fillColor: '#f0851e',
+    fillOpacity: 0.35
+  }).addTo(map);
+});
+
+if (TILE_RECTS.length > 0) {
+  const bounds = L.latLngBounds(TILE_RECTS.map(t => [
+    [t.south, t.west], [t.north, t.east]
+  ]).flat());
+  map.fitBounds(bounds, {padding: [30, 30]});
+} else {
+  L.marker(HOME).addTo(map);
+}
+</script>
+{% endblock %}
