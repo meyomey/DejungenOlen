@@ -261,6 +261,7 @@ const TOUR_DATE  = "{{ tour.tour_date | de_date }}";
 const TOUR_KM    = {{ tour.gpx_km or 'null' }};
 const TOUR_ASC   = {{ tour.gpx_ascent or 'null' }};
 const GROUP_NAME = {{ (current_group.name if current_group else 'De jungen Olen')|tojson }};
+const BASE_DOMAIN = {{ base_domain|tojson }};
 const ATTENDING_COUNT = {{ attending_count }};
 const ATTENDING_NAMES = {{ attending_names|tojson }};
 const WEATHER = {{ weather|tojson if weather else 'null' }};
@@ -702,10 +703,19 @@ function drawOutroFrame(alpha, bgImg) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 14;
   ctx.fillStyle = '#fff'; ctx.font = 'bold 46px sans-serif';
-  ctx.fillText('🚴 Danke fürs Mitfahren!', W/2, H/2 - 30);
+  ctx.fillText('🚴 Danke fürs Mitfahren!', W/2, H/2 - 50);
   ctx.font = '28px sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,.85)';
-  ctx.fillText(GROUP_NAME, W/2, H/2 + 30);
+  ctx.fillText(GROUP_NAME, W/2, H/2 + 10);
+  if (BASE_DOMAIN) {
+    const nameShort = GROUP_NAME.length <= 22 ? GROUP_NAME : GROUP_NAME.slice(0, 19) + '…';
+    ctx.font = '20px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,.65)';
+    ctx.fillText(`Noch nicht bei „${nameShort}" dabei?`, W/2, H/2 + 65);
+    ctx.font = 'bold 26px sans-serif';
+    ctx.fillStyle = '#ffc400';
+    ctx.fillText(BASE_DOMAIN, W/2, H/2 + 98);
+  }
   ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
 }

@@ -1976,12 +1976,18 @@ def tour_video(tour_id):
     if grp and grp.default_music:
         default_music_url = url_for('static', filename='uploads/group_music/' + grp.default_music)
 
+    _base_url = app.config.get('BASE_URL', '') or ''
+    base_domain = _base_url.replace('https://', '').replace('http://', '').rstrip('/')
+    if base_domain == 'localhost:5000':
+        base_domain = ''  # lokale Entwicklung – kein sinnvoller öffentlicher Hinweis
+
     return render_template('touren/video.html',
                            tour=tour, photos=photos,
                            attending_count=attending_count,
                            attending_names=attending_names,
                            weather=weather,
                            default_music_url=default_music_url,
+                           base_domain=base_domain,
                            gpx_data=json.dumps(gpx_data) if gpx_data else 'null')
 
 
@@ -2358,10 +2364,20 @@ def tour_video_render(tour_id):
                 canvas = _cover_photo_bg((W, H))
                 draw = _ID.Draw(canvas)
                 cx, cy = W//2, H//2
-                _centered_text(draw, cx, cy-40, 'Danke fürs Mitfahren!',
+                _centered_text(draw, cx, cy-60, 'Danke fürs Mitfahren!',
                               _pil_font(min(46, int(W/16))), (255,255,255),
                               stroke_width=2, stroke_fill=(0,0,0))
-                _centered_text(draw, cx, cy+30, group_name, _pil_font(28, bold=False), (220,220,220))
+                _centered_text(draw, cx, cy+10, group_name, _pil_font(28, bold=False), (220,220,220))
+                # Mitmach-Aufforderung – Gruppenname explizit mit nennen, da eine
+                # Domain mehrere unterschiedliche Gruppen bedienen kann
+                base_url = app.config.get('BASE_URL', '') or ''
+                domain = base_url.replace('https://', '').replace('http://', '').rstrip('/')
+                if domain and domain != 'localhost:5000':
+                    name_short = group_name if len(group_name) <= 22 else group_name[:19] + '…'
+                    _centered_text(draw, cx, cy+70, f'Noch nicht bei „{name_short}" dabei?',
+                                  _pil_font(20, bold=False), (190,190,190))
+                    _centered_text(draw, cx, cy+105, domain,
+                                  _pil_font(30), (255, 196, 0))
                 canvas.save(dst_path, 'JPEG', quality=92)
                 return True
             except Exception as e:
