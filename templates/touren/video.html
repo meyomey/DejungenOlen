@@ -886,7 +886,7 @@ function calcTotalSecs() {
   if (showStats) secs += 4;
   secs += PHOTOS.length * photoDur;
   if (showProf && GPX_DATA) secs += 3;
-  secs += 2; // Outro
+  secs += 6; // Outro – lang genug um Gruppenname + Domain lesen zu können
   return secs;
 }
 
@@ -913,7 +913,7 @@ async function runSequence(onFrame) {
   if (showStats) totalFrames += FPS * 4;
   totalFrames += PHOTOS.length * FPS * photoDur;
   if (showProf && GPX_DATA) totalFrames += FPS * 3;
-  totalFrames += FPS * 2; // outro
+  totalFrames += FPS * 6; // outro
 
   let frame = 0;
   function pct(f) { progress.style.width = Math.round(f/totalFrames*100)+'%'; }
@@ -967,11 +967,11 @@ async function runSequence(onFrame) {
     await next(FPS*3, (f,tot) => drawProfileFrame(f/tot));
   }
 
-  // 5. Outro (2s) – letztes Foto als Hintergrund
+  // 5. Outro (6s – lang genug um Gruppenname + Domain lesen zu können)
   const outroBg = [...imgs].reverse().find(i => i) || titleBg;
   status.textContent = 'Outro…';
-  await next(FPS*2, (f,tot) => {
-    const a = f < FPS*.5 ? f/(FPS*.5) : 1;
+  await next(FPS*6, (f,tot) => {
+    const a = f < FPS*.5 ? f/(FPS*.5) : 1; // kurzes Einblenden, dann 5.5s stehen bleiben
     drawOutroFrame(a, outroBg);
   });
 

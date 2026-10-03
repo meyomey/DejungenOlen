@@ -2611,12 +2611,13 @@ def tour_video_render(tour_id):
                         _slide_secs += photo_dur
                         n_valid += 1
 
-            # 4. Outro (2s) – als Video-Segment
+            # 4. Outro (6s – lang genug um Gruppenname + Domain lesen zu können)
             outro_frame = os.path.join(tmpdir, 'slide_outro.jpg')
             outro_seg   = os.path.join(tmpdir, 'seg_outro.mp4')
-            if make_outro_frame(outro_frame, _group_name) and image_to_segment(outro_frame, outro_seg, 2):
+            OUTRO_DUR = 6
+            if make_outro_frame(outro_frame, _group_name) and image_to_segment(outro_frame, outro_seg, OUTRO_DUR):
                 cf.write(f"file '{outro_seg}'\n")
-                _slide_secs += 2
+                _slide_secs += OUTRO_DUR
 
         if n_valid == 0:
             flash('Foto-Dateien nicht gefunden.', 'danger')
