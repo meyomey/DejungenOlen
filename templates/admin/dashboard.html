@@ -304,6 +304,41 @@
       </div>
     </div>
 
+    <!-- WhatsApp-Einladungstext direkt nach dem Erstellen -->
+    {% if highlight_invite and invite_texts.get(highlight_invite) %}
+    <div class="card shadow-sm border-success mb-3" id="einladung">
+      <div class="card-header bg-success text-white">
+        <i class="bi bi-whatsapp me-2"></i>Einladungstext für WhatsApp
+      </div>
+      <div class="card-body">
+        <textarea id="invite-text" class="form-control form-control-sm mb-2" rows="9">{{ invite_texts[highlight_invite] }}</textarea>
+        <div class="d-grid gap-2">
+          <a id="invite-wa" class="btn btn-success btn-sm" target="_blank" rel="noopener"
+             href="https://wa.me/?text={{ invite_texts[highlight_invite]|urlencode }}">
+            <i class="bi bi-whatsapp me-1"></i>In WhatsApp senden
+          </a>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="invite-copy">
+            <i class="bi bi-clipboard me-1"></i>Text kopieren
+          </button>
+        </div>
+        <div class="form-text">Text darf vor dem Senden angepasst werden. WhatsApp öffnet die Kontaktauswahl.</div>
+      </div>
+    </div>
+    <script>
+    (function(){
+      var ta=document.getElementById('invite-text'), wa=document.getElementById('invite-wa'),
+          cp=document.getElementById('invite-copy');
+      if(!ta) return;
+      ta.addEventListener('input',function(){ wa.href='https://wa.me/?text='+encodeURIComponent(ta.value); });
+      cp.addEventListener('click',function(){
+        var done=function(){ cp.innerHTML='<i class="bi bi-check2 me-1"></i>Kopiert'; };
+        if(navigator.clipboard){ navigator.clipboard.writeText(ta.value).then(done,function(){ta.select();document.execCommand('copy');done();}); }
+        else { ta.select(); document.execCommand('copy'); done(); }
+      });
+    })();
+    </script>
+    {% endif %}
+
     <!-- Einladungslinks -->
     {% if invites %}
     <div class="card shadow-sm border-0 mb-3">
@@ -325,7 +360,11 @@
               <div class="text-muted" style="font-size:.7rem">{{ inv.created_at.strftime('%d.%m.%Y') }}</div>
               {% if not inv.used %}
               <a href="#" onclick="copyLink(this,'{{ url_for('register', token=inv.token, _external=True) }}')"
-                 class="small text-primary"><i class="bi bi-clipboard me-1"></i>Kopieren</a>
+                 class="small text-primary me-2"><i class="bi bi-clipboard me-1"></i>Kopieren</a>
+              {% if invite_texts is defined and invite_texts.get(inv.id) %}
+              <a href="https://wa.me/?text={{ invite_texts[inv.id]|urlencode }}" target="_blank" rel="noopener"
+                 class="small text-success" title="Einladungstext in WhatsApp senden"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
+              {% endif %}
               {% endif %}
             </div>
             <form method="post" action="{{ url_for('admin_delete_invite', invite_id=inv.id) }}"

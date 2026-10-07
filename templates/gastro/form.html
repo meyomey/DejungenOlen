@@ -1,146 +1,399 @@
 {% extends "base.html" %}
-{% block title %}Tourenvorschlag einreichen – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block title %}Gastronomie eintragen – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-12 col-md-7 col-lg-6">
+  <div class="col-12 col-lg-10">
     <h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
-      <i class="bi bi-lightbulb me-2"></i>Tourenvorschlag einreichen
+      <i class="bi bi-plus-circle me-2"></i>Gastronomie-Eintrag
     </h2>
 
-    <!-- Routenplaner-Hinweis -->
-    <div class="mb-3">
-      <button class="btn btn-outline-djo btn-sm w-100 d-flex justify-content-between align-items-center"
-              type="button" data-bs-toggle="collapse" data-bs-target="#routenplaner-hinweis-prop">
-        <span><i class="bi bi-map me-2"></i>💡 Noch keine GPX-Datei? Beste kostenlose Routenplaner</span>
-        <i class="bi bi-chevron-down"></i>
-      </button>
-      <div class="collapse" id="routenplaner-hinweis-prop">
-        <div class="card mt-2">
-          <div class="card-body py-3">
-            <div class="row g-2 mb-3">
-              <div class="col-12 col-sm-6">
-                <a href="https://www.komoot.com" target="_blank" class="text-decoration-none">
-                  <div class="border rounded p-2 h-100">
-                    <div class="fw-semibold">🌟 Komoot</div>
-                    <div class="small text-muted">Beliebtester Radplaner in DE, kostenlos, GPX-Export</div>
-                  </div>
+    <div class="row g-4">
+      <!-- Form -->
+      <div class="col-12 col-md-6">
+        <div class="card">
+          <div class="card-header card-header-djo">
+            <i class="bi bi-pencil me-1"></i>Manuelle Eingabe
+          </div>
+          <div class="card-body">
+            <form method="post" id="gastroForm">
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Name *</label>
+                <input type="text" name="name" class="form-control" required
+                       id="fname" placeholder="Café Sonnenschein">
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Typ</label>
+                <select name="spot_type" class="form-select" id="ftype">
+                  {% for val, label in gastro_types %}
+                  <option value="{{ val }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Adresse</label>
+                <input type="text" name="address" class="form-control" id="faddress"
+                       placeholder="Musterstraße 1, 28870 Ottersberg">
+              </div>
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label class="form-label fw-semibold">Öffnet um</label>
+                  <input type="time" name="opens_at" class="form-control" id="fopens">
+                </div>
+                <div class="col-6">
+                  <label class="form-label fw-semibold">Schließt um</label>
+                  <input type="time" name="closes_at" class="form-control">
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Telefon</label>
+                <input type="text" name="phone" class="form-control" placeholder="+49 ...">
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Website</label>
+                <input type="url" name="website" class="form-control" placeholder="https://…">
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Notizen</label>
+                <textarea name="notes" class="form-control" rows="3"
+                          placeholder="Geheimtipp, Besonderheiten…"></textarea>
+              </div>
+              <!-- Hidden coords -->
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label class="form-label fw-semibold small">Breitengrad (lat)</label>
+                  <input type="number" step="0.000001" name="lat" id="hlat"
+                         class="form-control form-control-sm font-monospace"
+                         placeholder="52.963700"
+                         oninput="syncMapFromInput()" required>
+                </div>
+                <div class="col-6">
+                  <label class="form-label fw-semibold small">Längengrad (lng)</label>
+                  <input type="number" step="0.000001" name="lng" id="hlng"
+                         class="form-control form-control-sm font-monospace"
+                         placeholder="9.089100"
+                         oninput="syncMapFromInput()" required>
+                </div>
+              </div>
+              <div id="coord-info" class="text-muted small mb-3">
+                <i class="bi bi-info-circle me-1"></i>
+                Koordinaten manuell eingeben oder Karte anklicken.
+              </div>
+              <button type="submit" class="btn btn-djo w-100"
+                      onclick="return document.getElementById('hlat').value !== '' || alert('Bitte Ort auf der Karte markieren!')">
+                <i class="bi bi-check-lg me-1"></i>Speichern
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Map + Overpass -->
+      <div class="col-12 col-md-6">
+        <div class="card mb-3">
+          <div class="card-header card-header-djo">
+            <i class="bi bi-map me-1"></i>Position auf Karte markieren
+          </div>
+          <div class="card-body p-2">
+            <div id="picker-map" style="height:260px;border-radius:6px"></div>
+            <div class="mt-2 text-muted small">Klicke auf die Karte, um die Position zu setzen.</div>
+          </div>
+        </div>
+
+        <!-- Multi-Source Search -->
+        <div class="card">
+          <div class="card-header card-header-djo">
+            <i class="bi bi-search me-1"></i>Eintrag suchen &amp; importieren
+          </div>
+          <div class="card-body">
+
+            <!-- Tab buttons -->
+            <div class="d-flex gap-1 mb-3 flex-wrap">
+              <button type="button" class="btn btn-sm btn-djo" id="tab-name"
+                      onclick="showTab('name')">
+                🔤 Nach Name
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-djo" id="tab-osm"
+                      onclick="showTab('osm')">
+                🗺️ OSM-Gebiet
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-djo" id="tab-ext"
+                      onclick="showTab('ext')">
+                🌐 Externe Dienste
+              </button>
+            </div>
+
+            <!-- Tab: Name search (Nominatim) -->
+            <div id="tab-name-panel">
+              <div class="input-group input-group-sm mb-2">
+                <input type="text" id="nominatim-q" class="form-control"
+                       placeholder="z.B. Café Sonnenschein Ottersberg"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();searchNominatim()}">
+                <button class="btn btn-djo" type="button" onclick="searchNominatim()">
+                  <i class="bi bi-search"></i>
+                </button>
+              </div>
+              <div class="form-text mb-2">
+                Name, Ort oder Adresse eingeben – nutzt OpenStreetMap Geocoder (kostenlos).
+              </div>
+              <div id="nominatim-results"></div>
+            </div>
+
+            <!-- Tab: OSM area search (Overpass) -->
+            <div id="tab-osm-panel" class="d-none">
+              <p class="text-muted small mb-2">
+                Kartenausschnitt wählen → alle Gaststätten im sichtbaren Bereich suchen.
+              </p>
+              <button type="button" class="btn btn-outline-djo btn-sm w-100 mb-2"
+                      onclick="searchOverpass()">
+                <i class="bi bi-grid me-1"></i>Gaststätten im Kartenbereich suchen
+              </button>
+              <div id="osm-results"></div>
+            </div>
+
+            <!-- Tab: External links -->
+            <div id="tab-ext-panel" class="d-none">
+              <p class="text-muted small mb-2">
+                Suche in externen Diensten, dann Koordinaten manuell in der Karte setzen:
+              </p>
+              <div class="d-grid gap-2">
+                <a href="#" onclick="openExtSearch('google');return false"
+                   class="btn btn-outline-secondary btn-sm text-start">
+                  <img src="https://www.google.com/favicon.ico" width="14" class="me-2">
+                  Google Maps öffnen
+                </a>
+                <a href="#" onclick="openExtSearch('yelp');return false"
+                   class="btn btn-outline-secondary btn-sm text-start">
+                  🍽️ Yelp öffnen
+                </a>
+                <a href="#" onclick="openExtSearch('tripadvisor');return false"
+                   class="btn btn-outline-secondary btn-sm text-start">
+                  🦉 TripAdvisor öffnen
+                </a>
+                <a href="#" onclick="openExtSearch('foursquare');return false"
+                   class="btn btn-outline-secondary btn-sm text-start">
+                  📍 Foursquare öffnen
                 </a>
               </div>
-              <div class="col-12 col-sm-6">
-                <a href="https://bikerouter.de" target="_blank" class="text-decoration-none">
-                  <div class="border rounded p-2 h-100">
-                    <div class="fw-semibold">🚀 BRouter / bikerouter.de</div>
-                    <div class="small text-muted">Präzises OSM-Routing, kein Konto nötig, kostenlos</div>
-                  </div>
-                </a>
-              </div>
-              <div class="col-12 col-sm-6">
-                <a href="https://www.outdooractive.com" target="_blank" class="text-decoration-none">
-                  <div class="border rounded p-2 h-100">
-                    <div class="fw-semibold">🏔 Outdooractive</div>
-                    <div class="small text-muted">Gut für MTB & Gravel, GPX-Export kostenlos</div>
-                  </div>
-                </a>
-              </div>
-              <div class="col-12 col-sm-6">
-                <a href="https://www.openstreetmap.org" target="_blank" class="text-decoration-none">
-                  <div class="border rounded p-2 h-100">
-                    <div class="fw-semibold">🗺 OpenStreetMap</div>
-                    <div class="small text-muted">Manuelles Zeichnen, kostenlos, ohne Anmeldung</div>
-                  </div>
-                </a>
+              <div class="alert alert-info py-2 mt-2 small">
+                <i class="bi bi-info-circle me-1"></i>
+                Öffnet die Suche in einem neuen Tab. Dort Ort finden, dann zurückkommen und
+                auf der Karte die Position setzen.
               </div>
             </div>
-            <div class="alert alert-info py-2 small mb-0">
-              <i class="bi bi-arrow-right-circle me-1"></i>
-              Route planen → Als GPX herunterladen → unten hochladen.
-            </div>
+
           </div>
         </div>
       </div>
     </div>
-    <div class="card">
-      <div class="card-header card-header-djo">
-        <i class="bi bi-pencil me-1"></i>Dein Vorschlag
-      </div>
-      <div class="card-body">
-        <form method="post" enctype="multipart/form-data">
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Titel *</label>
-            <input type="text" name="title" class="form-control" required
-                   placeholder="z.B. Runde durch das Teufelsmoor">
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Region / Gegend</label>
-            <input type="text" name="region" class="form-control"
-                   placeholder="z.B. Worpswede, Achim, Lilienthal">
-          </div>
-          <div class="row g-3 mb-3">
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">Ungefähre Länge (km)</label>
-              <input type="number" name="approx_km" class="form-control"
-                     step="5" min="5" max="200" placeholder="45">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">Schwierigkeit</label>
-              <select name="difficulty" class="form-select">
-                {% for val, label in difficulties %}
-                <option value="{{ val }}">{{ label }}</option>
-                {% endfor %}
-              </select>
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Beschreibung</label>
-            <textarea name="description" class="form-control" rows="4"
-              placeholder="Was macht die Tour besonders? Highlights, Pausen, Sehenswürdigkeiten…"></textarea>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Komoot / Strava / GPX-Link</label>
-            <input type="url" name="link" class="form-control"
-                   placeholder="https://www.komoot.com/tour/...">
-            <div class="form-text">Optional – erleichtert die Planung.</div>
-          </div>
-          <div class="mb-4">
-            <label class="form-label fw-semibold">
-              GPX-Datei <span class="text-muted fw-normal">(optional)</span>
-            </label>
-            <div id="prop-gpx-drop"
-                 style="border:2px dashed #adb5bd;border-radius:8px;padding:12px;
-                        text-align:center;cursor:pointer;transition:all .2s"
-                 onclick="document.getElementById('prop-gpx-input').click()"
-                 ondragover="event.preventDefault();this.style.borderColor='#2B3F6B';this.style.background='rgba(43,63,107,.08)'"
-                 ondragleave="this.style.borderColor='#adb5bd';this.style.background=''"
-                 ondrop="event.preventDefault();this.style.borderColor='#adb5bd';this.style.background='';
-                         const dt=new DataTransfer();Array.from(event.dataTransfer.files).forEach(f=>dt.items.add(f));
-                         document.getElementById('prop-gpx-input').files=dt.files;
-                         document.getElementById('prop-gpx-name').textContent='✓ '+event.dataTransfer.files[0].name">
-              <i class="bi bi-file-earmark-arrow-up text-muted" style="font-size:1.4rem;display:block"></i>
-              <div class="small text-muted fw-semibold">GPX hierher ziehen oder klicken</div>
-              <div id="prop-gpx-name" class="small text-success mt-1"></div>
-            </div>
-            <input type="file" id="prop-gpx-input" name="gpx_file" accept=".gpx" class="d-none"
-                   onchange="document.getElementById('prop-gpx-name').textContent='✓ '+this.files[0].name">
-            <div class="form-text">
-              Route aus Komoot / Strava / Garmin als .gpx exportieren und hier hochladen.
-              Wird in der Vorschlagsliste auf einer Karte angezeigt und beim
-              Umwandeln in eine Tour automatisch übernommen.
-            </div>
-          </div>
-          <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-djo px-4">
-              <i class="bi bi-send me-1"></i>Einreichen
-            </button>
-            <a href="{{ url_for('proposal_list') }}" class="btn btn-outline-secondary">Abbrechen</a>
-          </div>
-        </form>
-      </div>
-    </div>
-    <p class="text-muted small mt-3">
-      <i class="bi bi-info-circle me-1"></i>
-      Dein Vorschlag bekommt automatisch deine Stimme. Andere Mitglieder können dann abstimmen.
-    </p>
+
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Picker map ────────────────────────────────────────────────────────────────
+const map = L.map('picker-map').setView([53.1, 9.2], 11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap'
+}).addTo(map);
+
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(p => map.setView([p.coords.latitude, p.coords.longitude], 12));
+}
+
+let marker = null;
+function setMarker(lat, lng) {
+  document.getElementById('hlat').value = lat.toFixed(6);
+  document.getElementById('hlng').value = lng.toFixed(6);
+  document.getElementById('coord-info').textContent = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  document.getElementById('coord-info').style.color = '#2E7D4F';
+  if (marker) map.removeLayer(marker);
+  marker = L.marker([lat, lng]).addTo(map);
+}
+
+map.on('click', e => setMarker(e.latlng.lat, e.latlng.lng));
+
+// Sync map when user manually types coordinates
+function syncMapFromInput() {
+  const lat = parseFloat(document.getElementById('hlat').value);
+  const lng = parseFloat(document.getElementById('hlng').value);
+  if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+    if (marker) map.removeLayer(marker);
+    marker = L.marker([lat, lng]).addTo(map);
+    map.setView([lat, lng], 16);
+    document.getElementById('coord-info').textContent = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    document.getElementById('coord-info').style.color = '#2E7D4F';
+  }
+}
+
+// ── Overpass search ────────────────────────────────────────────────────────────
+function searchOverpass() {
+  const b = map.getBounds();
+  const url = `/api/overpass-gastro?s=${b.getSouth()}&w=${b.getWest()}&n=${b.getNorth()}&e=${b.getEast()}`;
+  const el = document.getElementById('osm-results');
+  el.innerHTML = '<div class="text-center text-muted small py-2"><div class="spinner-border spinner-border-sm me-1"></div>Suche…</div>';
+
+  fetch(url).then(r => r.json()).then(data => {
+    if (!data.results || !data.results.length) {
+      el.innerHTML = '<p class="text-muted small">Keine Treffer im sichtbaren Bereich.</p>';
+      return;
+    }
+    const typeMap = {cafe:'cafe', bar:'kneipe', pub:'kneipe', restaurant:'restaurant',
+                     fast_food:'imbiss', bakery:'baeckerei', biergarten:'kneipe'};
+    el.innerHTML = `<div class="small fw-semibold mb-2">${data.results.length} Treffer – klicken zum Übernehmen:</div>` +
+      data.results.slice(0,15).map(r => `
+        <div class="border rounded p-2 mb-1 small" style="cursor:pointer"
+             onclick='fillForm(${JSON.stringify(r)})'>
+          <strong>${r.name}</strong>
+          <span class="text-muted ms-1">${r.type}</span>
+          ${r.opening_hours ? '<br><small>🕐 ' + r.opening_hours + '</small>' : ''}
+        </div>`).join('');
+  }).catch(() => {
+    el.innerHTML = '<p class="text-danger small">Fehler bei der Suche. Versuche es erneut.</p>';
+  });
+}
+
+function fillForm(r) {
+  document.getElementById('fname').value = r.name || '';
+  document.getElementById('faddress').value = r.website ? '' : '';
+  const typeMap = {cafe:'cafe', bar:'kneipe', pub:'kneipe', restaurant:'restaurant',
+                   fast_food:'imbiss', bakery:'baeckerei', biergarten:'kneipe'};
+  const sel = document.getElementById('ftype');
+  const mapped = typeMap[r.type] || 'other';
+  for (let opt of sel.options) { if (opt.value === mapped) { opt.selected = true; break; } }
+
+  // Parse opening hours (simple: look for Mo-Fr XX:XX-XX:XX or daily XX:XX)
+  if (r.opening_hours) {
+    const m = r.opening_hours.match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
+    if (m) {
+      document.getElementById('fopens').value = m[1];
+    }
+  }
+  setMarker(r.lat, r.lng);
+  map.setView([r.lat, r.lng], 16);
+  document.getElementById('osm-results').innerHTML = '<div class="alert alert-success py-1 small">✓ Daten übernommen – bitte prüfen und speichern!</div>';
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function showTab(name) {
+  ['name','osm','ext'].forEach(t => {
+    document.getElementById('tab-'+t+'-panel').classList.toggle('d-none', t !== name);
+    const btn = document.getElementById('tab-'+t);
+    btn.className = btn.className.replace('btn-djo','btn-outline-djo');
+    if (t === name) btn.className = btn.className.replace('btn-outline-djo','btn-djo');
+  });
+}
+
+// ── Nominatim name search ─────────────────────────────────────────────────────
+function searchNominatim() {
+  const q   = document.getElementById('nominatim-q').value.trim();
+  const el  = document.getElementById('nominatim-results');
+  if (!q) return;
+
+  el.innerHTML = '<div class="text-muted small py-2"><span class="spinner-border spinner-border-sm me-1"></span>Suche läuft…</div>';
+
+  // Nominatim – free OSM geocoder, no API key needed
+  // User-Agent required by Nominatim ToS
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=10&addressdetails=1&extratags=1`;
+
+  fetch(url, { headers: { 'Accept-Language': 'de' } })
+    .then(r => r.json())
+    .then(results => {
+      if (!results.length) {
+        el.innerHTML = '<p class="text-muted small">Keine Treffer. Genauere Bezeichnung versuchen.</p>';
+        return;
+      }
+
+      const typeMap = {
+        cafe: 'cafe', bar: 'kneipe', pub: 'kneipe', restaurant: 'restaurant',
+        fast_food: 'imbiss', bakery: 'baeckerei', biergarten: 'kneipe',
+        food: 'restaurant', eating: 'restaurant'
+      };
+
+      el.innerHTML = `<div class="small fw-semibold mb-1">${results.length} Treffer:</div>` +
+        results.map(r => {
+          const addr = r.address || {};
+          const city = addr.city || addr.town || addr.village || addr.municipality || '';
+          const road = addr.road || '';
+          const display = r.display_name.split(',').slice(0,3).join(', ');
+          const type = r.type || r.class || '';
+          const appType = typeMap[type] || '';
+          return `<div class="border rounded p-2 mb-1 small" style="cursor:pointer"
+                       onclick='pickNominatim(${JSON.stringify(r)})'>
+            <strong>${r.name || display}</strong>
+            ${appType ? `<span class="badge bg-light text-dark ms-1">${appType}</span>` : ''}
+            <div class="text-muted" style="font-size:.7rem">${road}${road && city ? ', ' : ''}${city}</div>
+            <div class="text-muted" style="font-size:.65rem">📍 ${parseFloat(r.lat).toFixed(5)}, ${parseFloat(r.lon).toFixed(5)}</div>
+          </div>`;
+        }).join('');
+    })
+    .catch(() => {
+      el.innerHTML = '<p class="text-danger small">Fehler bei der Suche. Bitte erneut versuchen.</p>';
+    });
+}
+
+function pickNominatim(r) {
+  const lat = parseFloat(r.lat);
+  const lng = parseFloat(r.lon);
+  const addr = r.address || {};
+
+  // Fill form fields
+  const nameVal = r.name || r.display_name.split(',')[0];
+  document.getElementById('fname').value = nameVal;
+
+  const road = addr.road || '';
+  const nr   = addr.house_number || '';
+  const city = addr.city || addr.town || addr.village || '';
+  const pc   = addr.postcode || '';
+  if (document.getElementById('faddress')) {
+    document.getElementById('faddress').value =
+      [road + (nr ? ' ' + nr : ''), pc + (city ? ' ' + city : '')].filter(Boolean).join(', ');
+  }
+
+  // Phone / website from extratags
+  if (r.extratags) {
+    if (r.extratags.phone && document.querySelector('[name=phone]'))
+      document.querySelector('[name=phone]').value = r.extratags.phone;
+    if (r.extratags.website && document.querySelector('[name=website]'))
+      document.querySelector('[name=website]').value = r.extratags.website;
+    if (r.extratags.opening_hours) {
+      const m = r.extratags.opening_hours.match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
+      if (m && document.getElementById('fopens'))
+        document.getElementById('fopens').value = m[1];
+    }
+  }
+
+  // Type mapping
+  const typeMap = {
+    cafe:'cafe', bar:'kneipe', pub:'kneipe', restaurant:'restaurant',
+    fast_food:'imbiss', bakery:'baeckerei', biergarten:'kneipe'
+  };
+  const appType = typeMap[r.type] || typeMap[r.class] || '';
+  if (appType) {
+    const sel = document.getElementById('ftype');
+    for (let opt of sel.options) { if (opt.value === appType) { opt.selected = true; break; } }
+  }
+
+  setMarker(lat, lng);
+  map.setView([lat, lng], 17);
+
+  document.getElementById('nominatim-results').innerHTML =
+    '<div class="alert alert-success py-1 small">✓ Übernommen – bitte prüfen und speichern!</div>';
+}
+
+// ── External service links ────────────────────────────────────────────────────
+function openExtSearch(service) {
+  const q = (document.getElementById('fname').value || document.getElementById('nominatim-q').value || '').trim();
+  const center = map.getCenter();
+  const urls = {
+    google:      `https://www.google.com/maps/search/${encodeURIComponent(q || 'Restaurant')}/@${center.lat},${center.lng},14z`,
+    yelp:        `https://www.yelp.de/search?find_desc=${encodeURIComponent(q || 'Restaurant')}&find_loc=${center.lat},${center.lng}`,
+    tripadvisor: `https://www.tripadvisor.de/Search?q=${encodeURIComponent(q || 'Restaurant')}`,
+    foursquare:  `https://foursquare.com/explore?q=${encodeURIComponent(q || 'cafe')}&ll=${center.lat},${center.lng}`
+  };
+  window.open(urls[service], '_blank');
+}
+</script>
 {% endblock %}

@@ -1,146 +1,103 @@
 {% extends "base.html" %}
-{% block title %}Tourenvorschlag einreichen – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block title %}Ort hinzufügen – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-12 col-md-7 col-lg-6">
+  <div class="col-12 col-lg-9">
     <h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
-      <i class="bi bi-lightbulb me-2"></i>Tourenvorschlag einreichen
+      <i class="bi bi-geo-alt-fill me-2"></i>Ort hinzufügen
     </h2>
 
-    <!-- Routenplaner-Hinweis -->
-    <div class="mb-3">
-      <button class="btn btn-outline-djo btn-sm w-100 d-flex justify-content-between align-items-center"
-              type="button" data-bs-toggle="collapse" data-bs-target="#routenplaner-hinweis-prop">
-        <span><i class="bi bi-map me-2"></i>💡 Noch keine GPX-Datei? Beste kostenlose Routenplaner</span>
-        <i class="bi bi-chevron-down"></i>
-      </button>
-      <div class="collapse" id="routenplaner-hinweis-prop">
-        <div class="card mt-2">
-          <div class="card-body py-3">
-            <div class="row g-2 mb-3">
-              <div class="col-12 col-sm-6">
-                <a href="https://www.komoot.com" target="_blank" class="text-decoration-none">
-                  <div class="border rounded p-2 h-100">
-                    <div class="fw-semibold">🌟 Komoot</div>
-                    <div class="small text-muted">Beliebtester Radplaner in DE, kostenlos, GPX-Export</div>
-                  </div>
-                </a>
-              </div>
-              <div class="col-12 col-sm-6">
-                <a href="https://bikerouter.de" target="_blank" class="text-decoration-none">
-                  <div class="border rounded p-2 h-100">
-                    <div class="fw-semibold">🚀 BRouter / bikerouter.de</div>
-                    <div class="small text-muted">Präzises OSM-Routing, kein Konto nötig, kostenlos</div>
-                  </div>
-                </a>
-              </div>
-              <div class="col-12 col-sm-6">
-                <a href="https://www.outdooractive.com" target="_blank" class="text-decoration-none">
-                  <div class="border rounded p-2 h-100">
-                    <div class="fw-semibold">🏔 Outdooractive</div>
-                    <div class="small text-muted">Gut für MTB & Gravel, GPX-Export kostenlos</div>
-                  </div>
-                </a>
-              </div>
-              <div class="col-12 col-sm-6">
-                <a href="https://www.openstreetmap.org" target="_blank" class="text-decoration-none">
-                  <div class="border rounded p-2 h-100">
-                    <div class="fw-semibold">🗺 OpenStreetMap</div>
-                    <div class="small text-muted">Manuelles Zeichnen, kostenlos, ohne Anmeldung</div>
-                  </div>
-                </a>
-              </div>
+    <form method="post" id="poiForm">
+      <div class="row g-4">
+        <!-- Left: form fields -->
+        <div class="col-12 col-md-5">
+          <div class="card">
+            <div class="card-header card-header-djo">
+              <i class="bi bi-pencil me-1"></i>Details
             </div>
-            <div class="alert alert-info py-2 small mb-0">
-              <i class="bi bi-arrow-right-circle me-1"></i>
-              Route planen → Als GPX herunterladen → unten hochladen.
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Name *</label>
+                <input type="text" name="name" class="form-control" required
+                       placeholder="Aussichtspunkt Wümme">
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Kategorie</label>
+                <select name="category" class="form-select">
+                  {% for val, label in poi_categories %}
+                  <option value="{{ val }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold">Beschreibung</label>
+                <textarea name="description" class="form-control" rows="4"
+                  placeholder="Was macht diesen Ort besonders?"></textarea>
+              </div>
+              <div class="mb-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="is_shared"
+                         value="1" id="is_shared" checked>
+                  <label class="form-check-label fw-semibold" for="is_shared">
+                    Für alle Mitglieder sichtbar
+                  </label>
+                </div>
+              </div>
+              <input type="hidden" name="lat" id="hlat" required>
+              <input type="hidden" name="lng" id="hlng" required>
+              <div id="coord-info" class="text-muted small mb-3"></div>
+              <button type="submit" class="btn btn-djo w-100">
+                <i class="bi bi-check-lg me-1"></i>Ort speichern
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: map -->
+        <div class="col-12 col-md-7">
+          <div class="card">
+            <div class="card-header card-header-djo">
+              <i class="bi bi-map me-1"></i>Position auf Karte setzen
+            </div>
+            <div class="card-body p-2">
+              <div id="picker-map" style="height:380px;border-radius:6px"></div>
+              <div class="text-muted small mt-2">Klicke auf die Karte um den Ort zu markieren.</div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-    <div class="card">
-      <div class="card-header card-header-djo">
-        <i class="bi bi-pencil me-1"></i>Dein Vorschlag
-      </div>
-      <div class="card-body">
-        <form method="post" enctype="multipart/form-data">
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Titel *</label>
-            <input type="text" name="title" class="form-control" required
-                   placeholder="z.B. Runde durch das Teufelsmoor">
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Region / Gegend</label>
-            <input type="text" name="region" class="form-control"
-                   placeholder="z.B. Worpswede, Achim, Lilienthal">
-          </div>
-          <div class="row g-3 mb-3">
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">Ungefähre Länge (km)</label>
-              <input type="number" name="approx_km" class="form-control"
-                     step="5" min="5" max="200" placeholder="45">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">Schwierigkeit</label>
-              <select name="difficulty" class="form-select">
-                {% for val, label in difficulties %}
-                <option value="{{ val }}">{{ label }}</option>
-                {% endfor %}
-              </select>
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Beschreibung</label>
-            <textarea name="description" class="form-control" rows="4"
-              placeholder="Was macht die Tour besonders? Highlights, Pausen, Sehenswürdigkeiten…"></textarea>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Komoot / Strava / GPX-Link</label>
-            <input type="url" name="link" class="form-control"
-                   placeholder="https://www.komoot.com/tour/...">
-            <div class="form-text">Optional – erleichtert die Planung.</div>
-          </div>
-          <div class="mb-4">
-            <label class="form-label fw-semibold">
-              GPX-Datei <span class="text-muted fw-normal">(optional)</span>
-            </label>
-            <div id="prop-gpx-drop"
-                 style="border:2px dashed #adb5bd;border-radius:8px;padding:12px;
-                        text-align:center;cursor:pointer;transition:all .2s"
-                 onclick="document.getElementById('prop-gpx-input').click()"
-                 ondragover="event.preventDefault();this.style.borderColor='#2B3F6B';this.style.background='rgba(43,63,107,.08)'"
-                 ondragleave="this.style.borderColor='#adb5bd';this.style.background=''"
-                 ondrop="event.preventDefault();this.style.borderColor='#adb5bd';this.style.background='';
-                         const dt=new DataTransfer();Array.from(event.dataTransfer.files).forEach(f=>dt.items.add(f));
-                         document.getElementById('prop-gpx-input').files=dt.files;
-                         document.getElementById('prop-gpx-name').textContent='✓ '+event.dataTransfer.files[0].name">
-              <i class="bi bi-file-earmark-arrow-up text-muted" style="font-size:1.4rem;display:block"></i>
-              <div class="small text-muted fw-semibold">GPX hierher ziehen oder klicken</div>
-              <div id="prop-gpx-name" class="small text-success mt-1"></div>
-            </div>
-            <input type="file" id="prop-gpx-input" name="gpx_file" accept=".gpx" class="d-none"
-                   onchange="document.getElementById('prop-gpx-name').textContent='✓ '+this.files[0].name">
-            <div class="form-text">
-              Route aus Komoot / Strava / Garmin als .gpx exportieren und hier hochladen.
-              Wird in der Vorschlagsliste auf einer Karte angezeigt und beim
-              Umwandeln in eine Tour automatisch übernommen.
-            </div>
-          </div>
-          <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-djo px-4">
-              <i class="bi bi-send me-1"></i>Einreichen
-            </button>
-            <a href="{{ url_for('proposal_list') }}" class="btn btn-outline-secondary">Abbrechen</a>
-          </div>
-        </form>
-      </div>
-    </div>
-    <p class="text-muted small mt-3">
-      <i class="bi bi-info-circle me-1"></i>
-      Dein Vorschlag bekommt automatisch deine Stimme. Andere Mitglieder können dann abstimmen.
-    </p>
+    </form>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const map = L.map('picker-map').setView([53.1, 9.2], 10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap'
+}).addTo(map);
+
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(p => map.setView([p.coords.latitude, p.coords.longitude], 13));
+}
+
+let marker = null;
+map.on('click', function(e) {
+  const {lat, lng} = e.latlng;
+  document.getElementById('hlat').value = lat.toFixed(6);
+  document.getElementById('hlng').value = lng.toFixed(6);
+  document.getElementById('coord-info').textContent = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  if (marker) map.removeLayer(marker);
+  marker = L.marker([lat, lng]).addTo(map);
+});
+
+document.getElementById('poiForm').onsubmit = function() {
+  if (!document.getElementById('hlat').value) {
+    alert('Bitte zuerst einen Ort auf der Karte markieren!');
+    return false;
+  }
+};
+</script>
 {% endblock %}

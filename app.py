@@ -6,7 +6,7 @@ import json
 from datetime import datetime, date, timedelta
 from functools import wraps
 
-from flask import (Flask, render_template, redirect, url_for, request,
+from flask import (Flask, render_template, render_template_string, redirect, url_for, request,
                    flash, session, jsonify, abort, send_from_directory,
                    send_file, make_response)
 from collections import defaultdict
@@ -24,6 +24,19 @@ def _gq(model):
     if grp and hasattr(model, 'group_id'):
         q = q.filter(model.group_id == grp.id)
     return q
+
+
+def _tour_or_404(tour_id):
+    """Tour laden; Nicht-Admins dürfen nur Touren der eigenen Gruppe sehen."""
+    t = Tour.query.get_or_404(tour_id)
+    try:
+        if (current_user.is_authenticated and not current_user.is_admin
+                and t.group_id and current_user.group_id
+                and t.group_id != current_user.group_id):
+            abort(404)
+    except NameError:
+        pass
+    return t
 
 
 def _rate_limit(key: str, max_calls: int = 5, window: int = 60) -> bool:
@@ -50,8 +63,16 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
-APP_VERSION = '1.1.0'
-APP_BUILD   = '2026-10-07 c'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_VERSION = '1.3.0'
+APP_BUILD   = '2026-10-07 h'   # Datum + Buchstabe pro Auslieferung am selben Tag
+
+
+@app.after_request
+def _security_headers(resp):
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    return resp
 
 
 @app.context_processor
@@ -159,7 +180,7 @@ def _tile_bounds(x, y, zoom):
             'west': lng1, 'east': lng2}
 
 
-def cfg(key):
+def cfg(key, default=None):
     """Read SiteConfig; fall back to DEFAULTS or .env. Never raises."""
     try:
         from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -178,7 +199,8 @@ def cfg(key):
         env_val = os.getenv(env_map[key], '')
         if env_val:
             return env_val
-    return SiteConfig.DEFAULTS.get(key, '')
+    _v = SiteConfig.DEFAULTS.get(key, '')
+    return _v if (_v or default is None) else default
 
 
 def send_mail(to: str, subject: str, body: str) -> bool:
@@ -815,7 +837,7 @@ def index():
 @login_required
 def api_gpx_preview(tour_id):
     """Vereinfachte GPX-Punkte für Kartenvorschau."""
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     if not tour.gpx_file:
         return jsonify({'points': [], 'meeting': None})
     path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
@@ -1133,7 +1155,7 @@ def tour_templates():
 @organizer_required
 def tour_save_as_template(tour_id):
     """Speichert eine bestehende Tour als wiederverwendbare Vorlage."""
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     name = request.form.get('template_name', '').strip() or tour.title
 
     new_gpx_file = None
@@ -1423,7 +1445,7 @@ def parse_gpx(filepath):
 @app.route('/touren/<int:tour_id>')
 @login_required
 def tour_detail(tour_id):
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
 
     # Current user's RSVP
     my_rsvp = TourParticipant.query.filter_by(
@@ -1478,7 +1500,7 @@ def tour_detail(tour_id):
 @app.route('/touren/<int:tour_id>/rsvp', methods=['POST'])
 @login_required
 def tour_rsvp(tour_id):
-    tour   = Tour.query.get_or_404(tour_id)
+    tour   = _tour_or_404(tour_id)
     status = request.form.get('status', 'attending')
     if status not in ('attending', 'maybe', 'declined'):
         abort(400)
@@ -1505,7 +1527,7 @@ def tour_rsvp(tour_id):
 @login_required
 @organizer_required
 def tour_upload_gpx(tour_id):
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     f = request.files.get('gpx_file')
     if not f or not allowed_file(f.filename, app.config['ALLOWED_GPX_EXTENSIONS']):
         flash('Bitte eine gültige GPX-Datei hochladen.', 'danger')
@@ -1624,7 +1646,7 @@ def tour_upload_photos(tour_id):
             return jsonify({'ok': False, 'redirect': _t})
         return redirect(_t)
 
-    tour   = Tour.query.get_or_404(tour_id)
+    tour   = _tour_or_404(tour_id)
     files  = request.files.getlist('photos')
     os.makedirs(app.config['UPLOAD_FOLDER_PHOTOS'], exist_ok=True)
     count     = 0
@@ -1768,7 +1790,7 @@ def tour_upload_photos(tour_id):
 @login_required
 @organizer_required
 def tour_add_participant(tour_id):
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     user_id = request.form.get('user_id', type=int)
     if not user_id:
         flash('Bitte einen Nutzer auswählen.', 'warning')
@@ -1808,7 +1830,7 @@ def tour_remove_participant(tour_id, user_id):
 @login_required
 @organizer_required
 def tour_complete(tour_id):
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     tour.status = 'completed'
     db.session.commit()
     flash('Tour als abgeschlossen markiert und im Archiv gespeichert.', 'success')
@@ -1820,7 +1842,7 @@ def tour_complete(tour_id):
 @organizer_required
 def tour_confirm_participants(tour_id):
     """After tour: set confirmed_present for checked participants."""
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     confirmed_ids = request.form.getlist('confirmed')
     for p in tour.participants:
         p.confirmed_present = str(p.user_id) in confirmed_ids
@@ -1834,7 +1856,7 @@ def tour_confirm_participants(tour_id):
 @app.route('/touren/<int:tour_id>/bearbeiten', methods=['GET', 'POST'])
 @login_required
 def tour_edit(tour_id):
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     if not (current_user.is_admin or current_user.is_organizer or
             tour.created_by == current_user.id):
         abort(403)
@@ -1867,7 +1889,7 @@ def tour_edit(tour_id):
 @app.route('/touren/<int:tour_id>/loeschen', methods=['POST'])
 @login_required
 def tour_delete(tour_id):
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     if not (current_user.is_admin or tour.created_by == current_user.id):
         abort(403)
     # Videos vom Dateisystem löschen
@@ -1915,7 +1937,7 @@ def admin_tour_delete(tour_id):
 @app.route('/touren/<int:tour_id>/fotos/bulk-loeschen', methods=['POST'])
 @login_required
 def photos_bulk_delete(tour_id):
-    Tour.query.get_or_404(tour_id)
+    _tour_or_404(tour_id)
     count = 0
     for pid in request.form.getlist('photo_ids'):
         photo = TourPhoto.query.get(int(pid))
@@ -1951,7 +1973,7 @@ def _pick_ffmpeg_codec(ffmpeg_bin: str) -> str:
 @app.route('/touren/<int:tour_id>/video')
 @login_required
 def tour_video(tour_id):
-    tour   = Tour.query.get_or_404(tour_id)
+    tour   = _tour_or_404(tour_id)
     photos = tour.photos.order_by(
         db.text('COALESCE(sort_order, 999999) ASC'), TourPhoto.taken_at.asc().nullslast(), TourPhoto.created_at.asc()
     ).all()
@@ -2025,7 +2047,7 @@ def tour_video_render(tour_id):
     """Server-side MP4 via FFmpeg."""
     import subprocess, tempfile, shutil
 
-    tour   = Tour.query.get_or_404(tour_id)
+    tour   = _tour_or_404(tour_id)
     photos = tour.photos.order_by(
         db.text('COALESCE(sort_order, 999999) ASC'), TourPhoto.taken_at.asc().nullslast(), TourPhoto.created_at.asc()
     ).all()
@@ -2877,7 +2899,7 @@ def location_update():
     accuracy = data.get('accuracy')
     if not all([tour_id, lat, lng]):
         return jsonify({'error': 'missing data'}), 400
-    Tour.query.get_or_404(tour_id)
+    _tour_or_404(tour_id)
     from datetime import datetime as _dt
     existing = LiveLocation.query.filter_by(
         tour_id=tour_id, user_id=current_user.id
@@ -2974,11 +2996,38 @@ def geplante_touren():
                            gpx_map=gpx_map, rating_map=rating_map)
 
 
+_ZEITABSTIMMUNG_FALLBACK = """{% extends "base.html" %}
+{% block title %}Startzeit abstimmen{% endblock %}
+{% block content %}
+<div class="mb-3"><a href="{{ url_for('tour_detail', tour_id=tour.id) }}" class="text-muted small">&larr; Zurück</a></div>
+<h2 class="fw-bold mb-3" style="color:var(--djo-navy)">Startzeit abstimmen: {{ tour.title }}</h2>
+<div class="card"><div class="card-body">
+<form method="post">
+  {% for slot in default_slots %}
+  <div class="form-check mb-2">
+    <input class="form-check-input" type="checkbox" name="slots" value="{{ slot }}" id="s{{ loop.index }}" {% if slot in my_votes %}checked{% endif %}>
+    <label class="form-check-label" for="s{{ loop.index }}">{{ slot }} Uhr
+      <span class="badge bg-secondary ms-1">{{ slot_counts.get(slot, 0) }} / {{ member_count }}</span>
+      {% if slot_voters.get(slot) %}<small class="text-muted ms-1">{{ slot_voters[slot]|join(', ') }}</small>{% endif %}
+    </label>
+  </div>
+  {% endfor %}
+  <button class="btn btn-djo mt-2" type="submit">Speichern</button>
+</form>
+{% if current_user.is_organizer and slot_counts %}
+<hr><form method="post" action="{{ url_for('tour_set_time_from_vote', tour_id=tour.id) }}" class="d-flex gap-2 align-items-center">
+  <select name="slot" class="form-select form-select-sm w-auto">{% for slot, n in slot_counts.most_common() %}<option value="{{ slot }}">{{ slot }} ({{ n }})</option>{% endfor %}</select>
+  <button class="btn btn-sm btn-outline-secondary" type="submit">Beste Zeit übernehmen</button>
+</form>{% endif %}
+</div></div>
+{% endblock %}"""
+
+
 @app.route('/touren/<int:tour_id>/zeitabstimmung', methods=['GET', 'POST'])
 @login_required
 def tour_time_vote(tour_id):
     """Startzeit-Abstimmung für geplante Touren."""
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     if not tour.is_date_open:
         flash('Zeitabstimmung nur für Touren ohne fixierten Termin.', 'info')
         return redirect(url_for('tour_detail', tour_id=tour_id))
@@ -3013,7 +3062,18 @@ def tour_time_vote(tour_id):
     # Standard-Slots vorschlagen (06:00 - 11:00)
     default_slots = ['09:00','09:30','10:00','10:30','11:00']
 
-    return render_template('touren/zeitabstimmung.html',
+    _tpl = 'touren/zeitabstimmung.html'
+    try:
+        app.jinja_env.get_or_select_template(_tpl)
+    except Exception:
+        _tpl = None
+    if _tpl is None:
+        return render_template_string(_ZEITABSTIMMUNG_FALLBACK,
+                           tour=tour, my_votes=my_votes,
+                           slot_counts=slot_counts, slot_voters=slot_voters,
+                           default_slots=default_slots,
+                           member_count=member_count)
+    return render_template(_tpl,
                            tour=tour, my_votes=my_votes,
                            slot_counts=slot_counts, slot_voters=slot_voters,
                            default_slots=default_slots,
@@ -3025,7 +3085,7 @@ def tour_time_vote(tour_id):
 @organizer_required
 def tour_set_time_from_vote(tour_id):
     """Beste Startzeit aus Abstimmung übernehmen."""
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     slot = request.form.get('slot', '').strip()
     if slot and len(slot) == 5 and ':' in slot:
         tour.start_time = slot
@@ -3038,7 +3098,7 @@ def tour_set_time_from_vote(tour_id):
 @login_required
 def tour_rate_route(tour_id):
     """Nutzerbewertung einer geplanten Route abgeben oder aktualisieren."""
-    Tour.query.get_or_404(tour_id)
+    _tour_or_404(tour_id)
     rating  = request.form.get('rating')
     comment = request.form.get('comment', '').strip() or None
     if rating not in ('good', 'ok', 'bad'):
@@ -3060,7 +3120,7 @@ def tour_rate_route(tour_id):
 @login_required
 def tour_set_date(tour_id):
     """Datum und Uhrzeit einer geplanten Tour nachträglich setzen."""
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     if tour.created_by != current_user.id and not current_user.is_admin:
         abort(403)
     date_str = request.form.get('tour_date', '').strip()
@@ -3388,7 +3448,11 @@ def admin_dashboard():
         except ValueError:
             pass
 
+    invite_texts = {i.id: _invite_text(i) for i in invites if not i.used}
+    highlight_invite = request.args.get('invite', type=int)
     return render_template('admin/dashboard.html',
+                           invite_texts=invite_texts,
+                           highlight_invite=highlight_invite,
                            users=users, invites=invites,
                            active_users=active_users,
                            inactive_users=inactive_users,
@@ -3398,6 +3462,23 @@ def admin_dashboard():
                            backup_last_trigger=cfg('backup_last_trigger'),
                            backup_interval=cfg('backup_interval') or 'off',
                            backup_notify_email=cfg('backup_notify_email') or '0')
+
+
+def _invite_text(inv):
+    """WhatsApp-Einladungstext für einen Einladungslink."""
+    from flask import g as _gi
+    grp = getattr(_gi, 'group', None)
+    gname = grp.name if grp else 'De jungen Olen'
+    url = url_for('register', token=inv.token, _external=True)
+    name = (inv.label or '').strip()
+    bike = '\U0001F6B4'          # Radfahrer-Emoji (als Escape, unabhängig von Datei-Kodierung)
+    point = '\U0001F449'         # Zeigefinger-Emoji
+    hello = f'Hallo {name}! {bike}' if name else f'Hallo! {bike}'
+    return (f'{hello}\n'
+            f'Ich lade dich zu „{gname}“ ein – unserer Radgruppe. '
+            f'Dort findest du alle Touren und Termine, Fotos und die Tourplanung an einem Ort.\n\n'
+            f'{point} Hier kannst du dich registrieren:\n{url}\n\n'
+            f'Der Link ist nur für dich gedacht. Bis bald auf dem Rad!')
 
 
 @app.route('/admin/einladung/<int:invite_id>/loeschen', methods=['POST'])
@@ -3427,8 +3508,8 @@ def admin_invite():
     db.session.commit()
     invite_url = url_for('register', token=token, _external=True)
     label_str  = f' für {label}' if label else ''
-    flash(f'Einladungslink{label_str} erstellt: {invite_url}', 'success')
-    return redirect(url_for('admin_dashboard'))
+    flash(f'Einladungslink{label_str} erstellt.', 'success')
+    return redirect(url_for('admin_dashboard', invite=invite.id) + '#einladung')
 
 
 @app.route('/admin/benutzer/<int:user_id>/rolle', methods=['POST'])
@@ -3751,7 +3832,7 @@ def gastro_import(spot_id):
 def tour_upload_video(tour_id):
     """MP4/Video-Datei zu einer Tour hochladen – direkt auf Disk streamen."""
     import traceback as _tb
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
 
     try:
         f = request.files.get('video')
@@ -4252,7 +4333,7 @@ def send_reminders():
 @app.route('/touren/<int:tour_id>/kommentieren', methods=['POST'])
 @login_required
 def tour_comment(tour_id):
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     content   = request.form.get('content','').strip()
     parent_id = request.form.get('parent_id') or None
     if not content:
@@ -4389,6 +4470,9 @@ def user_stats(user):
 @login_required
 def profil(user_id):
     user   = User.query.get_or_404(user_id)
+    if (not current_user.is_admin and user.group_id and current_user.group_id
+            and user.group_id != current_user.group_id):
+        abort(404)
     stats  = user_stats(user)
     badges = compute_badges(user)
 
@@ -4523,7 +4607,9 @@ def api_backup_trigger():
     """
     token = request.args.get('token', '')
     expected = (app.config.get('SECRET_KEY') or '')[:20]
-    if not expected or token != expected:
+    import hmac as _hmac
+    if (not expected or expected.startswith('change-me')
+            or not _hmac.compare_digest(token.encode(), expected.encode())):
         return jsonify({'error': 'invalid token'}), 403
 
     if not _backup_is_due():
@@ -4582,7 +4668,7 @@ def admin_reminder_test():
     """Alte URL – leitet zur neuen, zusammengeführten Benachrichtigungs-Testseite."""
     if request.method == 'POST':
         tour_id = request.form.get('tour_id')
-        tour = Tour.query.get_or_404(tour_id)
+        tour = _tour_or_404(tour_id)
         attendees, push_sent = _send_morning_reminder_for_tour(tour)
         flash(f'Test-Erinnerung für „{tour.title}" verschickt: '
               f'Telegram-Nachricht gesendet, {push_sent} von {attendees} '
@@ -5330,7 +5416,7 @@ def photo_delete(photo_id):
 @login_required
 def photo_move_front(photo_id):
     photo = TourPhoto.query.get_or_404(photo_id)
-    tour  = Tour.query.get_or_404(photo.tour_id)
+    tour  = _tour_or_404(photo.tour_id)
     if (tour.created_by != current_user.id
             and photo.user_id != current_user.id
             and not current_user.is_admin):
@@ -5354,7 +5440,7 @@ def photo_move_front(photo_id):
 @login_required
 def photo_reorder(tour_id):
     """Speichert neue Foto-Reihenfolge per Drag & Drop."""
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     if tour.created_by != current_user.id and not current_user.is_admin:
         abort(403)
     data = request.get_json() or {}
@@ -6039,7 +6125,9 @@ def run_migration_now():
     # Simple security: require a secret token
     token = request.args.get('token', '')
     expected = app.config.get('SECRET_KEY', '')[:16]
-    if token != expected:
+    import hmac as _hmac
+    if (not expected or expected.startswith('change-me')
+            or not _hmac.compare_digest(token.encode(), expected.encode())):
         return 'Bitte token= Parameter angeben (erste 16 Zeichen des SECRET_KEY)', 403
 
     try:
@@ -6409,16 +6497,36 @@ def archiv_suche():
         tours = tours.filter_by(difficulty=diff)
     tours = tours.order_by(Tour.tour_date.desc()).all()
 
-    all_years = db.session.query(
+    all_years = _gq(Tour).with_entities(
         db.extract('year', Tour.tour_date)
     ).filter(Tour.status == 'completed').distinct().order_by(
         db.extract('year', Tour.tour_date).desc()
     ).all()
-    all_years = [int(r[0]) for r in all_years]
+    all_years = [int(r[0]) for r in all_years if r[0] is not None]
+
+    tour_ids = [t.id for t in tours]
+    part_counts = dict(db.session.query(
+        TourParticipant.tour_id, db.func.count(TourParticipant.id)
+    ).filter(TourParticipant.tour_id.in_(tour_ids),
+             TourParticipant.confirmed_present == True
+    ).group_by(TourParticipant.tour_id).all()) if tour_ids else {}
+    photo_counts = dict(db.session.query(
+        TourPhoto.tour_id, db.func.count(TourPhoto.id)
+    ).filter(TourPhoto.tour_id.in_(tour_ids))
+     .group_by(TourPhoto.tour_id).all()) if tour_ids else {}
+    cover_photos = {}
+    if tour_ids:
+        for p_ in (TourPhoto.query.filter(TourPhoto.tour_id.in_(tour_ids))
+                   .order_by(TourPhoto.tour_id,
+                             db.text('COALESCE(sort_order, 999999) ASC'),
+                             TourPhoto.taken_at.asc().nullslast()).all()):
+            cover_photos.setdefault(p_.tour_id, p_)
 
     return render_template('touren/archiv.html', tours=tours,
                            q=q, year=year, diff=diff, all_years=all_years,
-                           is_search=True)
+                           is_search=True, part_counts=part_counts,
+                           photo_counts=photo_counts, cover_photos=cover_photos,
+                           page=1, pages=1, total=len(tours))
 
 
 # ─── Gruppen-Meilensteine ─────────────────────────────────────────────────────
@@ -6592,7 +6700,7 @@ def admin_export_tours():
 @login_required
 def tour_ical(tour_id):
     """Generate .ics calendar file for a tour."""
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
 
     # Build iCal manually – no extra lib needed
     start_time = tour.start_time or '09:00'
@@ -6753,7 +6861,7 @@ def send_email(to, subject, body_html):
 @organizer_required
 def tour_telegram_share(tour_id):
     """Send a tour link to the Telegram group."""
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     msg  = (
         f'📖 <b>Tour im Archiv</b>\n\n'
         f'🚴 <b>{tour.title}</b>\n'
@@ -6788,7 +6896,7 @@ def service_worker():
 @app.route('/touren/<int:tour_id>/drucken')
 @login_required
 def tour_print(tour_id):
-    tour = Tour.query.get_or_404(tour_id)
+    tour = _tour_or_404(tour_id)
     attending = TourParticipant.query.filter_by(tour_id=tour_id, status='attending').all()
 
     gpx_data = None
@@ -6984,7 +7092,7 @@ def server_error(e):
     try: db.session.rollback()
     except Exception: pass
     try:
-        flash(f'Serverfehler: {e}', 'danger')
+        flash('Es ist ein Serverfehler aufgetreten. Bitte versuche es erneut.', 'danger')
         return render_template('errors/500.html'), 500
     except Exception:
         return f'<pre>500:\n{tb}</pre>', 500
@@ -7114,7 +7222,10 @@ with app.app_context():
             # Erste Gruppe anlegen falls leer
             _row = _conn.execute(_text("SELECT id FROM groups LIMIT 1")).fetchone()
             if not _row:
-                _cfg = _conn.execute(_text("SELECT value FROM site_config WHERE key='group_name'")).fetchone()
+                try:
+                    _cfg = _conn.execute(_text("SELECT value FROM site_config WHERE key='group_name'")).fetchone()
+                except Exception:
+                    _cfg = None  # Neuinstallation: site_config existiert noch nicht
                 _gname = _cfg[0] if _cfg else 'De jungen Olen'
                 _conn.execute(_text("INSERT INTO groups (slug, name) VALUES ('default', :n)"), {'n': _gname})
             _gid = _conn.execute(_text("SELECT id FROM groups LIMIT 1")).fetchone()[0]
