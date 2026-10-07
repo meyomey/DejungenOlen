@@ -50,8 +50,8 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
-APP_VERSION = '1.0.0'
-APP_BUILD   = '2026-10-07 b'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_VERSION = '1.1.0'
+APP_BUILD   = '2026-10-07 c'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.context_processor
