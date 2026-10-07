@@ -161,20 +161,20 @@
 
     <!-- Map -->
     <div class="card mb-3" id="map-card" style="overflow:hidden;max-width:100%">
-      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
-        <span>
-          <i class="bi bi-map me-1"></i>Karte
+      <div class="card-header card-header-djo d-flex flex-column flex-md-row justify-content-md-between align-items-md-center gap-2">
+        <div class="d-flex align-items-center flex-wrap column-gap-2 row-gap-0">
+          <span class="fw-semibold text-nowrap"><i class="bi bi-map me-1"></i>Karte</span>
           {% if tour.gpx_km %}
-          <small class="ms-2 opacity-75">{{ tour.gpx_km }} km</small>
+          <small class="opacity-75 text-nowrap">{{ tour.gpx_km }} km</small>
           {% endif %}
           {% if tour.gpx_ascent %}
-          <small class="ms-1 opacity-75">· ⛰️ {{ tour.gpx_ascent|int }} m</small>
+          <small class="opacity-75 text-nowrap">· ⛰️ {{ tour.gpx_ascent|int }} m</small>
           {% endif %}
           {% if photos|selectattr('has_gps')|list|length > 0 %}
-          <small class="ms-1 opacity-75">· 📷 {{ photos|selectattr('has_gps')|list|length }} Fotos</small>
+          <small class="opacity-75 text-nowrap">· 📷 {{ photos|selectattr('has_gps')|list|length }} Fotos</small>
           {% endif %}
-        </span>
-        <div class="d-flex gap-1">
+        </div>
+        <div class="d-flex gap-1 flex-wrap">
           <button class="btn btn-sm btn-outline-light py-0 px-2 active" id="btn-osm"
                   onclick="switchLayer('osm',this)" title="Karte">
             🗺️
@@ -540,10 +540,18 @@
                  class="d-none" onchange="photoFilesSelected(this)">
           <div id="gps-hidden-fields"></div>
           <div id="photo-submit-row" class="d-none d-flex align-items-center gap-2 mt-1">
-            <button type="submit" class="btn btn-sm btn-djo">
+            <button type="submit" id="photo-submit-btn" class="btn btn-sm btn-djo">
               <i class="bi bi-upload me-1"></i>Hochladen
             </button>
             <span id="gps-status" class="text-muted small">GPS-Daten werden automatisch erkannt</span>
+          </div>
+          <div id="photo-progress" class="d-none mt-2">
+            <div class="progress" style="height:22px">
+              <div id="photo-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                   role="progressbar" style="width:0%">0 %</div>
+            </div>
+            <div id="photo-progress-text" class="small text-muted mt-1"></div>
+            <div class="small fw-semibold text-danger">Bitte nicht erneut klicken und die Seite nicht verlassen.</div>
           </div>
         </form>
 
@@ -1456,6 +1464,65 @@ function _parseExif(buf, tiffStart) {
     datetime: dtOrig,
   };
 }
+
+// ── Upload per XHR mit Fortschritt + Sperre gegen Doppel-Submit ─────────────
+(function(){
+  const form = document.getElementById('photo-form');
+  if (!form) return;
+  let uploading = false;
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    if (uploading) return;
+    const input = document.getElementById('photo-input');
+    if (!input || !input.files.length) return;
+    uploading = true;
+    const btn  = document.getElementById('photo-submit-btn');
+    const box  = document.getElementById('photo-progress');
+    const bar  = document.getElementById('photo-progress-bar');
+    const txt  = document.getElementById('photo-progress-text');
+    const n    = input.files.length;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Lade hoch…';
+    box.classList.remove('d-none');
+    txt.textContent = `${n} Datei(en) werden übertragen…`;
+    window.onbeforeunload = () => 'Upload läuft noch';
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', form.action);
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    xhr.upload.onprogress = function(ev){
+      if (!ev.lengthComputable) return;
+      const pct = Math.round(ev.loaded / ev.total * 100);
+      bar.style.width = pct + '%';
+      bar.textContent = pct + ' %';
+      if (pct >= 100) txt.textContent = 'Übertragung fertig – Fotos werden verarbeitet (kann etwas dauern)…';
+      else txt.textContent = `${(ev.loaded/1048576).toFixed(1)} von ${(ev.total/1048576).toFixed(1)} MB übertragen`;
+    };
+    const fail = function(msg){
+      uploading = false;
+      window.onbeforeunload = null;
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-upload me-1"></i>Hochladen';
+      bar.classList.remove('progress-bar-animated','bg-success');
+      bar.classList.add('bg-danger');
+      txt.textContent = msg + ' Bitte Seite neu laden und prüfen, ob schon Fotos angekommen sind (Duplikate werden automatisch ignoriert).';
+    };
+    xhr.onload = function(){
+      window.onbeforeunload = null;
+      let data = null;
+      try { data = JSON.parse(xhr.responseText); } catch(_) {}
+      if (xhr.status >= 200 && xhr.status < 300 && data && data.redirect) {
+        bar.style.width = '100%'; bar.textContent = '✓ Fertig';
+        window.location.href = data.redirect;
+        setTimeout(() => window.location.reload(), 60);
+      } else {
+        fail('Upload fehlgeschlagen (Status ' + xhr.status + ').');
+      }
+    };
+    xhr.onerror   = () => fail('Verbindungsfehler.');
+    xhr.ontimeout = () => fail('Zeitüberschreitung.');
+    xhr.send(new FormData(form));
+  });
+})();
 
 async function photoFilesSelected(input) {
   // WICHTIG: gleiche Reihenfolge wie input.files behalten (inkl. ZIPs),

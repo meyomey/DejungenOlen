@@ -210,9 +210,21 @@
             </div>
             <div class="text-muted small mt-2" id="format-detail">1080 × 1920 px · 9:16</div>
           </div>
-          <button type="submit" class="btn btn-djo w-100">
+          <button type="submit" id="btn-mp4" class="btn btn-djo w-100">
             <i class="bi bi-file-earmark-play-fill me-1"></i>MP4 erstellen (Server)
           </button>
+          <div id="mp4-progress" class="d-none mt-2 p-2 border rounded" style="background:#f8f9fa">
+            <div class="progress" style="height:22px">
+              <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                   style="width:100%">Video wird erstellt…</div>
+            </div>
+            <div class="small mt-1"><i class="bi bi-hourglass-split me-1"></i>
+              <span id="mp4-step">Bereite vor…</span>
+              · <span id="mp4-timer">0:00</span> min
+            </div>
+            <div class="small text-muted" id="mp4-eta"></div>
+            <div class="small fw-semibold text-danger">Bitte nicht erneut klicken und die Seite nicht schließen – der Download startet automatisch.</div>
+          </div>
           <div class="text-muted small mt-1 text-center">
             <i class="bi bi-clock-history me-1"></i>Fotos werden leicht bewegt (Ken-Burns-Effekt). Mit Kartenfolie dauert die Erstellung entsprechend länger.
           </div>
@@ -308,19 +320,36 @@ function drawTitle(alpha=1, bgImg=null) {
   ctx.fillStyle = '#fff'; ctx.font = 'bold 44px sans-serif';
   ctx.fillText('🚴', W/2, H/2 - 92);
 
-  ctx.font = 'bold 54px sans-serif';
+  // Titel umbrechen, damit er im Hochformat nicht abgeschnitten wird
+  let tSize = 54, tLines = [];
+  const maxTW = W * 0.88;
+  for (;;) {
+    ctx.font = 'bold ' + tSize + 'px sans-serif';
+    tLines = []; let cur = '';
+    TOUR_TITLE.split(/\s+/).forEach(w => {
+      const trial = (cur ? cur + ' ' : '') + w;
+      if (ctx.measureText(trial).width <= maxTW || !cur) cur = trial;
+      else { tLines.push(cur); cur = w; }
+    });
+    if (cur) tLines.push(cur);
+    const widest = Math.max(...tLines.map(l => ctx.measureText(l).width));
+    if ((widest <= maxTW && tLines.length <= 4) || tSize <= 22) break;
+    tSize -= 3;
+  }
+  const tLH = tSize * 1.2;
   ctx.fillStyle = '#fff';
-  ctx.fillText(TOUR_TITLE, W/2, H/2 + 16);
+  tLines.forEach((l, i) => ctx.fillText(l, W/2, H/2 + 16 + (i - (tLines.length-1)/2) * tLH));
+  const tExtra = Math.max(0, (tLines.length - 1) * tLH / 2);
 
   ctx.shadowBlur = 8;
   ctx.font = '30px sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,.92)';
-  ctx.fillText(TOUR_DATE, W/2, H/2 + 76);
+  ctx.fillText(TOUR_DATE, W/2, H/2 + 76 + tExtra);
 
   if (TOUR_KM) {
     ctx.font = '22px sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,.78)';
-    ctx.fillText(`📏 ${TOUR_KM} km${TOUR_ASC ? '  ⛰️ ' + TOUR_ASC + ' m' : ''}`, W/2, H/2 + 118);
+    ctx.fillText(`📏 ${TOUR_KM} km${TOUR_ASC ? '  ⛰️ ' + TOUR_ASC + ' m' : ''}`, W/2, H/2 + 118 + tExtra);
   }
 
   let extraBits = [];
@@ -329,7 +358,7 @@ function drawTitle(alpha=1, bgImg=null) {
   if (extraBits.length) {
     ctx.font = '20px sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,.7)';
-    ctx.fillText(extraBits.join('   '), W/2, H/2 + 152);
+    ctx.fillText(extraBits.join('   '), W/2, H/2 + 152 + tExtra);
   }
 
   ctx.shadowBlur = 0;
@@ -795,6 +824,80 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// ── MP4-Erstellung (Server) mit sichtbarem Fortschritt + Doppelklick-Sperre ──
+(function(){
+  const form = document.getElementById('server-form');
+  if (!form) return;
+  let busy = false;
+  form.addEventListener('submit', async function(e){
+    e.preventDefault();
+    if (busy) return;
+    busy = true;
+    const track = document.getElementById('show-track');
+    const stats = document.getElementById('show-stats');
+    document.getElementById('server-show-track').value = (track && track.checked) ? '1' : '0';
+    document.getElementById('server-show-stats').value = (stats && stats.checked) ? '1' : '0';
+    const dur = document.getElementById('photo-duration');
+    const sd  = document.getElementById('server-photo-duration');
+    if (dur && sd) sd.value = dur.value;
+
+    const btn = document.getElementById('btn-mp4');
+    const box = document.getElementById('mp4-progress');
+    const stepEl = document.getElementById('mp4-step');
+    const timerEl = document.getElementById('mp4-timer');
+    const etaEl = document.getElementById('mp4-eta');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Wird erstellt…';
+    box.classList.remove('d-none');
+    const nPhotos = (typeof PHOTOS !== 'undefined') ? PHOTOS.length : 0;
+    const estSecs = Math.max(30, Math.round(20 + nPhotos * 6 + ((track && track.checked) ? 40 : 0)));
+    etaEl.textContent = `Dauer meist ca. ${Math.ceil(estSecs/60)}–${Math.ceil(estSecs/60)+2} Minuten (${nPhotos} Fotos).`;
+    const t0 = Date.now();
+    const steps = [[0,'Dateien werden übertragen…'],[6,'Fotos werden aufbereitet…'],
+                   [20,'Titel-, Karten- und Statistikfolien werden gerendert…'],
+                   [45,'Foto-Animationen werden berechnet…'],
+                   [Math.round(estSecs*0.8),'Musik wird gemischt und Video zusammengesetzt…']];
+    const tick = setInterval(() => {
+      const sec = Math.floor((Date.now()-t0)/1000);
+      timerEl.textContent = Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
+      let label = steps[0][1];
+      steps.forEach(st => { if (sec >= st[0]) label = st[1]; });
+      stepEl.textContent = label;
+    }, 500);
+    window.onbeforeunload = () => 'Die Videoerstellung läuft noch';
+    const done = () => { clearInterval(tick); window.onbeforeunload = null; busy = false; };
+    const reset = () => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-file-earmark-play-fill me-1"></i>MP4 erstellen (Server)';
+    };
+    try {
+      const resp = await fetch(form.action, {method:'POST', body:new FormData(form), credentials:'same-origin'});
+      const ct = resp.headers.get('Content-Type') || '';
+      if (resp.ok && ct.indexOf('video/mp4') === 0) {
+        const blob = await resp.blob();
+        const cd = resp.headers.get('Content-Disposition') || '';
+        const m = /filename="?([^";]+)"?/.exec(cd);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = m ? m[1] : 'Tour.mp4';
+        document.body.appendChild(a); a.click(); a.remove();
+        done(); reset();
+        box.innerHTML = '<div class="text-success fw-semibold"><i class="bi bi-check-circle me-1"></i>Fertig! ' +
+          (blob.size/1048576).toFixed(1) + ' MB – der Download wurde gestartet.</div>' +
+          '<a class="small" href="' + a.href + '" download="' + a.download + '">Falls nichts passiert: hier erneut speichern</a>';
+      } else {
+        // Fehlerseite (Flash-Meldung) neu laden
+        done();
+        window.location.href = window.location.pathname;
+      }
+    } catch (err) {
+      done(); reset();
+      box.innerHTML = '<div class="text-danger small">Verbindung abgebrochen (' + err + '). ' +
+        'Bei sehr langen Videos kann der Server die Anfrage beenden – bitte weniger Fotos oder Karte aus versuchen.</div>';
+    }
+  });
+})();
+
 function startMusic(totalSecs) {
   if (!musicBuffer || !audioCtx) return null;
   if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -805,11 +908,8 @@ function startMusic(totalSecs) {
   // Fade-In
   gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
   gainNode.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + fadeSecs);
-  // Fade-Out
-  if (totalSecs > fadeSecs * 2) {
-    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime + totalSecs - fadeSecs);
-    gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + totalSecs);
-  }
+  // Fade-Out wird NICHT vorab geplant (Vorschau läuft real länger als berechnet),
+  // sondern dynamisch zu Beginn des Outros ausgelöst: fadeOutMusic()
 
   musicSource = audioCtx.createBufferSource();
   musicSource.buffer = musicBuffer;
@@ -821,6 +921,15 @@ function startMusic(totalSecs) {
   musicStream = dest.stream;
   musicSource.start(0);
   return dest;
+}
+
+function fadeOutMusic(secs) {
+  if (!gainNode || !audioCtx) return;
+  const now = audioCtx.currentTime;
+  const cur = gainNode.gain.value;
+  gainNode.gain.cancelScheduledValues(now);
+  gainNode.gain.setValueAtTime(cur, now);
+  gainNode.gain.linearRampToValueAtTime(0, now + secs);
 }
 
 function stopMusic() {
@@ -897,7 +1006,11 @@ async function waitFrame() {
     await new Promise(r => setTimeout(r, 100));
   }
   if (stopRequested) throw new Error('stopped');
-  return new Promise(r => setTimeout(r, PREVIEW_FRAME_MS));
+  // Zeichenzeit ausgleichen: auf festen Takt warten statt immer +33 ms
+  const now = performance.now();
+  if (!waitFrame._next || now - waitFrame._next > 250) waitFrame._next = now;
+  waitFrame._next += PREVIEW_FRAME_MS;
+  return new Promise(r => setTimeout(r, Math.max(0, waitFrame._next - performance.now())));
 }
 
 async function runSequence(onFrame) {
@@ -970,6 +1083,7 @@ async function runSequence(onFrame) {
   // 5. Outro (6s – lang genug um Gruppenname + Domain lesen zu können)
   const outroBg = [...imgs].reverse().find(i => i) || titleBg;
   status.textContent = 'Outro…';
+  fadeOutMusic(5.5); // Musik läuft bis zum Outro durch und blendet dann sanft aus
   await next(FPS*6, (f,tot) => {
     const a = f < FPS*.5 ? f/(FPS*.5) : 1; // kurzes Einblenden, dann 5.5s stehen bleiben
     drawOutroFrame(a, outroBg);
@@ -985,6 +1099,7 @@ async function startPreview() {
   stopMusic();
   isPaused = false;
   stopRequested = false;
+  waitFrame._next = 0;
   setPreviewControls(true);
   const totalSecs = calcTotalSecs();
   if (musicBuffer) startMusic(totalSecs);

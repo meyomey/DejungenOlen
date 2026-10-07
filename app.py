@@ -48,6 +48,15 @@ from models import (db, Group, User, InviteToken, Tour, TourParticipant, TourPho
 # ─── App setup ────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
+APP_VERSION = '1.0.0'
+APP_BUILD   = '2026-10-07 b'   # Datum + Buchstabe pro Auslieferung am selben Tag
+
+
+@app.context_processor
+def inject_app_version():
+    return {'app_version': APP_VERSION, 'app_build': APP_BUILD}
 app.config.setdefault('SESSION_COOKIE_HTTPONLY', True)
 
 # .m4a wird von manchen Servern/Systemen falsch oder gar nicht als Audio erkannt,
@@ -1610,7 +1619,10 @@ def tour_upload_photos(tour_id):
     # Rate-Limit: max 5 Upload-Requests pro Minute pro User
     if _rate_limit(f'photo_upload:{current_user.id}', max_calls=5, window=60):
         flash('Zu viele Uploads – bitte warte eine Minute.', 'warning')
-        return redirect(url_for('tour_detail', tour_id=tour_id) + '#fotos')
+        _t = url_for('tour_detail', tour_id=tour_id) + '#fotos'
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'ok': False, 'redirect': _t})
+        return redirect(_t)
 
     tour   = Tour.query.get_or_404(tour_id)
     files  = request.files.getlist('photos')
@@ -1620,6 +1632,10 @@ def tour_upload_photos(tour_id):
     skipped   = 0
     resized   = 0
     zip_count = 0
+    dupes     = 0
+    import hashlib as _hashlib
+    seen_hashes = {h for (h,) in db.session.query(TourPhoto.orig_hash)
+                   .filter(TourPhoto.tour_id == tour_id, TourPhoto.orig_hash.isnot(None)).all()}
 
     def _check_magic(data: bytes) -> bool:
         h = data[:12]
@@ -1633,13 +1649,19 @@ def tour_upload_photos(tour_id):
         """Save image bytes, run resize + GPS, return TourPhoto or None.
         form_idx: index used by client-side JS for gps_lat_N/gps_lng_N lookup
         (falls back to internal counter if not provided, e.g. for ZIP entries)."""
-        nonlocal count, gps_count, resized
+        nonlocal count, gps_count, resized, dupes
         ext = original_name.rsplit('.', 1)[-1].lower()
         if ext not in app.config['ALLOWED_PHOTO_EXTENSIONS']:
             return None
         if not _check_magic(data):
             app.logger.warning(f'Rejected upload with invalid magic bytes: {original_name}')
             return None
+        # Duplikat-Schutz: identisches Original in dieser Tour schon vorhanden?
+        h = _hashlib.sha256(data).hexdigest()
+        if h in seen_hashes:
+            dupes += 1
+            return None
+        seen_hashes.add(h)
         filename  = f'{tour_id}_{secrets.token_hex(8)}.{ext}'
         save_path = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], filename)
         with open(save_path, 'wb') as fh:
@@ -1685,7 +1707,7 @@ def tour_upload_photos(tour_id):
             user_id  = current_user.id,
             filename = filename,
             caption  = request.form.get('caption', '').strip() or None,
-            lat=lat, lng=lng, taken_at=taken_at,
+            lat=lat, lng=lng, taken_at=taken_at, orig_hash=h,
         )
 
     for file_idx, f in enumerate(files):
@@ -1731,10 +1753,15 @@ def tour_upload_photos(tour_id):
         parts.append(f'🗺️ {gps_count} mit GPS')
     if resized:
         parts.append(f'📐 {resized} verkleinert')
+    if dupes:
+        parts.append(f'♻️ {dupes} Duplikat(e) ignoriert')
     if skipped:
         parts.append(f'{skipped} übersprungen')
-    flash(' – '.join(parts), 'success')
-    return redirect(url_for('tour_detail', tour_id=tour_id) + '#fotos')
+    flash(' – '.join(parts), 'success' if count else 'warning')
+    target = url_for('tour_detail', tour_id=tour_id) + '#fotos'
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({'ok': True, 'redirect': target, 'count': count, 'dupes': dupes})
+    return redirect(target)
 
 
 @app.route('/touren/<int:tour_id>/teilnehmer/hinzufuegen', methods=['POST'])
@@ -2302,16 +2329,37 @@ def tour_video_render(tour_id):
                 canvas = _cover_photo_bg((W, H))
                 draw = _ID_MOD.Draw(canvas)
                 cx, cy = W//2, H//2
-                title_font = _pil_font(min(58, int(W/13)))
-                _centered_text(draw, cx, cy-10, tour.title[:40], title_font, (255,255,255),
-                              stroke_width=2, stroke_fill=(0,0,0))
+                max_w = int(W * 0.88)
+                title_txt = (tour.title or '')[:120]
+                t_size = min(58, int(W/13))
+                while True:
+                    title_font = _pil_font(t_size)
+                    words, lines, cur = title_txt.split(), [], ''
+                    for w_ in words:
+                        trial = (cur + ' ' + w_).strip()
+                        bb = draw.textbbox((0, 0), trial, font=title_font)
+                        if bb[2] - bb[0] <= max_w or not cur:
+                            cur = trial
+                        else:
+                            lines.append(cur); cur = w_
+                    if cur: lines.append(cur)
+                    widest = max((draw.textbbox((0, 0), l_, font=title_font)[2] for l_ in lines), default=0)
+                    if (widest <= max_w and len(lines) <= 4) or t_size <= 24:
+                        break
+                    t_size -= 4
+                line_h = int(t_size * 1.25)
+                block_top = cy - 10 - (len(lines) - 1) * line_h // 2
+                for li, l_ in enumerate(lines):
+                    _centered_text(draw, cx, block_top + li * line_h, l_, title_font, (255,255,255),
+                                  stroke_width=2, stroke_fill=(0,0,0))
+                below = block_top + len(lines) * line_h - cy + 20  # Versatz für Datum/Stats
                 date_font = _pil_font(30, bold=False)
                 date_str = tour.tour_date.strftime('%d.%m.%Y') if (tour.tour_date and not tour.is_date_open) else ''
                 if date_str:
-                    _centered_text(draw, cx, cy+60, date_str, date_font, (230,230,230))
+                    _centered_text(draw, cx, cy+below+10, date_str, date_font, (230,230,230))
                 if tour.gpx_km:
                     extra = f'{tour.gpx_km} km' + (f'  ·  {int(tour.gpx_ascent)} Hm' if tour.gpx_ascent else '')
-                    _centered_text(draw, cx, cy+105, extra, _pil_font(24, bold=False), (210,210,210))
+                    _centered_text(draw, cx, cy+below+55, extra, _pil_font(24, bold=False), (210,210,210))
                 canvas.save(dst_path, 'JPEG', quality=92)
                 return True
             except Exception as e:
@@ -6080,19 +6128,27 @@ def migrate_db():
         app.logger.info(f'groups table: {e}')
 
     # group_id Spalten
-    default_gid = conn.execute(text("SELECT id FROM groups LIMIT 1")).fetchone()
+    try:
+        with db.engine.connect() as _c2:
+            default_gid = _c2.execute(text("SELECT id FROM groups LIMIT 1")).fetchone()
+    except Exception:
+        default_gid = None
     if default_gid:
         default_gid = default_gid[0]
         add_column('users',        'group_id', f'INTEGER DEFAULT {default_gid}')
         add_column('tours',        'group_id', f'INTEGER DEFAULT {default_gid}')
         add_column('invite_tokens','group_id', f'INTEGER DEFAULT {default_gid}')
         # Bestehende Zeilen zuordnen
-        for table in ('users', 'tours', 'invite_tokens'):
-            try:
-                conn.execute(text(f"UPDATE {table} SET group_id={default_gid} WHERE group_id IS NULL"))
-                conn.commit()
-            except Exception:
-                pass
+        try:
+            with db.engine.connect() as _c3:
+                for table in ('users', 'tours', 'invite_tokens'):
+                    try:
+                        _c3.execute(text(f"UPDATE {table} SET group_id={default_gid} WHERE group_id IS NULL"))
+                        _c3.commit()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
     add_column('users', 'bio',       'VARCHAR(300)')
     add_column('users', 'avatar',    'VARCHAR(200)')
 
@@ -6124,6 +6180,7 @@ def migrate_db():
 
     add_column('tour_photos', 'taken_at',   'DATETIME')
     add_column('tour_photos', 'sort_order', 'INTEGER')
+    add_column('tour_photos', 'orig_hash',  'VARCHAR(64)')
     add_column('users', 'morning_opener_until', 'VARCHAR(5)')
     add_column('tours', 'approx_km',      'FLOAT')
     add_column('tours', 'external_link',  'VARCHAR(500)')
@@ -7087,6 +7144,12 @@ with app.app_context():
                 _conn.execute(_text("ALTER TABLE announcements ADD COLUMN visibility VARCHAR(20) DEFAULT 'both'"))
             except Exception:
                 pass  # Spalte existiert bereits oder Tabelle existiert noch nicht (wird gleich von db.create_all() angelegt)
+
+            # orig_hash (Duplikat-Schutz Foto-Upload) direkt nachrüsten
+            try:
+                _conn.execute(_text("ALTER TABLE tour_photos ADD COLUMN orig_hash VARCHAR(64)"))
+            except Exception:
+                pass  # Spalte existiert bereits oder Tabelle wird gleich angelegt
 
             _conn.commit()
 

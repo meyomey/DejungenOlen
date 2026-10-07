@@ -229,6 +229,7 @@ class TourPhoto(db.Model):
     taken_at   = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     sort_order = db.Column(db.Integer, nullable=True, default=None)
+    orig_hash  = db.Column(db.String(64), nullable=True)  # SHA-256 des Originals (Duplikat-Schutz)
 
     tour = db.relationship('Tour', back_populates='photos')
     user = db.relationship('User', back_populates='photos')
