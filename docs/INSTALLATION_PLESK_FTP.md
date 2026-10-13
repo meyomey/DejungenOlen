@@ -120,14 +120,18 @@ C-Erweiterungen (Pillow, cryptography/cffi), die für die alte Version gebaut wu
 1. Plesk → Python: Version auf die neue (z. B. 3.11) stellen, Startup-File bleibt
    `passenger_wsgi.py` → **Apply** → **Restart**.
 2. Als Admin anmelden → Admin → Tools → **Pakete installieren**: Der Kasten
-   „Python-Umgebung auf dem Server“ zeigt die laufende Version und ob Pillow,
-   cryptography, pywebpush und ImageMagick importierbar sind.
-3. Steht dort bei cryptography/pywebpush „FEHLT/DEFEKT“: Button **Pakete installieren /
-   aktualisieren** klicken – die Pakete werden passend zur neuen Python-Version nach
-   `venv/Lib/site-packages` installiert (`pip --target --upgrade`, funktioniert auch
-   trotz Debian-12-Sperre „externally-managed-environment“).
-4. Pillow „FEHLT/DEFEKT“ ist unkritisch – die Bildverarbeitung läuft dann über
-   ImageMagick (Fallback ist eingebaut).
+   „Python-Umgebung auf dem Server“ zeigt die laufende Version, ob `pip` dafür
+   verfügbar ist, sowie gpxpy und ImageMagick. Darunter stehen Pillow, piexif,
+   cryptography und pywebpush mit Status **installiert / fehlt / defekt**.
+3. Fehlende oder defekte Pakete sind bereits angehakt → Button **Ausgewählte Pakete
+   installieren / reparieren** klicken. Die Pakete werden passend zur laufenden
+   Python-Version nach `venv/Lib/site-packages` installiert (`pip --target --upgrade`;
+   ersetzt dort auch kaputte Reste, z. B. ein am Windows-PC erstelltes Pillow, und
+   funktioniert trotz Debian-12-Sperre „externally-managed-environment“). Danach
+   einmal **Restart** in Plesk.
+4. Pillow „defekt“ ist nicht kritisch – die Bildverarbeitung läuft dann über ImageMagick.
+   Mit funktionierendem Pillow werden zusätzlich Avatare verkleinert und Tour-Videos
+   bekommen Titelbild, Blur-Hintergrund und Karten-Overlay.
 
 ---
 

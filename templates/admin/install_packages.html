@@ -17,7 +17,7 @@
 </div>
 {% else %}
 <div class="alert alert-warning small mb-3">
-  <i class="bi bi-exclamation-triangle me-1"></i>Kein site-packages Pfad gefunden – Installation direkt in System-Python.
+  <i class="bi bi-exclamation-triangle me-1"></i>Kein site-packages Pfad gefunden – Installation per <code>pip --user</code>.
 </div>
 {% endif %}
 
@@ -27,7 +27,8 @@
   <div class="card-body small py-2">
     <div><strong>Python {{ py_info.version }}</strong> &middot; <code>{{ py_info.executable }}</code></div>
     <ul class="mb-0 mt-1 ps-3">
-      {% for k, v in py_info.items() if k not in ('version', 'executable') %}
+      <li>pip: <code>{{ py_info.pip }}</code></li>
+      {% for k, v in py_info.items() if k not in ('version', 'executable', 'pip') %}
       <li>{{ k }}: <code>{{ v }}</code></li>
       {% endfor %}
     </ul>
@@ -35,32 +36,46 @@
 </div>
 {% endif %}
 
-<div class="card mb-4">
-  <div class="card-header card-header-djo">Status</div>
+<form method="post" action="{{ url_for('admin_install_packages') }}">
+<div class="card mb-3">
+  <div class="card-header card-header-djo">Pakete</div>
   <div class="list-group list-group-flush">
     {% for r in results %}
-    <div class="list-group-item d-flex justify-content-between align-items-center">
-      <div>
-        <div class="fw-semibold">{{ r.pkg }}</div>
-        {% if r.location %}<div class="text-muted" style="font-size:.72rem"><code>{{ r.location }}</code></div>{% endif %}
-        {% if r.log %}
-        <pre class="text-danger small mb-0" style="white-space:pre-wrap;font-size:.7rem">{{ r.log }}</pre>
+    <label class="list-group-item d-flex align-items-start gap-3" style="cursor:pointer">
+      <input type="checkbox" class="form-check-input mt-1 flex-shrink-0" name="pkg" value="{{ r.pkg }}"
+             {% if not r.ok %}checked{% endif %}>
+      <div class="flex-grow-1">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+          <span class="fw-semibold">{{ r.pkg }}</span>
+          {% if r.ok %}
+            <span class="badge bg-success">✅ {{ r.status }}</span>
+          {% elif r.status.startswith('defekt') %}
+            <span class="badge bg-danger">❌ {{ r.status }}</span>
+          {% else %}
+            <span class="badge bg-warning text-dark">⚠️ {{ r.status }}</span>
+          {% endif %}
+        </div>
+        <div class="text-muted" style="font-size:.8rem">{{ r.desc }}</div>
+        {% if r.detail %}<div class="text-muted" style="font-size:.72rem"><code>{{ r.detail }}</code></div>{% endif %}
+        {% if r.action == 'fehlgeschlagen' %}
+        <pre class="text-danger small mb-0 mt-1" style="white-space:pre-wrap;font-size:.7rem">{{ r.log }}</pre>
         {% endif %}
       </div>
-      {% if r.ok %}
-        <span class="badge bg-success">✅ {{ r.status }}</span>
-      {% else %}
-        <span class="badge bg-warning text-dark">⚠️ {{ r.status }}</span>
-      {% endif %}
-    </div>
+    </label>
     {% endfor %}
   </div>
 </div>
 
-<form method="post" action="{{ url_for('admin_install_packages') }}">
-  <button type="submit" class="btn btn-djo">
-    <i class="bi bi-download me-1"></i>Pakete installieren / aktualisieren
-  </button>
-  <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary ms-2">Zurück</a>
+<p class="small text-muted">
+  Angehakte Pakete werden mit <code>pip install --upgrade</code> in den Ziel-Pfad installiert; vorhandene,
+  defekte Reste (z. B. ein für Windows oder Python 3.9 gebautes Pillow) werden dabei ersetzt.
+  Standardmäßig sind nur fehlende/defekte Pakete angehakt. Danach die App einmal neu starten
+  (Plesk → Python → Restart), damit alle Prozesse die neuen Pakete verwenden.
+</p>
+
+<button type="submit" class="btn btn-djo">
+  <i class="bi bi-download me-1"></i>Ausgewählte Pakete installieren / reparieren
+</button>
+<a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary ms-2">Zurück</a>
 </form>
 {% endblock %}

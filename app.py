@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 d'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 e'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3477,14 +3477,83 @@ def admin_backup():
 
 
 # ─── Admin routes ─────────────────────────────────────────────────────────────
+# Pakete, die der Admin ohne SSH nachinstallieren/reparieren kann (alle in requirements.txt).
+# (pip-Name, Beschreibung, Modul für die Prüfung)
+_INSTALLABLE_PACKAGES = (
+    ('Pillow',       'Bildverarbeitung: Foto-Resize, Avatare, Video-Titel/Blur-Hintergrund (sonst ImageMagick-Fallback)', 'PIL'),
+    ('piexif',       'EXIF/GPS lesen – zweite Methode nach dem eingebauten Parser (exif_gps.py)', 'piexif'),
+    ('cryptography', 'Push-Benachrichtigungen (VAPID-Schlüssel)', 'cryptography.hazmat.primitives.asymmetric.ec'),
+    ('pywebpush',    'Push-Benachrichtigungen (Web Push)', 'pywebpush'),
+)
+
+
+def _package_status(module):
+    """Importprüfung für die Admin-Seite: {'ok', 'status', 'detail'} mit status
+    installiert | fehlt | defekt. Pillow wird funktional geprüft (C-Erweiterung _imaging),
+    weil ein für Windows oder eine andere Python-Version gebautes Pillow zwar importierbar
+    aussieht, aber nicht arbeitet."""
+    import sys, importlib
+    top = module.split('.')[0]
+    try:
+        m = importlib.import_module(module)
+        pkg = sys.modules.get(top, m)
+        ver = getattr(pkg, '__version__', '')
+        loc = os.path.dirname(getattr(pkg, '__file__', '') or '')
+        if top == 'PIL' and not _pillow_ok():
+            return {'ok': False, 'status': 'defekt',
+                    'detail': f'{loc} – C-Erweiterung „_imaging“ lädt nicht (für anderes System/Python gebaut)'}
+        return {'ok': True, 'status': 'installiert', 'detail': f'{ver} – {loc}'.strip(' –')}
+    except ModuleNotFoundError as e:
+        if (e.name or '').split('.')[0] == top:
+            return {'ok': False, 'status': 'fehlt', 'detail': ''}
+        return {'ok': False, 'status': 'defekt', 'detail': f'{type(e).__name__}: {str(e)[:160]}'}
+    except Exception as e:   # ImportError einer kaputten C-Erweiterung u. ä.
+        return {'ok': False, 'status': 'defekt', 'detail': f'{type(e).__name__}: {str(e)[:160]}'}
+
+
+def _pip_install(pkg, target):
+    """pip-Installation mit mehreren Strategien (ohne SSH). Liefert (ok, log).
+    1. --target <site-packages der App> (--upgrade ersetzt kaputte Reste; umgeht die
+       Debian-12-Sperre „externally-managed-environment“)
+    2. --user   3. --user --break-system-packages
+    Fehlt pip für diesen Interpreter ganz, wird einmalig ensurepip versucht."""
+    import sys
+    base = [sys.executable, '-m', 'pip', 'install', '--upgrade', '--quiet', pkg]
+    strategies = ([base + ['--target', target]] if target else []) + \
+                 [base + ['--user'], base + ['--user', '--break-system-packages']]
+    log, tried_ensurepip = '', False
+    for cmd in strategies:
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=150)
+        except Exception as e:
+            log += '$ ' + ' '.join(cmd[2:]) + '\n' + str(e)[:300] + '\n'
+            continue
+        if r.returncode == 0:
+            return True, ''
+        err = (r.stderr or r.stdout or '')[-600:]
+        log += '$ ' + ' '.join(cmd[2:]) + '\n' + err + '\n'
+        if 'No module named pip' in err and not tried_ensurepip:
+            tried_ensurepip = True
+            try:
+                e = subprocess.run([sys.executable, '-m', 'ensurepip', '--user', '--upgrade'],
+                                   capture_output=True, text=True, timeout=120)
+                log += '$ ensurepip --user\n' + (e.stderr or e.stdout or '')[-300:] + '\n'
+                if e.returncode == 0:
+                    r2 = subprocess.run(cmd, capture_output=True, text=True, timeout=150)
+                    if r2.returncode == 0:
+                        return True, ''
+                    log += '$ ' + ' '.join(cmd[2:]) + '\n' + (r2.stderr or r2.stdout or '')[-600:] + '\n'
+            except Exception as ex:
+                log += '$ ensurepip\n' + str(ex)[:300] + '\n'
+    return False, log
+
+
 @app.route('/admin/install-packages', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def admin_install_packages():
-    """Fehlende Python-Pakete manuell installieren."""
+    """Python-Pakete ohne SSH prüfen, nachinstallieren oder reparieren."""
     import sys, importlib
-    packages = ['pywebpush', 'cryptography']
-    results  = []
     # Ziel-Pfad: der venv-Ordner der schon in sys.path ist. Audit 1.4.0: Pfade einer
     # anderen Python-Version (z. B. ".../python3.9/..." nach dem Update auf 3.11) überspringen.
     _pyver = 'python{}.{}'.format(sys.version_info.major, sys.version_info.minor)
@@ -3493,62 +3562,59 @@ def admin_install_packages():
          and (_pyver in p or not re.search(r'python3\.\d+', p))),
         None
     )
-    # Umgebungs-Diagnose (ohne SSH prüfbar): Python-Version + wichtige Module
-    py_info = {'version': sys.version.split()[0], 'executable': sys.executable}
-    for mod, label in (('PIL.Image', 'Pillow (Bildverarbeitung)'), ('piexif', 'piexif (EXIF)'),
-                       ('gpxpy', 'gpxpy (GPX)'), ('cryptography.hazmat.primitives.asymmetric.ec', 'cryptography'),
-                       ('pywebpush', 'pywebpush (Push)')):
-        try:
-            m = importlib.import_module(mod)
-            py_info[label] = ('OK – ' + os.path.dirname(getattr(m, '__file__', '') or '')).rstrip(' –')
-        except Exception as e:   # ImportError oder kaputte C-Erweiterung (z. B. für 3.9 gebaut)
-            py_info[label] = f'FEHLT/DEFEKT – {type(e).__name__}: {str(e)[:120]}'
+
+    # Umgebungs-Diagnose (ohne SSH prüfbar)
     import shutil as _sh
+    py_info = {'version': sys.version.split()[0], 'executable': sys.executable}
+    try:
+        r = subprocess.run([sys.executable, '-m', 'pip', '--version'],
+                           capture_output=True, text=True, timeout=30)
+        py_info['pip'] = (r.stdout.strip() if r.returncode == 0
+                          else 'nicht verfügbar – ' + (r.stderr or r.stdout).strip()[-160:])
+    except Exception as e:
+        py_info['pip'] = f'nicht prüfbar – {str(e)[:120]}'
+    g = _package_status('gpxpy')
+    py_info['gpxpy (GPX)'] = ('OK – ' if g['ok'] else g['status'] + ' – ') + g['detail']
     py_info['ImageMagick (Fallback)'] = _sh.which('convert') or _sh.which('magick') or 'nicht gefunden'
 
+    results = []
     if request.method == 'POST':
-        for pkg in packages:
-            mod = pkg.replace('-', '_')
-            try:
-                __import__(mod)
-                results.append({'pkg': pkg, 'status': 'already installed', 'ok': True})
-                continue
-            except ImportError:
-                pass
-            ok  = False
-            log = ''
-            # Strategie 1: --target in bekannten site-packages Pfad (--upgrade ersetzt
-            # Reste einer älteren Python-Version; --target umgeht die Debian-12-Sperre
-            # „externally-managed-environment“). Strategie 2: normales pip install.
-            cmds = [[sys.executable, '-m', 'pip', 'install', pkg, '--quiet']]
-            if venv_target:
-                cmds.insert(0, [sys.executable, '-m', 'pip', 'install', pkg, '--upgrade',
-                                '--target', venv_target, '--quiet'])
-            for cmd in cmds:
-                try:
-                    r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-                    if r.returncode == 0:
-                        importlib.invalidate_caches()
-                        ok = True
-                        break
-                    log = r.stderr[-400:]
-                except Exception as e:
-                    log = str(e)
-            results.append({
-                'pkg': pkg,
-                'status': 'installed' if ok else 'failed',
-                'ok': ok,
-                'log': '' if ok else log
-            })
-        flash('Installation abgeschlossen.', 'success' if all(r['ok'] for r in results) else 'warning')
+        wanted = set(request.form.getlist('pkg'))
+        if not wanted:
+            flash('Kein Paket ausgewählt.', 'info')
+        installed_any = False
+        for pip_name, desc, module in _INSTALLABLE_PACKAGES:
+            st = _package_status(module)
+            row = {'pkg': pip_name, 'desc': desc, 'module': module, **st, 'log': ''}
+            if pip_name in wanted:
+                ok, log = _pip_install(pip_name, venv_target)
+                if ok:
+                    installed_any = True
+                    # Prüfung mit den neuen Dateien wiederholen: nur Module verwerfen,
+                    # die vorher fehlten/defekt waren (intakte C-Erweiterungen nicht neu laden).
+                    top = module.split('.')[0]
+                    if not st['ok']:
+                        for name in [n for n in sys.modules if n == top or n.startswith(top + '.')]:
+                            del sys.modules[name]
+                    importlib.invalidate_caches()
+                    st2 = _package_status(module)
+                    row.update(st2)
+                    row['status'] = 'installiert' if st2['ok'] else st2['status'] + ' (trotz Installation)'
+                    row['action'] = 'installiert'
+                else:
+                    row['action'] = 'fehlgeschlagen'
+                    row['log'] = log
+            results.append(row)
+        failed = [r for r in results if r.get('action') == 'fehlgeschlagen']
+        if wanted:
+            flash('Installation fehlgeschlagen – Details unten.' if failed else
+                  'Installation abgeschlossen.' + (' Bitte die App einmal neu starten (Plesk → Restart), '
+                                                  'damit alle Prozesse die neuen Pakete nutzen.' if installed_any else ''),
+                  'warning' if failed else 'success')
     else:
-        for pkg in packages:
-            try:
-                mod = __import__(pkg.replace('-', '_'))
-                location = getattr(mod, '__file__', 'unbekannt')
-                results.append({'pkg': pkg, 'status': 'installed', 'ok': True, 'location': location})
-            except ImportError:
-                results.append({'pkg': pkg, 'status': 'missing', 'ok': False, 'location': ''})
+        for pip_name, desc, module in _INSTALLABLE_PACKAGES:
+            results.append({'pkg': pip_name, 'desc': desc, 'module': module, 'log': '',
+                            **_package_status(module)})
 
     return render_template('admin/install_packages.html',
                            results=results, venv_target=venv_target, py_info=py_info)
