@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 e'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 f'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -1657,30 +1657,46 @@ def _resize_photo_if_needed(path, max_px=1600, quality=85):
     # ── Method 1: Pillow (bevorzugt: verlustarm, EXIF-aware) ──────────────────
     if _pillow_ok():
         try:
-            from PIL import Image as PILImage, ExifTags, ImageOps
+            from PIL import Image as PILImage, ImageOps
             img = PILImage.open(path)
 
             # EXIF-Rotation korrigieren (transpose respektiert Orientation-Tag)
             img = ImageOps.exif_transpose(img)
 
-            w, h = img.size
-            if max(w, h) <= max_px:
-                # Trotzdem speichern um EXIF-Rotation zu fixieren
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                img.save(path, format='JPEG', quality=quality,
-                         optimize=True, progressive=True)
-                return False
+            # Build f: Dateiformat beibehalten – PNG (z. B. transparente Gruppen-Logos)
+            # bleibt PNG, WebP bleibt WebP; alles andere wird als JPEG gespeichert.
+            ext = os.path.splitext(path)[1].lower()
+            if ext == '.png':
+                fmt, save_kw = 'PNG', {'optimize': True}
+                if img.mode not in ('RGB', 'RGBA', 'L', 'LA', 'P'):
+                    img = img.convert('RGBA')
+            elif ext == '.webp':
+                fmt, save_kw = 'WEBP', {'quality': quality}
+            else:
+                fmt, save_kw = 'JPEG', {'quality': quality, 'optimize': True, 'progressive': True}
 
-            ratio = max_px / max(w, h)
-            new_w, new_h = int(w * ratio), int(h * ratio)
-            img = img.resize((new_w, new_h), PILImage.LANCZOS)
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            img.save(path, format='JPEG', quality=quality,
-                     optimize=True, progressive=True)
-            app.logger.info(f'Pillow resized: {w}x{h} → {new_w}x{new_h}')
-            return True
+            w, h = img.size
+            did_resize = max(w, h) > max_px
+            if did_resize:
+                ratio = max_px / max(w, h)
+                new_w, new_h = int(w * ratio), int(h * ratio)
+                img = img.resize((new_w, new_h), PILImage.LANCZOS)
+
+            if fmt == 'JPEG' and img.mode != 'RGB':
+                if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                    # Transparenz auf Weiß legen (convert('RGB') allein ergäbe Schwarz)
+                    rgba = img.convert('RGBA')
+                    bg = PILImage.new('RGB', rgba.size, (255, 255, 255))
+                    bg.paste(rgba, mask=rgba.split()[-1])
+                    img = bg
+                else:
+                    img = img.convert('RGB')
+
+            # Auch ohne Verkleinern speichern, um die EXIF-Rotation zu fixieren
+            img.save(path, format=fmt, **save_kw)
+            if did_resize:
+                app.logger.info(f'Pillow resized: {w}x{h} → {new_w}x{new_h}')
+            return did_resize
         except Exception as e:
             app.logger.warning(f'Pillow resize failed: {e} – versuche ImageMagick')
 
@@ -5787,9 +5803,12 @@ def avatar_upload():
 
     # Resize to max 256×256 to save space
     try:
-        from PIL import Image as PILImage
+        from PIL import Image as PILImage, ImageOps
         img = PILImage.open(f)
+        img = ImageOps.exif_transpose(img)      # Build f: Handy-Fotos richtig drehen (EXIF geht beim Speichern verloren)
         img.thumbnail((256, 256))
+        if ext in ('jpg', 'jpeg') and img.mode not in ('RGB', 'L'):
+            img = img.convert('RGB')
         img.save(path, optimize=True)
     except Exception:
         f.seek(0)

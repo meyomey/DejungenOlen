@@ -2,7 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build e) – Audit 2
+## 1.4.0 – 2026-10-13 (Build f) – Audit 2
+
+### Pillow läuft jetzt auf dem Server – Pillow-Pfade nachgezogen (Build f)
+- Seit Build e ist auf dem Server erstmals ein funktionierendes Pillow installiert; die Bildverarbeitung läuft damit nicht mehr über den ImageMagick-Fallback, sondern über Code, der auf dem Server nie aktiv war. Zwei Punkte darin korrigiert:
+  - `_resize_photo_if_needed` speicherte mit Pillow **alles als JPEG** – transparente PNG-Gruppenlogos hätten einen schwarzen Hintergrund bekommen, WebP wäre zu JPEG geworden. Jetzt bleibt PNG PNG (inkl. Transparenz), WebP bleibt WebP; nur JPEG wird als JPEG gespeichert, und Transparenz wird dabei auf Weiß gelegt statt auf Schwarz.
+  - Avatar-Upload verkleinerte mit Pillow **ohne EXIF-Drehung** – Handy-Fotos als Profilbild wären gekippt erschienen. Jetzt `exif_transpose` vor dem Thumbnail; Paletten-/Alpha-Bilder werden für JPEG nach RGB gewandelt.
+- Geprüft: keine in Pillow ≥ 10 entfernten APIs im Code (`textsize`, `getsize`, `ANTIALIAS`); Video-Rendering nutzt `textbbox`/`LANCZOS`.
 
 ### Pakete reparieren ohne SSH (Build e)
 - Admin → Pakete installieren kann jetzt auch **Pillow** und **piexif** installieren bzw. reparieren (beide stehen in `requirements.txt`). Jedes Paket hat ein Auswahl-Häkchen (fehlende/defekte sind vorangehakt) und den Status „installiert / fehlt / defekt“ mit Version und Pfad; Pillow wird funktional geprüft (C-Erweiterung `_imaging`), weil ein am Windows-PC erstelltes oder für Python 3.9 gebautes Pillow zwar vorhanden aussieht, aber nicht arbeitet. Neue Diagnosezeile: ist `pip` für den laufenden Interpreter verfügbar. Installation mit `pip --target --upgrade`, Fallbacks `--user` / `--break-system-packages`, bei fehlendem pip einmalig `ensurepip`; Fehlerprotokoll wird je Paket angezeigt.
