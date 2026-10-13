@@ -2,7 +2,14 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build h) – Audit 2
+## 1.4.0 – 2026-10-13 (Build i) – Audit 2
+
+### Server-MP4: Übergänge, Bildunterschriften, Logo, Profilbilder (Build i)
+- **Weiche Übergänge:** Jedes Segment (Folien und Fotos) blendet kurz ein (0,25 s) und aus (0,35 s) statt hart zu schneiden. Der Ken-Burns-Zoom läuft jetzt um die Bildmitte (vorher zog er Richtung linke obere Ecke).
+- **Bildunterschrift & Uhrzeit auf den Fotos:** Unten links eine halbtransparente Leiste mit Aufnahmezeit (`taken_at`, „10:42 Uhr“) und Bildunterschrift (`caption`, max. 2 Zeilen, Rest „…“), Breite passt sich dem Text an. Fotos ohne beides bleiben unverändert. Technisch als transparentes PNG, das ffmpeg NACH dem Zoom auflegt (`overlay`) – bleibt dadurch scharf und ortsfest.
+- **Gruppenlogo:** Als Wasserzeichen oben rechts auf Fotos und Statistik-Folie, unten links auf der Karte; auf Titel- und Outro-Folie größer mittig über dem Text. Transparente PNG-Logos werden korrekt überblendet (siehe Build f). Ohne Logo ändert sich nichts.
+- **Teilnehmer mit Profilbildern:** Auf der Statistik-Folie erscheinen statt der Namenszeile runde Profilbilder mit Vornamen (ohne Bild: Initialen auf farbigem Kreis), max. 8, Rest als „+N“ – blenden wie bisher ab 55 % ein.
+- Fallback-Pfad ohne ffmpeg-Zoom (`make_frame`) legt das Overlay per Pillow auf. Getestet mit der Projekt-ffmpeg in Hoch- und Querformat (Einzelbilder bei Titel, Statistik, Foto, Übergang, Outro geprüft; Übergangsbild ist dunkel).
 
 ### Server-MP4: Statistik-Folie wieder animiert (Build h)
 - Die Zahlen auf der Folie „Die Tour in Zahlen“ zählen im Server-MP4 wieder hoch – gleiche Choreografie wie in der Browser-Vorschau (`drawStatsFrame`): Kacheln blenden gestaffelt ein, Strecke/Höhenmeter/Teilnehmer/Temperatur laufen in den ersten 60 % der 4 s mit Ease-out auf den Zielwert, danach erscheinen die Teilnehmernamen (max. 8, Rest als „+N“, auf Breite gekürzt). Technisch: 54 Einzelbilder (15/s) + Haltebild → ein Video-Segment über `frames_to_segment()`; schlägt das fehl, kommt wie bisher die statische Folie. Getestet mit der Projekt-ffmpeg (7.0.2) in der Sandbox: Bilder bei 3,2/3,7/4,4/6,5 s zeigen 10,9 → 31,5 → 43,9 → 47,3 km.

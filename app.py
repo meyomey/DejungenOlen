@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 h'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 i'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2317,12 +2317,25 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'build_photo_canvas error: {e}', exc_info=True)
                 return None
 
-        def make_frame(src_path, dst_path):
+        def make_frame(src_path, dst_path, overlay_png=None):
             """Erstellt ein einzelnes fertig skaliertes W×H JPEG (Fallback ohne Ken-Burns-Effekt)."""
             canvas = build_photo_canvas(src_path)
             if canvas is None:
                 import shutil as _sh; _sh.copy2(src_path, dst_path); return
+            if overlay_png and os.path.exists(overlay_png):
+                try:
+                    ov = _PIL.open(overlay_png).convert('RGBA')
+                    canvas = _PIL.alpha_composite(canvas.convert('RGBA'), ov).convert('RGB')
+                except Exception:
+                    pass
             canvas.save(dst_path, 'JPEG', quality=92)
+
+        FADE_IN, FADE_OUT = 0.25, 0.35   # Build i: weiche Übergänge (kurzer Dip nach Schwarz)
+
+        def _fade_vf(duration):
+            """ffmpeg-Filter: Ein-/Ausblenden eines Segments der Länge duration."""
+            return (f'fade=t=in:st=0:d={FADE_IN},'
+                    f'fade=t=out:st={max(0.0, round(duration - FADE_OUT, 3))}:d={FADE_OUT}')
 
         def image_to_segment(img_path, out_path, duration):
             """Wandelt ein einzelnes Standbild in ein kurzes, stilles Video-Segment um.
@@ -2337,7 +2350,7 @@ def tour_video_render(tour_id):
                     ffmpeg_bin, '-y', '-loop', '1', '-i', img_path,
                     '-t', str(duration),
                     '-r', str(fps),
-                    '-vf', f'scale={W}:{H}',
+                    '-vf', f'scale={W}:{H},{_fade_vf(duration)}',
                     '-frames:v', str(n_frames),
                     '-pix_fmt', 'yuv420p',
                     out_path
@@ -2364,10 +2377,11 @@ def tour_video_render(tour_id):
                     last_path = frame_duration_pairs[-1][0]
                     icf.write(f"file '{last_path}'\n")
 
+                total_dur = sum(d for _, d in frame_duration_pairs)
                 cmd = [
                     ffmpeg_bin, '-y', '-f', 'concat', '-safe', '0', '-i', inner_concat,
                     '-r', str(fps),
-                    '-vf', f'scale={W}:{H}',
+                    '-vf', f'scale={W}:{H},{_fade_vf(total_dur)}',
                     '-pix_fmt', 'yuv420p',
                     out_path
                 ]
@@ -2381,10 +2395,13 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'frames_to_segment error: {e}', exc_info=True)
                 return False
 
-        def make_photo_zoom_segment(src_path, out_path, total_dur, zoom_in=True):
+        def make_photo_zoom_segment(src_path, out_path, total_dur, zoom_in=True, overlay_png=None):
             """Ken-Burns-Effekt: FLUESSIGER Zoom uebers Foto via FFmpeg zoompan-Filter
             (echte Pro-Frame-Berechnung durch FFmpeg selbst, kein sichtbares Ruckeln
-            wie bei wenigen Einzelbildern). Gibt True bei Erfolg zurueck."""
+            wie bei wenigen Einzelbildern). Gibt True bei Erfolg zurueck.
+            Build i: Zoom um die Bildmitte (vorher Richtung linke obere Ecke), Ein-/Aus-
+            blenden, und optional ein transparentes PNG (Logo, Bildunterschrift), das NACH
+            dem Zoom aufgelegt wird – bleibt dadurch scharf und ortsfest."""
             canvas = build_photo_canvas(src_path)
             if canvas is None or not ffmpeg_bin:
                 return False
@@ -2398,14 +2415,27 @@ def tour_video_render(tour_id):
                 else:
                     z_expr = f"1.09-0.09*on/{n_frames-1}"
 
-                cmd = [
-                    ffmpeg_bin, '-y', '-loop', '1', '-i', base_jpg,
-                    '-vf', (f"scale={W*2}:{H*2},"
-                           f"zoompan=z='{z_expr}':d={n_frames}:s={W}x{H}:fps={fps}"),
-                    '-frames:v', str(n_frames),
-                    '-pix_fmt', 'yuv420p',
-                    out_path
-                ]
+                vf = (f"scale={W*2}:{H*2},"
+                      f"zoompan=z='{z_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+                      f":d={n_frames}:s={W}x{H}:fps={fps},"
+                      f"{_fade_vf(total_dur)}")
+                if overlay_png:
+                    cmd = [
+                        ffmpeg_bin, '-y', '-loop', '1', '-i', base_jpg, '-i', overlay_png,
+                        '-filter_complex', f"[0:v]{vf}[v0];[v0][1:v]overlay=0:0:format=auto[v]",
+                        '-map', '[v]',
+                        '-frames:v', str(n_frames),
+                        '-pix_fmt', 'yuv420p',
+                        out_path
+                    ]
+                else:
+                    cmd = [
+                        ffmpeg_bin, '-y', '-loop', '1', '-i', base_jpg,
+                        '-vf', vf,
+                        '-frames:v', str(n_frames),
+                        '-pix_fmt', 'yuv420p',
+                        out_path
+                    ]
                 result = subprocess.run(cmd, capture_output=True, timeout=60)
                 try:
                     os.remove(base_jpg)
@@ -2445,6 +2475,159 @@ def tour_video_render(tour_id):
             tw = bbox[2] - bbox[0]
             draw.text((cx - tw/2, y), text, font=font, fill=fill,
                       stroke_width=stroke_width, stroke_fill=stroke_fill)
+
+        # ── Build i: Gruppenlogo, Bildunterschriften, Profilbilder ─────────────
+        def _logo_scaled(max_h):
+            """Gruppenlogo (RGBA) auf Höhe max_h skaliert, höchstens 28 % der Breite."""
+            if logo_rgba is None:
+                return None
+            r = min(max_h / logo_rgba.height, (W * 0.28) / logo_rgba.width)
+            size = (max(1, int(logo_rgba.width * r)), max(1, int(logo_rgba.height * r)))
+            return logo_rgba.resize(size, _PIL.LANCZOS)
+
+        def paste_watermark(canvas, corner='tr', opacity=0.85, max_h=None):
+            """Logo als Wasserzeichen in eine Ecke (innerhalb der Safe-Area). canvas RGB oder RGBA."""
+            lg = _logo_scaled(max_h or int(H * 0.055))
+            if lg is None:
+                return canvas
+            if opacity < 1:
+                lg.putalpha(lg.getchannel('A').point(lambda v: int(v * opacity)))
+            m = SAFE + 16
+            pos = {'tr': (W - m - lg.width, m), 'tl': (m, m),
+                   'br': (W - m - lg.width, H - m - lg.height), 'bl': (m, H - m - lg.height)}[corner]
+            if canvas.mode == 'RGBA':
+                canvas.alpha_composite(lg, pos)
+            else:
+                canvas.paste(lg, pos, lg)
+            return canvas
+
+        def _wrap_text(draw, text, font, max_w, max_lines):
+            """Text auf max_lines Zeilen umbrechen; Überhang wird mit „…“ gekürzt."""
+            words, lines, cur = text.split(), [], ''
+            for w_ in words:
+                trial = (cur + ' ' + w_).strip()
+                if draw.textlength(trial, font=font) <= max_w or not cur:
+                    cur = trial
+                else:
+                    lines.append(cur); cur = w_
+            if cur:
+                lines.append(cur)
+            if len(lines) > max_lines:
+                lines = lines[:max_lines]
+                last = lines[-1] + '…'
+                while draw.textlength(last, font=font) > max_w and len(last) > 2:
+                    last = last[:-2] + '…'
+                lines[-1] = last
+            return lines
+
+        def make_photo_overlay(photo, dst_png):
+            """Transparentes W×H-PNG für ein Foto: Wasserzeichen oben rechts, unten eine
+            dezente Leiste mit Uhrzeit (taken_at) und Bildunterschrift (caption).
+            Liefert True, wenn es etwas aufzulegen gibt."""
+            caption = (photo.caption or '').strip()
+            when = photo.taken_at.strftime('%H:%M Uhr') if photo.taken_at else ''
+            if not (caption or when or logo_rgba is not None):
+                return False
+            try:
+                layer = _PIL.new('RGBA', (W, H), (0, 0, 0, 0))
+                draw = _ID_MOD.Draw(layer)
+                if caption or when:
+                    cap_font  = _pil_font(min(34, int(W / 30)))
+                    time_font = _pil_font(22, bold=False)
+                    pad, m = 26, SAFE + 24
+                    max_w = W - 2 * m - 2 * pad
+                    lines = _wrap_text(draw, caption, cap_font, max_w, 2) if caption else []
+                    line_h = int(cap_font.size * 1.3)
+                    bar_h = 2 * pad + (30 if when else 0) + len(lines) * line_h - (6 if (when and lines) else 0)
+                    # Leiste nur so breit wie der Text (mind. 1/3 der Breite), links ausgerichtet
+                    text_w = max([draw.textlength(l_, font=cap_font) for l_ in lines] +
+                                 ([draw.textlength(when, font=time_font)] if when else [0]))
+                    bar_w = int(min(W - 2 * m, max(W / 3, text_w + 2 * pad)))
+                    y0 = H - m - bar_h
+                    draw.rounded_rectangle([m, y0, m + bar_w, y0 + bar_h], radius=18, fill=(0, 0, 0, 150))
+                    ty = y0 + pad - 4
+                    if when:
+                        draw.text((m + pad, ty), when, font=time_font, fill=(255, 210, 110, 255))
+                        ty += 30 - (6 if lines else 0)
+                    for l_ in lines:
+                        draw.text((m + pad, ty), l_, font=cap_font, fill=(255, 255, 255, 255))
+                        ty += line_h
+                paste_watermark(layer, 'tr')
+                layer.save(dst_png, 'PNG')
+                return True
+            except Exception as e:
+                app.logger.warning(f'make_photo_overlay error: {e}', exc_info=True)
+                return False
+
+        def _avatar_row_layer(users_info):
+            """RGBA-Streifen (Breite W) mit runden Profilbildern – ohne Bild Initialen auf
+            farbigem Kreis – und Namen darunter; max. 8, Rest als „+N“."""
+            if not users_info:
+                return None
+            try:
+                from PIL import ImageOps as _IOPS
+                shown = list(users_info[:8])
+                extra = len(users_info) - len(shown)
+                n = len(shown) + (1 if extra > 0 else 0)
+                gap_f = 0.3
+                size = min(int(H * 0.06), int((W - 2 * SAFE - 40) / (n + (n - 1) * gap_f)))
+                gap = int(size * gap_f)
+                name_font = _pil_font(max(15, int(size * 0.2)), bold=False)
+                layer_h = size + 14 + int(size * 0.2) + 12
+                layer = _PIL.new('RGBA', (W, layer_h), (0, 0, 0, 0))
+                draw = _ID_MOD.Draw(layer)
+                SS = 4   # Supersampling für glatte Kreisränder
+                big = (size * SS, size * SS)
+                ring = _PIL.new('RGBA', big, (0, 0, 0, 0))
+                _ID_MOD.Draw(ring).ellipse((0, 0, big[0] - 1, big[1] - 1), outline=(255, 255, 255, 255), width=3 * SS)
+                ring = ring.resize((size, size), _PIL.LANCZOS)
+                mask = _PIL.new('L', big, 0)
+                _ID_MOD.Draw(mask).ellipse((0, 0, big[0] - 1, big[1] - 1), fill=255)
+                palette = [(198, 40, 40), (46, 125, 50), (21, 101, 192), (240, 133, 30),
+                           (106, 27, 154), (0, 131, 143), (173, 20, 87), (84, 110, 122)]
+                total_w = n * size + (n - 1) * gap
+                x = (W - total_w) // 2
+
+                def circle_with_text(text, color):
+                    c = _PIL.new('RGBA', big, (0, 0, 0, 0))
+                    _ID_MOD.Draw(c).ellipse((0, 0, big[0] - 1, big[1] - 1), fill=color + (255,))
+                    c = c.resize((size, size), _PIL.LANCZOS)
+                    f = _pil_font(int(size * 0.4))
+                    d2 = _ID_MOD.Draw(c)
+                    bb = d2.textbbox((0, 0), text, font=f)
+                    d2.text(((size - (bb[2] - bb[0])) / 2 - bb[0], (size - (bb[3] - bb[1])) / 2 - bb[1]),
+                            text, font=f, fill=(255, 255, 255, 255))
+                    return c
+
+                for idx, (name, avatar_fn) in enumerate(shown):
+                    circ = None
+                    if avatar_fn:
+                        ap = os.path.join(app.config['UPLOAD_FOLDER_AVATARS'], avatar_fn)
+                        if os.path.exists(ap):
+                            try:
+                                im = _IOPS.fit(_PIL.open(ap).convert('RGB'), big, _PIL.LANCZOS).convert('RGBA')
+                                im.putalpha(mask)
+                                circ = im.resize((size, size), _PIL.LANCZOS)
+                            except Exception:
+                                circ = None
+                    if circ is None:
+                        initials = ''.join(part[0] for part in name.split()[:2]).upper() or '?'
+                        circ = circle_with_text(initials, palette[sum(map(ord, name)) % len(palette)])
+                    layer.alpha_composite(circ, (x, 0))
+                    layer.alpha_composite(ring, (x, 0))
+                    label = name.split()[0] if name else ''
+                    while draw.textlength(label, font=name_font) > size + gap - 6 and len(label) > 2:
+                        label = label[:-2] + '…'
+                    tw = draw.textlength(label, font=name_font)
+                    draw.text((x + size / 2 - tw / 2, size + 12), label, font=name_font, fill=(230, 230, 230, 255))
+                    x += size + gap
+                if extra > 0:
+                    layer.alpha_composite(circle_with_text(f'+{extra}', (58, 74, 108)), (x, 0))
+                    layer.alpha_composite(ring, (x, 0))
+                return layer
+            except Exception as e:
+                app.logger.warning(f'_avatar_row_layer error: {e}', exc_info=True)
+                return None
 
         def _cover_photo_bg(canvas_size):
             """Nimmt das erste verfügbare Foto als unscharfen Vollbild-Hintergrund für Titel/Outro."""
@@ -2494,6 +2677,9 @@ def tour_video_render(tour_id):
                     t_size -= 4
                 line_h = int(t_size * 1.25)
                 block_top = cy - 10 - (len(lines) - 1) * line_h // 2
+                lg = _logo_scaled(int(H * 0.12))          # Build i: Gruppenlogo über dem Titel
+                if lg is not None and block_top - lg.height - 36 > SAFE + 10:
+                    canvas.paste(lg, (cx - lg.width // 2, block_top - lg.height - 36), lg)
                 for li, l_ in enumerate(lines):
                     _centered_text(draw, cx, block_top + li * line_h, l_, title_font, (255,255,255),
                                   stroke_width=2, stroke_fill=(0,0,0))
@@ -2511,11 +2697,11 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'make_title_frame error: {e}', exc_info=True)
                 return False
 
-        def _draw_stats_canvas(progress, attending_count, weather, names):
+        def _draw_stats_canvas(progress, attending_count, weather, avatar_layer):
             """Statistik-Folie für einen Animationsfortschritt 0..1 – gleiche Choreografie
             wie drawStatsFrame() in touren/video.html: Kacheln blenden gestaffelt ein,
-            die Zahlen zählen in den ersten 60 % hoch (ease-out), Teilnehmernamen
-            erscheinen ab 55 %. progress=1.0 ergibt die fertige Folie."""
+            die Zahlen zählen in den ersten 60 % hoch (ease-out), die Teilnehmer (runde
+            Profilbilder + Namen, Build i) erscheinen ab 55 %. progress=1.0 = fertige Folie."""
             _ID = _ID_MOD
             BG, TILE = (30, 45, 80), (58, 74, 108)
 
@@ -2555,48 +2741,47 @@ def tour_video_render(tour_id):
                 _centered_text(draw, x+tile_w//2, y+tile_h//2-38, val, big_font, lerp(tile_col, (255,255,255), a))
                 _centered_text(draw, x+tile_w//2, y+tile_h//2+16, label, small_font, lerp(tile_col, (210,210,210), a))
 
-            if names and progress > 0.55:
+            if avatar_layer is not None and progress > 0.55:
                 a = min(1.0, (progress - 0.55) * 3)
-                name_font = _pil_font(20, bold=False)
-                shown = min(8, len(names))
-                while shown > 1:   # so viele Namen wie in die Breite passen
-                    txt = ' · '.join(names[:shown]) + (f' +{len(names)-shown}' if len(names) > shown else '')
-                    if draw.textlength(txt, font=name_font) <= W - 80:
-                        break
-                    shown -= 1
-                else:
-                    txt = names[0] + (f' +{len(names)-1}' if len(names) > 1 else '')
-                _centered_text(draw, cx, H - 90, txt, name_font, lerp(BG, (225,225,225), a))
+                row = avatar_layer.copy()
+                if a < 1:
+                    row.putalpha(row.getchannel('A').point(lambda v: int(v * a)))
+                rows_bottom = start_y + ((len(stats) + cols - 1) // cols) * (tile_h + gap)
+                row_top = max(rows_bottom + 30, H - SAFE - 70 - row.height)
+                canvas.paste(row, (0, row_top), row)
+            paste_watermark(canvas, 'tr')
             return canvas
 
-        def build_stats_frames(attending_count, weather, names):
+        def build_stats_frames(attending_count, weather, users_info):
             """Animierte Statistik-Folie (4 s) als Einzelbilder für frames_to_segment():
             15 Bilder/s bis alles steht (3,6 s), danach ein Haltebild."""
             if not PIL_OK:
                 return []
             try:
+                avatar_layer = _avatar_row_layer(users_info)   # einmal bauen, pro Bild nur einblenden
                 total, anim_secs, step_fps = 4.0, 3.6, 15
                 n_anim = int(anim_secs * step_fps)
                 frames = []
                 for i in range(n_anim):
                     progress = (i / step_fps) / total
                     fpath = os.path.join(tmpdir, f'stats_{i:03d}.jpg')
-                    _draw_stats_canvas(progress, attending_count, weather, names).save(fpath, 'JPEG', quality=88)
+                    _draw_stats_canvas(progress, attending_count, weather, avatar_layer).save(fpath, 'JPEG', quality=88)
                     frames.append((fpath, round(1 / step_fps, 4)))
                 fpath = os.path.join(tmpdir, 'stats_hold.jpg')
-                _draw_stats_canvas(1.0, attending_count, weather, names).save(fpath, 'JPEG', quality=88)
+                _draw_stats_canvas(1.0, attending_count, weather, avatar_layer).save(fpath, 'JPEG', quality=88)
                 frames.append((fpath, round(total - anim_secs, 3)))
                 return frames
             except Exception as e:
                 app.logger.warning(f'build_stats_frames error: {e}', exc_info=True)
                 return []
 
-        def make_stats_frame(dst_path, attending_count, weather, names=None):
+        def make_stats_frame(dst_path, attending_count, weather, users_info=None):
             """Statische Statistik-Folie (Fallback, falls die Animation nicht gebaut werden kann)."""
             if not PIL_OK:
                 return False
             try:
-                _draw_stats_canvas(1.0, attending_count, weather, names or []).save(dst_path, 'JPEG', quality=92)
+                _draw_stats_canvas(1.0, attending_count, weather,
+                                   _avatar_row_layer(users_info or [])).save(dst_path, 'JPEG', quality=92)
                 return True
             except Exception as e:
                 app.logger.warning(f'make_stats_frame error: {e}', exc_info=True)
@@ -2610,6 +2795,9 @@ def tour_video_render(tour_id):
                 canvas = _cover_photo_bg((W, H))
                 draw = _ID.Draw(canvas)
                 cx, cy = W//2, H//2
+                lg = _logo_scaled(int(H * 0.12))          # Build i: Gruppenlogo über dem Dank
+                if lg is not None:
+                    canvas.paste(lg, (cx - lg.width // 2, cy - 60 - lg.height - 36), lg)
                 _centered_text(draw, cx, cy-60, 'Danke fürs Mitfahren!',
                               _pil_font(min(46, int(W/16))), (255,255,255),
                               stroke_width=2, stroke_fill=(0,0,0))
@@ -2747,6 +2935,7 @@ def tour_video_render(tour_id):
                     pct_text = f'{int(progress*100)}% der Strecke'
                     draw.text((42,64), pct_text, font=_pil_font(18, bold=False), fill=(220,220,220))
                     draw.text((W-190, H-34), '\u00A9 OpenStreetMap', font=_pil_font(16, bold=False), fill=(0,0,0))
+                    paste_watermark(frame, 'bl')
 
                     fpath = os.path.join(tmpdir, f'track_{step_i:03d}.jpg')
                     frame.convert('RGB').save(fpath, 'JPEG', quality=88)
@@ -2766,7 +2955,7 @@ def tour_video_render(tour_id):
         _attending_count = TourParticipant.query.filter_by(
             tour_id=tour_id, status='attending'
         ).count()
-        _attending_names = [p.user.display_name for p in
+        _attending_users = [(p.user.display_name, p.user.avatar) for p in
                             TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
                             .join(User).order_by(User.name).limit(12).all()]
         _weather = None
@@ -2794,6 +2983,15 @@ def tour_video_render(tour_id):
         from flask import g as _g_render
         _grp = getattr(_g_render, 'group', None)
         _group_name = _grp.name if _grp else 'De jungen Olen'
+        # Build i: Gruppenlogo einmal laden (Wasserzeichen, Titel, Outro)
+        logo_rgba = None
+        if PIL_OK and _grp and _grp.logo:
+            _logo_path = os.path.join(app.root_path, 'static', 'uploads', 'group_logos', _grp.logo)
+            if os.path.exists(_logo_path):
+                try:
+                    logo_rgba = _PIL.open(_logo_path).convert('RGBA')
+                except Exception:
+                    logo_rgba = None
 
         show_track = request.form.get('show_track', '1') == '1'
         show_stats = request.form.get('show_stats', '1') == '1'
@@ -2832,13 +3030,13 @@ def tour_video_render(tour_id):
             #    Vorschau (Build h), als EIN Video-Segment; Fallback: statisches Bild
             if show_stats:
                 stats_seg = os.path.join(tmpdir, 'seg_stats.mp4')
-                stats_frames = build_stats_frames(_attending_count, _weather, _attending_names)
+                stats_frames = build_stats_frames(_attending_count, _weather, _attending_users)
                 if stats_frames and frames_to_segment(stats_frames, stats_seg):
                     cf.write(f"file '{stats_seg}'\n")
                     _slide_secs += sum(d for _, d in stats_frames)
                 else:
                     stats_frame = os.path.join(tmpdir, 'slide_stats.jpg')
-                    if make_stats_frame(stats_frame, _attending_count, _weather, _attending_names) and \
+                    if make_stats_frame(stats_frame, _attending_count, _weather, _attending_users) and \
                        image_to_segment(stats_frame, stats_seg, 4):
                         cf.write(f"file '{stats_seg}'\n")
                         _slide_secs += 4
@@ -2851,8 +3049,13 @@ def tour_video_render(tour_id):
                 oriented = os.path.join(tmpdir, f'oriented_{i:04d}.jpg')
                 auto_orient(src, oriented)
                 zoom_in = (i % 2 == 0)  # abwechselnd rein-/rauszoomen für Abwechslung
+                # Build i: Overlay mit Logo + Uhrzeit/Bildunterschrift (None, wenn nichts zu zeigen)
+                overlay_png = os.path.join(tmpdir, f'overlay_{i:04d}.png')
+                if not (PIL_OK and make_photo_overlay(p, overlay_png)):
+                    overlay_png = None
                 segment_path = os.path.join(tmpdir, f'photo_{i:04d}.mp4')
-                if make_photo_zoom_segment(oriented, segment_path, photo_dur, zoom_in=zoom_in):
+                if make_photo_zoom_segment(oriented, segment_path, photo_dur, zoom_in=zoom_in,
+                                           overlay_png=overlay_png):
                     cf.write(f"file '{segment_path}'\n")
                     _slide_secs += photo_dur
                     n_valid += 1
@@ -2860,7 +3063,7 @@ def tour_video_render(tour_id):
                     # Fallback: Standbild ohne Zoom, als Video-Segment (nicht als Bild-Zeile!)
                     frame = os.path.join(tmpdir, f'frame_{i:04d}.jpg')
                     fallback_seg = os.path.join(tmpdir, f'photo_fallback_{i:04d}.mp4')
-                    make_frame(oriented, frame)
+                    make_frame(oriented, frame, overlay_png)
                     if image_to_segment(frame, fallback_seg, photo_dur):
                         cf.write(f"file '{fallback_seg}'\n")
                         _slide_secs += photo_dur
