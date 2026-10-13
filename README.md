@@ -195,7 +195,7 @@ dejungen_olen/
 Nach jeder Änderung liegen in `deploy/` zwei fertige Pakete (erzeugt mit `python make_deploy_zip.py`):
 
 - `deploy_v<Version>_<Build>_komplett.zip` – gesamtes Projekt (ohne `.env`, Datenbank, Uploads, Backups, venv, ffmpeg)
-- `deploy_v<Version>_<Build>_aenderungen.zip` – nur die seit der letzten Auslieferung geänderten Dateien
+- `deploy_v<Version>_<Build>_aenderungen.zip` – nur die Dateien, die sich seit dem Stand geändert haben, der auf dem Server liegt (gemerkt in `deploy/LAST_DEPLOY.txt`; nach einem Upload mit `python make_deploy_zip.py --deployed` fortschreiben)
 
 ZIP entpacken, Inhalt mit gleicher Ordnerstruktur per FTP in den App-Ordner kopieren, Passenger neu starten. Die `_DEPLOY_HINWEISE.txt` in jeder ZIP listet die Dateien, ggf. auf dem Server zu löschende Dateien und die Schritte nach dem Upload.
 

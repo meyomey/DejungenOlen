@@ -8,24 +8,26 @@ Erzeugt im Ordner deploy/ standardmäßig ZWEI Pakete:
                                                 den Server gehören; ohne .env, Datenbank,
                                                 Uploads, Backups, venv – und ohne die 80-MB-
                                                 ffmpeg-Binärdatei, außer mit --with-ffmpeg)
-  deploy_v<VERSION>_<BUILD>_aenderungen.zip  – nur die Dateien, die sich seit dem letzten
-                                                Deploy-ZIP (bzw. seit --since <Git-Stand>)
-                                                geändert haben
+  deploy_v<VERSION>_<BUILD>_aenderungen.zip  – nur die Dateien, die sich seit dem Stand
+                                                geändert haben, der bestätigt auf dem Server
+                                                liegt (deploy/LAST_DEPLOY.txt; oder --since)
 
 Beide ZIPs haben die Ordnerstruktur des Projekts: auf dem PC entpacken und den Inhalt 1:1
 per FTP in den App-Ordner (dejungen_olen/) kopieren. In jeder ZIP liegt eine
 _DEPLOY_HINWEISE.txt mit Dateiliste und den Schritten nach dem Upload.
 
 Aufruf (im Projektordner):
-    python make_deploy_zip.py                       # beide ZIPs, Änderungen seit letztem Deploy
+    python make_deploy_zip.py                       # beide ZIPs, Änderungen seit Server-Stand
     python make_deploy_zip.py --since origin/main   # Änderungen gegenüber einem Git-Stand
     python make_deploy_zip.py --only komplett       # nur das Komplettpaket
     python make_deploy_zip.py --only aenderungen    # nur das Änderungspaket
     python make_deploy_zip.py --with-ffmpeg         # Komplettpaket inkl. ffmpeg-Binärdatei
+    python make_deploy_zip.py --deployed            # nach dem Upload: aktuellen Stand (HEAD)
+                                                    # als Server-Stand merken (oder --deployed <Commit>)
 
-Der aktuelle Git-Stand wird in deploy/LAST_DEPLOY.txt gemerkt; der nächste Lauf ohne --since
-packt im Änderungspaket nur, was seitdem dazukam. Ältere ZIPs in deploy/ werden entfernt
-(das Komplettpaket enthält immer alles), außer mit --keep-old.
+deploy/LAST_DEPLOY.txt merkt sich den Git-Stand, der auf dem Server liegt; er wird nur mit
+--deployed fortgeschrieben. Ältere ZIPs in deploy/ werden entfernt (das Komplettpaket enthält
+immer alles), außer mit --keep-old.
 Nur Standardbibliothek, läuft unter Python 3.9+ auf Linux/Windows.
 """
 import argparse
@@ -158,7 +160,7 @@ def resolve_base(since):
         ref = MARKER.read_text(encoding='utf-8').split()[0]
         if git('cat-file', '-e', f'{ref}^{{commit}}').returncode == 0:
             return ref
-        print(f'Hinweis: gemerkter Stand {ref[:12]} nicht gefunden – nutze origin/main')
+        print(f'Hinweis: gemerkter Server-Stand {ref[:12]} nicht gefunden – nutze origin/main')
     if git('rev-parse', '--verify', 'origin/main').returncode == 0:
         return 'origin/main'
     return 'HEAD~1'
@@ -170,11 +172,25 @@ def main():
     ap.add_argument('--only', choices=['komplett', 'aenderungen'], help='nur eines der beiden Pakete bauen')
     ap.add_argument('--with-ffmpeg', action='store_true', help='Komplettpaket inkl. ffmpeg-Binärdatei')
     ap.add_argument('--keep-old', action='store_true', help='ältere ZIPs in deploy/ behalten')
-    ap.add_argument('--no-marker', action='store_true', help='LAST_DEPLOY.txt nicht aktualisieren')
+    ap.add_argument('--deployed', nargs='?', const='HEAD', metavar='COMMIT',
+                    help='diesen Stand (Standard: HEAD) als auf dem Server liegend merken und beenden')
     args = ap.parse_args()
 
     version, build = app_version()
     DEPLOY_DIR.mkdir(exist_ok=True)
+
+    if args.deployed:
+        r = git('rev-parse', '--verify', f'{args.deployed}^{{commit}}')
+        if r.returncode != 0:
+            sys.exit(f'Unbekannter Git-Stand: {args.deployed}')
+        head = r.stdout.strip()
+        # Build-Kennung aus dem app.py DIESES Stands (nicht der Arbeitskopie)
+        m = re.search(r"^APP_BUILD\s*=\s*'([^']+)'", git('show', f'{head}:app.py').stdout, re.M)
+        dep_build = m.group(1) if m else '?'
+        MARKER.write_text(f'{head}  Server-Stand (Build {dep_build})  {datetime.now().isoformat(timespec="minutes")}\n',
+                          encoding='utf-8')
+        print(f'Server-Stand gemerkt: {head[:12]} (Build {dep_build})')
+        return
     stem = f'deploy_v{version}_{build.replace(" ", "")}'
     built = []
 
@@ -205,11 +221,6 @@ def main():
                     print('    ', f)
         else:
             print(f'Keine geänderten Dateien seit {ref[:12]} – kein Änderungspaket erzeugt.')
-
-    if not args.no_marker:
-        head = git('rev-parse', 'HEAD').stdout.strip()
-        MARKER.write_text(f'{head}  {stem}  {datetime.now().isoformat(timespec="minutes")}\n',
-                          encoding='utf-8')
 
     print()
     for out, kb, n in built:
