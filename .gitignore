@@ -38,3 +38,6 @@ config_local.py
 # OS
 .DS_Store
 Thumbs.db
+
+# Deploy-Pakete (werden mit make_deploy_zip.py erzeugt, nicht versionieren)
+deploy/
