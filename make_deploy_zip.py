@@ -1,24 +1,34 @@
 #!/usr/bin/env python3
 """
-Deploy-ZIP für den FTP-Upload erstellen.
+Deploy-ZIPs für den FTP-Upload erstellen.
 
-Packt alle Dateien, die sich seit dem letzten Deploy (bzw. seit einem Git-Stand) geändert
-haben, in deploy/deploy_v<VERSION>_<BUILD>.zip – mit Ordnerstruktur wie im Projekt, so dass
-die ZIP auf dem PC entpackt und 1:1 per FTP in den App-Ordner (dejungen_olen/) kopiert
-werden kann. Zusätzlich liegt in der ZIP eine _DEPLOY_HINWEISE.txt mit Dateiliste und den
-Schritten nach dem Upload.
+Erzeugt im Ordner deploy/ standardmäßig ZWEI Pakete:
+
+  deploy_v<VERSION>_<BUILD>_komplett.zip     – das komplette Projekt (alle Dateien, die auf
+                                                den Server gehören; ohne .env, Datenbank,
+                                                Uploads, Backups, venv – und ohne die 80-MB-
+                                                ffmpeg-Binärdatei, außer mit --with-ffmpeg)
+  deploy_v<VERSION>_<BUILD>_aenderungen.zip  – nur die Dateien, die sich seit dem letzten
+                                                Deploy-ZIP (bzw. seit --since <Git-Stand>)
+                                                geändert haben
+
+Beide ZIPs haben die Ordnerstruktur des Projekts: auf dem PC entpacken und den Inhalt 1:1
+per FTP in den App-Ordner (dejungen_olen/) kopieren. In jeder ZIP liegt eine
+_DEPLOY_HINWEISE.txt mit Dateiliste und den Schritten nach dem Upload.
 
 Aufruf (im Projektordner):
-    python make_deploy_zip.py                 # Änderungen seit dem letzten Deploy-ZIP
+    python make_deploy_zip.py                       # beide ZIPs, Änderungen seit letztem Deploy
     python make_deploy_zip.py --since origin/main   # Änderungen gegenüber einem Git-Stand
-    python make_deploy_zip.py --full          # komplettes Projekt (Neuinstallation)
+    python make_deploy_zip.py --only komplett       # nur das Komplettpaket
+    python make_deploy_zip.py --only aenderungen    # nur das Änderungspaket
+    python make_deploy_zip.py --with-ffmpeg         # Komplettpaket inkl. ffmpeg-Binärdatei
 
-Nach dem Erstellen wird der aktuelle Git-Stand in deploy/LAST_DEPLOY.txt gemerkt;
-der nächste Lauf ohne --since packt dann nur, was seitdem dazukam.
+Der aktuelle Git-Stand wird in deploy/LAST_DEPLOY.txt gemerkt; der nächste Lauf ohne --since
+packt im Änderungspaket nur, was seitdem dazukam. Ältere ZIPs in deploy/ werden entfernt
+(das Komplettpaket enthält immer alles), außer mit --keep-old.
 Nur Standardbibliothek, läuft unter Python 3.9+ auf Linux/Windows.
 """
 import argparse
-import os
 import re
 import subprocess
 import sys
@@ -35,8 +45,7 @@ EXCLUDE_PREFIXES = ('deploy/', '.git/', '.github/', 'venv/', '.venv/', 'backups/
                     'static/uploads/', '__pycache__/', 'node_modules/')
 EXCLUDE_FILES = {'.gitignore', '.gitattributes', 'make_deploy_zip.py', 'LAST_DEPLOY.txt'}
 EXCLUDE_SUFFIXES = ('.pyc', '.db', '.db-wal', '.db-shm', '.log', '.zip')
-# Große Binärdatei: nur bei --full und auch dann nur auf Wunsch
-FFMPEG = 'ffmpeg'
+FFMPEG = 'ffmpeg'  # 80-MB-Binärdatei, liegt bereits auf dem Server
 
 
 def git(*args):
@@ -63,7 +72,7 @@ def wanted(rel):
 def changed_since(ref):
     """Geänderte/neue Dateien seit `ref` (committet) + alles Uncommittete; gelöschte separat."""
     changed, deleted = set(), set()
-    r = git('diff', '--name-status', f'{ref}', 'HEAD')
+    r = git('diff', '--name-status', ref, 'HEAD')
     if r.returncode != 0:
         sys.exit(f'git diff gegen {ref!r} fehlgeschlagen:\n{r.stderr}')
     for line in r.stdout.splitlines():
@@ -86,89 +95,123 @@ def changed_since(ref):
 
 
 def all_files(include_ffmpeg):
-    r = git('ls-files')
-    files = [p for p in r.stdout.splitlines() if wanted(p) and (ROOT / p).is_file()]
+    """Alle versionierten Dateien (Arbeitskopie-Stand), die auf den Server gehören."""
+    tracked = set(git('ls-files').stdout.splitlines())
+    # neue, noch nicht committete Dateien ebenfalls mitnehmen
+    for line in git('status', '--porcelain', '--untracked-files=all').stdout.splitlines():
+        if line.startswith('??'):
+            tracked.add(line[3:])
+    files = [p for p in tracked if wanted(p) and (ROOT / p).is_file()]
     if not include_ffmpeg:
         files = [p for p in files if p != FFMPEG]
-    return sorted(files), []
+    return sorted(files)
 
 
-def hints(version, build, files, deleted, mode):
+def hints(version, build, files, deleted, kind, mode):
     lines = [
         f'De jungen Olen – Deploy-Paket v{version} (Build {build})',
-        f'Erstellt: {datetime.now().strftime("%d.%m.%Y %H:%M")} – Modus: {mode}',
+        f'Erstellt: {datetime.now().strftime("%d.%m.%Y %H:%M")} – {kind}',
         '',
         'UPLOAD',
         '  ZIP entpacken und den Inhalt mit gleicher Ordnerstruktur per FTP in den',
         '  App-Ordner (…/dejungen_olen/) kopieren, vorhandene Dateien überschreiben.',
-        '',
-        f'DATEIEN ({len(files)}):',
-    ] + [f'  {f}' for f in files]
+    ]
+    if kind == 'Komplettpaket':
+        lines += [
+            '  Enthält den vollständigen Projektstand – kann jederzeit über eine bestehende',
+            '  Installation kopiert werden (.env, Datenbank, Uploads werden nicht berührt).',
+            '  Neuinstallation: siehe INSTALLATION_PLESK_FTP.md.',
+        ]
+    else:
+        lines += [f'  Enthält nur die geänderten Dateien ({mode}).']
+    lines += ['', f'DATEIEN ({len(files)}):'] + [f'  {f}' for f in files]
     if deleted:
         lines += ['', 'AUF DEM SERVER LÖSCHEN (im Projekt entfernt):'] + [f'  {f}' for f in deleted]
     lines += [
         '',
         'NACH DEM UPLOAD',
         '  1. Passenger neu starten: Plesk → Python → Restart (oder tmp/restart.txt anfassen).',
-        '  2. Falls ffmpeg dabei war: Rechte 755 setzen (FTP-Client → Dateiberechtigungen).',
-        '  3. Einloggen, Footer prüfen: dort muss "Version {v} · {b}" stehen.'.format(v=version, b=build),
+        '  2. ffmpeg (falls hochgeladen oder noch nie gesetzt): Rechte 755 (FTP-Client → Dateiberechtigungen).',
+        f'  3. Einloggen, Footer prüfen: dort muss "Version {version} · {build}" stehen.',
         '  4. Admin → Tools → Pakete installieren: Kasten "Python-Umgebung" kontrollieren.',
         '',
         'Nicht enthalten (bleiben auf dem Server unverändert): .env, instance/*.db,',
-        'static/uploads/, backups/, venv/.',
+        'static/uploads/, backups/, venv/' + ('' if FFMPEG in files else ', ffmpeg') + '.',
     ]
     return '\n'.join(lines) + '\n'
 
 
+def write_zip(path, files, hint_text):
+    with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as z:
+        for rel in files:
+            z.write(ROOT / rel, rel)
+        z.writestr('_DEPLOY_HINWEISE.txt', hint_text)
+    return path.stat().st_size / 1024
+
+
+def resolve_base(since):
+    if since:
+        return since
+    if MARKER.exists():
+        ref = MARKER.read_text(encoding='utf-8').split()[0]
+        if git('cat-file', '-e', f'{ref}^{{commit}}').returncode == 0:
+            return ref
+        print(f'Hinweis: gemerkter Stand {ref[:12]} nicht gefunden – nutze origin/main')
+    if git('rev-parse', '--verify', 'origin/main').returncode == 0:
+        return 'origin/main'
+    return 'HEAD~1'
+
+
 def main():
-    ap = argparse.ArgumentParser(description='Deploy-ZIP erstellen')
+    ap = argparse.ArgumentParser(description='Deploy-ZIPs erstellen')
     ap.add_argument('--since', help='Git-Stand (Commit/Branch/Tag), ab dem Änderungen gepackt werden')
-    ap.add_argument('--full', action='store_true', help='komplettes Projekt packen')
-    ap.add_argument('--with-ffmpeg', action='store_true', help='bei --full auch die ffmpeg-Binärdatei packen')
+    ap.add_argument('--only', choices=['komplett', 'aenderungen'], help='nur eines der beiden Pakete bauen')
+    ap.add_argument('--with-ffmpeg', action='store_true', help='Komplettpaket inkl. ffmpeg-Binärdatei')
+    ap.add_argument('--keep-old', action='store_true', help='ältere ZIPs in deploy/ behalten')
     ap.add_argument('--no-marker', action='store_true', help='LAST_DEPLOY.txt nicht aktualisieren')
     args = ap.parse_args()
 
     version, build = app_version()
     DEPLOY_DIR.mkdir(exist_ok=True)
+    stem = f'deploy_v{version}_{build.replace(" ", "")}'
+    built = []
 
-    if args.full:
-        files, deleted = all_files(args.with_ffmpeg)
-        mode = 'komplett'
-    else:
-        ref = args.since
-        if not ref and MARKER.exists():
-            ref = MARKER.read_text(encoding='utf-8').split()[0]
-            if git('cat-file', '-e', f'{ref}^{{commit}}').returncode != 0:
-                print(f'Hinweis: gemerkter Stand {ref} nicht gefunden – nutze origin/main')
-                ref = None
-        if not ref:
-            ref = 'origin/main' if git('rev-parse', '--verify', 'origin/main').returncode == 0 else 'HEAD~1'
+    if not args.keep_old:
+        for old in DEPLOY_DIR.glob('deploy_*.zip'):
+            old.unlink()
+
+    if args.only != 'aenderungen':
+        files = all_files(args.with_ffmpeg)
+        out = DEPLOY_DIR / f'{stem}_komplett.zip'
+        kb = write_zip(out, files, hints(version, build, files, [], 'Komplettpaket', ''))
+        built.append((out, kb, len(files)))
+
+    if args.only != 'komplett':
+        ref = resolve_base(args.since)
         files, deleted = changed_since(ref)
         mode = f'Änderungen seit {ref[:12]}'
-        if not files and not deleted:
-            print(f'Keine Änderungen seit {ref} – nichts zu packen.')
-            return
-
-    safe_build = build.replace(' ', '')
-    out = DEPLOY_DIR / f'deploy_v{version}_{safe_build}.zip'
-    with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
-        for rel in files:
-            z.write(ROOT / rel, rel)
-        z.writestr('_DEPLOY_HINWEISE.txt', hints(version, build, files, deleted, mode))
+        if files or deleted:
+            out = DEPLOY_DIR / f'{stem}_aenderungen.zip'
+            kb = write_zip(out, files, hints(version, build, files, deleted, 'Änderungspaket', mode))
+            built.append((out, kb, len(files)))
+            print(f'Änderungspaket ({mode}):')
+            for f in files:
+                print('  ', f)
+            if deleted:
+                print('  Auf dem Server löschen:')
+                for f in deleted:
+                    print('    ', f)
+        else:
+            print(f'Keine geänderten Dateien seit {ref[:12]} – kein Änderungspaket erzeugt.')
 
     if not args.no_marker:
         head = git('rev-parse', 'HEAD').stdout.strip()
-        MARKER.write_text(f'{head}  {out.name}  {datetime.now().isoformat(timespec="minutes")}\n',
+        MARKER.write_text(f'{head}  {stem}  {datetime.now().isoformat(timespec="minutes")}\n',
                           encoding='utf-8')
 
-    size_kb = out.stat().st_size / 1024
-    print(f'{out.relative_to(ROOT)}  ({size_kb:.0f} KB, {len(files)} Dateien, Modus: {mode})')
-    for f in files:
-        print('  ', f)
-    if deleted:
-        print('Auf dem Server löschen:')
-        for f in deleted:
-            print('  ', f)
+    print()
+    for out, kb, n in built:
+        print(f'{out.relative_to(ROOT)}  ({kb:.0f} KB, {n} Dateien)')
 
 
 if __name__ == '__main__':
