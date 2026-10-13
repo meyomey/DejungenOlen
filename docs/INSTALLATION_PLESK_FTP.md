@@ -126,7 +126,7 @@ C-Erweiterungen (Pillow, cryptography/cffi), die für die alte Version gebaut wu
 3. Fehlende oder defekte Pakete sind bereits angehakt → Button **Ausgewählte Pakete
    installieren / reparieren** klicken. Die Pakete werden passend zur laufenden
    Python-Version nach `venv/Lib/site-packages` installiert (`pip --target --upgrade`;
-   ersetzt dort auch kaputte Reste, z. B. ein am Windows-PC erstelltes Pillow, und
+   ersetzt dort auch kaputte Reste, z. B. ein noch für Python 3.9 gebautes Pillow, und
    funktioniert trotz Debian-12-Sperre „externally-managed-environment“). Danach
    einmal **Restart** in Plesk.
 4. Pillow „defekt“ ist nicht kritisch – die Bildverarbeitung läuft dann über ImageMagick.

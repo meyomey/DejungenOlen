@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 f'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 g'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3506,8 +3506,8 @@ _INSTALLABLE_PACKAGES = (
 def _package_status(module):
     """Importprüfung für die Admin-Seite: {'ok', 'status', 'detail'} mit status
     installiert | fehlt | defekt. Pillow wird funktional geprüft (C-Erweiterung _imaging),
-    weil ein für Windows oder eine andere Python-Version gebautes Pillow zwar importierbar
-    aussieht, aber nicht arbeitet."""
+    weil ein für eine andere Python-Version gebautes Pillow (z. B. 3.9 nach dem Update auf
+    3.11) zwar importierbar aussieht, aber nicht arbeitet."""
     import sys, importlib
     top = module.split('.')[0]
     try:
@@ -3517,7 +3517,7 @@ def _package_status(module):
         loc = os.path.dirname(getattr(pkg, '__file__', '') or '')
         if top == 'PIL' and not _pillow_ok():
             return {'ok': False, 'status': 'defekt',
-                    'detail': f'{loc} – C-Erweiterung „_imaging“ lädt nicht (für anderes System/Python gebaut)'}
+                    'detail': f'{loc} – C-Erweiterung „_imaging“ lädt nicht (für eine andere Python-Version gebaut)'}
         return {'ok': True, 'status': 'installiert', 'detail': f'{ver} – {loc}'.strip(' –')}
     except ModuleNotFoundError as e:
         if (e.name or '').split('.')[0] == top:
