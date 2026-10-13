@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 i'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 j'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -1527,10 +1527,141 @@ def parse_gpx(filepath):
         km     = round((gpx.length_3d() or gpx.length_2d() or 0) / 1000, 1)
         ascent = round(gpx.get_uphill_downhill().uphill or 0, 0)
 
-        return {'points': points, 'km': km, 'ascent': int(ascent)}
+        # Build j: Zeitstempel auswerten (sofern der Track welche hat) → Fahrzeit,
+        # Gesamtzeit inkl. Pausen, Schnitt, Spitze, Start/Ende als Ortszeit.
+        # Tracks ohne Zeiten liefern None – die Video-Folien lassen die Kacheln dann weg.
+        ride = {'moving_s': None, 'total_s': None, 'avg_kmh': None, 'max_kmh': None,
+                'start_time': None, 'end_time': None}
+        try:
+            md = gpx.get_moving_data()           # Pausen = Abschnitte langsamer als 1 km/h
+            if md and md.moving_time and md.moving_time >= 60:
+                ride['moving_s'] = int(md.moving_time)
+                ride['total_s']  = int(gpx.get_duration() or 0) or None
+                ride['avg_kmh']  = round(km / (md.moving_time / 3600), 1) if km else None
+                if md.max_speed:
+                    ride['max_kmh'] = round(md.max_speed * 3.6, 1)
+                tb = gpx.get_time_bounds()
+                if tb and tb.start_time and tb.end_time:
+                    try:
+                        from datetime import timezone as _utc
+                        from zoneinfo import ZoneInfo
+                        _tz = ZoneInfo('Europe/Berlin')
+
+                        def _local(t):
+                            if t.tzinfo is None:
+                                t = t.replace(tzinfo=_utc.utc)
+                            return t.astimezone(_tz).strftime('%H:%M')
+                        ride['start_time'], ride['end_time'] = _local(tb.start_time), _local(tb.end_time)
+                    except Exception:
+                        pass
+        except Exception as e:
+            app.logger.warning(f'GPX moving data: {e}')
+
+        return {'points': points, 'km': km, 'ascent': int(ascent), **ride}
     except Exception as e:
         app.logger.error(f'GPX parse error: {e}')
         return None
+
+
+GASTRO_NEAR_M = 150   # Build j: Einkehr gilt als "an der Route", wenn sie höchstens so viele Meter neben dem Track liegt
+
+
+def gastro_near_track(points, max_m=GASTRO_NEAR_M, limit=12):
+    """Build j: Gastro-Einträge, die höchstens max_m Meter neben dem Track liegen.
+    Liefert nach Streckenkilometer sortierte dicts: name, spot_type, type_label, lat, lng,
+    dist_m (Abstand zum Track), km (Streckenkilometer), frac (Anteil der Strecke 0..1, ab
+    dem der Punkt erreicht ist – für die Karten-Animation). Fehler → []."""
+    import math
+    if not points or len(points) < 2:
+        return []
+    try:
+        step = max(1, len(points) // 4000)        # Rechenzeit begrenzen, Auflösung bleibt fein genug
+        pts = points[::step]
+        if step > 1 and (len(points) - 1) % step:
+            pts.append(points[-1])
+        lats = [pt['lat'] for pt in pts]; lngs = [pt['lng'] for pt in pts]
+        mid_lat = (min(lats) + max(lats)) / 2
+        m_lat = 111320.0                                        # Meter je Grad Breite
+        m_lng = 111320.0 * max(0.2, math.cos(math.radians(mid_lat)))  # Meter je Grad Länge
+        d_lat, d_lng = max_m / m_lat, max_m / m_lng
+        cands = GastroSpot.query.filter(
+            GastroSpot.lat >= min(lats) - d_lat, GastroSpot.lat <= max(lats) + d_lat,
+            GastroSpot.lng >= min(lngs) - d_lng, GastroSpot.lng <= max(lngs) + d_lng,
+        ).all()
+        if not cands:
+            return []
+        cum = [0.0]                                             # Kilometerstand je Trackpunkt
+        for a, b in zip(pts, pts[1:]):
+            cum.append(cum[-1] + math.hypot((b['lat'] - a['lat']) * m_lat, (b['lng'] - a['lng']) * m_lng))
+        labels = {'cafe': 'Café', 'kneipe': 'Kneipe/Gasthaus', 'baeckerei': 'Bäckerei',
+                  'restaurant': 'Restaurant', 'imbiss': 'Imbiss', 'other': 'Einkehr'}
+        found = []
+        for sp in cands:
+            best_d, best_i = 1e12, 0
+            for i, pt in enumerate(pts):
+                d = math.hypot((pt['lat'] - sp.lat) * m_lat, (pt['lng'] - sp.lng) * m_lng)
+                if d < best_d:
+                    best_d, best_i = d, i
+            if best_d <= max_m:
+                found.append({'id': sp.id, 'name': sp.name, 'spot_type': sp.spot_type,
+                              'type_label': labels.get(sp.spot_type, 'Einkehr'),
+                              'lat': sp.lat, 'lng': sp.lng, 'dist_m': int(round(best_d)),
+                              'km': round(cum[best_i] / 1000, 1),
+                              'frac': best_i / max(1, len(pts) - 1)})
+        found.sort(key=lambda x: (x['km'], x['name']))
+        return found[:limit]
+    except Exception as e:
+        app.logger.warning(f'gastro_near_track: {e}')
+        return []
+
+
+def _tour_day_weather(tour):
+    """Tageswetter am Treffpunkt für den Tourtag (Open-Meteo) → dict oder None.
+    Voraussetzungen: festes Datum, Treffpunkt-Koordinaten (meeting_lat/lng) und der Server
+    muss api.open-meteo.com erreichen. Build j: Für Touren, die länger als ~3 Monate zurück-
+    liegen, antwortet nur noch das Archiv (archive-api) – daher zwei Versuche in passender
+    Reihenfolge. 'kind' = Symbolart für die gezeichneten Wettersymbole der Server-Folie,
+    'icon' = Emoji für die Browser-Vorschau."""
+    if not (tour.tour_date and not tour.is_date_open and tour.meeting_lat and tour.meeting_lng):
+        return None
+    try:
+        age_days = (date.today() - tour.tour_date).days
+    except Exception:
+        age_days = 0
+    urls = ['https://api.open-meteo.com/v1/forecast', 'https://archive-api.open-meteo.com/v1/archive']
+    if age_days > 80:
+        urls.reverse()
+    icon_map = {0: '☀️', 1: '🌤️', 2: '🌤️', 3: '☁️', 45: '🌫️', 48: '🌫️',
+                51: '🌦️', 53: '🌦️', 55: '🌦️', 61: '🌧️', 63: '🌧️', 65: '🌧️',
+                71: '🌨️', 73: '🌨️', 75: '🌨️', 80: '🌦️', 81: '🌧️', 82: '⛈️',
+                95: '⛈️', 96: '⛈️', 99: '⛈️'}
+    for url in urls:
+        try:
+            resp = http_requests.get(url, params={
+                'latitude': tour.meeting_lat, 'longitude': tour.meeting_lng,
+                'daily': 'weathercode,temperature_2m_max,temperature_2m_min',
+                'timezone': 'Europe/Berlin',
+                'start_date': tour.tour_date.isoformat(), 'end_date': tour.tour_date.isoformat()},
+                timeout=5)
+            d = resp.json().get('daily', {}) or {}
+            tmax = (d.get('temperature_2m_max') or [None])[0]
+            if tmax is None:
+                continue
+            tmin = (d.get('temperature_2m_min') or [None])[0]
+            wc = (d.get('weathercode') or [None])[0]
+            if wc == 0:                            kind = 'sun'
+            elif wc in (1, 2):                     kind = 'partly'
+            elif wc == 3:                          kind = 'cloud'
+            elif wc in (45, 48):                   kind = 'fog'
+            elif wc in (71, 73, 75, 77, 85, 86):   kind = 'snow'
+            elif wc in (95, 96, 99):               kind = 'storm'
+            elif wc is not None and wc >= 51:      kind = 'rain'
+            else:                                  kind = 'thermo'
+            return {'temp_max': round(tmax), 'temp_min': round(tmin if tmin is not None else tmax),
+                    'icon': icon_map.get(wc, '🌡️'), 'kind': kind, 'code': wc}
+        except Exception:
+            continue
+    return None
 
 
 @app.route('/touren/<int:tour_id>')
@@ -2113,34 +2244,7 @@ def tour_video(tour_id):
                        TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
                        .join(User).order_by(User.name).limit(12).all()]
 
-    weather = None
-    if tour.tour_date and not tour.is_date_open and tour.meeting_lat and tour.meeting_lng:
-        try:
-            resp = http_requests.get(
-                'https://api.open-meteo.com/v1/forecast',
-                params={
-                    'latitude': tour.meeting_lat, 'longitude': tour.meeting_lng,
-                    'daily': 'weathercode,temperature_2m_max,temperature_2m_min',
-                    'timezone': 'Europe/Berlin',
-                    'start_date': tour.tour_date.isoformat(),
-                    'end_date': tour.tour_date.isoformat(),
-                },
-                timeout=5
-            )
-            d = resp.json().get('daily', {})
-            if d.get('temperature_2m_max'):
-                wc = (d.get('weathercode') or [None])[0]
-                icon_map = {0:'☀️',1:'🌤️',2:'🌤️',3:'☁️',45:'🌫️',48:'🌫️',
-                            51:'🌦️',53:'🌦️',55:'🌦️',61:'🌧️',63:'🌧️',65:'🌧️',
-                            71:'🌨️',73:'🌨️',75:'🌨️',80:'🌦️',81:'🌧️',82:'⛈️',
-                            95:'⛈️',96:'⛈️',99:'⛈️'}
-                weather = {
-                    'temp_max': round(d['temperature_2m_max'][0]),
-                    'temp_min': round(d['temperature_2m_min'][0]),
-                    'icon': icon_map.get(wc, '🌡️'),
-                }
-        except Exception:
-            pass
+    weather = _tour_day_weather(tour)   # Build j: gemeinsamer Helfer (Prognose + Archiv)
 
     from flask import g as _g
     default_music_url = None
@@ -2697,11 +2801,75 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'make_title_frame error: {e}', exc_info=True)
                 return False
 
+        def _draw_weather_icon(draw, cx, cy, s, kind, col, a=1.0):
+            """Build j: kleines Wettersymbol – gezeichnet statt Emoji, damit es auf dem Server
+            auch ohne Emoji-Font erscheint. (cx, cy) Mitte, s Kantenlänge, col Kachelfarbe,
+            a Deckkraft 0..1 (für das gestaffelte Einblenden)."""
+            import math
+
+            def mix(c):
+                return tuple(int(round(col[i] + (c[i] - col[i]) * a)) for i in range(3))
+            white, sun, blue = mix((255, 255, 255)), mix((255, 205, 80)), mix((150, 205, 255))
+            lw = max(2, int(s * 0.07))
+
+            def _sun(x, y, r, rays=8):
+                for k in range(rays):
+                    ang = 2 * math.pi * k / rays + math.pi / rays
+                    draw.line([(x + math.cos(ang) * r * 1.35, y + math.sin(ang) * r * 1.35),
+                               (x + math.cos(ang) * r * 1.85, y + math.sin(ang) * r * 1.85)], fill=sun, width=lw)
+                draw.ellipse([x - r, y - r, x + r, y + r], fill=sun)
+
+            def _cloud(x, y, w):   # Wolke der Breite w; (x, y) = Mitte der Unterkante
+                h = w * 0.62
+                draw.ellipse([x - w * 0.50, y - h * 0.62, x - w * 0.50 + h * 0.70, y + h * 0.08], fill=white)
+                draw.ellipse([x - w * 0.26, y - h * 1.00, x - w * 0.26 + h * 0.98, y - h * 0.02], fill=white)
+                draw.ellipse([x + w * 0.50 - h * 0.62, y - h * 0.55, x + w * 0.50, y + h * 0.07], fill=white)
+                draw.rounded_rectangle([x - w * 0.50 + h * 0.12, y - h * 0.40, x + w * 0.50 - h * 0.08, y],
+                                       radius=int(h * 0.18), fill=white)
+
+            if kind == 'sun':
+                _sun(cx, cy, s * 0.26)
+            elif kind == 'partly':
+                _sun(cx + s * 0.17, cy - s * 0.17, s * 0.17)
+                _cloud(cx - s * 0.06, cy + s * 0.34, s * 0.78)
+            elif kind in ('cloud', 'fog', 'rain', 'snow', 'storm'):
+                base = cy + (s * 0.22 if kind == 'cloud' else s * 0.02)
+                _cloud(cx, base, s * 0.9)
+                if kind == 'fog':
+                    for k in range(2):
+                        yy = base + s * 0.13 + k * s * 0.15
+                        draw.line([(cx - s * 0.34, yy), (cx + s * 0.34, yy)], fill=white, width=lw)
+                elif kind == 'rain':
+                    for k in range(3):
+                        x = cx - s * 0.24 + k * s * 0.24
+                        draw.line([(x + s * 0.03, base + s * 0.1), (x - s * 0.06, base + s * 0.38)], fill=blue, width=lw)
+                elif kind == 'snow':
+                    r = max(2, int(s * 0.055))
+                    for k in range(3):
+                        x = cx - s * 0.24 + k * s * 0.24
+                        yy = base + s * 0.24 + (s * 0.08 if k == 1 else 0)
+                        draw.ellipse([x - r, yy - r, x + r, yy + r], fill=white)
+                elif kind == 'storm':
+                    draw.polygon([(cx + s * 0.08, base + s * 0.02), (cx - s * 0.12, base + s * 0.24),
+                                  (cx + s * 0.00, base + s * 0.24), (cx - s * 0.08, base + s * 0.46),
+                                  (cx + s * 0.16, base + s * 0.18), (cx + s * 0.03, base + s * 0.18)], fill=sun)
+            else:   # 'thermo' / unbekannter Code: schlichtes Thermometer
+                draw.rounded_rectangle([cx - s * 0.08, cy - s * 0.34, cx + s * 0.08, cy + s * 0.12],
+                                       radius=int(s * 0.08), fill=white)
+                draw.ellipse([cx - s * 0.17, cy + s * 0.02, cx + s * 0.17, cy + s * 0.36], fill=mix((255, 110, 90)))
+
+        def _fmt_hm(seconds):
+            """Sekunden → 'h:mm h' (z. B. 2:45 h)."""
+            m = int(round(seconds / 60))
+            return f'{m // 60}:{m % 60:02d} h'
+
         def _draw_stats_canvas(progress, attending_count, weather, avatar_layer):
             """Statistik-Folie für einen Animationsfortschritt 0..1 – gleiche Choreografie
             wie drawStatsFrame() in touren/video.html: Kacheln blenden gestaffelt ein,
             die Zahlen zählen in den ersten 60 % hoch (ease-out), die Teilnehmer (runde
-            Profilbilder + Namen, Build i) erscheinen ab 55 %. progress=1.0 = fertige Folie."""
+            Profilbilder + Namen, Build i) erscheinen ab 55 %. progress=1.0 = fertige Folie.
+            Build j: Kacheln Fahrzeit + Ø Tempo aus den GPX-Zeitstempeln (_ride), Wetter mit
+            gezeichnetem Symbol statt Emoji, im Querformat ab 5 Kacheln drei Spalten."""
             _ID = _ID_MOD
             BG, TILE = (30, 45, 80), (58, 74, 108)
 
@@ -2716,20 +2884,31 @@ def tour_video_render(tour_id):
 
             count_p = min(1.0, progress / 0.6)
             eased = 1 - (1 - count_p) ** 3           # easeOutCubic
-            stats = []
-            if tour.gpx_km:     stats.append((f'{tour.gpx_km * eased:.1f} km', 'Strecke'))
-            if tour.gpx_ascent: stats.append((f'{int(round(tour.gpx_ascent * eased))} m', 'Höhenmeter'))
-            stats.append((str(int(round(attending_count * eased))), 'Dabei gewesen'))
-            if weather:         stats.append((f"{int(round(weather['temp_max'] * eased))}°C", weather['icon'] + ' Wetter'))
+            stats = []   # (Wert, Beschriftung, Zusatz zur Beschriftung – nur wenn er passt, Wettersymbol)
+            if tour.gpx_km:     stats.append((f'{tour.gpx_km * eased:.1f} km', 'Strecke', '', None))
+            if tour.gpx_ascent: stats.append((f'{int(round(tour.gpx_ascent * eased))} m', 'Höhenmeter', '', None))
+            stats.append((str(int(round(attending_count * eased))), 'Dabei gewesen', '', None))
+            if weather:         stats.append((f"{int(round(weather['temp_max'] * eased))}°C", 'Wetter', '',
+                                              weather.get('kind') or 'thermo'))
+            if _ride.get('moving_s'):   # Build j: nur wenn der GPX-Track Zeitstempel hat
+                extra = ''
+                if _ride.get('total_s') and _ride['total_s'] - _ride['moving_s'] >= 300:
+                    extra = f" · {_fmt_hm(_ride['total_s'])} gesamt"
+                stats.append((_fmt_hm(_ride['moving_s'] * eased), 'Fahrzeit', extra, None))
+                if _ride.get('avg_kmh'):
+                    extra = f" · max. {_ride['max_kmh']:.0f} km/h" if _ride.get('max_kmh') else ''
+                    stats.append((f"{_ride['avg_kmh'] * eased:.1f} km/h", 'Ø Tempo', extra, None))
 
-            cols = 2
-            tile_w, tile_h = int(W*0.4), int(H*0.15)
+            # Raster: 2 Spalten; im Querformat ab 5 Kacheln 3 Spalten, damit die Teilnehmer noch Platz haben
+            cols = 3 if (W >= H and len(stats) > 4) else 2
             gap = int(W*0.04)
+            tile_w = min(int(W*0.4), int((W*0.86 - (cols-1)*gap) / cols))
+            tile_h = int(H*0.15)
             start_x = cx - (cols*tile_w + (cols-1)*gap)//2
             start_y = int(H*0.28)
             big_font = _pil_font(min(52, int(W/18)))
             small_font = _pil_font(22, bold=False)
-            for idx, (val, label) in enumerate(stats):
+            for idx, (val, label, extra, wkind) in enumerate(stats):
                 col, row = idx % cols, idx // cols
                 x = start_x + col*(tile_w+gap)
                 y = start_y + row*(tile_h+gap)
@@ -2738,7 +2917,21 @@ def tour_video_render(tour_id):
                     continue
                 tile_col = lerp(BG, TILE, a)
                 draw.rounded_rectangle([x, y, x+tile_w, y+tile_h], radius=16, fill=tile_col)
-                _centered_text(draw, x+tile_w//2, y+tile_h//2-38, val, big_font, lerp(tile_col, (255,255,255), a))
+                tcx, ty = x + tile_w//2, y + tile_h//2 - 38
+                vfont = big_font   # Wert muss in die Kachel passen (schmale 3-Spalten-Kacheln im Quadrat)
+                room = tile_w - 28 - ((int(big_font.size * 1.05) + 16) if wkind else 0)
+                while draw.textlength(val, font=vfont) > room and vfont.size > 30:
+                    vfont = _pil_font(vfont.size - 2)
+                if wkind:   # Wettersymbol links neben dem Wert, Gruppe gemeinsam zentriert
+                    icon_s = int(vfont.size * 1.05)
+                    tw = draw.textlength(val, font=vfont)
+                    group_w = icon_s + 16 + tw
+                    _draw_weather_icon(draw, tcx - group_w/2 + icon_s/2, ty + vfont.size*0.42,
+                                       icon_s, wkind, tile_col, a)
+                    tcx = int(tcx + group_w/2 - tw/2)
+                _centered_text(draw, tcx, ty, val, vfont, lerp(tile_col, (255,255,255), a))
+                if extra and draw.textlength(label + extra, font=small_font) <= tile_w - 24:
+                    label += extra
                 _centered_text(draw, x+tile_w//2, y+tile_h//2+16, label, small_font, lerp(tile_col, (210,210,210), a))
 
             if avatar_layer is not None and progress > 0.55:
@@ -2787,6 +2980,78 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'make_stats_frame error: {e}', exc_info=True)
                 return False
 
+        def build_gastro_frames(spots):
+            """Build j: Folie „Einkehr unterwegs“ – Gastro-Einträge höchstens GASTRO_NEAR_M m
+            neben dem Track (gastro_near_track), mit Art, Streckenkilometer und Abstand;
+            Zeilen blenden gestaffelt ein. Liefert [(frame, dauer), …] für
+            frames_to_segment() oder [] (keine Treffer / Fehler)."""
+            if not PIL_OK or not spots:
+                return []
+            try:
+                _ID = _ID_MOD
+                BG, TILE, MARK = (30, 45, 80), (58, 74, 108), (142, 36, 170)
+
+                def lerp(c1, c2, a):
+                    return tuple(int(round(c1[i] + (c2[i] - c1[i]) * a)) for i in range(3))
+
+                rows = spots[:6]
+                more = len(spots) - len(rows)
+                title_font = _pil_font(min(42, int(W/22)))
+                name_font  = _pil_font(min(40, int(W/27)))
+                sub_font   = _pil_font(22, bold=False)
+                row_w, row_h, gap = int(W*0.86), max(96, int(H*0.085)), 18
+                x0, y0 = (W - row_w)//2, int(H*0.22)
+
+                def draw_slide(progress):
+                    canvas = _PIL.new('RGB', (W, H), BG)
+                    draw = _ID.Draw(canvas)
+                    _centered_text(draw, W//2, int(H*0.10), 'Einkehr unterwegs', title_font, (255, 255, 255))
+                    _centered_text(draw, W//2, int(H*0.10) + title_font.size + 14,
+                                   f'Gastronomie direkt an der Strecke (bis {GASTRO_NEAR_M} m)', sub_font, (190, 200, 220))
+                    for i, sp in enumerate(rows):
+                        a = max(0.0, min(1.0, (progress - 0.1 - i*0.1) * 4))
+                        if a <= 0:
+                            continue
+                        y = y0 + i*(row_h + gap)
+                        tile_col = lerp(BG, TILE, a)
+                        draw.rounded_rectangle([x0, y, x0 + row_w, y + row_h], radius=16, fill=tile_col)
+                        mx, my = x0 + 40, y + row_h//2
+                        draw.ellipse([mx-12, my-12, mx+12, my+12], fill=lerp(tile_col, MARK, a),
+                                     outline=lerp(tile_col, (255, 255, 255), a), width=3)
+                        name = sp['name']
+                        if draw.textlength(name, font=name_font) > row_w - 110:
+                            while len(name) > 4 and draw.textlength(name + '…', font=name_font) > row_w - 110:
+                                name = name[:-1].rstrip()
+                            name += '…'
+                        draw.text((x0 + 76, y + row_h//2 - name_font.size - 2), name, font=name_font,
+                                  fill=lerp(tile_col, (255, 255, 255), a))
+                        sub = (f"{sp['type_label']} · km {sp['km']:.1f}".replace('.', ',') +
+                               f" · {sp['dist_m']} m neben der Route")
+                        draw.text((x0 + 76, y + row_h//2 + 6), sub, font=sub_font, fill=lerp(tile_col, (210, 210, 210), a))
+                    if more > 0:
+                        a = max(0.0, min(1.0, (progress - 0.1 - len(rows)*0.1) * 4))
+                        if a > 0:
+                            _centered_text(draw, W//2, y0 + len(rows)*(row_h + gap) + 8, f'… und {more} weitere',
+                                           sub_font, lerp(BG, (210, 210, 210), a))
+                    paste_watermark(canvas, 'tr')
+                    return canvas
+
+                total = min(6.0, 2.5 + 0.5*len(rows))
+                anim_secs, step_fps = min(total - 0.4, 1.2 + 0.4*len(rows)), 15
+                frames = []
+                for i in range(int(anim_secs * step_fps)):
+                    progress = (i / step_fps) / anim_secs
+                    fpath = os.path.join(tmpdir, f'gastro_{i:03d}.jpg')
+                    draw_slide(progress).save(fpath, 'JPEG', quality=88)
+                    frames.append((fpath, round(1 / step_fps, 4)))
+                fpath = os.path.join(tmpdir, 'gastro_hold.jpg')
+                draw_slide(1.0).save(fpath, 'JPEG', quality=88)
+                frames.append((fpath, round(total - anim_secs, 3)))
+                return frames
+            except Exception as e:
+                app.logger.warning(f'build_gastro_frames error: {e}', exc_info=True)
+                return []
+
         def make_outro_frame(dst_path, group_name):
             if not PIL_OK:
                 return False
@@ -2825,9 +3090,11 @@ def tour_video_render(tour_id):
             y = (1.0 - math.log(math.tan(lat*math.pi/180.0) + 1.0/math.cos(lat*math.pi/180.0)) / math.pi) / 2.0 * n
             return x, y
 
-        def build_track_frames(gpx_points, photos_with_gps):
+        def build_track_frames(gpx_points, photos_with_gps, near_spots=None):
             """Laedt echte OSM-Kacheln + zeichnet den Track schrittweise animiert.
-            Gibt Liste von (frame_path, duration) zurueck, oder [] bei Fehler/keinen Daten."""
+            Gibt Liste von (frame_path, duration) zurueck, oder [] bei Fehler/keinen Daten.
+            Build j: near_spots (gastro_near_track) erscheinen als Marker mit Namensschild,
+            sobald der gezeichnete Track an ihnen vorbeikommt."""
             if not PIL_OK or not gpx_points or len(gpx_points) < 2:
                 return []
             try:
@@ -2930,6 +3197,22 @@ def tour_video_render(tour_id):
                                     (fx-4, fy-4))
                         frame.paste(thumb, (fx, fy))
 
+                    # Build j: Einkehr an der Route – Marker (+ Namensschild bei bis zu 6 Treffern)
+                    spot_font = _pil_font(18)
+                    for sp in (near_spots or [])[:12]:
+                        if sp['frac'] > reached:
+                            continue
+                        x, y = proj(sp['lat'], sp['lng'])
+                        draw.ellipse([x-11, y-11, x+11, y+11], fill=(142, 36, 170), outline=(255, 255, 255), width=3)
+                        if len(near_spots) <= 6:
+                            lbl = sp['name'][:26]
+                            tw = draw.textlength(lbl, font=spot_font)
+                            bx = x + 16 if x + 16 + tw + 16 < W - 8 else x - 16 - tw - 16
+                            by = y - 15
+                            draw.rounded_rectangle([bx, by, bx + tw + 16, by + 30], radius=8,
+                                                   fill=(255, 255, 255), outline=(142, 36, 170), width=2)
+                            draw.text((bx + 8, by + 5), lbl, font=spot_font, fill=(40, 40, 40))
+
                     draw.rounded_rectangle([24,24,W-24,88], radius=10, fill=(20,30,20))
                     draw.text((42,38), tour.title[:34], font=_pil_font(min(26,int(W/24))), fill=(255,255,255))
                     pct_text = f'{int(progress*100)}% der Strecke'
@@ -2958,27 +3241,7 @@ def tour_video_render(tour_id):
         _attending_users = [(p.user.display_name, p.user.avatar) for p in
                             TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
                             .join(User).order_by(User.name).limit(12).all()]
-        _weather = None
-        if tour.tour_date and not tour.is_date_open and tour.meeting_lat and tour.meeting_lng:
-            try:
-                _resp = http_requests.get(
-                    'https://api.open-meteo.com/v1/forecast',
-                    params={'latitude': tour.meeting_lat, 'longitude': tour.meeting_lng,
-                            'daily': 'weathercode,temperature_2m_max,temperature_2m_min',
-                            'timezone': 'Europe/Berlin',
-                            'start_date': tour.tour_date.isoformat(), 'end_date': tour.tour_date.isoformat()},
-                    timeout=5
-                )
-                _d = _resp.json().get('daily', {})
-                if _d.get('temperature_2m_max'):
-                    _icon_map = {0:'☀️',1:'🌤️',2:'🌤️',3:'☁️',45:'🌫️',48:'🌫️',
-                                 51:'🌦️',53:'🌦️',55:'🌦️',61:'🌧️',63:'🌧️',65:'🌧️',
-                                 71:'🌨️',73:'🌨️',75:'🌨️',80:'🌦️',81:'🌧️',82:'⛈️',
-                                 95:'⛈️',96:'⛈️',99:'⛈️'}
-                    _wc = (_d.get('weathercode') or [None])[0]
-                    _weather = {'temp_max': round(_d['temperature_2m_max'][0]), 'icon': _icon_map.get(_wc, '🌡️')}
-            except Exception:
-                pass
+        _weather = _tour_day_weather(tour)   # Build j: gemeinsamer Helfer (Prognose + Archiv)
 
         from flask import g as _g_render
         _grp = getattr(_g_render, 'group', None)
@@ -2993,18 +3256,23 @@ def tour_video_render(tour_id):
                 except Exception:
                     logo_rgba = None
 
-        show_track = request.form.get('show_track', '1') == '1'
-        show_stats = request.form.get('show_stats', '1') == '1'
+        show_track  = request.form.get('show_track', '1') == '1'
+        show_stats  = request.form.get('show_stats', '1') == '1'
+        show_gastro = request.form.get('show_gastro', '1') == '1'   # Build j: Einkehr-Folie + Karten-Marker
         _slide_secs = 0.0  # Summe aller Folien-Sekunden (für Audio-Fade-Timing)
 
-        # GPX + GPS-Fotos für die Kartenfolie vorbereiten
-        _gpx_points = []
-        if show_track and tour.gpx_file:
+        # GPX einmal parsen: Punkte für die Karte, Zeitstempel für Fahrzeit/Schnitt (Build j),
+        # Einkehr nahe der Route (Build j)
+        _gpx_points, _ride, _near_spots = [], {}, []
+        if tour.gpx_file:
             _gpx_path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
             if os.path.exists(_gpx_path):
                 _parsed = parse_gpx(_gpx_path)
                 if _parsed:
                     _gpx_points = _parsed.get('points', [])
+                    _ride = {k: _parsed.get(k) for k in ('moving_s', 'total_s', 'avg_kmh', 'max_kmh')}
+        if show_gastro and _gpx_points:
+            _near_spots = gastro_near_track(_gpx_points)
         _photos_with_gps = [{'filename': p.filename, 'lat': p.lat, 'lng': p.lng}
                             for p in photos if p.lat and p.lng]
 
@@ -3018,13 +3286,22 @@ def tour_video_render(tour_id):
 
             # 1b. Kartenfolie: animierter Track, zu EINEM Video-Segment zusammengefasst
             if show_track and _gpx_points:
-                track_frames = build_track_frames(_gpx_points, _photos_with_gps)
+                track_frames = build_track_frames(_gpx_points, _photos_with_gps, _near_spots)
                 if track_frames:
                     track_seg = os.path.join(tmpdir, 'seg_track.mp4')
                     track_dur = sum(d for _, d in track_frames)
                     if frames_to_segment(track_frames, track_seg):
                         cf.write(f"file '{track_seg}'\n")
                         _slide_secs += track_dur
+
+            # 1c. Einkehr-Folie (Build j): Gastro-Einträge nahe der Route, nur wenn es Treffer gibt
+            if show_gastro and _near_spots:
+                gastro_frames = build_gastro_frames(_near_spots)
+                if gastro_frames:
+                    gastro_seg = os.path.join(tmpdir, 'seg_gastro.mp4')
+                    if frames_to_segment(gastro_frames, gastro_seg):
+                        cf.write(f"file '{gastro_seg}'\n")
+                        _slide_secs += sum(d for _, d in gastro_frames)
 
             # 2. Statistik-Folie (4 s) – Zahlen zählen animiert hoch wie in der Browser-
             #    Vorschau (Build h), als EIN Video-Segment; Fallback: statisches Bild

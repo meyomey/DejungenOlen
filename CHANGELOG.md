@@ -2,7 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build i) – Audit 2
+## 1.4.0 – 2026-10-13 (Build j) – Audit 2
+
+### Video: Einkehr nahe der Route, Fahrzeit & Schnitt, gezeichnete Wettersymbole (Build j)
+- **Fahrzeit & Ø Tempo aus GPX-Zeitstempeln:** `parse_gpx()` liefert zusätzlich `moving_s` (reine Fahrzeit, Pausen = Abschnitte langsamer als 1 km/h), `total_s` (gesamt), `avg_kmh`, `max_kmh`, `start_time`/`end_time` (Ortszeit Europe/Berlin). Statistik-Folie (Server-MP4 **und** Browser-Vorschau) zeigt zwei neue Kacheln „Fahrzeit · x:xx h gesamt“ und „Ø Tempo · max. xx km/h“ – nur wenn der Track Zeitstempel hat. Bei mehr als 4 Kacheln im Querformat/Quadrat drei Spalten; zu breite Werte werden automatisch kleiner gesetzt.
+- **Einkehr nahe der Route:** neuer Helfer `gastro_near_track()` (Gastro-Einträge höchstens `GASTRO_NEAR_M` = 150 m neben dem Track, mit Streckenkilometer und Abstand). Im MP4: eigene Folie „Einkehr unterwegs“ (max. 6 Zeilen + „… und N weitere“, gestaffelt eingeblendet) nach der Kartenfolie, und auf der Karte violette Marker mit Namensschild, sobald der Track dort vorbeikommt (Schilder bis 6 Treffer). Neue Option „🍴 Einkehr nahe der Route (nur MP4)“ in den Video-Einstellungen (Formularfeld `show_gastro`, Standard an).
+- **Wetter-Kachel ohne Emoji:** Das Symbol wird jetzt mit Pillow gezeichnet (Sonne, teils bewölkt, Wolke, Nebel, Regen, Schnee, Gewitter) – auf dem Server gibt es keinen Emoji-Font. Wetterabruf in `_tour_day_weather()` zusammengeführt (Videoseite + MP4); liegt die Tour länger als ~3 Monate zurück, wird das Open-Meteo-Archiv (`archive-api`) befragt, das die Prognose-API dann nicht mehr abdeckt. Voraussetzung bleibt: festes Datum + Treffpunkt-Koordinaten.
+- Getestet mit synthetischem GPX (Zeitstempel, 15-min-Pause), 7 Gastro-Einträgen und allen drei Formatfamilien; Einzelbilder geprüft.
 
 ### Server-MP4: Übergänge, Bildunterschriften, Logo, Profilbilder (Build i)
 - **Weiche Übergänge:** Jedes Segment (Folien und Fotos) blendet kurz ein (0,25 s) und aus (0,35 s) statt hart zu schneiden. Der Ken-Burns-Zoom läuft jetzt um die Bildmitte (vorher zog er Richtung linke obere Ecke).

@@ -85,6 +85,11 @@
           <label class="form-check-label small" for="show-stats">📊 Statistik-Folie zeigen</label>
         </div>
         <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="show-gastro" checked>
+          <label class="form-check-label small" for="show-gastro">🍴 Einkehr nahe der Route
+            <span class="text-muted">(nur MP4)</span></label>
+        </div>
+        <div class="form-check mb-2">
           <input class="form-check-input" type="checkbox" id="show-profile" checked>
           <label class="form-check-label small" for="show-profile">Höhenprofil zeigen</label>
         </div>
@@ -147,6 +152,7 @@
           <input type="hidden" name="photo_duration" id="server-photo-duration" value="5">
           <input type="hidden" name="show_track" id="server-show-track" value="1">
           <input type="hidden" name="show_stats" id="server-show-stats" value="1">
+          <input type="hidden" name="show_gastro" id="server-show-gastro" value="1">
           <input type="file" id="server-music" name="music" accept="audio/*" class="d-none">
           <button type="button" class="btn btn-outline-secondary w-100 mb-2 btn-sm"
                   onclick="document.getElementById('server-music').click()"
@@ -679,9 +685,15 @@ function drawStatsFrame(progress) {
   if (TOUR_ASC)   stats.push({val: Math.round(TOUR_ASC * eased), unit: 'm', label: 'Höhenmeter'});
   stats.push({val: Math.round(ATTENDING_COUNT * eased), unit: '', label: 'Dabei gewesen'});
   if (WEATHER)    stats.push({val: Math.round(WEATHER.temp_max * eased), unit: '°C', label: WEATHER.icon + ' Wetter'});
+  // Build j: Fahrzeit + Schnitt aus den GPX-Zeitstempeln (nur wenn der Track welche hat)
+  if (GPX_DATA && GPX_DATA.moving_s) {
+    const mins = Math.round(GPX_DATA.moving_s * eased / 60);
+    stats.push({val: Math.floor(mins / 60) + ':' + String(mins % 60).padStart(2, '0'), unit: ' h', label: 'Fahrzeit'});
+    if (GPX_DATA.avg_kmh) stats.push({val: (GPX_DATA.avg_kmh * eased).toFixed(1), unit: ' km/h', label: 'Ø Tempo'});
+  }
 
-  const cols = Math.min(stats.length, 2);
-  const tileW = 460, tileH = 150, gapX = 40, gapY = 30;
+  const cols  = stats.length > 4 ? 3 : Math.min(stats.length, 2);   // Build j: ab 5 Kacheln 3 Spalten
+  const tileW = cols === 3 ? 380 : 460, tileH = 150, gapX = 40, gapY = 30;
   const startX = W/2 - (cols * tileW + (cols-1) * gapX) / 2;
   const startY = 160;
 
@@ -820,6 +832,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const stats = document.getElementById('show-stats');
       document.getElementById('server-show-track').value = (track && track.checked) ? '1' : '0';
       document.getElementById('server-show-stats').value = (stats && stats.checked) ? '1' : '0';
+      const gastro = document.getElementById('show-gastro');
+      document.getElementById('server-show-gastro').value = (gastro && gastro.checked) ? '1' : '0';
     });
   }
 });
@@ -837,6 +851,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const stats = document.getElementById('show-stats');
     document.getElementById('server-show-track').value = (track && track.checked) ? '1' : '0';
     document.getElementById('server-show-stats').value = (stats && stats.checked) ? '1' : '0';
+    const gastro = document.getElementById('show-gastro');
+    document.getElementById('server-show-gastro').value = (gastro && gastro.checked) ? '1' : '0';
     const dur = document.getElementById('photo-duration');
     const sd  = document.getElementById('server-photo-duration');
     if (dur && sd) sd.value = dur.value;
