@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 c'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 d'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request

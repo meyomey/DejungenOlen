@@ -79,6 +79,8 @@ def changed_since(ref):
         parts = line.split('\t')
         status, path = parts[0][0], parts[-1]
         (deleted if status == 'D' else changed).add(path)
+        if status == 'R' and len(parts) == 3:      # umbenannt/verschoben: alter Pfad muss weg
+            deleted.add(parts[1])
     # Uncommittete Änderungen (modifiziert, neu, unversioniert)
     r = git('status', '--porcelain', '--untracked-files=all')
     for line in r.stdout.splitlines():
@@ -120,7 +122,7 @@ def hints(version, build, files, deleted, kind, mode):
         lines += [
             '  Enthält den vollständigen Projektstand – kann jederzeit über eine bestehende',
             '  Installation kopiert werden (.env, Datenbank, Uploads werden nicht berührt).',
-            '  Neuinstallation: siehe INSTALLATION_PLESK_FTP.md.',
+            '  Neuinstallation: siehe docs/INSTALLATION_PLESK_FTP.md.',
         ]
     else:
         lines += [f'  Enthält nur die geänderten Dateien ({mode}).']

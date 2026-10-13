@@ -2,11 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build c) – Audit 2
+## 1.4.0 – 2026-10-13 (Build d) – Audit 2
 
-### Auslieferung & Aufräumen (Build c)
+### Auslieferung & Aufräumen (Build c/d)
 - Neues Skript `make_deploy_zip.py`: erzeugt nach jeder Änderung zwei Pakete in `deploy/` – `…_komplett.zip` (gesamtes Projekt ohne `.env`, Datenbank, Uploads, Backups, venv, ffmpeg) und `…_aenderungen.zip` (nur geänderte Dateien seit der letzten Auslieferung). Jede ZIP enthält eine `_DEPLOY_HINWEISE.txt` mit Dateiliste, ggf. zu löschenden Dateien und den Schritten nach dem Upload.
 - Streuner aus dem Projektstamm entfernt: `create.html` (veraltete Kopie von `templates/touren/create.html`, nirgends verwendet) und `htaccess` ohne Punkt (identische Kopie von `.htaccess`). Beide können auch auf dem Server gelöscht werden.
+- Projektstamm aufgeräumt (Build d): Anleitungen und Audit-Bericht liegen jetzt in `docs/` (`INSTALLATION_PLESK_FTP.md`, `BACKUP_WIEDERHERSTELLEN.md`, `NEUE_GRUPPE.md`, `GITHUB_DESKTOP_SETUP.md`, `AUDIT_BERICHT.md`); `README.md` und `CHANGELOG.md` bleiben im Stamm. Die fünf ungenutzten Teil-Templates in `templates/touren/partials/` wurden entfernt (seit der Zusammenführung in `touren/detail.html` nirgends mehr eingebunden). README: Projektbaum aktualisiert, Abschnitt „Auslieferung per FTP“.
 
 ### Server-Python 3.9 → 3.11
 - `passenger_wsgi.py` ermittelt die Python-Version selbst (kein fest verdrahtetes `python3.9` mehr); der 3.9-Altbestand steht nur noch als letzter Fallback im Suchpfad, frisch installierte Pakete gewinnen. Auto-Install nutzt `pip --target --upgrade` (ersetzt für 3.9 gebaute Reste, umgeht die Debian-12-Sperre „externally-managed-environment“).
@@ -34,7 +35,7 @@ Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP
 - Toter Code (unerreichbarer alter `parse_gpx`-Rest) entfernt.
 
 ### Geänderte Dateien
-`app.py`, `passenger_wsgi.py`, `backup.sh`, `templates/base.html`, `templates/karte.html`, `templates/admin/install_packages.html`, `templates/gastro/list.html`, `templates/orte/list.html`, `templates/touren/detail.html`, `templates/admin/dashboard.html`, `templates/admin/announcements.html`, `templates/admin/notifications.html`, `templates/admin/gruppen.html`, `INSTALLATION_PLESK_FTP.md`, `README.md`, `AUDIT_BERICHT.md`, `CHANGELOG.md`, `make_deploy_zip.py` (neu), `deploy/` (neu); entfernt: `create.html`, `htaccess`
+`app.py`, `passenger_wsgi.py`, `backup.sh`, `templates/base.html`, `templates/karte.html`, `templates/admin/install_packages.html`, `templates/gastro/list.html`, `templates/orte/list.html`, `templates/touren/detail.html`, `templates/admin/dashboard.html`, `templates/admin/announcements.html`, `templates/admin/notifications.html`, `templates/admin/gruppen.html`, `INSTALLATION_PLESK_FTP.md`, `README.md`, `AUDIT_BERICHT.md`, `CHANGELOG.md`, `make_deploy_zip.py` (neu), `deploy/` (neu), `docs/` (verschoben); entfernt: `create.html`, `htaccess`, `templates/touren/partials/*`
 
 ---
 

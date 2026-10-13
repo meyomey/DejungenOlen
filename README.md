@@ -125,7 +125,7 @@ Beim ersten Aufruf erscheint der Setup-Wizard: Admin-Account anlegen, erste Grup
 
 ## Deployment (Plesk / Netcup)
 
-Vollständige Anleitung: [INSTALLATION_PLESK_FTP.md](INSTALLATION_PLESK_FTP.md)
+Vollständige Anleitung: [docs/INSTALLATION_PLESK_FTP.md](docs/INSTALLATION_PLESK_FTP.md)
 
 Kurzfassung:
 1. Dateien per FTP hochladen
@@ -144,7 +144,7 @@ Es gibt zwei Möglichkeiten:
 Eingebautes Feature: Admin → Gruppen verwalten → Neue Gruppe. Jede Gruppe hat eigene Mitglieder, Touren und Daten, alle in einer Datenbank sauber getrennt.
 
 **B) Separate Installationen**
-Für vollständig getrennte Server/Domains: [NEUE_GRUPPE.md](NEUE_GRUPPE.md)
+Für vollständig getrennte Server/Domains: [docs/NEUE_GRUPPE.md](docs/NEUE_GRUPPE.md)
 
 ---
 
@@ -152,13 +152,23 @@ Für vollständig getrennte Server/Domains: [NEUE_GRUPPE.md](NEUE_GRUPPE.md)
 
 ```
 dejungen_olen/
-├── app.py                  # Flask-App (120+ Routen)
+├── app.py                  # Flask-App (150 Routen)
 ├── config.py                # Konfiguration (liest aus .env)
 ├── models.py                 # SQLAlchemy-Modelle
 ├── exif_gps.py               # Pure-Python EXIF/GPS-Parser (JPEG + HEIC)
 ├── passenger_wsgi.py         # Phusion Passenger Einstiegspunkt
 ├── requirements.txt
 ├── .env.example               # Vorlage für Umgebungsvariablen
+├── backup.sh                 # Tägliches Backup (Plesk-Cron)
+├── make_deploy_zip.py        # Deploy-Pakete erzeugen (siehe unten)
+├── CHANGELOG.md
+├── docs/                     # Anleitungen & Audit-Bericht
+│   ├── INSTALLATION_PLESK_FTP.md
+│   ├── BACKUP_WIEDERHERSTELLEN.md
+│   ├── NEUE_GRUPPE.md
+│   ├── GITHUB_DESKTOP_SETUP.md
+│   └── AUDIT_BERICHT.md
+├── deploy/                   # Fertige ZIPs für den FTP-Upload
 ├── templates/
 │   ├── base.html              # Layout, Bottom Nav, Dark Mode, Logo-Cropper
 │   ├── index.html             # Startseite
@@ -172,12 +182,22 @@ dejungen_olen/
 │       ├── list.html          # Tourenliste (mit Mini-Karten)
 │       ├── detail.html        # Tour-Details
 │       ├── archiv.html        # Tourarchiv
-│       ├── geplant.html       # Touren ohne Termin
-│       └── partials/          # Fotos, Videos, Kommentare, Lightbox, JS
+│       └── geplant.html       # Touren ohne Termin
 └── static/
     ├── uploads/                # Fotos, GPX, Avatare, Videos, Gruppen-Logos
     └── sw.js                    # Service Worker (Offline-Karte)
 ```
+
+---
+
+## Auslieferung per FTP
+
+Nach jeder Änderung liegen in `deploy/` zwei fertige Pakete (erzeugt mit `python make_deploy_zip.py`):
+
+- `deploy_v<Version>_<Build>_komplett.zip` – gesamtes Projekt (ohne `.env`, Datenbank, Uploads, Backups, venv, ffmpeg)
+- `deploy_v<Version>_<Build>_aenderungen.zip` – nur die seit der letzten Auslieferung geänderten Dateien
+
+ZIP entpacken, Inhalt mit gleicher Ordnerstruktur per FTP in den App-Ordner kopieren, Passenger neu starten. Die `_DEPLOY_HINWEISE.txt` in jeder ZIP listet die Dateien, ggf. auf dem Server zu löschende Dateien und die Schritte nach dem Upload.
 
 ---
 
