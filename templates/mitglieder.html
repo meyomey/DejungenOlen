@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Mitglieder – De jungen Olen{% endblock %}
+
+{% block content %}
+<h2 class="fw-bold mb-1" style="color:var(--djo-navy)">
+  <i class="bi bi-people me-2"></i>Mitgliederverzeichnis
+</h2>
+<p class="text-muted mb-4">{{ members|length }} aktive Mitglieder</p>
+
+<div class="row g-3">
+  {% for m in members %}
+  <div class="col-12 col-sm-6 col-lg-4">
+    <div class="card h-100" style="border-left:4px solid var(--djo-navy)">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-3 mb-2">
+          <!-- Avatar -->
+          {% if m.user.avatar %}
+          <img src="{{ url_for('static', filename='uploads/avatars/' + m.user.avatar) }}"
+               alt="{{ m.user.display_name }}"
+               style="width:48px;height:48px;border-radius:50%;object-fit:cover;
+                      border:2px solid var(--djo-navy);flex-shrink:0">
+          {% else %}
+          <div class="participant-avatar flex-shrink-0"
+               style="width:48px;height:48px;font-size:1.2rem">
+            {{ m.user.display_name[0].upper() }}
+          </div>
+          {% endif %}
+          <div>
+            <div class="fw-bold">{{ m.user.name }}</div>
+            {% if m.user.nickname and m.user.nickname != m.user.name %}
+            <div class="text-muted small">"{{ m.user.nickname }}"</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Bike + role -->
+        <div class="d-flex flex-wrap gap-1 mb-2">
+          <span class="badge bg-light text-dark border small">
+            {{ {'trekking':'🚲 Trekking','rennrad':'🚴 Rennrad',
+                'mtb':'🚵 MTB','ebike':'⚡ E-Bike'}.get(m.user.bicycle_type, m.user.bicycle_type) }}
+            {% if m.user.is_ebike %} ⚡{% endif %}
+          </span>
+          {% if m.user.role == 'admin' %}
+          <span class="badge bg-danger">Admin</span>
+          {% elif m.user.role == 'organizer' %}
+          <span class="badge bg-warning text-dark">Organisator</span>
+          {% endif %}
+        </div>
+
+        <!-- Bio -->
+        {% if m.user.bio %}
+        <p class="small text-muted mb-2">{{ m.user.bio | truncate(80) }}</p>
+        {% endif %}
+
+        <!-- Stats -->
+        <div class="d-flex gap-3 mb-2">
+          <div class="text-center">
+            <div class="fw-bold" style="color:var(--djo-navy)">{{ m.tour_count }}</div>
+            <div class="stat-label">Touren</div>
+          </div>
+          {% if m.badges %}
+          <div class="text-center">
+            <div>{% for b in m.badges[:3] %}{{ b.icon }}{% endfor %}
+              {% if m.badges|length > 3 %}<span class="text-muted small">+{{ m.badges|length-3 }}</span>{% endif %}
+            </div>
+            <div class="stat-label">Abzeichen</div>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Birthday coming up? -->
+        {% if m.user.birthday %}
+        {% set today = today_date %}
+        <div class="text-muted small">
+          <i class="bi bi-balloon-heart me-1"></i>
+          {{ m.user.birthday.strftime('%d.%m.') }}
+        </div>
+        {% endif %}
+
+        <a href="{{ url_for('profil', user_id=m.user.id) }}"
+           class="btn btn-sm btn-outline-djo mt-2">Profil ansehen</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

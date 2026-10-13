@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Alte Tour eintragen – Archiv{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <div>
+    <a href="{{ url_for('archiv') }}" class="text-muted small">
+      <i class="bi bi-arrow-left me-1"></i>Zurück zum Archiv
+    </a>
+    <h2 class="fw-bold mt-1 mb-0" style="color:var(--djo-navy)">
+      <i class="bi bi-archive me-2"></i>Alte Tour ins Archiv eintragen
+    </h2>
+  </div>
+</div>
+<div class="row justify-content-center">
+<div class="col-12 col-lg-7">
+<div class="card">
+  <div class="card-header card-header-djo">Vergangene Tour erfassen</div>
+  <div class="card-body">
+    <div class="alert alert-info py-2 small mb-3">
+      <i class="bi bi-info-circle me-1"></i>
+      Für Touren die vor der App gefahren wurden. Status wird automatisch auf „Abgeschlossen" gesetzt.
+    </div>
+    <form method="post" enctype="multipart/form-data">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Titel *</label>
+        <input type="text" name="title" class="form-control" required
+               placeholder="z.B. Osterrunde 2023">
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-sm-5">
+          <label class="form-label fw-semibold">Datum *</label>
+          <input type="date" name="tour_date" class="form-control"
+                 max="{{ today.strftime('%Y-%m-%d') }}" required>
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label fw-semibold">Schwierigkeit</label>
+          <select name="difficulty" class="form-select">
+            {% for val, label in difficulties %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-sm-4">
+          <label class="form-label fw-semibold">Strecke (km)</label>
+          <input type="number" step="0.1" min="0" name="gpx_km" class="form-control"
+                 placeholder="42.5">
+          <div class="form-text">Wird automatisch aus GPX berechnet, falls leer.</div>
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label fw-semibold">Anstieg (m)</label>
+          <input type="number" step="1" min="0" name="gpx_ascent" class="form-control"
+                 placeholder="350">
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Beschreibung</label>
+        <textarea name="description" class="form-control" rows="3"
+                  placeholder="Streckenbeschreibung, besondere Punkte…"></textarea>
+      </div>
+      <div class="mb-4">
+        <label class="form-label fw-semibold">GPX-Datei <span class="text-muted fw-normal">(optional)</span></label>
+        <div id="archiv-gpx-drop"
+             style="border:2px dashed #adb5bd;border-radius:8px;padding:14px;
+                    text-align:center;cursor:pointer;transition:all .2s"
+             onclick="document.getElementById('archiv-gpx-input').click()"
+             ondragover="event.preventDefault();this.style.borderColor='#2B3F6B';this.style.background='rgba(43,63,107,.08)'"
+             ondragleave="this.style.borderColor='#adb5bd';this.style.background=''"
+             ondrop="event.preventDefault();this.style.borderColor='#adb5bd';this.style.background='';
+                     const dt=new DataTransfer();Array.from(event.dataTransfer.files).forEach(f=>dt.items.add(f));
+                     document.getElementById('archiv-gpx-input').files=dt.files;
+                     document.getElementById('archiv-gpx-name').textContent='✓ '+event.dataTransfer.files[0].name">
+          <i class="bi bi-file-earmark-arrow-up text-muted" style="font-size:1.5rem;display:block;margin-bottom:4px"></i>
+          <div class="small text-muted fw-semibold">GPX hierher ziehen oder klicken</div>
+          <div id="archiv-gpx-name" class="small text-success mt-1 fw-semibold"></div>
+        </div>
+        <input type="file" id="archiv-gpx-input" name="gpx_file" accept=".gpx" class="d-none"
+               onchange="document.getElementById('archiv-gpx-name').textContent='✓ '+this.files[0].name">
+        <div class="form-text">Falls vorhanden – km und Anstieg werden automatisch berechnet.</div>
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-djo px-4">
+          <i class="bi bi-archive me-1"></i>Ins Archiv eintragen
+        </button>
+        <a href="{{ url_for('archiv') }}" class="btn btn-outline-secondary">Abbrechen</a>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}

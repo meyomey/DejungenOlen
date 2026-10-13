@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Serverfehler – De jungen Olen{% endblock %}
+{% block content %}
+<div class="text-center py-5">
+  <div style="font-size:5rem">⚙️</div>
+  <h2 class="fw-bold mt-3" style="color:var(--djo-navy)">Serverfehler</h2>
+  <p class="text-muted">Etwas ist schiefgelaufen – der Fehler wurde geloggt.</p>
+  <a href="{{ url_for('index') }}" class="btn btn-djo mt-2">
+    <i class="bi bi-house me-1"></i>Zur Startseite
+  </a>
+</div>
+{% endblock %}

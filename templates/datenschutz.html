@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Datenschutz – {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-8">
+
+    <h2 class="fw-bold mb-4" style="color:var(--djo-navy)">
+      <i class="bi bi-shield-check me-2"></i>Datenschutz & DSGVO
+    </h2>
+
+    <div class="card mb-4">
+      <div class="card-header card-header-djo">Allgemeines</div>
+      <div class="card-body">
+        <p>
+          <strong>{{ site_name }}</strong> ist eine private, geschlossene Web-App für eine
+          Hobby-Radfahrergruppe. Der Zugang ist ausschließlich über Einladung möglich.
+          Es werden keine Daten an Dritte verkauft oder zu Werbezwecken genutzt.
+          Die App ist werbefrei.
+        </p>
+        <p>
+          Diese App ist kein kommerzielles Angebot. Die Datenerhebung beschränkt sich
+          auf das technisch notwendige Minimum zum Betrieb der Gruppenplattform.
+        </p>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header card-header-djo">Welche Daten werden gespeichert?</div>
+      <div class="card-body">
+        <ul>
+          <li><strong>Konto:</strong> Name, E-Mail, Passwort (gehasht mit bcrypt/Argon2), Spitzname, Fahrrad-Typ, Geburtstag (optional), Bio (optional)</li>
+          <li><strong>Touren:</strong> Teilnahmen, RSVP-Status, bestätigte Anwesenheit</li>
+          <li><strong>Fotos:</strong> Hochgeladene Bilder inkl. GPS-Metadaten aus EXIF (wenn vorhanden)</li>
+          <li><strong>Kommentare &amp; Bewertungen:</strong> Texte zu Touren und Gastronomie-Einträgen</li>
+          <li><strong>Tourenvorschläge &amp; Abstimmungen:</strong> Eingereichte Vorschläge und Stimmen</li>
+          <li><strong>Technisch:</strong> Session-Cookie für Login-Status</li>
+        </ul>
+        <p class="text-muted small mb-0">
+          Keine Tracking-Cookies. Keine externen Werbedienste. Keine Analyse-Tools.
+          Karten werden über OpenStreetMap geladen (Tile-Server-Anfragen ohne Login).
+        </p>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header card-header-djo">Deine Rechte (DSGVO Art. 15–21)</div>
+      <div class="card-body">
+        <ul>
+          <li><strong>Auskunft:</strong> Du kannst jederzeit beim Admin erfragen, welche Daten über dich gespeichert sind.</li>
+          <li><strong>Berichtigung:</strong> Deine Daten kannst du unter <em>Profil bearbeiten</em> selbst korrigieren.</li>
+          <li><strong>Löschung:</strong> Du kannst dein Konto und alle persönlichen Daten jederzeit selbst löschen (siehe unten).</li>
+          <li><strong>Widerspruch:</strong> Du kannst der Verarbeitung widersprechen. Kontaktiere dazu den Admin.</li>
+          <li><strong>Portabilität:</strong> Auf Anfrage beim Admin als CSV-Export erhältlich.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header card-header-djo">Drittdienste</div>
+      <div class="card-body">
+        <ul>
+          <li><strong>OpenStreetMap</strong> – Karten-Tiles werden vom OSM-Server geladen. Keine personenbezogene Übertragung.</li>
+          <li><strong>Open-Meteo</strong> – Wetterdaten für Tourtage. Keine personenbezogene Übertragung.</li>
+          <li><strong>Telegram</strong> – Benachrichtigungen werden an den konfigurierten Kanal gesendet. Keine Nutzerdaten werden übertragen. Das Telegram-Chat-Widget (falls aktiv) wird direkt von Telegram geladen.</li>
+          <li><strong>Overpass API (OSM)</strong> – Gastronomie-Suche. Keine personenbezogene Übertragung.</li>
+        </ul>
+      </div>
+    </div>
+
+    {% if current_user.is_authenticated %}
+    <!-- Account deletion -->
+    <div class="card border-danger mb-4">
+      <div class="card-header bg-danger text-white">
+        <i class="bi bi-exclamation-triangle me-1"></i>Konto &amp; Daten löschen
+      </div>
+      <div class="card-body">
+        <p>
+          Du kannst dein Konto unwiderruflich löschen. Deine persönlichen Daten
+          (Name, E-Mail, Profilbild, Bio, Geburtstag) werden sofort entfernt.
+          Toureinträge und Teilnahmen werden anonymisiert erhalten,
+          damit die Gruppenhistorie vollständig bleibt.
+        </p>
+        <form method="post" action="{{ url_for('datenschutz_delete_account') }}"
+              onsubmit="return confirm('Bist du sicher? Dein Konto wird unwiderruflich gelöscht!')">
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash me-1"></i>Mein Konto jetzt löschen
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="text-muted small">
+      <i class="bi bi-info-circle me-1"></i>
+      Bei Fragen zum Datenschutz wende dich an den Gruppen-Admin.
+    </div>
+
+  </div>
+</div>
+{% endblock %}
