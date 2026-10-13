@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 g'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 h'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2511,39 +2511,92 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'make_title_frame error: {e}', exc_info=True)
                 return False
 
-        def make_stats_frame(dst_path, attending_count, weather):
+        def _draw_stats_canvas(progress, attending_count, weather, names):
+            """Statistik-Folie für einen Animationsfortschritt 0..1 – gleiche Choreografie
+            wie drawStatsFrame() in touren/video.html: Kacheln blenden gestaffelt ein,
+            die Zahlen zählen in den ersten 60 % hoch (ease-out), Teilnehmernamen
+            erscheinen ab 55 %. progress=1.0 ergibt die fertige Folie."""
+            _ID = _ID_MOD
+            BG, TILE = (30, 45, 80), (58, 74, 108)
+
+            def lerp(c1, c2, a):   # Farbe c1→c2 mit Anteil a (ersetzt globalAlpha auf einfarbigem Grund)
+                return tuple(int(round(c1[i] + (c2[i] - c1[i]) * a)) for i in range(3))
+
+            canvas = _PIL.new('RGB', (W, H), BG)
+            draw = _ID.Draw(canvas)
+            cx = W//2
+            _centered_text(draw, cx, int(H*0.10), 'Die Tour in Zahlen',
+                          _pil_font(min(42, int(W/22))), (255,255,255))
+
+            count_p = min(1.0, progress / 0.6)
+            eased = 1 - (1 - count_p) ** 3           # easeOutCubic
+            stats = []
+            if tour.gpx_km:     stats.append((f'{tour.gpx_km * eased:.1f} km', 'Strecke'))
+            if tour.gpx_ascent: stats.append((f'{int(round(tour.gpx_ascent * eased))} m', 'Höhenmeter'))
+            stats.append((str(int(round(attending_count * eased))), 'Dabei gewesen'))
+            if weather:         stats.append((f"{int(round(weather['temp_max'] * eased))}°C", weather['icon'] + ' Wetter'))
+
+            cols = 2
+            tile_w, tile_h = int(W*0.4), int(H*0.15)
+            gap = int(W*0.04)
+            start_x = cx - (cols*tile_w + (cols-1)*gap)//2
+            start_y = int(H*0.28)
+            big_font = _pil_font(min(52, int(W/18)))
+            small_font = _pil_font(22, bold=False)
+            for idx, (val, label) in enumerate(stats):
+                col, row = idx % cols, idx // cols
+                x = start_x + col*(tile_w+gap)
+                y = start_y + row*(tile_h+gap)
+                a = max(0.0, min(1.0, (progress - idx*0.08) * 5))   # gestaffeltes Einblenden
+                if a <= 0:
+                    continue
+                tile_col = lerp(BG, TILE, a)
+                draw.rounded_rectangle([x, y, x+tile_w, y+tile_h], radius=16, fill=tile_col)
+                _centered_text(draw, x+tile_w//2, y+tile_h//2-38, val, big_font, lerp(tile_col, (255,255,255), a))
+                _centered_text(draw, x+tile_w//2, y+tile_h//2+16, label, small_font, lerp(tile_col, (210,210,210), a))
+
+            if names and progress > 0.55:
+                a = min(1.0, (progress - 0.55) * 3)
+                name_font = _pil_font(20, bold=False)
+                shown = min(8, len(names))
+                while shown > 1:   # so viele Namen wie in die Breite passen
+                    txt = ' · '.join(names[:shown]) + (f' +{len(names)-shown}' if len(names) > shown else '')
+                    if draw.textlength(txt, font=name_font) <= W - 80:
+                        break
+                    shown -= 1
+                else:
+                    txt = names[0] + (f' +{len(names)-1}' if len(names) > 1 else '')
+                _centered_text(draw, cx, H - 90, txt, name_font, lerp(BG, (225,225,225), a))
+            return canvas
+
+        def build_stats_frames(attending_count, weather, names):
+            """Animierte Statistik-Folie (4 s) als Einzelbilder für frames_to_segment():
+            15 Bilder/s bis alles steht (3,6 s), danach ein Haltebild."""
+            if not PIL_OK:
+                return []
+            try:
+                total, anim_secs, step_fps = 4.0, 3.6, 15
+                n_anim = int(anim_secs * step_fps)
+                frames = []
+                for i in range(n_anim):
+                    progress = (i / step_fps) / total
+                    fpath = os.path.join(tmpdir, f'stats_{i:03d}.jpg')
+                    _draw_stats_canvas(progress, attending_count, weather, names).save(fpath, 'JPEG', quality=88)
+                    frames.append((fpath, round(1 / step_fps, 4)))
+                fpath = os.path.join(tmpdir, 'stats_hold.jpg')
+                _draw_stats_canvas(1.0, attending_count, weather, names).save(fpath, 'JPEG', quality=88)
+                frames.append((fpath, round(total - anim_secs, 3)))
+                return frames
+            except Exception as e:
+                app.logger.warning(f'build_stats_frames error: {e}', exc_info=True)
+                return []
+
+        def make_stats_frame(dst_path, attending_count, weather, names=None):
+            """Statische Statistik-Folie (Fallback, falls die Animation nicht gebaut werden kann)."""
             if not PIL_OK:
                 return False
             try:
-                _ID = _ID_MOD
-                canvas = _PIL.new('RGB', (W, H), (30, 45, 80))
-                draw = _ID.Draw(canvas)
-                cx = W//2
-                _centered_text(draw, cx, int(H*0.10), 'Die Tour in Zahlen',
-                              _pil_font(min(42, int(W/22))), (255,255,255))
-
-                stats = []
-                if tour.gpx_km:    stats.append((f'{tour.gpx_km} km', 'Strecke'))
-                if tour.gpx_ascent: stats.append((f'{int(tour.gpx_ascent)} m', 'Höhenmeter'))
-                stats.append((str(attending_count), 'Dabei gewesen'))
-                if weather:        stats.append((f"{weather['temp_max']}°C", weather['icon'] + ' Wetter'))
-
-                cols = 2
-                tile_w, tile_h = int(W*0.4), int(H*0.15)
-                gap = int(W*0.04)
-                start_x = cx - (cols*tile_w + (cols-1)*gap)//2
-                start_y = int(H*0.28)
-                big_font = _pil_font(min(52, int(W/18)))
-                small_font = _pil_font(22, bold=False)
-                for idx, (val, label) in enumerate(stats):
-                    col, row = idx % cols, idx // cols
-                    x = start_x + col*(tile_w+gap)
-                    y = start_y + row*(tile_h+gap)
-                    draw.rounded_rectangle([x, y, x+tile_w, y+tile_h], radius=16, fill=(58, 74, 108))
-                    _centered_text(draw, x+tile_w//2, y+tile_h//2-38, val, big_font, (255,255,255))
-                    _centered_text(draw, x+tile_w//2, y+tile_h//2+16, label, small_font, (210,210,210))
-
-                canvas.save(dst_path, 'JPEG', quality=92)
+                _draw_stats_canvas(1.0, attending_count, weather, names or []).save(dst_path, 'JPEG', quality=92)
                 return True
             except Exception as e:
                 app.logger.warning(f'make_stats_frame error: {e}', exc_info=True)
@@ -2713,6 +2766,9 @@ def tour_video_render(tour_id):
         _attending_count = TourParticipant.query.filter_by(
             tour_id=tour_id, status='attending'
         ).count()
+        _attending_names = [p.user.display_name for p in
+                            TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
+                            .join(User).order_by(User.name).limit(12).all()]
         _weather = None
         if tour.tour_date and not tour.is_date_open and tour.meeting_lat and tour.meeting_lng:
             try:
@@ -2772,14 +2828,20 @@ def tour_video_render(tour_id):
                         cf.write(f"file '{track_seg}'\n")
                         _slide_secs += track_dur
 
-            # 2. Statistik-Folie (4s) – als Video-Segment
+            # 2. Statistik-Folie (4 s) – Zahlen zählen animiert hoch wie in der Browser-
+            #    Vorschau (Build h), als EIN Video-Segment; Fallback: statisches Bild
             if show_stats:
-                stats_frame = os.path.join(tmpdir, 'slide_stats.jpg')
-                stats_seg   = os.path.join(tmpdir, 'seg_stats.mp4')
-                if make_stats_frame(stats_frame, _attending_count, _weather) and \
-                   image_to_segment(stats_frame, stats_seg, 4):
+                stats_seg = os.path.join(tmpdir, 'seg_stats.mp4')
+                stats_frames = build_stats_frames(_attending_count, _weather, _attending_names)
+                if stats_frames and frames_to_segment(stats_frames, stats_seg):
                     cf.write(f"file '{stats_seg}'\n")
-                    _slide_secs += 4
+                    _slide_secs += sum(d for _, d in stats_frames)
+                else:
+                    stats_frame = os.path.join(tmpdir, 'slide_stats.jpg')
+                    if make_stats_frame(stats_frame, _attending_count, _weather, _attending_names) and \
+                       image_to_segment(stats_frame, stats_seg, 4):
+                        cf.write(f"file '{stats_seg}'\n")
+                        _slide_secs += 4
 
             # 3. Fotos (mit flüssigem Ken-Burns-Zoom via FFmpeg zoompan-Filter)
             for i, p in enumerate(photos):

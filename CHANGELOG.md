@@ -2,7 +2,10 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build g) – Audit 2
+## 1.4.0 – 2026-10-13 (Build h) – Audit 2
+
+### Server-MP4: Statistik-Folie wieder animiert (Build h)
+- Die Zahlen auf der Folie „Die Tour in Zahlen“ zählen im Server-MP4 wieder hoch – gleiche Choreografie wie in der Browser-Vorschau (`drawStatsFrame`): Kacheln blenden gestaffelt ein, Strecke/Höhenmeter/Teilnehmer/Temperatur laufen in den ersten 60 % der 4 s mit Ease-out auf den Zielwert, danach erscheinen die Teilnehmernamen (max. 8, Rest als „+N“, auf Breite gekürzt). Technisch: 54 Einzelbilder (15/s) + Haltebild → ein Video-Segment über `frames_to_segment()`; schlägt das fehl, kommt wie bisher die statische Folie. Getestet mit der Projekt-ffmpeg (7.0.2) in der Sandbox: Bilder bei 3,2/3,7/4,4/6,5 s zeigen 10,9 → 31,5 → 43,9 → 47,3 km.
 
 ### Pillow-Pfade nachgezogen (Build f/g)
 - Hintergrund: Das Pillow in `venv/Lib/site-packages` war ein auf dem Server installierter Build für Python 3.9 (der Ordnername mit großem L stammt aus dem alten `passenger_wsgi.py`, nicht von einer Windows-venv). Es funktionierte unter 3.9 und fiel erst mit dem Python-Update auf 3.11 aus (`cannot import name '_imaging'`); seit Build e liegt dort ein 3.11-Build, Server-MP4s haben wieder Titel-/Statistik-Folie, Kartenanimation und Blur-Hintergrund. Zwei Punkte im Pillow-Pfad korrigiert:
