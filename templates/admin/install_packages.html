@@ -21,6 +21,20 @@
 </div>
 {% endif %}
 
+{% if py_info %}
+<div class="card mb-4">
+  <div class="card-header card-header-djo">Python-Umgebung auf dem Server</div>
+  <div class="card-body small py-2">
+    <div><strong>Python {{ py_info.version }}</strong> &middot; <code>{{ py_info.executable }}</code></div>
+    <ul class="mb-0 mt-1 ps-3">
+      {% for k, v in py_info.items() if k not in ('version', 'executable') %}
+      <li>{{ k }}: <code>{{ v }}</code></li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+
 <div class="card mb-4">
   <div class="card-header card-header-djo">Status</div>
   <div class="list-group list-group-flush">

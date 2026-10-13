@@ -2,7 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build a) – Audit 2
+## 1.4.0 – 2026-10-13 (Build b) – Audit 2
+
+### Server-Python 3.9 → 3.11
+- `passenger_wsgi.py` ermittelt die Python-Version selbst (kein fest verdrahtetes `python3.9` mehr); der 3.9-Altbestand steht nur noch als letzter Fallback im Suchpfad, frisch installierte Pakete gewinnen. Auto-Install nutzt `pip --target --upgrade` (ersetzt für 3.9 gebaute Reste, umgeht die Debian-12-Sperre „externally-managed-environment“).
+- Admin → Pakete installieren zeigt jetzt die laufende Python-Version und den Import-Status von Pillow, piexif, gpxpy, cryptography, pywebpush sowie den ImageMagick-Pfad – Server-Zustand ohne SSH prüfbar. Ziel-Pfad überspringt site-packages fremder Python-Versionen.
+- INSTALLATION_PLESK_FTP.md: Abschnitt „Python-Update des Servers“.
 
 ### Sicherheit
 - **Stored XSS auf der Karte und in Popups:** Namen/Notizen von Gastro-Spots, Orten, Tourtiteln, Treffpunkten, Bildunterschriften und Live-Standort-Namen wurden ungeschützt in `<script>`-Daten bzw. Leaflet-Popups eingesetzt. JSON wird jetzt `</script>`-sicher eingebettet (`_json_for_script`), Popups escapen Nutzerdaten über die neue globale JS-Funktion `escHtml()` (base.html). Inline-`confirm()`-Handler in Admin/Detail nutzen `|tojson|forceescape`.
@@ -25,7 +30,7 @@ Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP
 - Toter Code (unerreichbarer alter `parse_gpx`-Rest) entfernt.
 
 ### Geänderte Dateien
-`app.py`, `backup.sh`, `templates/base.html`, `templates/karte.html`, `templates/gastro/list.html`, `templates/orte/list.html`, `templates/touren/detail.html`, `templates/admin/dashboard.html`, `templates/admin/announcements.html`, `templates/admin/notifications.html`, `templates/admin/gruppen.html`, `AUDIT_BERICHT.md`, `CHANGELOG.md`
+`app.py`, `passenger_wsgi.py`, `backup.sh`, `templates/base.html`, `templates/karte.html`, `templates/admin/install_packages.html`, `templates/gastro/list.html`, `templates/orte/list.html`, `templates/touren/detail.html`, `templates/admin/dashboard.html`, `templates/admin/announcements.html`, `templates/admin/notifications.html`, `templates/admin/gruppen.html`, `INSTALLATION_PLESK_FTP.md`, `README.md`, `AUDIT_BERICHT.md`, `CHANGELOG.md`
 
 ---
 

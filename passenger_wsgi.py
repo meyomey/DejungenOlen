@@ -1,19 +1,34 @@
 """Phusion Passenger entry point for Netcup / Plesk hosting."""
 import os
 import sys
-import subprocess
 
 # Projektverzeichnis
 project_root = '/var/www/vhosts/hosting139268.a2e64.netcup.net/djo.wulmstorf.net/dejungen_olen'
+vhost_home   = '/var/www/vhosts/hosting139268.a2e64.netcup.net'
 
-# venv-Pfad – auf diesem Server: venv/Lib/site-packages (mit großem L)
+# Python-Version des laufenden Interpreters, z. B. "python3.11". Nicht mehr fest
+# verdrahtet: Nach dem Server-Update (3.9 → 3.11) zeigte der alte Pfad
+# ".local/lib/python3.9/site-packages" auf Pakete, die für 3.9 kompiliert waren.
+_pyver = 'python{}.{}'.format(sys.version_info.major, sys.version_info.minor)
+
+# venv-Pfad – auf diesem Server: venv/Lib/site-packages (mit großem L);
+# hierhin installieren Auto-Install und Admin → „Pakete installieren“ (pip --target).
 venv_path   = os.path.join(project_root, 'venv', 'Lib', 'site-packages')
-# User-installierte Pakete (pywebpush, cryptography etc.)
-local_path  = '/var/www/vhosts/hosting139268.a2e64.netcup.net/.local/lib/python3.9/site-packages'
 
-sys.path.insert(0, local_path)
-sys.path.insert(1, venv_path)
-sys.path.insert(2, project_root)
+# Suchpfade in Prioritätsreihenfolge – nur vorhandene Ordner werden eingetragen.
+# Der Altbestand für Python 3.9 steht bewusst ganz hinten: reine Python-Pakete von
+# dort funktionieren weiter, frisch installierte Pakete gewinnen aber immer.
+_candidates = [
+    os.path.join(vhost_home, '.local', 'lib', _pyver, 'site-packages'),  # pip install --user (aktuelle Version)
+    venv_path,
+    os.path.join(project_root, 'venv', 'lib', _pyver, 'site-packages'),  # klassisches venv-Layout
+    os.path.join(vhost_home, '.local', 'lib', 'python3.9', 'site-packages'),  # Altbestand vor dem Update
+]
+_paths = [p for p in _candidates if os.path.isdir(p)] + [project_root]
+for _p in reversed(_paths):
+    if _p in sys.path:
+        sys.path.remove(_p)
+    sys.path.insert(0, _p)
 
 # Fehlende Pakete automatisch installieren
 _required = ['pywebpush', 'cryptography']
@@ -43,8 +58,10 @@ if _missing:
 
     logging.info(f'Installing missing packages: {_missing} via {_pip_cmd}')
     try:
+        # --target umgeht die Debian-12-Sperre „externally-managed-environment“;
+        # --upgrade ersetzt Reste, die noch für eine ältere Python-Version gebaut wurden.
         result = subprocess.run(
-            _pip_cmd + ['install', '--quiet', '--target', venv_path] + _missing,
+            _pip_cmd + ['install', '--quiet', '--upgrade', '--target', venv_path] + _missing,
             capture_output=True, text=True, timeout=120
         )
         if result.returncode == 0:
@@ -53,9 +70,6 @@ if _missing:
             logging.warning(f'Auto-install failed: {result.stderr[:200]}')
     except Exception as _e:
         logging.warning(f'Auto-install exception: {_e}')
-
-sys.path.insert(0, venv_path)
-sys.path.insert(1, project_root)
 
 # Arbeitsverzeichnis setzen (wichtig für SQLite-Pfad)
 os.chdir(project_root)

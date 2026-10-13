@@ -129,7 +129,7 @@ Vollständige Anleitung: [INSTALLATION_PLESK_FTP.md](INSTALLATION_PLESK_FTP.md)
 
 Kurzfassung:
 1. Dateien per FTP hochladen
-2. In Plesk: Python 3.9+, `passenger_wsgi.py` als Startup-File
+2. In Plesk: Python 3.9+ (aktuell 3.11), `passenger_wsgi.py` als Startup-File
 3. `.env` mit eigenem `SECRET_KEY` anlegen (siehe `.env.example`)
 4. App neu starten
 5. Setup-Wizard aufrufen

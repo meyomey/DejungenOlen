@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 a'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 b'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3482,14 +3482,29 @@ def admin_backup():
 @admin_required
 def admin_install_packages():
     """Fehlende Python-Pakete manuell installieren."""
-    import subprocess, sys, importlib
+    import sys, importlib
     packages = ['pywebpush', 'cryptography']
     results  = []
-    # Ziel-Pfad: der venv-Ordner der schon in sys.path ist
+    # Ziel-Pfad: der venv-Ordner der schon in sys.path ist. Audit 1.4.0: Pfade einer
+    # anderen Python-Version (z. B. ".../python3.9/..." nach dem Update auf 3.11) überspringen.
+    _pyver = 'python{}.{}'.format(sys.version_info.major, sys.version_info.minor)
     venv_target = next(
-        (p for p in sys.path if 'site-packages' in p and os.path.isdir(p)),
+        (p for p in sys.path if 'site-packages' in p and os.path.isdir(p)
+         and (_pyver in p or not re.search(r'python3\.\d+', p))),
         None
     )
+    # Umgebungs-Diagnose (ohne SSH prüfbar): Python-Version + wichtige Module
+    py_info = {'version': sys.version.split()[0], 'executable': sys.executable}
+    for mod, label in (('PIL.Image', 'Pillow (Bildverarbeitung)'), ('piexif', 'piexif (EXIF)'),
+                       ('gpxpy', 'gpxpy (GPX)'), ('cryptography.hazmat.primitives.asymmetric.ec', 'cryptography'),
+                       ('pywebpush', 'pywebpush (Push)')):
+        try:
+            m = importlib.import_module(mod)
+            py_info[label] = ('OK – ' + os.path.dirname(getattr(m, '__file__', '') or '')).rstrip(' –')
+        except Exception as e:   # ImportError oder kaputte C-Erweiterung (z. B. für 3.9 gebaut)
+            py_info[label] = f'FEHLT/DEFEKT – {type(e).__name__}: {str(e)[:120]}'
+    import shutil as _sh
+    py_info['ImageMagick (Fallback)'] = _sh.which('convert') or _sh.which('magick') or 'nicht gefunden'
 
     if request.method == 'POST':
         for pkg in packages:
@@ -3502,10 +3517,12 @@ def admin_install_packages():
                 pass
             ok  = False
             log = ''
-            # Strategie 1: --target in bekannten site-packages Pfad
+            # Strategie 1: --target in bekannten site-packages Pfad (--upgrade ersetzt
+            # Reste einer älteren Python-Version; --target umgeht die Debian-12-Sperre
+            # „externally-managed-environment“). Strategie 2: normales pip install.
             cmds = [[sys.executable, '-m', 'pip', 'install', pkg, '--quiet']]
             if venv_target:
-                cmds.insert(0, [sys.executable, '-m', 'pip', 'install', pkg,
+                cmds.insert(0, [sys.executable, '-m', 'pip', 'install', pkg, '--upgrade',
                                 '--target', venv_target, '--quiet'])
             for cmd in cmds:
                 try:
@@ -3534,7 +3551,7 @@ def admin_install_packages():
                 results.append({'pkg': pkg, 'status': 'missing', 'ok': False, 'location': ''})
 
     return render_template('admin/install_packages.html',
-                           results=results, venv_target=venv_target)
+                           results=results, venv_target=venv_target, py_info=py_info)
 
 
 @app.route('/admin/')

@@ -8,7 +8,7 @@ mit Plesk-Oberfläche und FTP-Zugang (kein SSH erforderlich).
 ## Voraussetzungen
 
 - Netcup Webhosting mit Plesk
-- Python 3.9 verfügbar (in Plesk unter „Python")
+- Python 3.9 oder neuer (aktuell 3.11 auf dem Server) – in Plesk unter „Python"
 - FTP-Client (z.B. FileZilla)
 - Domain oder Subdomain eingerichtet
 
@@ -49,23 +49,19 @@ import secrets; print(secrets.token_hex(32))
 
 ## Schritt 3 – passenger_wsgi.py prüfen
 
+Die mitgelieferte `passenger_wsgi.py` ermittelt die Python-Version selbst
+(`python3.11`, `python3.9` …) und trägt nur vorhandene Paketpfade ein – nach einem
+Python-Update des Servers muss hier nichts mehr angepasst werden. Anzupassen sind nur
+`project_root` und `vhost_home` (HOSTING_ID / DOMAIN):
+
 ```python
-import sys, os
-
-# Pfad zur venv site-packages
-VENV = '/var/www/vhosts/HOSTING_ID/DOMAIN/dejungen_olen/venv/lib/python3.9/site-packages'
-sys.path.insert(0, VENV)
-
-# Pfad zur App
-sys.path.insert(0, '/var/www/vhosts/HOSTING_ID/DOMAIN/dejungen_olen')
-
-# pywebpush (vendored)
-LOCAL = '/var/www/vhosts/HOSTING_ID/.local/lib/python3.9/site-packages'
-if os.path.exists(LOCAL):
-    sys.path.insert(0, LOCAL)
-
-from app import app as application
+project_root = '/var/www/vhosts/HOSTING_ID/DOMAIN/dejungen_olen'
+vhost_home   = '/var/www/vhosts/HOSTING_ID'
 ```
+
+Gesucht wird (in dieser Reihenfolge): `~/.local/lib/pythonX.Y/site-packages`,
+`dejungen_olen/venv/Lib/site-packages` (Ziel von „Admin → Pakete installieren“),
+`dejungen_olen/venv/lib/pythonX.Y/site-packages`, zuletzt der Altbestand für Python 3.9.
 
 ---
 
@@ -116,6 +112,22 @@ Automatisch aktiv – ermöglicht parallele Lesezugriffe ohne Locks.
 ### Passenger neu starten
 Nach Code-Änderungen: In Plesk → Python → **Restart** klicken.
 Alternativ: `tmp/restart.txt` im App-Verzeichnis per FTP anlegen oder aktualisieren.
+
+### Python-Update des Servers (z. B. 3.9 → 3.11)
+Die App selbst ist versionsunabhängig; betroffen sind nur installierte Pakete mit
+C-Erweiterungen (Pillow, cryptography/cffi), die für die alte Version gebaut wurden.
+
+1. Plesk → Python: Version auf die neue (z. B. 3.11) stellen, Startup-File bleibt
+   `passenger_wsgi.py` → **Apply** → **Restart**.
+2. Als Admin anmelden → Admin → Tools → **Pakete installieren**: Der Kasten
+   „Python-Umgebung auf dem Server“ zeigt die laufende Version und ob Pillow,
+   cryptography, pywebpush und ImageMagick importierbar sind.
+3. Steht dort bei cryptography/pywebpush „FEHLT/DEFEKT“: Button **Pakete installieren /
+   aktualisieren** klicken – die Pakete werden passend zur neuen Python-Version nach
+   `venv/Lib/site-packages` installiert (`pip --target --upgrade`, funktioniert auch
+   trotz Debian-12-Sperre „externally-managed-environment“).
+4. Pillow „FEHLT/DEFEKT“ ist unkritisch – die Bildverarbeitung läuft dann über
+   ImageMagick (Fallback ist eingebaut).
 
 ---
 
