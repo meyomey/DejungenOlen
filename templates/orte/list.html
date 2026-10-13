@@ -141,7 +141,7 @@ if (POIS.length && document.getElementById('poi-map')) {
     });
     L.marker([p.lat, p.lng], {icon})
      .addTo(map)
-     .bindPopup(`<b>${p.icon} ${p.name}</b><br><small>${p.label}</small>${p.desc ? '<br>' + p.desc : ''}`);
+     .bindPopup(`<b>${p.icon} ${escHtml(p.name)}</b><br><small>${escHtml(p.label)}</small>${p.desc ? '<br>' + escHtml(p.desc) : ''}`);
     bounds.push([p.lat, p.lng]);
   });
   if (bounds.length > 1) map.fitBounds(bounds, {padding:[20,20]});

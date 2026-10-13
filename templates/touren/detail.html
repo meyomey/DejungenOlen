@@ -73,7 +73,7 @@
     {# Löschen: nur Admin oder Ersteller #}
     {% if current_user.is_admin or tour.created_by == current_user.id %}
     <form method="post" action="{{ url_for('tour_delete', tour_id=tour.id) }}"
-          onsubmit="return confirm('Tour „{{ tour.title }}" wirklich löschen? Alle Fotos werden auch gelöscht.')"
+          onsubmit="return confirm('Tour „' + {{ tour.title|tojson|forceescape }} + '“ wirklich löschen? Alle Fotos werden auch gelöscht.')"
           style="display:inline">
       <button class="btn btn-sm btn-outline-danger">
         <i class="bi bi-trash3 me-1"></i>Löschen
@@ -1955,7 +1955,7 @@ if (MEETING_LAT) {
   });
   L.marker([MEETING_LAT, MEETING_LNG], {icon: meetIcon})
    .addTo(map)
-   .bindPopup('<b>Treffpunkt</b><br>{{ tour.meeting_desc or "" }}');
+   .bindPopup('<b>Treffpunkt</b><br>' + escHtml({{ (tour.meeting_desc or "")|tojson }}));
 }
 
 // Photo markers – with MarkerCluster + hover sync
@@ -2003,9 +2003,10 @@ PHOTOS.forEach(p => {
   });
 
   const capHtml = p.cap
-    ? `<div style="font-size:.82rem;font-weight:600;color:#222;margin:4px 0 2px">${p.cap}</div>`
+    ? `<div style="font-size:.82rem;font-weight:600;color:#222;margin:4px 0 2px">${escHtml(p.cap)}</div>`
     : '';
-  const escapedCap = p.cap ? p.cap.replace(/'/g, "&#39;") : '';
+  // für den onclick-Handler: HTML-escapen, Apostroph zusätzlich JS-escapen
+  const escapedCap = p.cap ? escHtml(p.cap.replace(/\\/g, '\\\\')).replace(/&#39;/g, "\\'") : '';
   const popup = L.popup({maxWidth:240, className:'photo-popup'}).setContent(`
     <div style="text-align:center">
       <img src="${p.src}"
@@ -2016,7 +2017,7 @@ PHOTOS.forEach(p => {
       ${capHtml}
       <div style="font-size:.68rem;color:#aaa;margin-top:2px">🔍 Tippen zum Vergrößern</div>
       <div style="font-size:.72rem;color:#888;margin-top:3px">
-        ${p.is_taken ? '📸' : '📤'} ${p.date} &middot; ${p.user}
+        ${p.is_taken ? '📸' : '📤'} ${p.date} &middot; ${escHtml(p.user)}
       </div>
     </div>
   `);
@@ -2546,7 +2547,7 @@ function _pollLiveLocations() {
           html: '<div style="background:' + freshness + ';width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>',
           iconSize: [14,14], iconAnchor: [7,7], className: ''
         });
-        const popup = '<b>' + loc.name + '</b><br><small>vor ' + loc.ago + 's</small>';
+        const popup = '<b>' + escHtml(loc.name) + '</b><br><small>vor ' + loc.ago + 's</small>';
         if (_liveMarkers[loc.user_id]) {
           _liveMarkers[loc.user_id].setLatLng([loc.lat, loc.lng])
                                    .setPopupContent(popup);

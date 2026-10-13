@@ -185,7 +185,7 @@ if (SPOTS.length && document.getElementById('gastro-map')) {
     });
     L.marker([s.lat, s.lng], {icon})
      .addTo(map)
-     .bindPopup(`<b>${s.name}</b><br>${s.type}${s.opens ? '<br>🕐 ab ' + s.opens + ' Uhr' : ''}`);
+     .bindPopup(`<b>${escHtml(s.name)}</b><br>${escHtml(s.type)}${s.opens ? '<br>🕐 ab ' + escHtml(s.opens) + ' Uhr' : ''}`);
     bounds.push([s.lat, s.lng]);
   });
   if (bounds.length > 1) map.fitBounds(bounds, {padding:[20,20]});

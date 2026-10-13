@@ -135,7 +135,7 @@
               {% if g.member_count == 0 and g.tours.count() == 0 %}
               <li>
                 <form method="post" action="{{ url_for('group_delete', group_id=g.id) }}"
-                      onsubmit="return confirm('Leere Gruppe „{{ g.name }}\" wirklich löschen?')">
+                      onsubmit="return confirm('Leere Gruppe „' + {{ g.name|tojson|forceescape }} + '“ wirklich löschen?')">
                   <button type="submit" class="dropdown-item text-danger small">
                     <i class="bi bi-trash3 me-1"></i>Löschen (Gruppe ist leer)
                   </button>
@@ -147,7 +147,7 @@
               </li>
               <li>
                 <form method="post" action="{{ url_for('group_delete', group_id=g.id) }}"
-                      onsubmit="return confirm('ACHTUNG: Das löscht unwiderruflich ALLE {{ g.member_count }} Mitglieder, {{ g.tours.count() }} Touren, Fotos und Kommentare der Gruppe „{{ g.name }}\"!\\n\\nWirklich fortfahren?')">
+                      onsubmit="return confirm('ACHTUNG: Das löscht unwiderruflich ALLE {{ g.member_count }} Mitglieder, {{ g.tours.count() }} Touren, Fotos und Kommentare der Gruppe „' + {{ g.name|tojson|forceescape }} + '“!\\n\\nWirklich fortfahren?')">
                   <input type="hidden" name="force" value="1">
                   <button type="submit" class="dropdown-item text-danger small fw-bold">
                     <i class="bi bi-exclamation-triangle me-1"></i>Endgültig löschen (inkl. aller Daten)

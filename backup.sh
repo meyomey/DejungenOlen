@@ -6,7 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="${SCRIPT_DIR}/backups"
 DATE=$(date +%Y-%m-%d_%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/djo_backup_${DATE}.tar.gz"
-MAX_BACKUPS=14  # Fallback-Sicherheitsnetz, falls die Python-Generationen-Rotation nicht läuft
+# Fallback-Sicherheitsnetz, falls die Python-Generationen-Rotation (7 Tage + 8 Wochen
+# + 12 Monate = max. 27 Dateien) nicht läuft. Muss darüber liegen, sonst löscht dieses
+# Skript die Wochen-/Monats-Generationen wieder (Audit 1.4.0: vorher 14).
+MAX_BACKUPS=40
 
 mkdir -p "${BACKUP_DIR}"
 
@@ -63,10 +66,11 @@ tar -czf "${BACKUP_FILE}" \
   static/uploads/ \
   -C /tmp "djo_backup_$$.sqlite" \
   2>/dev/null
+TAR_RC=$?   # Audit 1.4.0: Exit-Code von tar sichern – vorher wurde der von rm geprüft
 
 rm -f "${TMPDB}"
 
-if [ $? -eq 0 ] && [ -f "${BACKUP_FILE}" ]; then
+if [ $TAR_RC -eq 0 ] && [ -f "${BACKUP_FILE}" ]; then
   SIZE=$(du -sh "${BACKUP_FILE}" | cut -f1)
   echo "$(date): Backup OK – ${BACKUP_FILE} (${SIZE}) – DB-Datei: ${DB_FILE}"
 else

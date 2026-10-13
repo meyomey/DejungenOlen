@@ -119,17 +119,17 @@ GASTRO.forEach(g => {
     iconSize:[30,30], iconAnchor:[15,15]
   });
   const rating = g.rating ? `⭐ ${g.rating}` : '';
-  const hours  = g.opens ? `🕐 ${g.opens}${g.closes ? ' – ' + g.closes : ''} Uhr` : '';
+  const hours  = g.opens ? `🕐 ${escHtml(g.opens)}${g.closes ? ' – ' + escHtml(g.closes) : ''} Uhr` : '';
   const badge  = g.morning ? '<br><span style="color:#2E7D4F;font-weight:bold">☀️ Frühöffner!</span>' : '';
 
   L.marker([g.lat, g.lng], {icon})
    .addTo(layers.gastro)
    .bindPopup(`
-     <b>${g.name}</b><br>
-     <small>${g.type}</small>
+     <b>${escHtml(g.name)}</b><br>
+     <small>${escHtml(g.type)}</small>
      ${hours ? '<br>' + hours : ''}
      ${rating ? '<br>' + rating : ''}
-     ${g.notes ? '<br><i>' + g.notes.substring(0,80) + '</i>' : ''}
+     ${g.notes ? '<br><i>' + escHtml(g.notes.substring(0,80)) + '</i>' : ''}
      ${badge}
    `);
 });
@@ -144,7 +144,7 @@ POIS.forEach(p => {
   });
   L.marker([p.lat, p.lng], {icon})
    .addTo(layers.pois)
-   .bindPopup(`<b>${p.icon} ${p.name}</b><br><small>${p.label}</small>${p.desc ? '<br>' + p.desc : ''}`);
+   .bindPopup(`<b>${p.icon} ${escHtml(p.name)}</b><br><small>${escHtml(p.label)}</small>${p.desc ? '<br>' + escHtml(p.desc) : ''}`);
 });
 document.getElementById('cnt-pois').textContent = POIS.length;
 
@@ -158,7 +158,7 @@ MEETINGS.forEach(m => {
   });
   L.marker([m.lat, m.lng], {icon})
    .addTo(layers.meetings)
-   .bindPopup(`<b>${m.title}</b><br>📅 ${m.date}${m.desc ? '<br>📍 ' + m.desc : ''}`);
+   .bindPopup(`<b>${escHtml(m.title)}</b><br>📅 ${m.date}${m.desc ? '<br>📍 ' + escHtml(m.desc) : ''}`);
 });
 document.getElementById('cnt-meetings').textContent = MEETINGS.length;
 

@@ -88,7 +88,7 @@
       <form method="post" action="{{ url_for('admin_reminder_test') }}"
             class="list-group-item list-group-item-action d-flex
                    justify-content-between align-items-center flex-wrap gap-2"
-            onsubmit="return confirm('Test-Erinnerung für „{{ t.title }}\" jetzt senden?')">
+            onsubmit="return confirm('Test-Erinnerung für „' + {{ t.title|tojson|forceescape }} + '“ jetzt senden?')">
         <input type="hidden" name="tour_id" value="{{ t.id }}">
         <div>
           <div class="fw-semibold small">{{ t.title }}</div>

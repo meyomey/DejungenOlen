@@ -3,6 +3,7 @@ import re
 import io
 import secrets
 import json
+import subprocess
 from datetime import datetime, date, timedelta
 from functools import wraps
 
@@ -39,6 +40,24 @@ def _tour_or_404(tour_id):
     return t
 
 
+def _own_group_or_404(obj):
+    """Objekt mit group_id (Vorlage, Nutzer …): Nicht-Admins nur in der eigenen Gruppe."""
+    if obj is None:
+        abort(404)
+    if (current_user.is_authenticated and not current_user.is_admin
+            and getattr(obj, 'group_id', None) and current_user.group_id
+            and obj.group_id != current_user.group_id):
+        abort(404)
+    return obj
+
+
+def _photo_tour_or_404(photo):
+    """Zur Foto-Tour gehörenden Gruppen-Check ausführen (Mandanten-Trennung)."""
+    if photo is None or photo.tour_id is None:
+        abort(404)
+    return _tour_or_404(photo.tour_id)
+
+
 def _rate_limit(key: str, max_calls: int = 5, window: int = 60) -> bool:
     now = _time.time()
     calls = [t for t in _rl_store[key] if now - t < window]
@@ -63,8 +82,8 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
-APP_VERSION = '1.3.0'
-APP_BUILD   = '2026-10-07 h'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_VERSION = '1.4.0'
+APP_BUILD   = '2026-10-13 a'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -73,6 +92,19 @@ def _security_headers(resp):
     resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
     resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     return resp
+
+
+# Audit 1.4.0: Private Uploads (Fotos, Videos, GPX, Avatare, Musik) liegen unter
+# /static/uploads/… und wären sonst ohne Login für jeden abrufbar, der die URL kennt.
+# Gruppen-Logos und Ankündigungsbilder bleiben öffentlich (Login-/Registrierungsseite).
+_PRIVATE_UPLOAD_PREFIXES = tuple(
+    f'/static/uploads/{d}/' for d in ('photos', 'videos', 'gpx', 'avatars', 'group_music'))
+
+
+@app.before_request
+def _protect_private_uploads():
+    if request.path.startswith(_PRIVATE_UPLOAD_PREFIXES) and not current_user.is_authenticated:
+        abort(404)
 
 
 @app.context_processor
@@ -157,6 +189,68 @@ def organizer_required(f):
             abort(403)
         return f(*args, **kwargs)
     return decorated
+
+
+# ─── Eingabe-Helfer (Audit 1.4.0) ────────────────────────────────────────────
+
+def _safe_redirect_target(target):
+    """Nur relative Pfade als Login-Weiterleitung zulassen (kein Open Redirect)."""
+    if not target:
+        return None
+    target = target.strip()
+    if target.startswith('/') and not target.startswith('//') and not target.startswith('/\\'):
+        return target
+    return None
+
+
+def _clean_url(value):
+    """Externe Links (Komoot, Webseite): nur http(s). Ohne Schema wird https:// ergänzt,
+    andere Schemata (javascript:, data:, …) werden verworfen."""
+    value = (value or '').strip()
+    if not value:
+        return None
+    if re.match(r'^[a-zA-Z][a-zA-Z0-9+.\-]*:', value):
+        return value if value.lower().startswith(('http://', 'https://')) else None
+    return 'https://' + value
+
+
+def _parse_float(value, default=None):
+    """Formularwert → float; leere/ungültige Eingaben ergeben default statt 500."""
+    value = (value or '').strip().replace(',', '.')
+    if not value:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
+def _parse_int(value, default=None):
+    value = (value or '').strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def _parse_date(value, default=None):
+    """Formularwert 'YYYY-MM-DD' → date; ungültig → default statt 500."""
+    value = (value or '').strip()
+    if not value:
+        return default
+    try:
+        return datetime.strptime(value, '%Y-%m-%d').date()
+    except ValueError:
+        return default
+
+
+def _json_for_script(obj):
+    """JSON zum Einbetten in <script>-Blöcke: <, > und & werden als \\uXXXX
+    maskiert, damit ein '</script>' in Nutzerdaten den Block nicht beenden kann."""
+    return (json.dumps(obj)
+            .replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026'))
 
 
 def _tile_xy(lat, lng, zoom):
@@ -574,31 +668,6 @@ def extract_datetime_from_exif(filepath):
     return None
 
 
-    """Return dict with track points, km, ascent; or None on error."""
-    try:
-        import gpxpy
-        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-            gpx = gpxpy.parse(f)
-
-        points = []
-        for track in gpx.tracks:
-            for seg in track.segments:
-                for pt in seg.points:
-                    points.append({
-                        'lat': round(pt.latitude, 6),
-                        'lng': round(pt.longitude, 6),
-                        'ele': round(pt.elevation or 0, 1)
-                    })
-
-        km     = round((gpx.length_3d() or gpx.length_2d() or 0) / 1000, 1)
-        ascent = round(gpx.get_uphill_downhill().uphill or 0, 0)
-
-        return {'points': points, 'km': km, 'ascent': int(ascent)}
-    except Exception as e:
-        app.logger.error(f'GPX parse error: {e}')
-        return None
-
-
 # ─── Context processor ────────────────────────────────────────────────────────
 @app.context_processor
 def inject_group_context():
@@ -650,6 +719,14 @@ app.jinja_env.globals['hasattr']   = hasattr
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
+    # Audit 1.4.0: Frische Installation (noch kein Admin) → direkt zum Setup-Wizard,
+    # wie in der Installationsanleitung beschrieben („erscheint automatisch“)
+    if request.method == 'GET':
+        try:
+            if User.query.filter_by(role='admin').first() is None:
+                return redirect(url_for('setup_wizard'))
+        except Exception:
+            pass
     # Öffentliche Ankündigungen – ohne group_id = gruppenübergreifend, da vor dem
     # Login noch kein Gruppen-Kontext feststeht
     login_announcements = get_visible_announcements(group_id=None, context='logged_out')
@@ -675,7 +752,7 @@ def login():
                 db.session.commit()
             except Exception:
                 pass
-            return redirect(request.args.get('next') or url_for('index'))
+            return redirect(_safe_redirect_target(request.args.get('next')) or url_for('index'))
         flash('E-Mail oder Passwort falsch.', 'danger')
     return render_template('auth/login.html', announcements=login_announcements,
                            contact_email=login_contact_email)
@@ -768,6 +845,11 @@ def forgot_password():
 @app.route('/passwort-reset/<token>', methods=['GET', 'POST'])
 def reset_password(token):
     pr = PasswordReset.query.filter_by(token=token, used=False).first_or_404()
+    # Audit 1.4.0: Link ist (wie in der Mail versprochen) nur 1 Stunde gültig
+    if pr.user is None or not pr.created_at or \
+            pr.created_at < datetime.utcnow() - timedelta(hours=1):
+        flash('Dieser Link ist abgelaufen. Bitte fordere einen neuen Reset-Link an.', 'warning')
+        return redirect(url_for('forgot_password'))
     if request.method == 'POST':
         pw  = request.form.get('password', '')
         pw2 = request.form.get('password2', '')
@@ -1196,7 +1278,7 @@ def tour_save_as_template(tour_id):
 @organizer_required
 def tour_template_delete(template_id):
     """Löscht eine Tour-Vorlage."""
-    tmpl = TourTemplate.query.get_or_404(template_id)
+    tmpl = _own_group_or_404(TourTemplate.query.get_or_404(template_id))
     if tmpl.gpx_file:
         try:
             os.remove(os.path.join(app.config['UPLOAD_FOLDER_GPX'], tmpl.gpx_file))
@@ -1214,7 +1296,7 @@ def tour_template_delete(template_id):
 @organizer_required
 def tour_create_from_template(template_id):
     """Erstellt sofort eine neue Tour (ohne Termin) aus einer Vorlage."""
-    tmpl = TourTemplate.query.get_or_404(template_id)
+    tmpl = _own_group_or_404(TourTemplate.query.get_or_404(template_id))
 
     new_gpx_file = None
     if tmpl.gpx_file:
@@ -1275,18 +1357,25 @@ def tour_create():
         approx_km     = request.form.get('approx_km', '').strip()
         external_link = request.form.get('external_link', '').strip()
 
+        # Audit 1.4.0: ungültiges Datum → Hinweis statt 500
+        parsed_date = _parse_date(tour_date)
+        if tour_date and parsed_date is None:
+            flash('Ungültiges Datum. Bitte im Format JJJJ-MM-TT auswählen.', 'danger')
+            return render_template('touren/create.html',
+                                   difficulties=Config.DIFFICULTY_CHOICES)
+
         from flask import g as _g_create
         _grp_create = getattr(_g_create, 'group', None)
         tour = Tour(
             title         = title,
             description   = desc,
-            tour_date     = datetime.strptime(tour_date, '%Y-%m-%d').date() if tour_date else date(9999, 12, 31),
+            tour_date     = parsed_date if parsed_date else date(9999, 12, 31),
             start_time    = start_time or None,
             difficulty    = difficulty,
-            approx_km     = float(approx_km) if approx_km else None,
-            external_link = external_link or None,
-            meeting_lat   = float(meet_lat) if meet_lat else None,
-            meeting_lng   = float(meet_lng) if meet_lng else None,
+            approx_km     = _parse_float(approx_km),
+            external_link = _clean_url(external_link),
+            meeting_lat   = _parse_float(meet_lat),
+            meeting_lng   = _parse_float(meet_lng),
             meeting_desc  = meet_desc or None,
             created_by    = current_user.id,
             group_id      = _grp_create.id if _grp_create else None,
@@ -1326,8 +1415,10 @@ def tour_create():
                 tour.gpx_km     = parsed.get('km')
                 tour.gpx_ascent = parsed.get('ascent')
         elif proposal_gpx:
+            # Audit 1.4.0: nur Dateinamen aus dem GPX-Ordner zulassen (kein Path Traversal)
+            proposal_gpx = os.path.basename(proposal_gpx)
             src = os.path.join(app.config['UPLOAD_FOLDER_GPX'], proposal_gpx)
-            if os.path.exists(src):
+            if proposal_gpx.lower().endswith('.gpx') and os.path.isfile(src):
                 import shutil
                 new_fname = f'tour_{tour.id}_{secrets.token_hex(4)}.gpx'
                 dst = os.path.join(app.config['UPLOAD_FOLDER_GPX'], new_fname)
@@ -1620,6 +1711,7 @@ def _resize_photo_if_needed(path, max_px=1600, quality=85):
 def photo_set_caption(photo_id):
     """Foto-Beschriftung setzen."""
     photo = TourPhoto.query.get_or_404(photo_id)
+    _photo_tour_or_404(photo)   # Audit 1.4.0: nur Fotos der eigenen Gruppe
     if not (current_user.is_admin or current_user.is_organizer or
             photo.user_id == current_user.id or
             photo.tour.created_by == current_user.id):
@@ -1795,7 +1887,7 @@ def tour_add_participant(tour_id):
     if not user_id:
         flash('Bitte einen Nutzer auswählen.', 'warning')
         return redirect(url_for('tour_detail', tour_id=tour_id))
-    user = User.query.get_or_404(user_id)
+    user = _own_group_or_404(User.query.get_or_404(user_id))   # Audit 1.4.0
     existing = TourParticipant.query.filter_by(tour_id=tour_id, user_id=user_id).first()
     if existing:
         existing.status = 'attending'
@@ -1817,6 +1909,7 @@ def tour_add_participant(tour_id):
 @login_required
 @organizer_required
 def tour_remove_participant(tour_id, user_id):
+    _tour_or_404(tour_id)   # Audit 1.4.0: nur Touren der eigenen Gruppe
     rsvp = TourParticipant.query.filter_by(tour_id=tour_id, user_id=user_id).first_or_404()
     user = User.query.get(user_id)
     db.session.delete(rsvp)
@@ -1861,21 +1954,23 @@ def tour_edit(tour_id):
             tour.created_by == current_user.id):
         abort(403)
     if request.method == 'POST':
-        tour.title        = request.form.get('title', '').strip()
+        # Audit 1.4.0: leerer Titel / ungültiges Datum → Hinweis statt leerer Tour bzw. 500
+        new_title     = request.form.get('title', '').strip()
+        tour_date_str = request.form.get('tour_date', '').strip()
+        parsed_date   = _parse_date(tour_date_str)
+        if not new_title or (tour_date_str and parsed_date is None):
+            flash('Bitte Titel und ein gültiges Datum angeben.', 'danger')
+            return redirect(url_for('tour_edit', tour_id=tour.id))
+        tour.title        = new_title
         tour.description  = request.form.get('description', '').strip() or None
-        tour_date_str     = request.form.get('tour_date', '').strip()
-        tour.tour_date    = (datetime.strptime(tour_date_str, '%Y-%m-%d').date()
-                             if tour_date_str else date(9999, 12, 31))
+        tour.tour_date    = parsed_date if parsed_date else date(9999, 12, 31)
         tour.start_time   = request.form.get('start_time', '').strip() or None
         tour.difficulty   = request.form.get('difficulty', 'mittel')
-        tour.approx_km    = float(request.form['approx_km']) if request.form.get('approx_km') else None
-        tour.external_link = request.form.get('external_link', '').strip() or None
+        tour.approx_km    = _parse_float(request.form.get('approx_km'))
+        tour.external_link = _clean_url(request.form.get('external_link'))
         tour.meeting_desc = request.form.get('meeting_desc', '').strip() or None
-        try:
-            tour.meeting_lat = float(request.form['meeting_lat']) if request.form.get('meeting_lat') else None
-            tour.meeting_lng = float(request.form['meeting_lng']) if request.form.get('meeting_lng') else None
-        except ValueError:
-            pass
+        tour.meeting_lat  = _parse_float(request.form.get('meeting_lat'))
+        tour.meeting_lng  = _parse_float(request.form.get('meeting_lng'))
         if current_user.is_admin:
             tour.status = request.form.get('status', tour.status)
         db.session.commit()
@@ -1912,10 +2007,22 @@ def tour_delete(tour_id):
         except Exception:
             pass
     title = tour.title
+    _delete_tour_dependents(tour_id)   # Audit 1.4.0: keine verwaisten Datensätze
     db.session.delete(tour)
     db.session.commit()
     flash(f'Tour „{title}" wurde gelöscht.', 'success')
     return redirect(url_for('tour_list'))
+
+
+def _delete_tour_dependents(tour_id):
+    """Löscht Datensätze ohne DB-Cascade, die sonst als Waisen zurückbleiben
+    (Videos, Kommentare, Zeitabstimmung, Bewertungen, Live-Standorte).
+    Teilnehmer und Fotos räumt SQLAlchemy über die Relationship-Cascade ab."""
+    for model in (TourVideo, TourComment, TimeVote, RouteRating, LiveLocation):
+        try:
+            model.query.filter_by(tour_id=tour_id).delete(synchronize_session=False)
+        except Exception as e:
+            app.logger.warning(f'tour_delete cleanup {model.__name__}: {e}')
 
 
 @app.route('/admin/tour/<int:tour_id>/bearbeiten', methods=['GET', 'POST'])
@@ -2768,23 +2875,25 @@ def archiv_new():
         if not title:
             flash('Titel ist erforderlich.', 'danger')
             return redirect(url_for('archiv_new'))
+        # Audit 1.4.0: ungültiges/fehlendes Datum → Hinweis statt 500
+        archiv_date = _parse_date(request.form.get('tour_date'))
+        if archiv_date is None:
+            flash('Bitte ein gültiges Datum angeben.', 'danger')
+            return redirect(url_for('archiv_new'))
         from flask import g as _g_archiv
         _grp_archiv = getattr(_g_archiv, 'group', None)
         tour = Tour(
             title        = title,
             description  = request.form.get('description', '').strip() or None,
-            tour_date    = datetime.strptime(request.form['tour_date'], '%Y-%m-%d').date(),
+            tour_date    = archiv_date,
             difficulty   = request.form.get('difficulty', 'mittel'),
             status       = 'completed',
             created_by   = current_user.id,
             meeting_desc = request.form.get('meeting_desc', '').strip() or None,
             group_id     = _grp_archiv.id if _grp_archiv else None,
         )
-        try:
-            tour.gpx_km     = float(request.form['gpx_km'])     if request.form.get('gpx_km')     else None
-            tour.gpx_ascent = float(request.form['gpx_ascent']) if request.form.get('gpx_ascent') else None
-        except ValueError:
-            pass
+        tour.gpx_km     = _parse_float(request.form.get('gpx_km'))      # akzeptiert auch "42,5"
+        tour.gpx_ascent = _parse_float(request.form.get('gpx_ascent'))
         db.session.add(tour)
         db.session.commit()
 
@@ -2899,6 +3008,15 @@ def location_update():
     accuracy = data.get('accuracy')
     if not all([tour_id, lat, lng]):
         return jsonify({'error': 'missing data'}), 400
+    # Audit 1.4.0: Zahlen erzwingen (keine Strings/Objekte in der DB)
+    try:
+        tour_id  = int(tour_id)
+        lat, lng = float(lat), float(lng)
+        accuracy = float(accuracy) if accuracy is not None else None
+    except (TypeError, ValueError):
+        return jsonify({'error': 'invalid data'}), 400
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return jsonify({'error': 'invalid coordinates'}), 400
     _tour_or_404(tour_id)
     from datetime import datetime as _dt
     existing = LiveLocation.query.filter_by(
@@ -2921,6 +3039,7 @@ def location_update():
 @login_required
 def location_get(tour_id):
     """Alle Live-Standorte einer Tour abrufen (Polling)."""
+    _tour_or_404(tour_id)   # Audit 1.4.0: nur Touren der eigenen Gruppe
     from datetime import datetime as _dt, timedelta
     # Nur Standorte die in den letzten 10 Minuten aktualisiert wurden
     cutoff = _dt.utcnow() - timedelta(minutes=10)
@@ -2930,7 +3049,7 @@ def location_get(tour_id):
     ).all()
     return jsonify({'locations': [{
         'user_id':  l.user_id,
-        'name':     l.user.display_name,
+        'name':     l.user.display_name if l.user else 'Unbekannt',
         'lat':      l.lat,
         'lng':      l.lng,
         'accuracy': l.accuracy,
@@ -3423,7 +3542,9 @@ def admin_install_packages():
 @admin_required
 def admin_dashboard():
     from datetime import timedelta
-    users   = _gq(User).order_by(User.created_at).all()
+    # anonymisierte (gelöschte) Konten nicht mehr anzeigen
+    users   = (_gq(User).filter(~User.email.like('%@deleted.local'))
+               .order_by(User.created_at).all())
     invites = _gq(InviteToken).order_by(InviteToken.created_at.desc()).all()
 
     cutoff_active   = date.today() - timedelta(days=30)
@@ -3544,14 +3665,45 @@ def admin_toggle_user(user_id):
 @login_required
 @admin_required
 def admin_delete_user(user_id):
-    user = User.query.get_or_404(user_id)
+    user = _own_group_or_404(User.query.get_or_404(user_id))   # Audit 1.4.0: nur eigene Gruppe
     if user.id == current_user.id:
         flash('Du kannst dich nicht selbst löschen.', 'warning')
         return redirect(url_for('admin_dashboard'))
-    db.session.delete(user)
+    # Audit 1.4.0: Hartes Löschen scheiterte mit IntegrityError (NOT NULL in
+    # tour_participants), sobald der Nutzer je an einer Tour teilgenommen hatte.
+    # Stattdessen – wie beim DSGVO-Selbstlöschen – anonymisieren: Historie
+    # (Teilnahmen, Fotos, Ranglisten der anderen) bleibt konsistent.
+    name = user.name
+    _anonymize_user(user)
     db.session.commit()
-    flash(f'Benutzer {user.name} wurde entfernt.', 'success')
+    flash(f'Benutzer {name} wurde entfernt (Konto anonymisiert und gesperrt).', 'success')
     return redirect(url_for('admin_dashboard'))
+
+
+def _anonymize_user(user):
+    """Persönliche Daten eines Nutzers entfernen, Datensatz für die Historie behalten."""
+    if user.avatar:
+        try:
+            path = os.path.join(app.config['UPLOAD_FOLDER_AVATARS'], user.avatar)
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+    user.name          = f'Gelöschter Nutzer {user.id}'
+    user.nickname      = None
+    user.email         = f'deleted_{user.id}@deleted.local'
+    user.password_hash = secrets.token_hex(32)
+    user.is_active     = False
+    user.role          = 'member'
+    user.avatar        = None
+    user.bio           = None
+    user.birthday      = None
+    # Geräte-/Standortdaten und offene Reset-Links gehören niemandem mehr
+    for model in (PushSubscription, LiveLocation, PasswordReset):
+        try:
+            model.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+        except Exception as e:
+            app.logger.warning(f'anonymize cleanup {model.__name__}: {e}')
 
 
 # ─── Phase 2: Gastronomie ─────────────────────────────────────────────────────
@@ -3649,16 +3801,23 @@ def gastro_list():
 @login_required
 def gastro_new():
     if request.method == 'POST':
+        # Audit 1.4.0: Name/Koordinaten prüfen statt 500 bei leeren Feldern
+        name = request.form.get('name', '').strip()
+        lat  = _parse_float(request.form.get('lat'))
+        lng  = _parse_float(request.form.get('lng'))
+        if not name or lat is None or lng is None:
+            flash('Bitte Name angeben und einen Punkt auf der Karte wählen.', 'danger')
+            return render_template('gastro/form.html', spot=None, gastro_types=GASTRO_TYPES)
         spot = GastroSpot(
-            name       = request.form.get('name','').strip(),
+            name       = name,
             spot_type  = request.form.get('spot_type','cafe'),
             address    = request.form.get('address','').strip() or None,
-            lat        = float(request.form.get('lat',0)),
-            lng        = float(request.form.get('lng',0)),
+            lat        = lat,
+            lng        = lng,
             opens_at   = request.form.get('opens_at','') or None,
             closes_at  = request.form.get('closes_at','') or None,
             phone      = request.form.get('phone','').strip() or None,
-            website    = request.form.get('website','').strip() or None,
+            website    = _clean_url(request.form.get('website')),
             notes      = request.form.get('notes','').strip() or None,
             added_by   = current_user.id,
         )
@@ -3686,20 +3845,23 @@ def gastro_detail(spot_id):
 @login_required
 def gastro_review(spot_id):
     GastroSpot.query.get_or_404(spot_id)
-    score = request.form.get('score')
+    # Audit 1.4.0: Score nur 1–5, ungültige Werte ignorieren statt 500
+    score = _parse_int(request.form.get('score'))
+    if score is not None and not 1 <= score <= 5:
+        score = None
     emoji = request.form.get('emoji','').strip()
     note  = request.form.get('note','').strip()
 
     existing = GastroReview.query.filter_by(spot_id=spot_id, user_id=current_user.id).first()
     if existing:
-        existing.score = int(score) if score else None
+        existing.score = score
         existing.emoji = emoji or None
         existing.note  = note or None
     else:
         rev = GastroReview(
             spot_id = spot_id,
             user_id = current_user.id,
-            score   = int(score) if score else None,
+            score   = score,
             emoji   = emoji or None,
             note    = note or None,
         )
@@ -3734,7 +3896,7 @@ def gastro_edit(spot_id):
         spot.opens_at  = request.form.get('opens_at', '').strip() or None
         spot.closes_at = request.form.get('closes_at', '').strip() or None
         spot.phone     = request.form.get('phone', '').strip() or None
-        spot.website   = request.form.get('website', '').strip() or None
+        spot.website   = _clean_url(request.form.get('website'))   # Audit 1.4.0: nur http(s)
         spot.notes     = request.form.get('notes', '').strip() or None
         try:
             spot.lat = float(request.form.get('lat'))
@@ -3815,11 +3977,11 @@ def gastro_import(spot_id):
     spot = GastroSpot.query.get_or_404(spot_id)
     if spot.added_by != current_user.id and not current_user.is_admin:
         abort(403)
-    fields = request.json or {}
-    if 'name'      in fields and fields['name']:     spot.name     = fields['name']
-    if 'address'   in fields and fields['address']:  spot.address  = fields['address']
-    if 'phone'     in fields and fields['phone']:    spot.phone    = fields['phone']
-    if 'website'   in fields and fields['website']:  spot.website  = fields['website']
+    fields = request.get_json(silent=True) or {}   # Audit 1.4.0: kein 415 bei fehlendem Content-Type
+    if 'name'      in fields and fields['name']:     spot.name     = str(fields['name'])[:120]
+    if 'address'   in fields and fields['address']:  spot.address  = str(fields['address'])[:200]
+    if 'phone'     in fields and fields['phone']:    spot.phone    = str(fields['phone'])[:30]
+    if 'website'   in fields and fields['website']:  spot.website  = _clean_url(str(fields['website']))
     if 'opens_at'  in fields and fields['opens_at']: spot.opens_at = fields['opens_at']
     if 'closes_at' in fields and fields['closes_at']:spot.closes_at= fields['closes_at']
     db.session.commit()
@@ -3889,7 +4051,13 @@ def tour_upload_video(tour_id):
                     app.logger.info('Faststart applied')
                 else:
                     app.logger.warning('Faststart failed: ' + _result.stderr.decode()[:200])
+                    # Audit 1.4.0: halbfertige Temp-Datei nicht liegen lassen
+                    try:
+                        os.remove(_faststart_path)
+                    except Exception:
+                        pass
         except Exception as _fe:
+            # Audit 1.4.0: vorher NameError ('subprocess' fehlte) → Faststart lief nie
             app.logger.warning(f'Faststart skipped: {_fe}')
 
         if filesize > max_video:
@@ -3920,7 +4088,7 @@ def tour_upload_video(tour_id):
 def tour_delete_video(video_id):
     """Video löschen."""
     video = TourVideo.query.get_or_404(video_id)
-    tour  = Tour.query.get(video.tour_id)
+    tour  = _tour_or_404(video.tour_id)   # Audit 1.4.0: Gruppen-Check
     if not (current_user.is_admin or current_user.is_organizer
             or video.user_id == current_user.id
             or (tour and tour.created_by == current_user.id)):
@@ -3987,11 +4155,18 @@ def poi_list():
 @login_required
 def poi_new():
     if request.method == 'POST':
+        # Audit 1.4.0: Name/Koordinaten prüfen statt 500 bei leeren Feldern
+        name = request.form.get('name', '').strip()
+        lat  = _parse_float(request.form.get('lat'))
+        lng  = _parse_float(request.form.get('lng'))
+        if not name or lat is None or lng is None:
+            flash('Bitte Name angeben und einen Punkt auf der Karte wählen.', 'danger')
+            return render_template('orte/form.html', poi=None, poi_categories=POI_CATEGORIES)
         poi = POI(
-            name        = request.form.get('name','').strip(),
+            name        = name,
             category    = request.form.get('category','pausenort'),
-            lat         = float(request.form.get('lat', 0)),
-            lng         = float(request.form.get('lng', 0)),
+            lat         = lat,
+            lng         = lng,
             description = request.form.get('description','').strip() or None,
             is_shared   = request.form.get('is_shared','1') == '1',
             added_by    = current_user.id,
@@ -4029,13 +4204,13 @@ def global_map():
         Tour.meeting_lat != None
     ).filter(Tour.tour_date!=None).order_by(Tour.tour_date.desc()).limit(30).all()
 
-    pois_json   = json.dumps([{
+    pois_json   = _json_for_script([{
         'id': p.id, 'name': p.name, 'cat': p.category,
         'icon': p.category_icon, 'label': p.category_label,
         'lat': p.lat, 'lng': p.lng, 'desc': p.description or ''
     } for p in pois])
 
-    gastro_json = json.dumps([{
+    gastro_json = _json_for_script([{
         'id': g.id, 'name': g.name, 'type': g.type_label,
         'lat': g.lat, 'lng': g.lng,
         'opens': g.opens_at or '', 'closes': g.closes_at or '',
@@ -4044,7 +4219,7 @@ def global_map():
         'notes': g.notes or ''
     } for g in gastro])
 
-    meetings_json = json.dumps([{
+    meetings_json = _json_for_script([{
         'id': t.id, 'title': t.title,
         'lat': t.meeting_lat, 'lng': t.meeting_lng,
         'desc': t.meeting_desc or '',
@@ -4335,7 +4510,12 @@ def send_reminders():
 def tour_comment(tour_id):
     tour = _tour_or_404(tour_id)
     content   = request.form.get('content','').strip()
-    parent_id = request.form.get('parent_id') or None
+    # Audit 1.4.0: parent_id muss eine Zahl sein und zu einem Kommentar dieser Tour gehören
+    parent_id = _parse_int(request.form.get('parent_id'))
+    if parent_id is not None:
+        parent = TourComment.query.get(parent_id)
+        if not parent or parent.tour_id != tour_id:
+            parent_id = None
     if not content:
         flash('Kommentar darf nicht leer sein.', 'warning')
         return redirect(url_for('tour_detail', tour_id=tour_id))
@@ -4344,7 +4524,7 @@ def tour_comment(tour_id):
         tour_id   = tour_id,
         user_id   = current_user.id,
         content   = content,
-        parent_id = int(parent_id) if parent_id else None
+        parent_id = parent_id
     )
     db.session.add(comment)
     db.session.commit()
@@ -5396,7 +5576,7 @@ def _can_edit_photo(photo, tour=None):
 @login_required
 def photo_delete(photo_id):
     photo = TourPhoto.query.get_or_404(photo_id)
-    tour  = Tour.query.get(photo.tour_id)
+    tour  = _photo_tour_or_404(photo)   # Audit 1.4.0: Gruppen-Check
     if not _can_edit_photo(photo, tour):
         abort(403)
     tour_id = photo.tour_id
@@ -5467,7 +5647,7 @@ def photo_reorder(tour_id):
 def photo_set_gps(photo_id):
     """Manually set or correct GPS for a photo."""
     photo = TourPhoto.query.get_or_404(photo_id)
-    tour  = Tour.query.get(photo.tour_id)
+    tour  = _photo_tour_or_404(photo)   # Audit 1.4.0: Gruppen-Check
     if not _can_edit_photo(photo, tour):
         abort(403)
     try:
@@ -5490,7 +5670,7 @@ def photo_set_gps(photo_id):
 def photo_clear_gps(photo_id):
     """Remove GPS coords from a photo."""
     photo = TourPhoto.query.get_or_404(photo_id)
-    tour  = Tour.query.get(photo.tour_id)
+    tour  = _photo_tour_or_404(photo)   # Audit 1.4.0: Gruppen-Check
     if not _can_edit_photo(photo, tour):
         abort(403)
     photo.lat = None
@@ -5678,6 +5858,7 @@ def admin_reset_pw(user_id):
 def api_reextract_gps(photo_id):
     """Re-run EXIF extraction on a saved photo. Returns JSON."""
     photo = TourPhoto.query.get_or_404(photo_id)
+    _photo_tour_or_404(photo)   # Audit 1.4.0: Gruppen-Check
     if photo.user_id != current_user.id and not current_user.is_admin:
         abort(403)
     path = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], photo.filename)
@@ -6089,6 +6270,7 @@ def group_delete(group_id):
                         os.remove(os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file))
                     except Exception:
                         pass
+                _delete_tour_dependents(tour.id)   # Audit 1.4.0
                 db.session.delete(tour)
             # Alle Mitglieder der Gruppe löschen (außer dem aktuell eingeloggten Super-Admin)
             for user in group.users.all():
@@ -6192,26 +6374,28 @@ def migrate_db():
     add_column('users', 'birthday',  'DATE')
 
     # ── Multi-Tenancy: Gruppen ────────────────────────────────────────────────
-    # groups-Tabelle
+    # groups-Tabelle (Audit 1.4.0: eigene Verbindung – vorher wurde die bereits
+    # geschlossene `conn` aus dem with-Block oben benutzt → Block lief nie durch)
     try:
-        conn.execute(text('''CREATE TABLE IF NOT EXISTS groups (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            slug        TEXT UNIQUE NOT NULL,
-            name        TEXT NOT NULL,
-            description TEXT,
-            logo        TEXT,
-            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-            is_active   INTEGER DEFAULT 1
-        )'''))
-        # Bestehende Installation: Standard-Gruppe aus SiteConfig erstellen
-        row = conn.execute(text("SELECT value FROM site_config WHERE key='group_name'")).fetchone()
-        group_name = row[0] if row else 'De jungen Olen'
-        exists = conn.execute(text("SELECT id FROM groups LIMIT 1")).fetchone()
-        if not exists:
-            conn.execute(text(
-                "INSERT INTO groups (slug, name) VALUES (:slug, :name)"
-            ), {'slug': 'default', 'name': group_name})
-        conn.commit()
+        with db.engine.connect() as conn:
+            conn.execute(text('''CREATE TABLE IF NOT EXISTS groups (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug        TEXT UNIQUE NOT NULL,
+                name        TEXT NOT NULL,
+                description TEXT,
+                logo        TEXT,
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_active   INTEGER DEFAULT 1
+            )'''))
+            # Bestehende Installation: Standard-Gruppe aus SiteConfig erstellen
+            row = conn.execute(text("SELECT value FROM site_config WHERE key='group_name'")).fetchone()
+            group_name = row[0] if row else 'De jungen Olen'
+            exists = conn.execute(text("SELECT id FROM groups LIMIT 1")).fetchone()
+            if not exists:
+                conn.execute(text(
+                    "INSERT INTO groups (slug, name) VALUES (:slug, :name)"
+                ), {'slug': 'default', 'name': group_name})
+            conn.commit()
     except Exception as e:
         app.logger.info(f'groups table: {e}')
 
@@ -6375,6 +6559,10 @@ def load_group_context():
     if current_user.is_authenticated:
         from flask import session as _sess
         gid = _sess.get('active_group_id') or getattr(current_user, 'group_id', None)
+        # Audit 1.4.0: Gruppenwechsel per Session nur für Admins – andere bleiben in
+        # ihrer eigenen Gruppe, auch wenn die Session einen anderen Wert enthält.
+        if gid and not current_user.is_admin and current_user.group_id:
+            gid = current_user.group_id
         if gid:
             _g.group = Group.query.get(gid)
         if not _g.group and current_user.group_id:
@@ -6574,21 +6762,9 @@ def datenschutz():
 @login_required
 def datenschutz_delete_account():
     """GDPR: user deletes own account and all personal data."""
-    user = current_user
-    # Delete avatar
-    if user.avatar:
-        path = os.path.join(app.config['UPLOAD_FOLDER_AVATARS'], user.avatar)
-        if os.path.exists(path):
-            os.remove(path)
+    user = User.query.get_or_404(current_user.id)
     # Anonymize instead of hard-delete (keep tour participation count intact)
-    user.name         = f'Gelöschter Nutzer {user.id}'
-    user.nickname     = None
-    user.email        = f'deleted_{user.id}@deleted.local'
-    user.password_hash = secrets.token_hex(32)
-    user.is_active    = False
-    user.avatar       = None
-    user.bio          = None
-    user.birthday     = None
+    _anonymize_user(user)
     db.session.commit()
     logout_user()
     flash('Dein Konto und deine persönlichen Daten wurden gelöscht.', 'success')
@@ -6704,7 +6880,10 @@ def tour_ical(tour_id):
 
     # Build iCal manually – no extra lib needed
     start_time = tour.start_time or '09:00'
-    hh, mm     = map(int, start_time.split(':'))
+    # Audit 1.4.0: freie Eingaben wie "9 Uhr" nicht mit 500 quittieren
+    m_time = re.match(r'^\s*(\d{1,2})(?::(\d{2}))?', start_time)
+    hh = min(int(m_time.group(1)), 23) if m_time else 9
+    mm = min(int(m_time.group(2) or 0), 59) if m_time else 0
     dt_start   = f"{tour.tour_date.strftime('%Y%m%d') if tour.tour_date else '20000101'}T{hh:02d}{mm:02d}00"
     dt_end     = f"{tour.tour_date.strftime('%Y%m%d') if tour.tour_date else '20000101'}T{min(hh+4,23):02d}{mm:02d}00"
     dt_stamp   = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
@@ -6783,7 +6962,13 @@ def foto_challenge():
     # Recent photos from this month for the challenge
     from datetime import timedelta
     month_start = date.today().replace(day=1)
-    recent_photos = (TourPhoto.query
+    # Audit 1.4.0: nur Fotos aus Touren der aktiven Gruppe (Mandanten-Trennung)
+    from flask import g as _g
+    _grp = getattr(_g, 'group', None)
+    photo_q = TourPhoto.query.join(Tour, TourPhoto.tour_id == Tour.id)
+    if _grp:
+        photo_q = photo_q.filter(Tour.group_id == _grp.id)
+    recent_photos = (photo_q
                      .filter(TourPhoto.created_at >= month_start)
                      .order_by(TourPhoto.created_at.desc())
                      .limit(24).all())
@@ -7103,7 +7288,7 @@ def server_error(e):
 # SETUP_KEY wird in der .env-Datei gesetzt.
 # Die Route ist dauerhaft deaktiviert sobald ein Admin-Konto existiert.
 
-@app.route('/setup', methods=['GET'])
+@app.route('/setup', methods=['GET', 'POST'])   # Audit 1.4.0: POST fehlte → Formular ohne SETUP_KEY lief auf 405
 @app.route('/setup/<path:key>', methods=['GET', 'POST'])
 def setup_wizard(key=''):
     """Web-basierte Ersteinrichtung ohne Shell-Zugriff."""
