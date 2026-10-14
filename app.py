@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-14 s'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-14 t'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -1607,7 +1607,9 @@ def gastro_near_track(points, max_m=GASTRO_NEAR_M, limit=12):
                               'type_label': labels.get(sp.spot_type, 'Einkehr'),
                               'lat': sp.lat, 'lng': sp.lng, 'dist_m': int(round(best_d)),
                               'km': round(cum[best_i] / 1000, 1),
-                              'frac': best_i / max(1, len(pts) - 1)})
+                              'frac': best_i / max(1, len(pts) - 1),
+                              'opens_at': sp.opens_at or '', 'hours': hours_de(getattr(sp, 'hours_text', None)),
+                              'closed_days': closed_days(getattr(sp, 'hours_text', None))})   # Build t
         found.sort(key=lambda x: (x['km'], x['name']))
         return found[:limit]
     except Exception as e:
@@ -4773,6 +4775,115 @@ GASTRO_TYPES = [
     ('other',      '📍 Sonstiges'),
 ]
 
+_OH_DAYS_EN = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+_OH_DAYS_DE = {'Mo': 'Mo', 'Tu': 'Di', 'We': 'Mi', 'Th': 'Do', 'Fr': 'Fr', 'Sa': 'Sa', 'Su': 'So',
+               'PH': 'Feiertag', 'SH': 'Schulferien'}
+_DE_DAY_WORDS = {'montag': 'Mo', 'dienstag': 'Di', 'mittwoch': 'Mi', 'donnerstag': 'Do', 'freitag': 'Fr',
+                 'samstag': 'Sa', 'sonnabend': 'Sa', 'sonntag': 'So',
+                 'mo': 'Mo', 'di': 'Di', 'mi': 'Mi', 'do': 'Do', 'fr': 'Fr', 'sa': 'Sa', 'so': 'So'}
+_DE_DAYTOK = r'(?:Montags?|Dienstags?|Mittwochs?|Donnerstags?|Freitags?|Samstags?|Sonnabends?|Sonntags?|Mo|Di|Mi|Do|Fr|Sa|So)\.?'
+_DE_DAYLIST = rf'{_DE_DAYTOK}(?:\s*(?:,|\+|&|/|und|bis|-|–)\s*{_DE_DAYTOK})*'
+
+
+@app.template_filter('hours_de')
+def hours_de(text):
+    """Build t: OSM-opening_hours lesbar machen – „Mo-Fr 08:00-18:00; Sa 08:00-13:00; Su off“ →
+    „Mo–Fr 08:00–18:00 · Sa 08:00–13:00 · So geschlossen“. Deutscher Freitext bleibt unverändert."""
+    if not text:
+        return ''
+    out = str(text)
+    out = re.sub(r'\b(Mo|Tu|We|Th|Fr|Sa|Su|PH|SH)\b', lambda m: _OH_DAYS_DE[m.group(1)], out)
+    out = re.sub(r'(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})', r'\1–\2', out)
+    out = re.sub(r'\b(Mo|Di|Mi|Do|Fr|Sa|So)-(Mo|Di|Mi|Do|Fr|Sa|So)\b', r'\1–\2', out)
+    out = re.sub(r'\b(off|closed)\b', 'geschlossen', out)
+    out = out.replace('24/7', 'rund um die Uhr').replace('||', ' oder ')
+    out = re.sub(r'\s*;\s*', ' · ', out)
+    return out.strip(' ·')
+
+
+def _expand_day_range(a, b):
+    ia, ib = _OH_DAYS_EN.index(a), _OH_DAYS_EN.index(b)
+    return _OH_DAYS_EN[ia:ib + 1] if ia <= ib else _OH_DAYS_EN[ia:] + _OH_DAYS_EN[:ib + 1]
+
+
+@app.template_filter('closed_days')
+def closed_days(text):
+    """Build t: Ruhetage als Liste deutscher Kürzel, best effort – aus OSM („Mo off“, „Mo,Tu off“,
+    „Mo-We off“) oder deutschem Freitext („Montag Ruhetag“, „Ruhetag: Mo + Di“, „Di geschlossen“)."""
+    if not text:
+        return []
+    days = []
+    for rule in re.split(r'[;|]+', str(text)):
+        r = rule.strip()
+        if not r:
+            continue
+        m = re.match(r'^((?:(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?)'
+                     r'(?:\s*,\s*(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?)*)\s*(?:,\s*PH\s*)?(?:off|closed)\b', r)
+        if m:
+            for part in re.split(r'\s*,\s*', m.group(1)):
+                if '-' in part:
+                    a, b = part.split('-', 1)
+                    days += [_OH_DAYS_DE[x] for x in _expand_day_range(a, b)]
+                else:
+                    days.append(_OH_DAYS_DE[part])
+            continue
+        found = re.findall(rf'\b({_DE_DAYLIST})\s*(?:ist\s+|=\s*)?(?:Ruhetag|geschlossen|zu)\b', r, re.I) + \
+                re.findall(rf'Ruhetage?\s*:?\s*({_DE_DAYLIST})(?![a-zäöü])', r, re.I)
+        for lst in found:
+            toks = [t.rstrip('.') for t in re.findall(_DE_DAYTOK, lst, re.I)]
+            codes = [_DE_DAY_WORDS.get(t.lower().rstrip('s') if len(t) > 3 else t.lower()) for t in toks]
+            if len(toks) == 2 and re.search(r'\b(bis)\b|[-–]', lst) and codes[0] in _OH_DAYS_DE.values() and codes[1] in _OH_DAYS_DE.values():
+                inv = {v: k for k, v in _OH_DAYS_DE.items() if k in _OH_DAYS_EN}
+                codes = [_OH_DAYS_DE[x] for x in _expand_day_range(inv[codes[0]], inv[codes[1]])]
+            days += [c for c in codes if c]
+    seen = []
+    for d in days:
+        if d and d not in seen:
+            seen.append(d)
+    return seen
+
+
+def _gastro_form_vals(spot=None, form=None):
+    """Build t: Formularwerte – aus dem Eintrag (Bearbeiten) oder aus der fehlgeschlagenen Eingabe
+    (vorher gingen bei einer Fehlermeldung alle eingegebenen Werte verloren)."""
+    keys = ('name', 'spot_type', 'address', 'opens_at', 'closes_at', 'hours_text', 'phone', 'website',
+            'notes', 'osm_id', 'lat', 'lng')
+    if form is not None:
+        vals = {k: (form.get(k) or '') for k in keys}
+    elif spot is not None:
+        vals = {k: (getattr(spot, k, None) or '') for k in keys}
+        vals['lat'] = f'{spot.lat:.6f}'
+        vals['lng'] = f'{spot.lng:.6f}'
+    else:
+        vals = {k: '' for k in keys}
+        vals['spot_type'] = 'cafe'
+    return vals
+
+
+def _gastro_find_duplicate(name, lat, lng, osm_id=None, exclude_id=None):
+    """Build t: Gibt (Eintrag, Grund) zurück, wenn es den Ort schon gibt – gleiche OSM-Verknüpfung,
+    gleicher Name im Umkreis von 100 m oder ein Eintrag näher als 25 m; sonst (None, None)."""
+    q = GastroSpot.query
+    if exclude_id:
+        q = q.filter(GastroSpot.id != exclude_id)
+    if osm_id:
+        d = q.filter(GastroSpot.osm_id == osm_id).first()
+        if d:
+            return d, 'gleicher OpenStreetMap-Eintrag'
+    if lat is None or lng is None:
+        return None, None
+    cands = q.filter(GastroSpot.lat.between(lat - 0.002, lat + 0.002),
+                     GastroSpot.lng.between(lng - 0.004, lng + 0.004)).all()
+    norm = re.sub(r'\W+', '', (name or '').lower())
+    for c in cands:
+        dist = _geo_dist_m(lat, lng, c.lat, c.lng)
+        if dist <= 25:
+            return c, f'liegt nur {int(dist)} m entfernt'
+        if norm and dist <= 100 and re.sub(r'\W+', '', (c.name or '').lower()) == norm:
+            return c, f'gleicher Name, {int(dist)} m entfernt'
+    return None, None
+
+
 def _gastro_can_edit(spot):
     """Build s: Eintrag ändern/löschen dürfen Admins, Organisatoren und wer ihn angelegt hat."""
     return bool(current_user.is_authenticated and
@@ -4877,7 +4988,17 @@ def gastro_list():
     avgs = {sid: round(float(a), 1) for sid, a in avg_rows if a is not None}
     for sp in spots:
         sp._avg_rating = avgs.get(sp.id)
-    return render_template('gastro/list.html', spots=spots,
+    # Build t: Kartendaten (Typ-Symbol, Öffnungszeiten, Ruhetage) und Treffpunkt für „nach Entfernung“
+    spots_js = [{'id': sp.id, 'name': sp.name, 'spot_type': sp.spot_type, 'type': sp.type_label,
+                 'lat': sp.lat, 'lng': sp.lng, 'opens': sp.opens_at or '', 'hours': hours_de(sp.hours_text),
+                 'closed': closed_days(sp.hours_text), 'morning': bool(sp.is_morning_friendly),
+                 'address': sp.address or '', 'rating': sp.avg_rating,
+                 'url': url_for('gastro_detail', spot_id=sp.id)} for sp in spots]
+    meeting = None
+    m_lat, m_lng = _parse_float(cfg('default_meeting_lat')), _parse_float(cfg('default_meeting_lng'))
+    if m_lat is not None and m_lng is not None:
+        meeting = {'lat': m_lat, 'lng': m_lng, 'desc': cfg('default_meeting_desc') or 'Treffpunkt'}
+    return render_template('gastro/list.html', spots=spots, spots_js=spots_js, meeting=meeting,
                            gastro_types=GASTRO_TYPES,
                            morning_only=morning_only, typ=typ, q=q,
                            morning_threshold=morning_threshold)
@@ -4890,6 +5011,7 @@ def _gastro_fill_from_form(spot):
     spot.address   = request.form.get('address', '').strip()[:200] or None
     spot.opens_at  = request.form.get('opens_at', '').strip()[:5] or None
     spot.closes_at = request.form.get('closes_at', '').strip()[:5] or None
+    spot.hours_text = request.form.get('hours_text', '').strip()[:300] or None   # Build t
     spot.phone     = request.form.get('phone', '').strip()[:30] or None
     spot.website   = _clean_url(request.form.get('website'))        # Audit 1.4.0: nur http(s)
     spot.notes     = request.form.get('notes', '').strip() or None
@@ -4909,12 +5031,22 @@ def gastro_new():
         # Audit 1.4.0: Name/Koordinaten prüfen statt 500 bei leeren Feldern
         if not spot.name or spot.lat is None or spot.lng is None:
             flash('Bitte Name angeben und einen Punkt auf der Karte wählen.', 'danger')
-            return render_template('gastro/form.html', spot=None, gastro_types=GASTRO_TYPES)
+            return render_template('gastro/form.html', spot=None, gastro_types=GASTRO_TYPES,
+                                   vals=_gastro_form_vals(form=request.form))
+        # Build t: Doppelte Einträge vermeiden (gleiche osm_id, gleicher Name < 100 m, Punkt < 25 m)
+        dup, reason = _gastro_find_duplicate(spot.name, spot.lat, spot.lng, spot.osm_id)
+        if dup and not request.form.get('force'):
+            from markupsafe import Markup, escape
+            flash(Markup(f'„{escape(dup.name)}“ ist schon eingetragen ({escape(reason)}) – '
+                         f'<a href="{url_for("gastro_detail", spot_id=dup.id)}" class="alert-link">zum Eintrag</a>. '
+                         f'Ist es wirklich ein anderer Betrieb, unten „Trotzdem anlegen“ anhaken.'), 'warning')
+            return render_template('gastro/form.html', spot=None, gastro_types=GASTRO_TYPES,
+                                   vals=_gastro_form_vals(form=request.form), dup=dup)
         db.session.add(spot)
         db.session.commit()
         flash(f'"{spot.name}" wurde hinzugefügt!', 'success')
         return redirect(url_for('gastro_detail', spot_id=spot.id))
-    return render_template('gastro/form.html', spot=None, gastro_types=GASTRO_TYPES)
+    return render_template('gastro/form.html', spot=None, gastro_types=GASTRO_TYPES, vals=_gastro_form_vals())
 
 
 @app.route('/gastro/<int:spot_id>')
@@ -4984,18 +5116,15 @@ def gastro_edit(spot_id):
         abort(403)
     if request.method == 'POST':
         _gastro_fill_from_form(spot)
-        if spot.lat is None or spot.lng is None:
+        if spot.lat is None or spot.lng is None or not spot.name:
             db.session.rollback()
-            flash('Ungültige Koordinaten.', 'danger')
-            return render_template('gastro/form.html', spot=GastroSpot.query.get(spot_id), gastro_types=GASTRO_TYPES)
-        if not spot.name:
-            db.session.rollback()
-            flash('Name ist erforderlich.', 'danger')
-            return render_template('gastro/form.html', spot=GastroSpot.query.get(spot_id), gastro_types=GASTRO_TYPES)
+            flash('Ungültige Koordinaten.' if spot.name else 'Name ist erforderlich.', 'danger')
+            return render_template('gastro/form.html', spot=GastroSpot.query.get(spot_id), gastro_types=GASTRO_TYPES,
+                                   vals=_gastro_form_vals(form=request.form))
         db.session.commit()
         flash('Eintrag aktualisiert.', 'success')
         return redirect(url_for('gastro_detail', spot_id=spot.id))
-    return render_template('gastro/form.html', spot=spot, gastro_types=GASTRO_TYPES)
+    return render_template('gastro/form.html', spot=spot, gastro_types=GASTRO_TYPES, vals=_gastro_form_vals(spot=spot))
 
 
 @app.route('/api/gastro/<int:spot_id>/osm-lookup')
@@ -5035,6 +5164,7 @@ def gastro_import(spot_id):
     if fields.get('phone'):     spot.phone     = str(fields['phone'])[:30]
     if fields.get('website'):   spot.website   = _clean_url(str(fields['website']))
     if fields.get('osm_id'):    spot.osm_id    = str(fields['osm_id'])[:30]
+    if fields.get('hours_text'): spot.hours_text = str(fields['hours_text'])[:300]   # Build t
     for key in ('opens_at', 'closes_at'):
         val = str(fields.get(key) or '').strip()
         if re.match(r'^\d{2}:\d{2}$', val):
@@ -7470,6 +7600,7 @@ def migrate_db():
 
     # users table – new columns added over time
     add_column('users', 'last_login', 'DATETIME')
+    add_column('gastro_spots', 'hours_text', 'VARCHAR(300)')   # Build t: Öffnungszeiten-Text / Ruhetage
 
     # Push Subscriptions
     try:

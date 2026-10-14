@@ -45,15 +45,22 @@
     <div class="card mb-3">
       <div class="card-body">
         <div class="row g-3">
-          {% if spot.opens_at or spot.closes_at %}
+          {% if spot.opens_at or spot.closes_at or spot.hours_text %}
+          {% set ruhetage = spot.hours_text|closed_days %}
           <div class="col-12 col-sm-6">
             <div class="small text-muted fw-semibold">Öffnungszeiten</div>
             <div>
+              {% if spot.opens_at or spot.closes_at %}
               {{ spot.opens_at or '?' }} – {{ spot.closes_at or '?' }} Uhr
               {% if spot.is_morning_friendly %}
               <span class="badge bg-success ms-1">Früh offen</span>
               {% endif %}
+              {% endif %}
+              {% for d in ruhetage %}<span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1" title="Ruhetag">Ruhetag {{ d }}</span>{% endfor %}
             </div>
+            {% if spot.hours_text %}
+            <div class="small text-muted mt-1">🕐 {{ spot.hours_text|hours_de }}</div>
+            {% endif %}
           </div>
           {% endif %}
           {% if spot.address %}
@@ -82,7 +89,7 @@
             <div style="white-space:pre-line">{{ spot.notes }}</div>
           </div>
           {% endif %}
-          {% if not (spot.opens_at or spot.closes_at or spot.address or spot.phone or spot.website or spot.notes) %}
+          {% if not (spot.opens_at or spot.closes_at or spot.hours_text or spot.address or spot.phone or spot.website or spot.notes) %}
           <div class="col-12 text-muted small">
             Noch keine Details hinterlegt{% if can_edit %} – über „Bearbeiten“ ergänzen oder rechts aus OpenStreetMap holen{% endif %}.
           </div>
@@ -287,7 +294,8 @@
 <script>
 const SPOT = {{ {'id': spot.id, 'name': spot.name, 'lat': spot.lat, 'lng': spot.lng,
                  'address': spot.address or '', 'phone': spot.phone or '', 'website': spot.website or '',
-                 'opens_at': spot.opens_at or '', 'closes_at': spot.closes_at or '', 'osm_id': spot.osm_id or ''}|tojson }};
+                 'opens_at': spot.opens_at or '', 'closes_at': spot.closes_at or '', 'hours_text': spot.hours_text or '',
+                 'osm_id': spot.osm_id or ''}|tojson }};
 
 const map = L.map('spot-map').setView([SPOT.lat, SPOT.lng], 16);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -298,7 +306,7 @@ L.marker([SPOT.lat, SPOT.lng])
  .bindPopup('<b>' + escHtml(SPOT.name) + '</b>').openPopup();
 
 // ── Build s: OSM-Abgleich ─────────────────────────────────────────────────────
-const OSM_FIELD_LABELS = {address: 'Adresse', phone: 'Telefon', website: 'Website', opens_at: 'Öffnet', closes_at: 'Schließt'};
+const OSM_FIELD_LABELS = {address: 'Adresse', phone: 'Telefon', website: 'Website', opens_at: 'Öffnet', closes_at: 'Schließt', hours_text: 'Öffnungszeiten'};
 const OSM_KIND_LABEL = {cafe: 'Café', bar: 'Bar', pub: 'Kneipe', restaurant: 'Restaurant', biergarten: 'Biergarten',
                         fast_food: 'Imbiss', bakery: 'Bäckerei', pastry: 'Konditorei', ice_cream: 'Eisdiele'};
 
@@ -319,7 +327,7 @@ function osmChanges(c) {          // Felder, die in OSM gefüllt sind und sich v
   const upd = {};
   const m = (c.opening_hours || '').match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
   const vals = {address: c.address, phone: c.phone, website: c.website,
-                opens_at: m ? m[1] : '', closes_at: m ? m[2] : ''};
+                opens_at: m ? m[1] : '', closes_at: m ? m[2] : '', hours_text: c.opening_hours || ''};
   for (const k in vals) { if (vals[k] && vals[k] !== SPOT[k]) upd[k] = vals[k]; }
   if (c.osm_id && c.osm_id !== SPOT.osm_id) upd.osm_id = c.osm_id;
   return upd;

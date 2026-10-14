@@ -2,7 +2,30 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-14 (Build s) – Audit 2
+## 1.4.0 – 2026-10-14 (Build t) – Audit 2
+
+### Gastro-Bereich: Öffnungszeiten/Ruhetage, Duplikate, Liste (Build t)
+
+- **Öffnungszeiten als Text + Ruhetage:** neue Spalte `gastro_spots.hours_text` (automatische
+  Migration). Freitext („Mo Ruhetag, Di–So 9–18 Uhr“) oder OSM-Format; OSM-Format wird lesbar
+  angezeigt („Mo–Fr 08:00–18:00 · So geschlossen“, Filter `hours_de`) und Ruhetage werden erkannt
+  (Filter `closed_days`, auch „montags geschlossen“, „Ruhetag: Mo + Di“) und als rotes Badge in
+  Liste, Detailseite und den Einkehr-Popups der Tour-Karte gezeigt. OSM-Übernahme und OSM-Abgleich
+  speichern jetzt den kompletten opening_hours-Text statt nur der ersten Uhrzeit.
+- **Doppelte Einträge:** Beim Anlegen wird geprüft, ob derselbe Ort schon existiert (gleiche
+  OSM-Verknüpfung, gleicher Name im Umkreis von 100 m oder ein Eintrag näher als 25 m) → Warnung mit
+  Link zum bestehenden Eintrag; „Trotzdem anlegen“ als bewusste Ausnahme.
+- **Formular:** Bei Fehlermeldungen (fehlende Koordinaten, Duplikat) bleiben alle Eingaben erhalten
+  (vorher leeres Formular).
+- **Liste:** Marker mit Typ-Symbol (☕🥐🍺🍽️🥪), Popup mit Öffnungszeiten/Ruhetag/Bewertung und Link,
+  Clustering ab 25 Einträgen, Treffpunkt-Fahne; Sofort-Filter (Text, Typ, Frühöffner) für Karten und
+  Marker ohne Neuladen; Frühöffner-Schwelle direkt in der Filterleiste; Sortierung „Nähe zu mir“
+  (Standort) und „Nähe zum Treffpunkt“ mit Entfernungs-Badges; „Auf der Karte zeigen“ je Eintrag.
+- Betroffene Dateien: `app.py` (`hours_de`, `closed_days`, `_gastro_form_vals`,
+  `_gastro_find_duplicate`, `gastro_new`/`gastro_edit`/`gastro_list`/`gastro_import`,
+  `gastro_near_track`, `migrate_db`, Build-Kennung), `models.py` (`hours_text`),
+  `templates/gastro/form.html`, `templates/gastro/detail.html`, `templates/gastro/list.html`,
+  `templates/touren/detail.html` (Einkehr-Popup).
 
 ### Gastro-Bereich: Fehler und tote Funktionen (Build s)
 

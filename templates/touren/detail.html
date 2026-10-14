@@ -2051,6 +2051,8 @@ GASTRO_NEAR.forEach(sp => {
   L.marker([sp.lat, sp.lng], {icon, title: sp.name, zIndexOffset: -200})
     .bindPopup(`<b>${escHtml(sp.name)}</b><br>
                 <span class="text-muted small">${escHtml(sp.type_label)} · km ${String(sp.km).replace('.', ',')} · ${sp.dist_m} m neben der Strecke</span><br>
+                ${sp.hours ? '<span class="small">🕐 ' + escHtml(sp.hours) + '</span><br>' : (sp.opens_at ? '<span class="small">🕐 ab ' + escHtml(sp.opens_at) + ' Uhr</span><br>' : '')}
+                ${(sp.closed_days || []).length ? '<span class="small text-danger">Ruhetag: ' + sp.closed_days.join(', ') + '</span><br>' : ''}
                 <a href="${sp.url}" class="small">Details &amp; Bewertungen</a>`)
     .addTo(gastroLayer);
 });

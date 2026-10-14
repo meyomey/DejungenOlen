@@ -30,47 +30,53 @@
           </div>
           <div class="card-body">
             <form method="post" id="gastroForm">
-              <input type="hidden" name="osm_id" id="fosm" value="{{ spot.osm_id or '' if spot else '' }}">
+              <input type="hidden" name="osm_id" id="fosm" value="{{ vals.osm_id }}">
               <div class="mb-3">
                 <label class="form-label fw-semibold">Name *</label>
                 <input type="text" name="name" class="form-control" required maxlength="120"
-                       id="fname" placeholder="Café Sonnenschein" value="{{ spot.name if spot else '' }}">
+                       id="fname" placeholder="Café Sonnenschein" value="{{ vals.name }}">
               </div>
               <div class="mb-3">
                 <label class="form-label fw-semibold">Typ</label>
                 <select name="spot_type" class="form-select" id="ftype">
                   {% for val, label in gastro_types %}
-                  <option value="{{ val }}" {% if spot and spot.spot_type == val %}selected{% endif %}>{{ label }}</option>
+                  <option value="{{ val }}" {% if vals.spot_type == val %}selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
               </div>
               <div class="mb-3">
                 <label class="form-label fw-semibold">Adresse</label>
                 <input type="text" name="address" class="form-control" id="faddress" maxlength="200"
-                       placeholder="Musterstraße 1, 28870 Ottersberg" value="{{ spot.address or '' if spot else '' }}">
+                       placeholder="Musterstraße 1, 28870 Ottersberg" value="{{ vals.address }}">
               </div>
               <div class="row g-2 mb-3">
                 <div class="col-6">
                   <label class="form-label fw-semibold">Öffnet um</label>
-                  <input type="time" name="opens_at" class="form-control" id="fopens" value="{{ spot.opens_at or '' if spot else '' }}">
+                  <input type="time" name="opens_at" class="form-control" id="fopens" value="{{ vals.opens_at }}">
                 </div>
                 <div class="col-6">
                   <label class="form-label fw-semibold">Schließt um</label>
-                  <input type="time" name="closes_at" class="form-control" id="fcloses" value="{{ spot.closes_at or '' if spot else '' }}">
+                  <input type="time" name="closes_at" class="form-control" id="fcloses" value="{{ vals.closes_at }}">
                 </div>
               </div>
               <div class="mb-3">
+                <label class="form-label fw-semibold">Öffnungszeiten im Detail / Ruhetag</label>
+                <input type="text" name="hours_text" class="form-control" id="fhours" maxlength="300"
+                       placeholder="z. B. Mo Ruhetag, Di–So 9–18 Uhr" value="{{ vals.hours_text }}">
+                <div class="form-text">Freitext oder OSM-Format („Mo-Fr 08:00-18:00; Su off“) – Ruhetage werden erkannt und hervorgehoben.</div>
+              </div>
+              <div class="mb-3">
                 <label class="form-label fw-semibold">Telefon</label>
-                <input type="text" name="phone" class="form-control" id="fphone" maxlength="30" placeholder="+49 ..." value="{{ spot.phone or '' if spot else '' }}">
+                <input type="text" name="phone" class="form-control" id="fphone" maxlength="30" placeholder="+49 ..." value="{{ vals.phone }}">
               </div>
               <div class="mb-3">
                 <label class="form-label fw-semibold">Website</label>
-                <input type="url" name="website" class="form-control" id="fwebsite" maxlength="200" placeholder="https://…" value="{{ spot.website or '' if spot else '' }}">
+                <input type="url" name="website" class="form-control" id="fwebsite" maxlength="200" placeholder="https://…" value="{{ vals.website }}">
               </div>
               <div class="mb-3">
                 <label class="form-label fw-semibold">Notizen</label>
                 <textarea name="notes" class="form-control" rows="3" id="fnotes"
-                          placeholder="Geheimtipp, Besonderheiten…">{{ spot.notes or '' if spot else '' }}</textarea>
+                          placeholder="Geheimtipp, Besonderheiten…">{{ vals.notes }}</textarea>
               </div>
               <!-- Koordinaten -->
               <div class="row g-2 mb-3">
@@ -78,14 +84,14 @@
                   <label class="form-label fw-semibold small">Breitengrad (lat)</label>
                   <input type="number" step="0.000001" name="lat" id="hlat"
                          class="form-control form-control-sm font-monospace"
-                         placeholder="52.963700" value="{{ '%.6f'|format(spot.lat) if spot else '' }}"
+                         placeholder="52.963700" value="{{ vals.lat }}"
                          oninput="syncMapFromInput()" required>
                 </div>
                 <div class="col-6">
                   <label class="form-label fw-semibold small">Längengrad (lng)</label>
                   <input type="number" step="0.000001" name="lng" id="hlng"
                          class="form-control form-control-sm font-monospace"
-                         placeholder="9.089100" value="{{ '%.6f'|format(spot.lng) if spot else '' }}"
+                         placeholder="9.089100" value="{{ vals.lng }}"
                          oninput="syncMapFromInput()" required>
                 </div>
               </div>
@@ -93,6 +99,15 @@
                 <i class="bi bi-info-circle me-1"></i>
                 Koordinaten manuell eingeben oder Karte anklicken.
               </div>
+              {% if dup %}
+              <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="force" value="1" id="force">
+                <label class="form-check-label small" for="force">
+                  Trotzdem anlegen – es ist wirklich ein anderer Betrieb als
+                  „<a href="{{ url_for('gastro_detail', spot_id=dup.id) }}" target="_blank">{{ dup.name }}</a>“
+                </label>
+              </div>
+              {% endif %}
               <button type="submit" class="btn btn-djo w-100"
                       onclick="return document.getElementById('hlat').value !== '' || alert('Bitte Ort auf der Karte markieren!')">
                 <i class="bi bi-check-lg me-1"></i>{{ 'Änderungen speichern' if spot else 'Speichern' }}
@@ -210,7 +225,9 @@
 // Build s: Im Bearbeiten-Modus startet die Karte beim Eintrag (Marker ziehbar); die Standort-
 // abfrage verschiebt die Karte nur, solange noch keine Position gesetzt ist.
 const SPOT = {{ {'lat': spot.lat, 'lng': spot.lng}|tojson if spot else 'null' }};
-const map = L.map('picker-map').setView(SPOT ? [SPOT.lat, SPOT.lng] : [53.1, 9.2], SPOT ? 16 : 11);
+let START = {{ {'lat': vals.lat|float, 'lng': vals.lng|float}|tojson if vals.lat and vals.lng else 'null' }};   // Build t: auch nach Fehlermeldung
+if (START && !(START.lat && START.lng)) START = null;
+const map = L.map('picker-map').setView(START ? [START.lat, START.lng] : [53.1, 9.2], START ? 16 : 11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '© OpenStreetMap'
 }).addTo(map);
@@ -226,8 +243,8 @@ function setMarker(lat, lng) {
   marker.on('dragend', () => { const p = marker.getLatLng(); setMarker(p.lat, p.lng); });
 }
 
-if (SPOT) {
-  setMarker(SPOT.lat, SPOT.lng);
+if (START) {
+  setMarker(START.lat, START.lng);
 } else if (navigator.geolocation) {
   navigator.geolocation.getCurrentPosition(p => {
     if (!document.getElementById('hlat').value) map.setView([p.coords.latitude, p.coords.longitude], 12);
@@ -353,6 +370,7 @@ function fillForm(r) {
   if (r.opening_hours) {
     const m = r.opening_hours.match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
     if (m) { setIfEmptyOr('fopens', m[1], overwrite); setIfEmptyOr('fcloses', m[2], overwrite); }
+    setIfEmptyOr('fhours', r.opening_hours, overwrite);                      // Build t: kompletter OSM-Text (Ruhetage!)
   }
   setIfEmptyOr('fphone', r.phone, overwrite);
   setIfEmptyOr('fwebsite', r.website, overwrite);

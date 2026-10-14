@@ -273,6 +273,7 @@ class GastroSpot(db.Model):
     lng         = db.Column(db.Float, nullable=False)
     opens_at    = db.Column(db.String(5), nullable=True)   # "HH:MM"
     closes_at   = db.Column(db.String(5), nullable=True)
+    hours_text  = db.Column(db.String(300), nullable=True)  # Build t: Öffnungszeiten als Text (OSM opening_hours oder frei, z. B. Ruhetag)
     phone       = db.Column(db.String(30), nullable=True)
     website     = db.Column(db.String(200), nullable=True)
     notes       = db.Column(db.Text, nullable=True)
