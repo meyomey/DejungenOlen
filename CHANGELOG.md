@@ -2,7 +2,33 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build p) – Audit 2
+## 1.4.0 – 2026-10-13 (Build q) – Audit 2
+
+### Tour-Karte & Detailseite: fünf Ergänzungen (Build q)
+
+- **Einkehr an der Strecke:** Gastro-Einträge höchstens 150 m neben dem Track (gleicher Helfer
+  wie die Video-Folie) erscheinen als kleine Marker (☕ 🥐 🍺 🍽️ 🥪) auf der Tour-Karte, mit Popup
+  (Art, Streckenkilometer, Abstand, Link zu Details & Bewertungen). Per ☕-Knopf in der
+  Kartenleiste ausblendbar; sichtbare Einkehr-Marker werden von den Foto-Badges freigehalten.
+- **Wetter-Rückblick:** Bei vergangenen Touren zeigt eine neue Kachel in der Statistik-Leiste
+  das Wetter am Tourtag (Symbol, Höchst-/Tiefsttemperatur, Regenmenge bzw. „trocken“, Wind;
+  Tooltip mit Klartext und Sonnenstunden). Asynchron geladen über die neue Route
+  `/touren/<id>/wetter-tag`; ohne Treffpunkt dient der GPX-Start als Ort.
+- **Wetter-Cache:** Das Tageswetter vergangener Touren wird einmalig in `tours.weather_json`
+  gespeichert (neue Spalte, Migration automatisch beim ersten Aufruf) – Video-Seite, Server-
+  Rendering und Rückblick brauchen danach keinen Open-Meteo-Aufruf mehr. `_tour_day_weather`
+  liefert zusätzlich `label`, `rain_mm`, `wind_kmh`, `wind_dir`, `sun_h`.
+- **Fahrtrichtung:** Kleine Richtungspfeile entlang des Tracks (etwa alle 5 km, 3–12 Stück,
+  eigene Karten-Ebene unter den Markern, nicht klickbar) – bei Schleifen sieht man, wie herum
+  gefahren wurde.
+- **Fotos ein/aus:** 📷-Knopf in der Kartenleiste blendet alle Foto-Marker aus und wieder ein.
+- **Treffpunkt am Start:** Liegt der Treffpunkt < 150 m vom Start, bekommt der Start-Marker
+  (bzw. „S/Z“) eine 📍-Plakette und das Popup „Start & Treffpunkt“ – statt einer Nadel, die den
+  Start-Marker verdeckt. Treffpunkt-Nadel sonst wie gehabt, jetzt mit weißem Rand.
+- Betroffene Dateien: `app.py` (`_tour_day_weather`, neue Route `tour_weather_day`,
+  `tour_detail` → `gastro_near`, `migrate_db`, Build-Kennung), `models.py` (`Tour.weather_json`),
+  `templates/touren/detail.html` (Toolbar, Wetter-Kachel, `addDirectionArrows`, Einkehr-Ebene,
+  `togglePhotoLayer`, `toggleGastroLayer`, Treffpunkt-Logik, Rückblick-Skript).
 
 ### Tour-Karte: Foto-Marker neben dem Track (Build p)
 

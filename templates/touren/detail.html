@@ -143,6 +143,15 @@
       <div class="stat-label">Dabei</div>
     </div>
   </div>
+  {% if tour.tour_date and not tour.is_date_open and tour.tour_date < today and (tour.meeting_lat or gpx_data != 'null') %}
+  {# Build q: Wetter-Rückblick – asynchron geladen, Kachel erscheint erst mit Daten #}
+  <div class="col-auto" id="weather-past-tile" style="display:none">
+    <div class="stat-box px-3 py-2" id="weather-past-box">
+      <div class="stat-number" style="font-size:1.4rem" id="weather-past-number">–</div>
+      <div class="stat-label" id="weather-past-label">Wetter am Tourtag</div>
+    </div>
+  </div>
+  {% endif %}
   {% if tour.external_link %}
   <div class="col-auto d-flex align-items-center">
     <a href="{{ tour.external_link }}" target="_blank" class="btn btn-outline-djo btn-sm">
@@ -194,6 +203,18 @@
           </button>
           {% endif %}
 
+          {% if photos|selectattr('has_gps')|list|length > 0 %}
+          <button class="btn btn-sm btn-outline-light py-0 px-2 active" id="btn-photos"
+                  onclick="togglePhotoLayer()" title="Fotos ein/aus">
+            📷
+          </button>
+          {% endif %}
+          {% if gastro_near %}
+          <button class="btn btn-sm btn-outline-light py-0 px-2 active" id="btn-gastro"
+                  onclick="toggleGastroLayer()" title="Einkehr an der Strecke ein/aus ({{ gastro_near|length }})">
+            ☕
+          </button>
+          {% endif %}
           <button class="btn btn-sm btn-outline-light py-0 px-2"
                   onclick="toggleFullscreen()" id="fs-btn" title="Vollbild">
             <i class="bi bi-arrows-fullscreen" id="fs-icon"></i>
@@ -1833,6 +1854,8 @@ function showToast(msg, type) {
 const GPX_DATA = {{ gpx_data | safe }};
 const MEETING_LAT = {{ tour.meeting_lat or 'null' }};
 const MEETING_LNG = {{ tour.meeting_lng or 'null' }};
+const MEETING_DESC = {{ (tour.meeting_desc or "")|tojson }};
+const GASTRO_NEAR = {{ gastro_near|tojson }};   // Build q: Einkehr-Orte ≤ 150 m neben dem Track
 const PHOTOS = [
   {% for p in photos %}{% if p.has_gps and p.lat and p.lng %}
   { id: {{ p.id }},
@@ -1931,6 +1954,7 @@ function switchLayer(name, btn) {
 }
 
 // GPX track
+let meetAtStart = false;      // Build q: Treffpunkt liegt am Start → gemeinsamer Marker statt zwei übereinander
 if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length > 0) {
   const latlngs = GPX_DATA.points.map(p => [p.lat, p.lng]);
 
@@ -1944,38 +1968,99 @@ if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length > 0) {
   }).addTo(map);
   map.fitBounds(poly.getBounds(), {padding:[20,20]});
 
+  // Build q: Fahrtrichtung – kleine Pfeile entlang des Tracks (eigene Ebene unter den Markern, nicht klickbar)
+  (function addDirectionArrows() {
+    const pts = GPX_DATA.points;
+    const cos = Math.cos(pts[0].lat * Math.PI / 180);
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++)
+      cum.push(cum[i - 1] + Math.hypot((pts[i].lat - pts[i - 1].lat) * 111320, (pts[i].lng - pts[i - 1].lng) * 111320 * cos));
+    const total = cum[cum.length - 1];
+    if (total < 1500 || pts.length < 10) return;                 // zu kurz für Pfeile
+    const pane = map.createPane('trackArrows');
+    pane.style.zIndex = 450; pane.style.pointerEvents = 'none';
+    const n = Math.max(3, Math.min(12, Math.round(total / 5000)));  // etwa alle 5 km, mindestens 3, höchstens 12
+    let j = 1;
+    for (let k = 1; k <= n; k++) {
+      const target = total * k / (n + 1);
+      while (j < pts.length - 1 && cum[j] < target) j++;
+      const a = pts[Math.max(0, j - 3)], b = pts[Math.min(pts.length - 1, j + 3)];   // Richtung über ein paar Punkte mitteln
+      const pa = map.project([a.lat, a.lng], 15), pb = map.project([b.lat, b.lng], 15);
+      if (pa.equals(pb)) continue;
+      const deg = Math.atan2(pb.x - pa.x, -(pb.y - pa.y)) * 180 / Math.PI;           // 0° = Norden, im Uhrzeigersinn
+      const icon = L.divIcon({
+        html: `<svg width="18" height="18" viewBox="0 0 18 18" style="display:block;transform:rotate(${deg.toFixed(0)}deg)">
+                 <path d="M4 12 L9 5 L14 12" fill="none" stroke="#2B3F6B" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+                 <path d="M4 12 L9 5 L14 12" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+               </svg>`,
+        iconSize: [18, 18], iconAnchor: [9, 9], className: ''
+      });
+      L.marker([pts[j].lat, pts[j].lng], {icon, pane: 'trackArrows', interactive: false, keyboard: false}).addTo(map);
+    }
+  })();
+
   // Start / end markers (Rundkurs: Start und Ziel liegen zusammen → ein gemeinsamer Marker)
   const seStyle = 'color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);';
   const startLL = latlngs[0], endLL = latlngs[latlngs.length - 1];
+  // Build q: Treffpunkt am Start → 📍-Plakette am Start-Marker statt eigener Nadel darüber
+  meetAtStart = !!(MEETING_LAT && map.distance([MEETING_LAT, MEETING_LNG], startLL) < 150);
+  const meetBadge = meetAtStart
+    ? '<div style="position:absolute;right:-9px;top:-9px;width:20px;height:20px;border-radius:50%;background:#B85C00;border:2px solid #fff;font-size:11px;line-height:16px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.35)">📍</div>'
+    : '';
+  const meetPopup = meetAtStart ? ' &amp; Treffpunkt</b>' + (MEETING_DESC ? '<br>' + escHtml(MEETING_DESC) : '') : '</b>';
+  const wrapBadge = (inner, size) => '<div style="position:relative;width:' + size + 'px;height:' + size + 'px">' + inner + meetBadge + '</div>';
   if (map.distance(startLL, endLL) < 150) {
     const seIcon = L.divIcon({
-      html: '<div style="' + seStyle + 'background:linear-gradient(135deg,#2E7D4F 50%,#C0392B 50%);width:32px;height:32px;font-size:11px">S/Z</div>',
+      html: wrapBadge('<div style="' + seStyle + 'background:linear-gradient(135deg,#2E7D4F 50%,#C0392B 50%);width:32px;height:32px;font-size:11px">S/Z</div>', 32),
       iconSize:[32,32], iconAnchor:[16,16], className:''
     });
-    L.marker(startLL, {icon: seIcon}).addTo(map).bindPopup('<b>Start &amp; Ziel</b>');
+    L.marker(startLL, {icon: seIcon}).addTo(map).bindPopup('<b>Start &amp; Ziel' + meetPopup);
   } else {
     const startIcon = L.divIcon({
-      html: '<div style="' + seStyle + 'background:#2E7D4F;width:26px;height:26px;font-size:13px">S</div>',
+      html: wrapBadge('<div style="' + seStyle + 'background:#2E7D4F;width:26px;height:26px;font-size:13px">S</div>', 26),
       iconSize:[26,26], iconAnchor:[13,13], className:''
     });
     const endIcon = L.divIcon({
       html: '<div style="' + seStyle + 'background:#C0392B;width:26px;height:26px;font-size:13px">Z</div>',
       iconSize:[26,26], iconAnchor:[13,13], className:''
     });
-    L.marker(startLL, {icon: startIcon}).addTo(map).bindPopup('<b>Start</b>');
+    L.marker(startLL, {icon: startIcon}).addTo(map).bindPopup('<b>Start' + meetPopup);
     L.marker(endLL, {icon: endIcon}).addTo(map).bindPopup('<b>Ziel</b>');
   }
 }
 
-// Meeting point marker
-if (MEETING_LAT) {
+// Meeting point marker (entfällt, wenn der Treffpunkt am Start liegt – siehe meetAtStart)
+if (MEETING_LAT && !meetAtStart) {
   const meetIcon = L.divIcon({
-    html: '<div style="background:#B85C00;color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:16px;">📍</div>',
-    iconSize:[30,30], iconAnchor:[15,15]
+    html: '<div style="background:#B85C00;color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">📍</div>',
+    iconSize:[30,30], iconAnchor:[15,15], className:''
   });
   L.marker([MEETING_LAT, MEETING_LNG], {icon: meetIcon})
    .addTo(map)
-   .bindPopup('<b>Treffpunkt</b><br>' + escHtml({{ (tour.meeting_desc or "")|tojson }}));
+   .bindPopup('<b>Treffpunkt</b><br>' + escHtml(MEETING_DESC));
+}
+
+// ── Build q: Einkehr-Orte an der Strecke (≤ 150 m neben dem Track), zuschaltbare Ebene ──
+const GASTRO_ICONS = {cafe: '☕', baeckerei: '🥐', kneipe: '🍺', restaurant: '🍽️', imbiss: '🥪', other: '🍴'};
+const gastroLayer = L.layerGroup();
+GASTRO_NEAR.forEach(sp => {
+  const icon = L.divIcon({
+    html: `<div style="width:26px;height:26px;border-radius:50%;background:#fff;border:2px solid #B85C00;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1">${GASTRO_ICONS[sp.spot_type] || '🍴'}</div>`,
+    iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -14], className: ''
+  });
+  L.marker([sp.lat, sp.lng], {icon, title: sp.name, zIndexOffset: -200})
+    .bindPopup(`<b>${escHtml(sp.name)}</b><br>
+                <span class="text-muted small">${escHtml(sp.type_label)} · km ${String(sp.km).replace('.', ',')} · ${sp.dist_m} m neben der Strecke</span><br>
+                <a href="${sp.url}" class="small">Details &amp; Bewertungen</a>`)
+    .addTo(gastroLayer);
+});
+if (GASTRO_NEAR.length) gastroLayer.addTo(map);
+function toggleGastroLayer() {
+  const on = map.hasLayer(gastroLayer);
+  if (on) map.removeLayer(gastroLayer); else gastroLayer.addTo(map);
+  const b = document.getElementById('btn-gastro');
+  if (b) b.classList.toggle('active', !on);
+  schedulePlacePins();          // sichtbare Einkehr-Marker zählen zu den freizuhaltenden Punkten
 }
 
 // ── Foto-Marker: neben dem Track platziert (wie im Video), MarkerCluster + Hover-Sync ──
@@ -2153,7 +2238,9 @@ function placePhotoPins() {
   _placeWait = 0;
   const z = map.getZoom();
   const track = trackPointsPx(z);
-  const fixed = PIN_AVOID.map(ll => map.project(ll, z));
+  const avoid = PIN_AVOID.slice();
+  if (map.hasLayer(gastroLayer)) GASTRO_NEAR.forEach(sp => avoid.push([sp.lat, sp.lng]));
+  const fixed = avoid.map(ll => map.project(ll, z));
   const view = map.getPixelBounds();
   const seen = new Set(), items = [];
   Object.values(photoMarkers).forEach(pm => {
@@ -2196,6 +2283,13 @@ photoCluster.on('animationend spiderfied unspiderfied', schedulePlacePins);
 map.on('zoomend moveend', schedulePlacePins);
 schedulePlacePins();
 
+function togglePhotoLayer() {               // Build q: Foto-Marker ein-/ausblenden (Toolbar 📷)
+  const on = map.hasLayer(photoCluster);
+  if (on) map.removeLayer(photoCluster); else { map.addLayer(photoCluster); schedulePlacePins(); }
+  const b = document.getElementById('btn-photos');
+  if (b) b.classList.toggle('active', !on);
+}
+
 // Highlight marker when hovering photo thumbnail (steckt das Foto in einem Cluster, wird der Cluster markiert)
 function highlightMarker(photoId) {
   const pm = photoMarkers[photoId];
@@ -2236,6 +2330,30 @@ function jumpToMarker(photoId) {
     map.setView(pm.marker.getLatLng(), 15, {animate: true});
   }
 }
+
+// ── Build q: Wetter-Rückblick für vergangene Touren (Stat-Kachel, asynchron geladen) ──
+(function() {
+  const tile = document.getElementById('weather-past-tile');
+  if (!tile) return;
+  let q = '';
+  if (!MEETING_LAT && GPX_DATA && GPX_DATA.points && GPX_DATA.points[0])
+    q = `?lat=${GPX_DATA.points[0].lat}&lng=${GPX_DATA.points[0].lng}`;   // Ersatz-Ort: GPX-Start
+  fetch(`{{ url_for('tour_weather_day', tour_id=tour.id) }}` + q)
+    .then(r => r.json())
+    .then(d => {
+      if (!d || d.error || d.temp_max === undefined) return;
+      const de = v => String(v).replace('.', ',');
+      const parts = [`${d.temp_min}–${d.temp_max} °C`];
+      if (d.rain_mm !== null && d.rain_mm !== undefined) parts.push(d.rain_mm > 0 ? `${de(d.rain_mm)} mm Regen` : 'trocken');
+      if (d.wind_kmh) parts.push(`💨 ${d.wind_dir ? d.wind_dir + ' ' : ''}${d.wind_kmh} km/h`);
+      document.getElementById('weather-past-number').textContent = `${d.icon} ${d.temp_max}°`;
+      document.getElementById('weather-past-label').textContent = parts.join(' · ');
+      document.getElementById('weather-past-box').title = 'Wetter am Tourtag: ' + (d.label || '')
+        + (d.sun_h ? ` · ${de(d.sun_h)} h Sonne` : '') + ' (Open-Meteo)';
+      tile.style.display = '';
+    })
+    .catch(() => {});
+})();
 
 // ── Weather widget ───────────────────────────────────────────────────────────
 (function() {

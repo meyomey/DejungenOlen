@@ -105,6 +105,7 @@ class Tour(db.Model):
     meeting_lat = db.Column(db.Float, nullable=True)
     meeting_lng = db.Column(db.Float, nullable=True)
     meeting_desc = db.Column(db.String(200), nullable=True)
+    weather_json = db.Column(db.Text, nullable=True)        # Build q: Wetter am Tourtag (Cache, JSON)
     created_by  = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     group_id    = db.Column(db.Integer, db.ForeignKey('groups.id'), nullable=True)
     created_at  = db.Column(db.DateTime, default=datetime.utcnow)

@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 p'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 q'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -1652,19 +1652,33 @@ def _logo_auto_alpha(img, max_px=400):
             return None
 
 
-def _tour_day_weather(tour):
+def _tour_day_weather(tour, lat=None, lng=None):
     """Tageswetter am Treffpunkt für den Tourtag (Open-Meteo) → dict oder None.
-    Voraussetzungen: festes Datum, Treffpunkt-Koordinaten (meeting_lat/lng) und der Server
-    muss api.open-meteo.com erreichen. Build j: Für Touren, die länger als ~3 Monate zurück-
-    liegen, antwortet nur noch das Archiv (archive-api) – daher zwei Versuche in passender
-    Reihenfolge. 'kind' = Symbolart für die gezeichneten Wettersymbole der Server-Folie,
-    'icon' = Emoji für die Browser-Vorschau."""
-    if not (tour.tour_date and not tour.is_date_open and tour.meeting_lat and tour.meeting_lng):
+    Voraussetzungen: festes Datum, Ortskoordinaten (Treffpunkt oder lat/lng als Ersatz, z. B.
+    GPX-Start) und der Server muss api.open-meteo.com erreichen. Build j: Für Touren, die länger
+    als ~3 Monate zurückliegen, antwortet nur noch das Archiv (archive-api) – daher zwei Versuche
+    in passender Reihenfolge. 'kind' = Symbolart für die gezeichneten Wettersymbole der Server-
+    Folie, 'icon' = Emoji für die Browser-Vorschau.
+    Build q: zusätzlich label (Klartext), rain_mm, wind_kmh, wind_dir, sun_h; das Ergebnis wird
+    für vergangene Tage in tours.weather_json gecacht (Wetter von gestern ändert sich nicht mehr)
+    – Video-Seite, Rendering und Wetter-Rückblick brauchen dann keinen API-Aufruf mehr."""
+    if not (tour.tour_date and not tour.is_date_open):
+        return None
+    if tour.meeting_lat and tour.meeting_lng:
+        lat, lng = tour.meeting_lat, tour.meeting_lng
+    if not (lat and lng):
         return None
     try:
         age_days = (date.today() - tour.tour_date).days
     except Exception:
         age_days = 0
+    cache_key = f'{tour.tour_date.isoformat()}|{round(float(lat), 3)}|{round(float(lng), 3)}'
+    try:
+        cached = json.loads(getattr(tour, 'weather_json', None) or '{}')
+        if cached.get('key') == cache_key and (cached.get('data') or {}).get('temp_max') is not None:
+            return cached['data']
+    except Exception:
+        pass
     urls = ['https://api.open-meteo.com/v1/forecast', 'https://archive-api.open-meteo.com/v1/archive']
     if age_days > 80:
         urls.reverse()
@@ -1672,33 +1686,92 @@ def _tour_day_weather(tour):
                 51: '🌦️', 53: '🌦️', 55: '🌦️', 61: '🌧️', 63: '🌧️', 65: '🌧️',
                 71: '🌨️', 73: '🌨️', 75: '🌨️', 80: '🌦️', 81: '🌧️', 82: '⛈️',
                 95: '⛈️', 96: '⛈️', 99: '⛈️'}
+
+    def _label(c):
+        if c is None:  return ''
+        if c == 0:     return 'Sonnig'
+        if c <= 2:     return 'Überwiegend sonnig'
+        if c == 3:     return 'Bewölkt'
+        if c <= 49:    return 'Nebel / Dunst'
+        if c <= 57:    return 'Nieselregen'
+        if c <= 67:    return 'Regen'
+        if c <= 77:    return 'Schnee'
+        if c <= 82:    return 'Regenschauer'
+        if c <= 86:    return 'Schneeschauer'
+        return 'Gewitter'
+
+    daily_full = ('weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,'
+                  'windspeed_10m_max,winddirection_10m_dominant,sunshine_duration')
+    daily_basic = 'weathercode,temperature_2m_max,temperature_2m_min'
+    result = None
     for url in urls:
-        try:
-            resp = http_requests.get(url, params={
-                'latitude': tour.meeting_lat, 'longitude': tour.meeting_lng,
-                'daily': 'weathercode,temperature_2m_max,temperature_2m_min',
-                'timezone': 'Europe/Berlin',
-                'start_date': tour.tour_date.isoformat(), 'end_date': tour.tour_date.isoformat()},
-                timeout=5)
-            d = resp.json().get('daily', {}) or {}
-            tmax = (d.get('temperature_2m_max') or [None])[0]
-            if tmax is None:
+        for daily in (daily_full, daily_basic):      # erst mit Zusatzwerten, zur Not nur das Nötigste
+            try:
+                resp = http_requests.get(url, params={
+                    'latitude': lat, 'longitude': lng, 'daily': daily,
+                    'timezone': 'Europe/Berlin',
+                    'start_date': tour.tour_date.isoformat(), 'end_date': tour.tour_date.isoformat()},
+                    timeout=5)
+                d = resp.json().get('daily', {}) or {}
+
+                def _first(key):
+                    v = d.get(key) or [None]
+                    return v[0] if v else None
+                tmax = _first('temperature_2m_max')
+                if tmax is None:
+                    continue
+                tmin = _first('temperature_2m_min')
+                wc = _first('weathercode')
+                if wc == 0:                            kind = 'sun'
+                elif wc in (1, 2):                     kind = 'partly'
+                elif wc == 3:                          kind = 'cloud'
+                elif wc in (45, 48):                   kind = 'fog'
+                elif wc in (71, 73, 75, 77, 85, 86):   kind = 'snow'
+                elif wc in (95, 96, 99):               kind = 'storm'
+                elif wc is not None and wc >= 51:      kind = 'rain'
+                else:                                  kind = 'thermo'
+                rain = _first('precipitation_sum'); wind = _first('windspeed_10m_max')
+                wdeg = _first('winddirection_10m_dominant'); sun = _first('sunshine_duration')
+                result = {'temp_max': round(tmax), 'temp_min': round(tmin if tmin is not None else tmax),
+                          'icon': icon_map.get(wc, '🌡️'), 'kind': kind, 'code': wc, 'label': _label(wc),
+                          'rain_mm': round(float(rain), 1) if rain is not None else None,
+                          'wind_kmh': int(round(float(wind))) if wind is not None else None,
+                          'wind_dir': (['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'][int(round(float(wdeg) / 45)) % 8]
+                                       if wdeg is not None else None),
+                          'sun_h': round(float(sun) / 3600, 1) if sun is not None else None}
+                break
+            except Exception:
                 continue
-            tmin = (d.get('temperature_2m_min') or [None])[0]
-            wc = (d.get('weathercode') or [None])[0]
-            if wc == 0:                            kind = 'sun'
-            elif wc in (1, 2):                     kind = 'partly'
-            elif wc == 3:                          kind = 'cloud'
-            elif wc in (45, 48):                   kind = 'fog'
-            elif wc in (71, 73, 75, 77, 85, 86):   kind = 'snow'
-            elif wc in (95, 96, 99):               kind = 'storm'
-            elif wc is not None and wc >= 51:      kind = 'rain'
-            else:                                  kind = 'thermo'
-            return {'temp_max': round(tmax), 'temp_min': round(tmin if tmin is not None else tmax),
-                    'icon': icon_map.get(wc, '🌡️'), 'kind': kind, 'code': wc}
-        except Exception:
-            continue
-    return None
+        if result:
+            break
+    if result is None:
+        return None
+    if age_days >= 1 and hasattr(tour, 'weather_json'):      # Vergangenheit: dauerhaft merken
+        try:
+            tour.weather_json = json.dumps({'key': cache_key, 'data': result})
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f'_tour_day_weather cache: {e}')
+    return result
+
+
+@app.route('/touren/<int:tour_id>/wetter-tag')
+@login_required
+def tour_weather_day(tour_id):
+    """Build q: Wetter am Tourtag als JSON (Rückblick-Kachel auf der Detailseite, asynchron
+    geladen, damit die Seite nicht auf Open-Meteo wartet). Ohne Treffpunkt gibt der Browser
+    den GPX-Start als Ersatz-Ort mit (?lat=&lng=)."""
+    tour = _tour_or_404(tour_id)
+    try:
+        lat = float(request.args.get('lat') or 0) or None
+        lng = float(request.args.get('lng') or 0) or None
+    except ValueError:
+        lat = lng = None
+    w = _tour_day_weather(tour, lat, lng)
+    if not w:
+        return jsonify({'error': 'Keine Wetterdaten für diesen Tag.'})
+    return jsonify(w)
 
 
 @app.route('/touren/<int:tour_id>')
@@ -1741,6 +1814,16 @@ def tour_detail(tour_id):
     participant_ids = {p.user_id for p in attending + maybe + declined}
 
     videos = TourVideo.query.filter_by(tour_id=tour_id).order_by(TourVideo.created_at).all()
+
+    # Build q: Einkehr-Orte höchstens GASTRO_NEAR_M m neben dem Track (zuschaltbare Karten-Ebene);
+    # gleicher Helfer wie die Video-Folie, Track dafür auf ≤ 1500 Punkte ausgedünnt
+    gastro_near = []
+    if gpx_data and gpx_data.get('points'):
+        _pts = gpx_data['points']
+        gastro_near = gastro_near_track(_pts[::max(1, len(_pts) // 1500)], limit=20)
+        for _spot in gastro_near:
+            _spot['url'] = url_for('gastro_detail', spot_id=_spot['id'])
+
     return render_template('touren/detail.html',
                            tour=tour,
                            my_rsvp=my_rsvp,
@@ -1748,6 +1831,7 @@ def tour_detail(tour_id):
                            maybe=maybe,
                            declined=declined,
                            gpx_data=json.dumps(gpx_data) if gpx_data else 'null',
+                           gastro_near=gastro_near,
                            photos=photos,
                            videos=videos,
                            comments=comments,
@@ -7431,6 +7515,7 @@ def migrate_db():
     add_column('users', 'morning_opener_until', 'VARCHAR(5)')
     add_column('tours', 'approx_km',      'FLOAT')
     add_column('tours', 'external_link',  'VARCHAR(500)')
+    add_column('tours', 'weather_json',   'TEXT')          # Build q: Wetter-Cache für den Tourtag
     add_column('invite_tokens', 'label',  'VARCHAR(100)')
 
     # gastro_photos Tabelle
