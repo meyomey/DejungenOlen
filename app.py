@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 k'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 l'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3177,7 +3177,7 @@ def tour_video_render(tour_id):
                     return ((px - c_x) * TILE * f + W / 2, (py - c_y) * TILE * f + center_y)
 
                 # Foto-Marker: Position, Streckenanteil, Bündelung nahe beieinanderliegender Fotos
-                thumb = max(44, min(76, int(round(min(W, H) * 0.07))))
+                thumb = max(44, min(90, int(round(min(W, H) * 0.084))))   # 90 px bei 1080er Formaten (Build l)
                 items = []
                 for i, p in enumerate(photos_with_gps):
                     best_d, best_i = 1e18, 0

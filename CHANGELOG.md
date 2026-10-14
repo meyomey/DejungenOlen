@@ -2,7 +2,10 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build k) – Audit 2
+## 1.4.0 – 2026-10-13 (Build l) – Audit 2
+
+### Kartenfolie: Foto-Kacheln größer (Build l)
+- Foto-Kacheln auf der Kartenfolie von 7 % auf 8,4 % der kurzen Bildkante vergrößert: Browser-Vorschau 50 → 60 px, Server-MP4 (1080er Formate) 76 → 90 px. Abstand zur Verbindungslinie und Bündel-Radius wachsen automatisch mit.
 
 ### Kartenfolie: Track sichtbar, Foto-Marker neben dem Track (Build k)
 - **Problem:** Die Foto-Kacheln lagen direkt auf dem Track und stapelten sich an gleichen Aufnahmeorten – der Track war kaum zu erkennen; außerdem wurde der Kartenausschnitt oft zu weit herausgezoomt (Track winzig).
