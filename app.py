@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 q'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 r'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5457,79 +5457,128 @@ def api_wetter_verlauf():
 
 # ─── Phase 2: Overpass API proxy (Gastro entlang Route) ──────────────────────
 
+OVERPASS_ENDPOINTS = [            # Build r: Reihenfolge nach Verlässlichkeit (Stand 2026); kumi.systems ist oft nicht erreichbar
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+]
+_overpass_cache: dict = {}        # gerundete bbox → (Zeitstempel, Trefferliste); entlastet die Server, weniger Rate-Limits
+
+
+def _osm_user_agent():
+    """Build r: Eindeutiger User-Agent für OSM-Dienste. overpass-api.de lehnt seit April 2026 Anfragen
+    ohne identifizierenden User-Agent mit „406 Not Acceptable“ ab (python-requests meldet sich nur
+    als „python-requests/x.y“); Browser-Kennungen zu imitieren verbietet die Nutzungsordnung."""
+    try:
+        host = request.host_url.rstrip('/')
+    except Exception:
+        host = 'https://djo.wulmstorf.net'
+    return f'DeJungenOlen/{APP_VERSION} (+{host}; Radgruppen-App, Gastro-Suche)'
+
+
+def _overpass_gastro_query(s, w, n, e):
+    """Overpass-QL für Gastronomie im Kartenausschnitt – Build r: zusätzlich Bäckereien/Konditoreien
+    und Eisdielen (shop=bakery|pastry|ice_cream, amenity=ice_cream); „bakery“ war vorher fälschlich
+    als amenity abgefragt und fand nie etwas."""
+    bbox = f'{s},{w},{n},{e}'
+    am = '"amenity"~"^(cafe|bar|pub|restaurant|fast_food|biergarten|ice_cream)$"'
+    sh = '"shop"~"^(bakery|pastry|ice_cream)$"'
+    return (f'[out:json][timeout:15];\n(\n  node[{am}]({bbox});\n  way[{am}]({bbox});\n'
+            f'  node[{sh}]({bbox});\n  way[{sh}]({bbox});\n);\nout center 80;\n')
+
+
+def _overpass_elements_to_results(elements):
+    """Overpass-Elemente → kompakte Trefferliste (Name, Art, Position, Öffnungszeiten, Kontakt, Adresse)."""
+    results = []
+    for el in elements or []:
+        tags = el.get('tags', {}) or {}
+        lat = el.get('lat') or (el.get('center') or {}).get('lat')
+        lng = el.get('lon') or (el.get('center') or {}).get('lon')
+        if not lat or not lng:
+            continue
+        kind = tags.get('amenity') or tags.get('shop') or ''
+        street = ' '.join(x for x in (tags.get('addr:street'), tags.get('addr:housenumber')) if x)
+        city = ' '.join(x for x in (tags.get('addr:postcode'), tags.get('addr:city')) if x)
+        results.append({
+            'osm_id':  str(el.get('id', '')),
+            'name':    tags.get('name') or kind or 'Unbekannt',
+            'type':    kind,
+            'lat':     lat,
+            'lng':     lng,
+            'opening_hours': tags.get('opening_hours', ''),
+            'phone':   tags.get('phone') or tags.get('contact:phone') or '',
+            'website': tags.get('website') or tags.get('contact:website') or '',
+            'address': ', '.join(x for x in (street, city) if x),
+        })
+    return results
+
+
 @app.route('/api/overpass-gastro')
 @login_required
 def api_overpass_gastro():
-    """Search OSM for amenities in a bounding box."""
+    """Search OSM for amenities in a bounding box (Proxy für die Gastro-Suche „OSM-Gebiet“).
+    Build r: identifizierender User-Agent (sonst 406), mehr Ausweich-Server mit kürzeren Einzel-
+    Timeouts, 10-Minuten-Cache je Kartenausschnitt, aussagekräftige Fehlertexte; bei Fehlern wird
+    die Abfrage mitgeliefert, damit der Browser sie notfalls direkt an overpass-api.de stellen kann
+    (eigene IP, eigener Referer – hilft, wenn die Hosting-IP im Rate-Limit steckt)."""
     try:
         s = float(request.args.get('s'))
         w = float(request.args.get('w'))
         n = float(request.args.get('n'))
         e = float(request.args.get('e'))
     except (TypeError, ValueError):
-        return jsonify({'error': 'invalid bbox'}), 400
+        return jsonify({'error': 'Ungültiger Kartenausschnitt.'}), 400
 
     # Limit bbox size – at zoom 13+ the span stays well below 0.15°
     if (n - s) > 0.5 or (e - w) > 0.5:
-        return jsonify({'error': 'bbox too large'}), 400
+        return jsonify({'error': 'Kartenausschnitt zu groß – bitte näher heranzoomen.', 'zoom_in': True}), 400
 
-    query = f"""
-[out:json][timeout:15];
-(
-  node["amenity"~"cafe|bar|pub|restaurant|fast_food|bakery|biergarten"]
-      ({s},{w},{n},{e});
-  way["amenity"~"cafe|bar|pub|restaurant|fast_food|bakery|biergarten"]
-      ({s},{w},{n},{e});
-);
-out center 60;
-"""
-    OVERPASS_ENDPOINTS = [
-        'https://overpass-api.de/api/interpreter',
-        'https://overpass.kumi.systems/api/interpreter',
-    ]
+    key = (round(s, 3), round(w, 3), round(n, 3), round(e, 3))
+    now = _time.time()
+    hit = _overpass_cache.get(key)
+    if hit and now - hit[0] < 600:
+        return jsonify({'results': hit[1], 'cached': True})
+
+    query = _overpass_gastro_query(s, w, n, e)
+    headers = {'User-Agent': _osm_user_agent(), 'Accept': 'application/json',
+               'Referer': request.host_url}
+    status_hint = {406: 'Anfrage abgelehnt (406, User-Agent)', 429: 'zu viele Anfragen (429)',
+                   504: 'Server überlastet (504)', 403: 'Zugriff verweigert (403)'}
     last_error = 'Unbekannter Fehler'
+    deadline = now + 40                                   # Gesamtbudget, Passenger soll nicht abbrechen
     for endpoint in OVERPASS_ENDPOINTS:
+        if _time.time() > deadline:
+            break
+        host = endpoint.split('/')[2]
         try:
-            resp = http_requests.post(endpoint, data={'data': query}, timeout=20)
+            resp = http_requests.post(endpoint, data={'data': query}, headers=headers, timeout=12)
             if resp.status_code != 200:
-                last_error = f'HTTP {resp.status_code}'
-                app.logger.warning(f'Overpass {endpoint} -> {resp.status_code}')
+                last_error = f'{status_hint.get(resp.status_code, "HTTP " + str(resp.status_code))} bei {host}'
+                app.logger.warning(f'Overpass {endpoint} -> {resp.status_code}: {(resp.text or "")[:200]!r}')
                 continue
             try:
                 data = resp.json()
             except ValueError:
                 preview = resp.text[:200] if resp.text else '(leer)'
-                last_error = f'Kein JSON: {preview}'
+                last_error = f'kein JSON von {host}'
                 app.logger.error(f'Overpass JSON-Fehler ({endpoint}): {preview}')
                 continue
-            results = []
-            for el in data.get('elements', []):
-                tags = el.get('tags', {})
-                lat  = el.get('lat') or el.get('center', {}).get('lat')
-                lng  = el.get('lon') or el.get('center', {}).get('lon')
-                if not lat or not lng:
-                    continue
-                name = tags.get('name') or tags.get('amenity', 'Unbekannt')
-                results.append({
-                    'osm_id':  str(el.get('id', '')),
-                    'name':    name,
-                    'type':    tags.get('amenity', ''),
-                    'lat':     lat,
-                    'lng':     lng,
-                    'opening_hours': tags.get('opening_hours', ''),
-                    'phone':   tags.get('phone', ''),
-                    'website': tags.get('website', ''),
-                })
-            return jsonify({'results': results})
+            results = _overpass_elements_to_results(data.get('elements'))
+            if len(_overpass_cache) > 200:                # Cache klein halten
+                for old in sorted(_overpass_cache, key=lambda k: _overpass_cache[k][0])[:100]:
+                    _overpass_cache.pop(old, None)
+            _overpass_cache[key] = (_time.time(), results)
+            return jsonify({'results': results, 'source': host})
         except http_requests.exceptions.Timeout:
-            last_error = f'Timeout bei {endpoint}'
+            last_error = f'Zeitüberschreitung bei {host}'
             app.logger.warning(last_error)
             continue
-        except Exception as e:
-            last_error = str(e)
-            app.logger.error(f'Overpass error ({endpoint}): {e}')
+        except Exception as ex:
+            last_error = f'{host}: {ex.__class__.__name__}'
+            app.logger.error(f'Overpass error ({endpoint}): {ex}')
             continue
-    return jsonify({'error': f'Overpass nicht erreichbar: {last_error}'}), 502
+    return jsonify({'error': f'Overpass nicht erreichbar: {last_error}', 'query': query}), 502
 
 
 # ─── Phase 2: Telegram reminder CLI ──────────────────────────────────────────

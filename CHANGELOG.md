@@ -2,7 +2,26 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build q) – Audit 2
+## 1.4.0 – 2026-10-13 (Build r) – Audit 2
+
+### Gastro-Suche „OSM-Gebiet“ repariert (Build r)
+
+- **Ursache:** overpass-api.de lehnt seit April 2026 Anfragen ohne eindeutig identifizierenden
+  User-Agent mit „406 Not Acceptable“ ab; der Proxy `/api/overpass-gastro` schickte den Standard-
+  User-Agent von python-requests, der Ausweich-Server kumi.systems antwortet nicht mehr zuverlässig,
+  und das Formular zeigte den Server-Fehler als „Keine Treffer“ an.
+- **Server:** eigener User-Agent `DeJungenOlen/<Version> (+<Host>; …)` + Referer, vier Ausweich-
+  Server (overpass-api.de, private.coffee, kumi.systems, maps.mail.ru) mit 12 s Einzel-Timeout und
+  40 s Gesamtbudget, 10-Minuten-Cache je Kartenausschnitt, sprechende Fehlertexte (406/429/504);
+  Bäckereien, Konditoreien und Eisdielen werden jetzt mitgesucht (`shop=bakery|pastry|ice_cream`
+  – „bakery“ war fälschlich als amenity abgefragt); Treffer enthalten Adresse und Kontakt.
+- **Browser:** Fehler werden angezeigt statt verschluckt; scheitert der Server-Proxy (z. B. Rate-Limit
+  der Hosting-IP), fragt der Browser overpass-api.de direkt (eigene IP, Referer); „Kartenausschnitt
+  zu groß“ wird als Hinweis zum Heranzoomen gemeldet. Übernahme füllt zusätzlich Adresse,
+  Schließzeit, Telefon und Website; Trefferliste HTML-sicher aufgebaut.
+- Betroffene Dateien: `app.py` (`OVERPASS_ENDPOINTS`, `_osm_user_agent`, `_overpass_gastro_query`,
+  `_overpass_elements_to_results`, `api_overpass_gastro`, Build-Kennung), `templates/gastro/form.html`
+  (`overpassQuery`, `overpassDirect`, `searchOverpass`, `renderOverpassResults`, `fillForm`).
 
 ### Tour-Karte & Detailseite: fünf Ergänzungen (Build q)
 

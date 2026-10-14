@@ -229,48 +229,108 @@ function syncMapFromInput() {
 }
 
 // ── Overpass search ────────────────────────────────────────────────────────────
+// Build r: Fehler des Server-Proxys werden angezeigt statt als „Keine Treffer“ verschluckt; schlägt
+// der Proxy fehl (z. B. Rate-Limit/Sperre der Hosting-IP), fragt der Browser overpass-api.de direkt
+// (eigene IP, Referer wird vom Browser mitgeschickt – entspricht den Overpass-Regeln).
+const OSM_TYPE_MAP = {cafe:'cafe', bar:'kneipe', pub:'kneipe', restaurant:'restaurant', biergarten:'kneipe',
+                      fast_food:'imbiss', bakery:'baeckerei', pastry:'baeckerei', ice_cream:'cafe'};
+const OSM_TYPE_LABEL = {cafe:'Café', bar:'Bar', pub:'Kneipe', restaurant:'Restaurant', biergarten:'Biergarten',
+                        fast_food:'Imbiss', bakery:'Bäckerei', pastry:'Konditorei', ice_cream:'Eisdiele'};
+
+function overpassQuery(b) {
+  const bbox = `${b.s},${b.w},${b.n},${b.e}`;
+  const am = '"amenity"~"^(cafe|bar|pub|restaurant|fast_food|biergarten|ice_cream)$"';
+  const sh = '"shop"~"^(bakery|pastry|ice_cream)$"';
+  return `[out:json][timeout:15];\n(\n  node[${am}](${bbox});\n  way[${am}](${bbox});\n  node[${sh}](${bbox});\n  way[${sh}](${bbox});\n);\nout center 80;\n`;
+}
+
+function overpassDirect(query) {            // Direktabfrage aus dem Browser (CORS wird von Overpass erlaubt)
+  return fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'data=' + encodeURIComponent(query)
+  }).then(r => {
+    if (!r.ok) throw new Error('overpass-api.de antwortet mit HTTP ' + r.status);
+    return r.json();
+  }).then(d => ({
+    source: 'overpass-api.de (direkt)',
+    results: (d.elements || []).map(el => {
+      const t = el.tags || {};
+      const lat = el.lat != null ? el.lat : (el.center || {}).lat;
+      const lng = el.lon != null ? el.lon : (el.center || {}).lon;
+      if (!lat || !lng) return null;
+      const kind = t.amenity || t.shop || '';
+      const street = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ');
+      const city = [t['addr:postcode'], t['addr:city']].filter(Boolean).join(' ');
+      return {osm_id: String(el.id || ''), name: t.name || kind || 'Unbekannt', type: kind, lat, lng,
+              opening_hours: t.opening_hours || '', phone: t.phone || t['contact:phone'] || '',
+              website: t.website || t['contact:website'] || '', address: [street, city].filter(Boolean).join(', ')};
+    }).filter(Boolean)
+  }));
+}
+
 function searchOverpass() {
-  const b = map.getBounds();
-  const url = `/api/overpass-gastro?s=${b.getSouth()}&w=${b.getWest()}&n=${b.getNorth()}&e=${b.getEast()}`;
+  const lb = map.getBounds();
+  const b = {s: lb.getSouth(), w: lb.getWest(), n: lb.getNorth(), e: lb.getEast()};
   const el = document.getElementById('osm-results');
   el.innerHTML = '<div class="text-center text-muted small py-2"><div class="spinner-border spinner-border-sm me-1"></div>Suche…</div>';
 
-  fetch(url).then(r => r.json()).then(data => {
-    if (!data.results || !data.results.length) {
-      el.innerHTML = '<p class="text-muted small">Keine Treffer im sichtbaren Bereich.</p>';
-      return;
-    }
-    const typeMap = {cafe:'cafe', bar:'kneipe', pub:'kneipe', restaurant:'restaurant',
-                     fast_food:'imbiss', bakery:'baeckerei', biergarten:'kneipe'};
-    el.innerHTML = `<div class="small fw-semibold mb-2">${data.results.length} Treffer – klicken zum Übernehmen:</div>` +
-      data.results.slice(0,15).map(r => `
-        <div class="border rounded p-2 mb-1 small" style="cursor:pointer"
-             onclick='fillForm(${JSON.stringify(r)})'>
-          <strong>${r.name}</strong>
-          <span class="text-muted ms-1">${r.type}</span>
-          ${r.opening_hours ? '<br><small>🕐 ' + r.opening_hours + '</small>' : ''}
-        </div>`).join('');
-  }).catch(() => {
-    el.innerHTML = '<p class="text-danger small">Fehler bei der Suche. Versuche es erneut.</p>';
-  });
+  fetch(`/api/overpass-gastro?s=${b.s}&w=${b.w}&n=${b.n}&e=${b.e}`)
+    .then(async r => {
+      const data = await r.json().catch(() => ({}));
+      if (r.ok && data.results) return data;
+      if (data.zoom_in) throw Object.assign(new Error(data.error), {noHint: true});   // zu großer Ausschnitt: kein Fallback nötig
+      const reason = data.error || ('Server antwortet mit HTTP ' + r.status);
+      el.innerHTML = '<div class="text-center text-muted small py-2"><div class="spinner-border spinner-border-sm me-1"></div>Server-Suche fehlgeschlagen – frage overpass-api.de direkt…</div>';
+      return overpassDirect(data.query || overpassQuery(b))
+        .catch(e2 => { throw new Error(reason + ' · Direktabfrage: ' + e2.message); });
+    }, () => overpassDirect(overpassQuery(b)))                              // Proxy gar nicht erreichbar → direkt
+    .then(data => renderOverpassResults(data, el))
+    .catch(err => {
+      el.innerHTML = `<p class="text-danger small mb-1">Suche fehlgeschlagen: ${escHtml(err.message)}</p>` + (err.noHint ? '' :
+                      `<p class="text-muted small">Overpass-Server sind zeitweise überlastet – in einer Minute erneut versuchen
+                      oder den Namen im Tab „Nach Name“ suchen.</p>`);
+    });
+}
+
+function renderOverpassResults(data, el) {
+  const res = (data && data.results) || [];
+  if (!res.length) {
+    el.innerHTML = '<p class="text-muted small">Keine Gastronomie im sichtbaren Bereich gefunden (OSM-Daten) – Ausschnitt verschieben oder etwas herauszoomen.</p>';
+    return;
+  }
+  const src = data.source ? `<span class="text-muted fw-normal">· ${escHtml(data.source)}</span>` : '';
+  el.innerHTML = `<div class="small fw-semibold mb-2">${res.length} Treffer – klicken zum Übernehmen: ${src}</div>` +
+    res.slice(0, 20).map(r => `
+      <div class="border rounded p-2 mb-1 small osm-hit" style="cursor:pointer" data-hit='${escHtml(JSON.stringify(r))}'>
+        <strong>${escHtml(r.name)}</strong>
+        <span class="text-muted ms-1">${escHtml(OSM_TYPE_LABEL[r.type] || r.type)}</span>
+        ${r.address ? '<br><small class="text-muted">' + escHtml(r.address) + '</small>' : ''}
+        ${r.opening_hours ? '<br><small>🕐 ' + escHtml(r.opening_hours) + '</small>' : ''}
+      </div>`).join('');
+  el.querySelectorAll('.osm-hit').forEach(div => div.addEventListener('click', () => fillForm(JSON.parse(div.dataset.hit))));
 }
 
 function fillForm(r) {
   document.getElementById('fname').value = r.name || '';
-  document.getElementById('faddress').value = r.website ? '' : '';
-  const typeMap = {cafe:'cafe', bar:'kneipe', pub:'kneipe', restaurant:'restaurant',
-                   fast_food:'imbiss', bakery:'baeckerei', biergarten:'kneipe'};
+  if (r.address) document.getElementById('faddress').value = r.address;
   const sel = document.getElementById('ftype');
-  const mapped = typeMap[r.type] || 'other';
+  const mapped = OSM_TYPE_MAP[r.type] || 'other';
   for (let opt of sel.options) { if (opt.value === mapped) { opt.selected = true; break; } }
 
-  // Parse opening hours (simple: look for Mo-Fr XX:XX-XX:XX or daily XX:XX)
+  // Parse opening hours (simple: look for XX:XX-XX:XX)
   if (r.opening_hours) {
     const m = r.opening_hours.match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
     if (m) {
       document.getElementById('fopens').value = m[1];
+      const closes = document.querySelector('[name=closes_at]');
+      if (closes && !closes.value) closes.value = m[2];
     }
   }
+  const phone = document.querySelector('[name=phone]');
+  if (phone && r.phone && !phone.value) phone.value = r.phone;
+  const web = document.querySelector('[name=website]');
+  if (web && r.website && !web.value) web.value = r.website;
   setMarker(r.lat, r.lng);
   map.setView([r.lat, r.lng], 16);
   document.getElementById('osm-results').innerHTML = '<div class="alert alert-success py-1 small">✓ Daten übernommen – bitte prüfen und speichern!</div>';
