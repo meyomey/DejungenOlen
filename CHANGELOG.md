@@ -2,7 +2,20 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build n) – Audit 2
+## 1.4.0 – 2026-10-13 (Build o) – Audit 2
+
+### Mini-Karte pro Foto (Build o)
+
+- **Video (MP4 + Browser-Vorschau):** Fotos mit GPS-Position bekommen eine kleine
+  Karten-Einblendung (unten rechts, über der Unterschrift-Leiste, falls vorhanden):
+  Track-Umriss in Weiß, der bis zum Aufnahmeort gefahrene Teil in Orange, Marker am
+  Aufnahmeort und der Kilometerstand („km 15,2“).
+- Es werden nur Fotos berücksichtigt, deren Position plausibel zum Track passt
+  (gleicher Filter wie bei der Karten-Folie) – Fotos ohne GPS oder mit Ausreißer-Koordinaten
+  erhalten keine Mini-Karte, Touren ohne GPX-Datei bleiben unverändert.
+- Betroffene Dateien: `app.py` (`_photo_on_mini_map`, `_draw_mini_map`, `make_photo_overlay`,
+  Datenblock `_mini_track`), `templates/touren/video.html` (`miniTrack`, `drawMiniMap`,
+  `drawPhotoFrame`).
 
 ### Server-MP4: animiertes Höhenprofil (Build n)
 - Neue Folie „Höhenprofil“ (3,5 s) im MP4 – an derselben Stelle wie in der Browser-Vorschau (nach den Fotos, vor dem Outro) und über dasselbe Häkchen „Höhenprofil zeigen“ steuerbar (Formularfeld `show_profile`, Standard an). Die Kurve baut sich von links nach rechts auf (gefüllte Fläche mit Verlauf + Linie), mit Höhen-Raster, km-Achse aus den echten Streckenkilometern, laufendem Höhenwert an der Spitze und Markierung des höchsten Punkts („↑ 92 m“). Höhen werden leicht geglättet (Mittel über 5 Punkte); Tracks ohne Höhendaten (flacher als 1 m) bekommen keine Folie. `build_profile_frames()` in `tour_video_render`.

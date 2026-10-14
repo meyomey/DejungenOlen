@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 n'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 o'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2661,17 +2661,70 @@ def tour_video_render(tour_id):
                 lines[-1] = last
             return lines
 
+        def _photo_on_mini_map(photo):
+            """Build o: Foto hat plausible GPS-Daten (nahe der Track-Box) → Mini-Karte möglich."""
+            mt = _mini_track
+            if not mt or not (photo.lat and photo.lng):
+                return False
+            pad_lat = max(0.02, (mt['max_lat'] - mt['min_lat']) * 0.25)
+            pad_lng = max(0.03, (mt['max_lng'] - mt['min_lng']) * 0.25)
+            return (mt['min_lat'] - pad_lat <= photo.lat <= mt['max_lat'] + pad_lat and
+                    mt['min_lng'] - pad_lng <= photo.lng <= mt['max_lng'] + pad_lng)
+
+        def _draw_mini_map(layer, photo, bar_top=None):
+            """Build o: Mini-Karte unten rechts auf dem Foto – Track-Umriss, bis zum Aufnahmeort
+            orange, Marker am Aufnahmeort, km-Stand. Sitzt über der Unterschrift-Leiste (bar_top),
+            falls es eine gibt. Rein gezeichnet (keine Kacheln) – schnell und klein gut lesbar."""
+            mt = _mini_track
+            side = int(min(W, H) * 0.22)
+            m = SAFE + 24
+            x0 = W - m - side
+            y1 = (bar_top - 16) if bar_top else (H - m)
+            y0 = y1 - side
+            draw = _ID_MOD.Draw(layer)
+            draw.rounded_rectangle([x0, y0, x0 + side, y1], radius=18, fill=(0, 0, 0, 140),
+                                   outline=(255, 255, 255, 210), width=2)
+            pad, label_h = 20, 24
+            iw, ih = side - 2 * pad, side - 2 * pad - label_h
+            lat_r = (mt['max_lat'] - mt['min_lat']) or 1e-4
+            lng_r = ((mt['max_lng'] - mt['min_lng']) or 1e-4) * mt['cos']
+            sc = min(iw / lng_r, ih / lat_r)
+            cx, cy = x0 + side / 2, y0 + pad + ih / 2
+            mid_lat = (mt['max_lat'] + mt['min_lat']) / 2
+            mid_lng = (mt['max_lng'] + mt['min_lng']) / 2
+
+            def P(lat, lng):
+                return (cx + (lng - mid_lng) * mt['cos'] * sc, cy - (lat - mid_lat) * sc)
+
+            pts = mt['pts']
+            xy = [P(q['lat'], q['lng']) for q in pts]
+            best_i = min(range(len(pts)),
+                         key=lambda i: (pts[i]['lat'] - photo.lat) ** 2 + ((pts[i]['lng'] - photo.lng) * mt['cos']) ** 2)
+            if len(xy) > 1:
+                draw.line(xy, fill=(255, 255, 255, 190), width=3, joint='curve')
+            if best_i >= 1:
+                draw.line(xy[:best_i + 1], fill=(240, 133, 30, 255), width=4, joint='curve')
+            px, py = P(photo.lat, photo.lng)
+            px = min(max(px, x0 + 10), x0 + side - 10)      # Foto leicht abseits → im Kasten halten
+            py = min(max(py, y0 + 10), y1 - 10)
+            draw.ellipse([px - 8, py - 8, px + 8, py + 8], fill=(240, 133, 30, 255), outline=(255, 255, 255, 255), width=3)
+            lbl = f"km {mt['cum_km'][best_i]:.1f}".replace('.', ',')
+            f = _pil_font(18)
+            draw.text((cx - draw.textlength(lbl, font=f) / 2, y1 - pad - label_h + 6), lbl, font=f, fill=(255, 255, 255, 255))
+
         def make_photo_overlay(photo, dst_png):
             """Transparentes W×H-PNG für ein Foto: Wasserzeichen oben rechts, unten eine
-            dezente Leiste mit Uhrzeit (taken_at) und Bildunterschrift (caption).
-            Liefert True, wenn es etwas aufzulegen gibt."""
+            dezente Leiste mit Uhrzeit (taken_at) und Bildunterschrift (caption), Build o:
+            Mini-Karte unten rechts (Fotos mit GPS). Liefert True, wenn es etwas aufzulegen gibt."""
             caption = (photo.caption or '').strip()
             when = photo.taken_at.strftime('%H:%M Uhr') if photo.taken_at else ''
-            if not (caption or when or logo_rgba is not None):
+            has_map = _photo_on_mini_map(photo)
+            if not (caption or when or logo_rgba is not None or has_map):
                 return False
             try:
                 layer = _PIL.new('RGBA', (W, H), (0, 0, 0, 0))
                 draw = _ID_MOD.Draw(layer)
+                bar_top = None
                 if caption or when:
                     cap_font  = _pil_font(min(34, int(W / 30)))
                     time_font = _pil_font(22, bold=False)
@@ -2685,6 +2738,7 @@ def tour_video_render(tour_id):
                                  ([draw.textlength(when, font=time_font)] if when else [0]))
                     bar_w = int(min(W - 2 * m, max(W / 3, text_w + 2 * pad)))
                     y0 = H - m - bar_h
+                    bar_top = y0
                     draw.rounded_rectangle([m, y0, m + bar_w, y0 + bar_h], radius=18, fill=(0, 0, 0, 150))
                     ty = y0 + pad - 4
                     if when:
@@ -2693,6 +2747,8 @@ def tour_video_render(tour_id):
                     for l_ in lines:
                         draw.text((m + pad, ty), l_, font=cap_font, fill=(255, 255, 255, 255))
                         ty += line_h
+                if has_map:
+                    _draw_mini_map(layer, photo, bar_top)
                 paste_watermark(layer, 'tr')
                 layer.save(dst_png, 'PNG')
                 return True
@@ -3513,7 +3569,7 @@ def tour_video_render(tour_id):
 
         # GPX einmal parsen: Punkte für die Karte, Zeitstempel für Fahrzeit/Schnitt (Build j),
         # Einkehr nahe der Route (Build j)
-        _gpx_points, _ride, _near_spots = [], {}, []
+        _gpx_points, _ride, _near_spots, _mini_track = [], {}, [], None
         if tour.gpx_file:
             _gpx_path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
             if os.path.exists(_gpx_path):
@@ -3523,6 +3579,22 @@ def tour_video_render(tour_id):
                     _ride = {k: _parsed.get(k) for k in ('moving_s', 'total_s', 'avg_kmh', 'max_kmh')}
         if show_gastro and _gpx_points:
             _near_spots = gastro_near_track(_gpx_points)
+        if len(_gpx_points) >= 2:   # Build o: Track-Umriss + km-Stände für die Mini-Karte auf den Fotos
+            try:
+                import math as _m
+                _st = max(1, len(_gpx_points) // 300)
+                _mp = _gpx_points[::_st]
+                if _st > 1 and (len(_gpx_points) - 1) % _st:
+                    _mp.append(_gpx_points[-1])
+                _lats = [q['lat'] for q in _mp]; _lngs = [q['lng'] for q in _mp]
+                _cos = max(0.2, _m.cos(_m.radians((min(_lats) + max(_lats)) / 2)))
+                _cum = [0.0]
+                for _a, _b in zip(_mp, _mp[1:]):
+                    _cum.append(_cum[-1] + _m.hypot((_b['lat'] - _a['lat']) * 111320.0, (_b['lng'] - _a['lng']) * 111320.0 * _cos))
+                _mini_track = {'pts': _mp, 'cum_km': [c_ / 1000 for c_ in _cum], 'cos': _cos,
+                               'min_lat': min(_lats), 'max_lat': max(_lats), 'min_lng': min(_lngs), 'max_lng': max(_lngs)}
+            except Exception:
+                _mini_track = None
         _photos_with_gps = [{'filename': p.filename, 'lat': p.lat, 'lng': p.lng}
                             for p in photos if p.lat and p.lng]
 

@@ -372,7 +372,52 @@ function drawTitle(alpha=1, bgImg=null) {
   ctx.globalAlpha = 1;
 }
 
-function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, zoomIn=true) {
+// ── Build o: Mini-Karte auf den Fotos (Track-Umriss, bis zum Foto orange, Marker, km-Stand) ──
+let _miniTrack = null;
+function miniTrack() {
+  if (_miniTrack || !GPX_DATA || !GPX_DATA.points || GPX_DATA.points.length < 2) return _miniTrack;
+  const all = GPX_DATA.points, st = Math.max(1, Math.floor(all.length / 300));
+  const pts = all.filter((_, i) => i % st === 0);
+  if (pts[pts.length - 1] !== all[all.length - 1]) pts.push(all[all.length - 1]);
+  const b = trackBounds(pts);
+  const cos = Math.max(0.2, Math.cos((b.minLat + b.maxLat) / 2 * Math.PI / 180));
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++)
+    cum.push(cum[i - 1] + Math.hypot((pts[i].lat - pts[i - 1].lat) * 111320, (pts[i].lng - pts[i - 1].lng) * 111320 * cos) / 1000);
+  _miniTrack = { pts, cum, cos, b };
+  return _miniTrack;
+}
+function drawMiniMap(p, x0, y1, side) {
+  const mt = miniTrack();
+  if (!mt || !p || !photoOnMap(p, mt.b)) return;
+  const y0 = y1 - side;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.strokeStyle = 'rgba(255,255,255,.82)'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x0, y0, side, side, 14); else ctx.rect(x0, y0, side, side);
+  ctx.fill(); ctx.stroke();
+  const pad = 14, labelH = 18, iw = side - 2 * pad, ih = side - 2 * pad - labelH;
+  const latR = (mt.b.maxLat - mt.b.minLat) || 1e-4, lngR = ((mt.b.maxLng - mt.b.minLng) || 1e-4) * mt.cos;
+  const sc = Math.min(iw / lngR, ih / latR);
+  const cx = x0 + side / 2, cy = y0 + pad + ih / 2;
+  const midLat = (mt.b.maxLat + mt.b.minLat) / 2, midLng = (mt.b.maxLng + mt.b.minLng) / 2;
+  const P = (lat, lng) => [cx + (lng - midLng) * mt.cos * sc, cy - (lat - midLat) * sc];
+  let bestI = 0, bestD = Infinity;
+  mt.pts.forEach((q, i) => { const d = (q.lat - p.lat) ** 2 + ((q.lng - p.lng) * mt.cos) ** 2; if (d < bestD) { bestD = d; bestI = i; } });
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const path = n => { ctx.beginPath(); for (let i = 0; i < n; i++) { const [x, y] = P(mt.pts[i].lat, mt.pts[i].lng); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); };
+  ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 2.5; path(mt.pts.length);
+  if (bestI >= 1) { ctx.strokeStyle = '#f0851e'; ctx.lineWidth = 3.5; path(bestI + 1); }
+  let [px, py] = P(p.lat, p.lng);
+  px = Math.min(Math.max(px, x0 + 8), x0 + side - 8); py = Math.min(Math.max(py, y0 + 8), y1 - 8);
+  ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fillStyle = '#f0851e'; ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('km ' + mt.cum[bestI].toFixed(1).replace('.', ','), cx, y1 - pad - labelH / 2 + 4);
+  ctx.restore();
+}
+
+function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, zoomIn=true, photo=null) {
   ctx.globalAlpha = alpha;
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
 
@@ -395,6 +440,9 @@ function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, zoomIn=true)
   ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.font = '18px sans-serif';
   ctx.textAlign = 'right';
   ctx.fillText(GROUP_NAME, W-20, H-35);
+  // Build o: Mini-Karte unten rechts über der Fußleiste (nur Fotos mit GPS)
+  const mmSide = Math.round(Math.min(W, H) * 0.22);
+  drawMiniMap(photo, W - 20 - mmSide, H - 70 - 14, mmSide);
   ctx.globalAlpha = 1;
 }
 
@@ -1146,7 +1194,7 @@ async function runSequence(onFrame) {
       const a = transition==='none' ? 1
         : f < fadeDur ? f/fadeDur
         : f > tot-fadeDur ? (tot-f)/fadeDur : 1;
-      drawPhotoFrame(img, p.cap, p.date, a, f/tot, zoomIn);
+      drawPhotoFrame(img, p.cap, p.date, a, f/tot, zoomIn, p);
     });
   }
 
