@@ -2,7 +2,15 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build j) – Audit 2
+## 1.4.0 – 2026-10-13 (Build k) – Audit 2
+
+### Kartenfolie: Track sichtbar, Foto-Marker neben dem Track (Build k)
+- **Problem:** Die Foto-Kacheln lagen direkt auf dem Track und stapelten sich an gleichen Aufnahmeorten – der Track war kaum zu erkennen; außerdem wurde der Kartenausschnitt oft zu weit herausgezoomt (Track winzig).
+- **Foto-Marker** (Browser-Vorschau `video.html` und Server-MP4 `build_track_frames()`): kleiner (max. 76 px), Fotos mit nahe beieinander-liegenden Positionen werden zu einer Kachel mit „+N“-Plakette gebündelt, und jede Kachel wird an der von 8 Positionen rund um den Aufnahmeort platziert, die am wenigsten Track verdeckt (und keine andere Kachel überlappt). Eine Verbindungslinie zeigt vom Foto auf den Aufnahmepunkt (kleiner blauer Punkt).
+- **Kartenausschnitt:** Der Track darf die Fläche unter der Kopfzeile füllen (vorher nur 82 % von „Höhe − 240“). Es wird die größte Zoomstufe gewählt, bei der er passt; füllt er die Fläche damit unter 66 %, wird eine Stufe feiner geladen und das Kachelbild auf 70–100 % skaliert – der Track nutzt so immer rund 70–92 % der Fläche. Kachelbereich wird eng berechnet (kaum mehr Kachel-Downloads als vorher).
+- **GPS-Ausreißer:** Fotos, deren Koordinaten weit abseits des Tracks liegen (falsche EXIF-Position), blähen den Ausschnitt nicht mehr auf und bekommen keinen Marker.
+- Fallback-Projektion der Vorschau (ohne Kacheln) berücksichtigt jetzt die Längengrad-Verkürzung (keine verzerrten Tracks mehr).
+- Getestet: Node-Test der Bündelung/Platzierung (0 Trackpunkte unter den Kacheln, alle im Bild), MP4 Hoch- und Querformat mit Einzelbildern.
 
 ### Video: Einkehr nahe der Route, Fahrzeit & Schnitt, gezeichnete Wettersymbole (Build j)
 - **Fahrzeit & Ø Tempo aus GPX-Zeitstempeln:** `parse_gpx()` liefert zusätzlich `moving_s` (reine Fahrzeit, Pausen = Abschnitte langsamer als 1 km/h), `total_s` (gesamt), `avg_kmh`, `max_kmh`, `start_time`/`end_time` (Ortszeit Europe/Berlin). Statistik-Folie (Server-MP4 **und** Browser-Vorschau) zeigt zwei neue Kacheln „Fahrzeit · x:xx h gesamt“ und „Ø Tempo · max. xx km/h“ – nur wenn der Track Zeitstempel hat. Bei mehr als 4 Kacheln im Querformat/Quadrat drei Spalten; zu breite Werte werden automatisch kleiner gesetzt.

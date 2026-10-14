@@ -401,6 +401,61 @@ function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, zoomIn=true)
 let _trackProj = null; // gecachte Projektion (min/max + proj-Funktion), einmal berechnet
 let _mapTileCanvas = null; // gecachtes, zusammengesetztes Kachel-Hintergrundbild
 let _mapTileLoading = false;
+let _photoClusters = null;   // Build k: gebündelte Foto-Marker mit fester Platzierung neben dem Track
+const MAP_TOP = 100;         // Kartenfläche beginnt unter der Kopfzeile (24..88)
+
+function mapArea() {         // Fläche, die der Track ausfüllen darf (Rand für Marker eingerechnet)
+  const bottom = H - 40;
+  return { availW: W - 140, availH: (bottom - MAP_TOP) - 80, centerY: (MAP_TOP + bottom) / 2 };
+}
+function trackBounds(pts) {
+  const lats = pts.map(p => p.lat), lngs = pts.map(p => p.lng);
+  return { minLat: Math.min(...lats), maxLat: Math.max(...lats), minLng: Math.min(...lngs), maxLng: Math.max(...lngs) };
+}
+function photoOnMap(p, b) {  // GPS-Fotos weit abseits des Tracks (falsche EXIF-Position) ignorieren
+  if (!p.lat || !p.lng) return false;
+  const padLat = Math.max(0.02, (b.maxLat - b.minLat) * 0.25), padLng = Math.max(0.03, (b.maxLng - b.minLng) * 0.25);
+  return p.lat >= b.minLat - padLat && p.lat <= b.maxLat + padLat && p.lng >= b.minLng - padLng && p.lng <= b.maxLng + padLng;
+}
+// Build k: Fotos mit GPS → Bildschirmposition + Streckenanteil, nahe beieinanderliegende bündeln,
+// Kachel an der von 8 Positionen platzieren, die am wenigsten Track verdeckt
+function buildPhotoClusters(pts, proj, thumb) {
+  const tb = trackBounds(pts);
+  const items = [];
+  PHOTOS.forEach((p, idx) => {
+    if (!photoOnMap(p, tb)) return;
+    let bestI = 0, bestD = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const d = Math.hypot(pts[i].lat - p.lat, pts[i].lng - p.lng);
+      if (d < bestD) { bestD = d; bestI = i; }
+    }
+    const [x, y] = proj(p.lat, p.lng);
+    items.push({ idx, x, y, frac: bestI / pts.length });
+  });
+  const clusters = [];
+  items.forEach(it => {
+    const c = clusters.find(c => Math.hypot(c.x - it.x, c.y - it.y) < thumb * 0.9);
+    if (c) { c.count++; c.frac = Math.min(c.frac, it.frac); }
+    else clusters.push({ idx: it.idx, x: it.x, y: it.y, frac: it.frac, count: 1 });
+  });
+  const track = pts.map(p => proj(p.lat, p.lng));
+  const d = thumb / 2 + 24, placed = [];
+  const cand = [[0, -d], [d, 0], [-d, 0], [0, d], [0.8*d, -0.8*d], [-0.8*d, -0.8*d], [0.8*d, 0.8*d], [-0.8*d, 0.8*d]];
+  clusters.forEach(c => {
+    let best = null;
+    cand.forEach(([dx, dy], ci) => {
+      const tx = c.x + dx, ty = c.y + dy;
+      const l = tx - thumb/2 - 8, t = ty - thumb/2 - 8, r = tx + thumb/2 + 8, b = ty + thumb/2 + 8;
+      let cost = ci * 0.5;   // leichte Vorliebe: oben, rechts, links, unten
+      if (l < 6 || r > W - 6 || t < MAP_TOP || b > H - 36) cost += 10000;
+      track.forEach(([px, py]) => { if (px >= l && px <= r && py >= t && py <= b) cost += 10; });
+      placed.forEach(pr => { if (!(r < pr.l || l > pr.r || b < pr.t || t > pr.b)) cost += 1000; });
+      if (!best || cost < best.cost) best = { cost, tx, ty, l, t, r, b };
+    });
+    c.tx = best.tx; c.ty = best.ty; placed.push(best);
+  });
+  return clusters;
+}
 
 function latLngToTileXY(lat, lng, zoom) {
   const n = Math.pow(2, zoom);
@@ -415,31 +470,40 @@ async function loadMapTileBackground() {
   _mapTileLoading = true;
   try {
     const { pts } = computeTrackProjection();
+    const tb = trackBounds(pts);
     const lats = pts.map(p => p.lat), lngs = pts.map(p => p.lng);
-    PHOTOS.forEach(p => { if (p.lat) { lats.push(p.lat); lngs.push(p.lng); } });
+    PHOTOS.forEach(p => { if (photoOnMap(p, tb)) { lats.push(p.lat); lngs.push(p.lng); } });
     const minLat = Math.min(...lats), maxLat = Math.max(...lats);
     const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
 
-    // Passenden Zoom-Level finden, der den Track komfortabel ins Canvas passt
+    // Build k: größte Zoomstufe, bei der der Track in die Kartenfläche passt; füllt er sie damit
+    // unter 66 %, eine Stufe feiner laden und das Kachelbild auf 70–100 % herunterskalieren
     const TILE = 256;
+    const { availW, availH, centerY } = mapArea();
+    const extent = z => {
+      const p1 = latLngToTileXY(minLat, minLng, z), p2 = latLngToTileXY(maxLat, maxLng, z);
+      return { w: Math.abs(p2.x - p1.x) * TILE, h: Math.abs(p1.y - p2.y) * TILE };
+    };
     let zoom = 16;
-    for (; zoom > 8; zoom--) {
-      const p1 = latLngToTileXY(minLat, minLng, zoom);
-      const p2 = latLngToTileXY(maxLat, maxLng, zoom);
-      const pxW = Math.abs(p2.x - p1.x) * TILE, pxH = Math.abs(p1.y - p2.y) * TILE;
-      if (pxW < W * 0.82 && pxH < (H - 240) * 0.82) break; // etwas Rand für Kopfzeile/Marker
-    }
+    for (; zoom > 8; zoom--) { const e = extent(zoom); if (e.w <= availW && e.h <= availH) break; }
+    const e0 = extent(zoom);
+    const fill = Math.max(e0.w / availW, e0.h / availH, 1e-6);
+    let f = 1;
+    if (fill > 1) f = Math.max(0.5, 0.92 / fill);
+    else if (fill < 0.66 && zoom < 17) { zoom += 1; f = Math.min(1, 0.92 / (2 * fill)); }
 
     const centerLat = (minLat + maxLat) / 2, centerLng = (minLng + maxLng) / 2;
-    const centerTile = latLngToTileXY(centerLat, centerLng, zoom);
-    const tilesAcross = Math.ceil(W / TILE) + 2;
-    const tilesDown   = Math.ceil(H / TILE) + 2;
-    const startTx = Math.floor(centerTile.x - tilesAcross / 2);
-    const startTy = Math.floor(centerTile.y - tilesDown / 2);
+    const C = latLngToTileXY(centerLat, centerLng, zoom);
+    const srcW = W / f, srcH = H / f;                                  // Quellbereich in Kachelpixeln
+    const srcLeft = C.x * TILE - (W / 2) / f, srcTop = C.y * TILE - centerY / f;
+    const startTx = Math.floor(srcLeft / TILE), endTx = Math.floor((srcLeft + srcW) / TILE);
+    const startTy = Math.floor(srcTop / TILE), endTy = Math.floor((srcTop + srcH) / TILE);
+    const tilesAcross = endTx - startTx + 1, tilesDown = endTy - startTy + 1;
 
     const off = document.createElement('canvas');
     off.width = tilesAcross * TILE; off.height = tilesDown * TILE;
     const octx = off.getContext('2d');
+    octx.fillStyle = '#e6ebe1'; octx.fillRect(0, 0, off.width, off.height);
     const subdomains = ['a', 'b', 'c'];
     let i = 0;
     const loads = [];
@@ -458,25 +522,15 @@ async function loadMapTileBackground() {
     }
     await Promise.all(loads);
 
-    // Referenzpunkt für die Umrechnung Bild-Pixel → Canvas-Projektion merken
-    const originTile = { x: startTx, y: startTy, zoom, TILE };
-    _mapTileCanvas = { img: off, originTile, centerLat, centerLng, W: off.width, H: off.height };
+    // Quellrechteck im Offscreen-Canvas – drawTrackFrame zeichnet es auf W×H skaliert
+    _mapTileCanvas = { img: off, sx: srcLeft - startTx * TILE, sy: srcTop - startTy * TILE, sw: srcW, sh: srcH, zoom, f };
 
-    // Bestehende proj()-Funktion so anpassen, dass sie zur Kachel-Pixelwelt passt,
-    // und den Bildausschnitt für drawImage vorberechnen
-    const offCenterPx = latLngToTileXY(centerLat, centerLng, zoom);
-    const offCenterX = (offCenterPx.x - startTx) * TILE;
-    const offCenterY = (offCenterPx.y - startTy) * TILE;
-    _mapTileCanvas.drawOffsetX = offCenterX - W/2;
-    _mapTileCanvas.drawOffsetY = offCenterY - (H - 240)/2 - 140; // an Kopfzeilen-Layout angepasst
-
-    // proj() ersetzen: rechnet jetzt direkt über Zoom/Tile-Mathematik (deckungsgleich mit dem Kachelbild)
+    // proj() ersetzen: deckungsgleich mit dem skalierten Kachelbild
     _trackProj.proj = (lat, lng) => {
       const p = latLngToTileXY(lat, lng, zoom);
-      const px = (p.x - startTx) * TILE - _mapTileCanvas.drawOffsetX;
-      const py = (p.y - startTy) * TILE - _mapTileCanvas.drawOffsetY;
-      return [px, py];
+      return [(p.x - C.x) * TILE * f + W / 2, (p.y - C.y) * TILE * f + centerY];
     };
+    _photoClusters = null;   // Marker-Platzierung mit der neuen Projektion neu berechnen
   } catch (e) {
     console.warn('Kartenkacheln konnten nicht geladen werden, nutze Fallback-Hintergrund:', e);
   } finally {
@@ -487,21 +541,21 @@ async function loadMapTileBackground() {
 function computeTrackProjection() {
   if (_trackProj) return _trackProj;
   const pts = GPX_DATA.points.filter((_,i)=>i%Math.max(1,Math.floor(GPX_DATA.points.length/400))===0);
+  const tb = trackBounds(pts);
   const lats=pts.map(p=>p.lat), lngs=pts.map(p=>p.lng);
-  // Foto-Positionen mit einbeziehen, damit Marker nie aus dem Bild ragen
-  PHOTOS.forEach(p => { if (p.lat) { lats.push(p.lat); lngs.push(p.lng); } });
+  // Foto-Positionen mit einbeziehen (nur plausible, Build k), damit Marker nie aus dem Bild ragen
+  PHOTOS.forEach(p => { if (photoOnMap(p, tb)) { lats.push(p.lat); lngs.push(p.lng); } });
   const minLat=Math.min(...lats), maxLat=Math.max(...lats);
   const minLng=Math.min(...lngs), maxLng=Math.max(...lngs);
-  const pad=110;
   const latRange = maxLat-minLat || 0.001, lngRange = maxLng-minLng || 0.001;
-  // Seitenverhältnis erhalten (keine Verzerrung) – kleinere Achse begrenzt
-  const availW = W - 2*pad, availH = H - 2*pad - 100; // Platz für Kopfzeile oben
-  const scale = Math.min(availW/lngRange, availH/latRange);
-  const cx = pad + availW/2, cy = 140 + availH/2;
   const midLat = (minLat+maxLat)/2, midLng = (minLng+maxLng)/2;
+  const cosLat = Math.cos(midLat * Math.PI / 180) || 1;   // Längengrade sind kürzer – sonst verzerrt
+  const { availW, availH, centerY } = mapArea();
+  // Seitenverhältnis erhalten (keine Verzerrung) – kleinere Achse begrenzt
+  const scale = Math.min(availW/(lngRange*cosLat), availH/latRange);
   _trackProj = {
     pts,
-    proj: (lat,lng) => [cx + (lng-midLng)*scale, cy - (lat-midLat)*scale]
+    proj: (lat,lng) => [W/2 + (lng-midLng)*cosLat*scale, centerY - (lat-midLat)*scale]
   };
   return _trackProj;
 }
@@ -524,8 +578,9 @@ function drawTrackFrame(progress) {
   computeTrackProjection(); // stellt sicher, dass _trackProj existiert (proj wird ggf. unten überschrieben)
 
   if (_mapTileCanvas) {
-    // Echte OSM-Kartenkacheln als Hintergrund zeichnen
-    ctx.drawImage(_mapTileCanvas.img, -_mapTileCanvas.drawOffsetX, -_mapTileCanvas.drawOffsetY);
+    // Echte OSM-Kartenkacheln als Hintergrund (Quellausschnitt auf Canvas-Größe skaliert, Build k)
+    const m = _mapTileCanvas;
+    ctx.drawImage(m.img, m.sx, m.sy, m.sw, m.sh, 0, 0, W, H);
     // Leichtes Abdunkeln für bessere Lesbarkeit von Track/Text darüber
     ctx.fillStyle = 'rgba(255,255,255,.15)';
     ctx.fillRect(0,0,W,H);
@@ -561,48 +616,48 @@ function drawTrackFrame(progress) {
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.stroke();
   }
 
-  // Foto-Marker: erscheinen sobald der Track ihre Position erreicht hat
+  // Foto-Marker (Build k): kleiner, gebündelt („+N“) und NEBEN dem Track – erscheinen,
+  // sobald der Track ihre Position erreicht hat; Verbindungslinie zeigt auf den Aufnahmeort
   const reachedFrac = end / pts.length;
-  PHOTOS.forEach((p, idx) => {
-    if (!p.lat || !p.lng) return;
-    // Position des Fotos entlang des Tracks grob per nächstem Punkt bestimmen
-    let bestI = 0, bestD = Infinity;
-    for (let i=0;i<pts.length;i+=4) {
-      const d = Math.hypot(pts[i].lat-p.lat, pts[i].lng-p.lng);
-      if (d < bestD) { bestD = d; bestI = i; }
-    }
-    const photoFrac = bestI / pts.length;
-    if (photoFrac > reachedFrac) return; // noch nicht erreicht
-    const appearAge = reachedFrac - photoFrac;
-    const popScale = appearAge < 0.03 ? Math.min(1, appearAge/0.03) : 1; // kurzer Pop-Effekt
-
-    const [x,y] = proj(p.lat, p.lng);
-    const img = imgs[idx];
+  const thumb = Math.max(44, Math.min(76, Math.round(Math.min(W, H) * 0.07)));
+  if (!_photoClusters) _photoClusters = buildPhotoClusters(pts, proj, thumb);
+  _photoClusters.forEach(c => {
+    if (c.frac > reachedFrac) return;
+    const img = imgs[c.idx];
     if (!img) return;
-    const thumbSize = 78 * popScale;
+    const age = reachedFrac - c.frac;
+    const s = thumb * (age < 0.03 ? Math.max(0.2, age / 0.03) : 1);   // kurzer Pop-Effekt
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 10;
-    // Weißer Rahmen
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.tx, c.ty); ctx.stroke();
+    ctx.strokeStyle = '#2B3F6B'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.tx, c.ty); ctx.stroke();
+    ctx.beginPath(); ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#2B3F6B'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke();
+    // Weißer Rahmen + quadratisch zugeschnittenes Foto
+    ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 8;
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(x-thumbSize/2-4, y-thumbSize-4, thumbSize+8, thumbSize+8, 8);
-    else ctx.rect(x-thumbSize/2-4, y-thumbSize-4, thumbSize+8, thumbSize+8);
+    if (ctx.roundRect) ctx.roundRect(c.tx - s/2 - 3, c.ty - s/2 - 3, s + 6, s + 6, 7);
+    else ctx.rect(c.tx - s/2 - 3, c.ty - s/2 - 3, s + 6, s + 6);
     ctx.fill();
     ctx.shadowBlur = 0;
-    // Foto-Thumbnail (quadratisch zugeschnitten)
     ctx.save();
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(x-thumbSize/2, y-thumbSize, thumbSize, thumbSize, 5);
-    else ctx.rect(x-thumbSize/2, y-thumbSize, thumbSize, thumbSize);
+    if (ctx.roundRect) ctx.roundRect(c.tx - s/2, c.ty - s/2, s, s, 5);
+    else ctx.rect(c.tx - s/2, c.ty - s/2, s, s);
     ctx.clip();
-    const s = Math.min(img.width, img.height);
-    ctx.drawImage(img, (img.width-s)/2, (img.height-s)/2, s, s, x-thumbSize/2, y-thumbSize, thumbSize, thumbSize);
+    const sq = Math.min(img.width, img.height);
+    ctx.drawImage(img, (img.width - sq)/2, (img.height - sq)/2, sq, sq, c.tx - s/2, c.ty - s/2, s, s);
     ctx.restore();
-    // kleiner Zeiger nach unten zur Position
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.moveTo(x-7, y-2); ctx.lineTo(x+7, y-2); ctx.lineTo(x, y+8);
-    ctx.closePath(); ctx.fill();
+    if (c.count > 1) {   // „+N“-Plakette oben rechts
+      ctx.beginPath(); ctx.arc(c.tx + s/2 - 2, c.ty - s/2 + 2, 12, 0, Math.PI * 2);
+      ctx.fillStyle = '#f0851e'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('+' + (c.count - 1), c.tx + s/2 - 2, c.ty - s/2 + 3);
+    }
     ctx.restore();
   });
 

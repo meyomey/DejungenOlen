@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 j'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 k'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3091,111 +3091,179 @@ def tour_video_render(tour_id):
             return x, y
 
         def build_track_frames(gpx_points, photos_with_gps, near_spots=None):
-            """Laedt echte OSM-Kacheln + zeichnet den Track schrittweise animiert.
-            Gibt Liste von (frame_path, duration) zurueck, oder [] bei Fehler/keinen Daten.
+            """Lädt echte OSM-Kacheln + zeichnet den Track schrittweise animiert.
+            Gibt Liste von (frame_path, duration) zurück, oder [] bei Fehler/keinen Daten.
             Build j: near_spots (gastro_near_track) erscheinen als Marker mit Namensschild,
-            sobald der gezeichnete Track an ihnen vorbeikommt."""
+            sobald der gezeichnete Track an ihnen vorbeikommt.
+            Build k: Der Track füllt die Kartenfläche (größte passende Zoomstufe, bei unter
+            66 % Füllung eine Stufe feiner + Kachelbild auf 70–100 % skaliert). Foto-Marker
+            sind kleiner, werden gebündelt („+N“) und NEBEN dem Track platziert – an der von
+            8 Positionen, die am wenigsten Track verdeckt – mit Verbindungslinie zum
+            Aufnahmeort. GPS-Fotos weit abseits des Tracks (falsche EXIF-Position) werden
+            ignoriert, damit sie den Kartenausschnitt nicht aufblähen."""
             if not PIL_OK or not gpx_points or len(gpx_points) < 2:
                 return []
             try:
+                import math
                 _ID = _ID_MOD
                 step = max(1, len(gpx_points)//300)
                 pts = gpx_points[::step]
-                lats = [p['lat'] for p in pts]; lngs = [p['lng'] for p in pts]
-                for p in photos_with_gps:
-                    lats.append(p['lat']); lngs.append(p['lng'])
+                t_lats = [p['lat'] for p in pts]; t_lngs = [p['lng'] for p in pts]
+                pad_lat = max(0.02, (max(t_lats) - min(t_lats)) * 0.25)
+                pad_lng = max(0.03, (max(t_lngs) - min(t_lngs)) * 0.25)
+                photos_with_gps = [p for p in photos_with_gps
+                                   if min(t_lats) - pad_lat <= p['lat'] <= max(t_lats) + pad_lat
+                                   and min(t_lngs) - pad_lng <= p['lng'] <= max(t_lngs) + pad_lng]
+                lats = t_lats + [p['lat'] for p in photos_with_gps]
+                lngs = t_lngs + [p['lng'] for p in photos_with_gps]
                 min_lat, max_lat = min(lats), max(lats)
                 min_lng, max_lng = min(lngs), max(lngs)
 
+                # Kartenfläche: unter der Kopfzeile (24..88) bis über die ©-Zeile, Rand für Marker
                 TILE = 256
+                map_top, map_bottom = 100, H - 40
+                avail_w, avail_h = W - 140, (map_bottom - map_top) - 80
+                center_y = (map_top + map_bottom) / 2
+
+                def extent(z):
+                    x1, y1 = _lat_lng_to_tile_xy(min_lat, min_lng, z)
+                    x2, y2 = _lat_lng_to_tile_xy(max_lat, max_lng, z)
+                    return abs(x2 - x1) * TILE, abs(y1 - y2) * TILE
+
                 zoom = 16
                 while zoom > 8:
-                    x1, y1 = _lat_lng_to_tile_xy(min_lat, min_lng, zoom)
-                    x2, y2 = _lat_lng_to_tile_xy(max_lat, max_lng, zoom)
-                    px_w = abs(x2-x1)*TILE; px_h = abs(y1-y2)*TILE
-                    if px_w < W*0.82 and px_h < (H-240)*0.82:
+                    ew, eh = extent(zoom)
+                    if ew <= avail_w and eh <= avail_h:
                         break
                     zoom -= 1
+                ew, eh = extent(zoom)
+                fill = max(ew / avail_w, eh / avail_h, 1e-6)
+                f = 1.0                                   # Feinskalierung des Kachelbilds
+                if fill > 1:                              # selbst Zoom 8 zu groß (Extremfall)
+                    f = max(0.5, 0.92 / fill)
+                elif fill < 0.66 and zoom < 17:
+                    zoom += 1
+                    f = min(1.0, 0.92 / (2 * fill))
 
-                center_lat, center_lng = (min_lat+max_lat)/2, (min_lng+max_lng)/2
-                ctx_x, ctx_y = _lat_lng_to_tile_xy(center_lat, center_lng, zoom)
-                tiles_across = W//TILE + 3
-                tiles_down   = H//TILE + 3
-                start_tx = int(ctx_x - tiles_across/2)
-                start_ty = int(ctx_y - tiles_down/2)
+                center_lat, center_lng = (min_lat + max_lat) / 2, (min_lng + max_lng) / 2
+                c_x, c_y = _lat_lng_to_tile_xy(center_lat, center_lng, zoom)
+                src_w, src_h = W / f, H / f                               # Quellbereich in Kachelpixeln
+                src_left, src_top = c_x * TILE - (W / 2) / f, c_y * TILE - center_y / f
+                start_tx, end_tx = int(math.floor(src_left / TILE)), int(math.floor((src_left + src_w) / TILE))
+                start_ty, end_ty = int(math.floor(src_top / TILE)), int(math.floor((src_top + src_h) / TILE))
+                tiles_across, tiles_down = end_tx - start_tx + 1, end_ty - start_ty + 1
 
-                bg = _PIL.new('RGB', (tiles_across*TILE, tiles_down*TILE), (230, 235, 225))
+                bg = _PIL.new('RGB', (tiles_across * TILE, tiles_down * TILE), (230, 235, 225))
                 subdomains = ['a', 'b', 'c']
                 for tx in range(tiles_across):
                     for ty in range(tiles_down):
-                        sub = subdomains[(tx*tiles_down+ty) % 3]
-                        url = f'https://{sub}.tile.openstreetmap.org/{zoom}/{start_tx+tx}/{start_ty+ty}.png'
+                        sub = subdomains[(tx * tiles_down + ty) % 3]
+                        url = f'https://{sub}.tile.openstreetmap.org/{zoom}/{start_tx + tx}/{start_ty + ty}.png'
                         try:
                             r = http_requests.get(url, timeout=4,
                                                   headers={'User-Agent': 'DjO-RadgruppenApp/1.0'})
                             if r.status_code == 200:
                                 tile_img = _PIL.open(io.BytesIO(r.content)).convert('RGB')
-                                bg.paste(tile_img, (tx*TILE, ty*TILE))
+                                bg.paste(tile_img, (tx * TILE, ty * TILE))
                         except Exception:
                             pass
-
-                offset_x = (ctx_x - start_tx) * TILE - W/2
-                offset_y = (ctx_y - start_ty) * TILE - (H-240)/2 - 140
+                sx, sy = src_left - start_tx * TILE, src_top - start_ty * TILE
+                base = bg.crop((int(round(sx)), int(round(sy)), int(round(sx + src_w)), int(round(sy + src_h))))
+                if base.size != (W, H):
+                    base = base.resize((W, H), _PIL.LANCZOS)
 
                 def proj(lat, lng):
                     px, py = _lat_lng_to_tile_xy(lat, lng, zoom)
-                    return ((px-start_tx)*TILE - offset_x, (py-start_ty)*TILE - offset_y)
+                    return ((px - c_x) * TILE * f + W / 2, (py - c_y) * TILE * f + center_y)
 
-                thumb_size = 78
-                photo_thumbs = []
-                for p in photos_with_gps:
-                    src = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], p['filename'])
-                    if not os.path.exists(src):
-                        photo_thumbs.append(None); continue
-                    try:
-                        pimg = _PIL.open(src).convert('RGB')
-                        s = min(pimg.width, pimg.height)
-                        pimg = pimg.crop(((pimg.width-s)//2, (pimg.height-s)//2,
-                                          (pimg.width-s)//2+s, (pimg.height-s)//2+s))
-                        pimg = pimg.resize((thumb_size, thumb_size), _PIL.LANCZOS)
-                        photo_thumbs.append(pimg)
-                    except Exception:
-                        photo_thumbs.append(None)
+                # Foto-Marker: Position, Streckenanteil, Bündelung nahe beieinanderliegender Fotos
+                thumb = max(44, min(76, int(round(min(W, H) * 0.07))))
+                items = []
+                for i, p in enumerate(photos_with_gps):
+                    best_d, best_i = 1e18, 0
+                    for k, pt in enumerate(pts):
+                        d = (pt['lat'] - p['lat']) ** 2 + (pt['lng'] - p['lng']) ** 2
+                        if d < best_d:
+                            best_d, best_i = d, k
+                    x, y = proj(p['lat'], p['lng'])
+                    items.append({'idx': i, 'x': x, 'y': y, 'frac': best_i / len(pts)})
+                clusters = []
+                for it in items:
+                    for c in clusters:
+                        if math.hypot(c['x'] - it['x'], c['y'] - it['y']) < thumb * 0.9:
+                            c['count'] += 1
+                            c['frac'] = min(c['frac'], it['frac'])
+                            break
+                    else:
+                        clusters.append(dict(it, count=1))
+                # Platzierung: von 8 Positionen um den Aufnahmeort die mit der geringsten Überdeckung
+                # (Trackpunkte in der Kachel ×10, Kollision mit anderer Kachel ×1000, außerhalb ×10000)
+                track_xy = [proj(pt['lat'], pt['lng']) for pt in pts]
+                dd = thumb / 2 + 24
+                cands = [(0, -dd), (dd, 0), (-dd, 0), (0, dd),
+                         (0.8 * dd, -0.8 * dd), (-0.8 * dd, -0.8 * dd), (0.8 * dd, 0.8 * dd), (-0.8 * dd, 0.8 * dd)]
+                placed = []
+                for c in clusters:
+                    best = None
+                    for ci, (dx, dy) in enumerate(cands):
+                        tx_, ty_ = c['x'] + dx, c['y'] + dy
+                        l, t, r, b = tx_ - thumb / 2 - 8, ty_ - thumb / 2 - 8, tx_ + thumb / 2 + 8, ty_ + thumb / 2 + 8
+                        cost = ci * 0.5                           # leichte Vorliebe: oben, rechts, links, unten
+                        if l < 6 or r > W - 6 or t < map_top or b > H - 36:
+                            cost += 10000
+                        cost += 10 * sum(1 for (px_, py_) in track_xy if l <= px_ <= r and t <= py_ <= b)
+                        cost += 1000 * sum(1 for pr in placed if not (r < pr[0] or l > pr[2] or b < pr[1] or t > pr[3]))
+                        if best is None or cost < best[0]:
+                            best = (cost, tx_, ty_, (l, t, r, b))
+                    c['tx'], c['ty'] = best[1], best[2]
+                    placed.append(best[3])
+                    src = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], photos_with_gps[c['idx']]['filename'])
+                    c['img'] = None
+                    if os.path.exists(src):
+                        try:
+                            pimg = _PIL.open(src).convert('RGB')
+                            sq = min(pimg.width, pimg.height)
+                            pimg = pimg.crop(((pimg.width - sq) // 2, (pimg.height - sq) // 2,
+                                              (pimg.width - sq) // 2 + sq, (pimg.height - sq) // 2 + sq))
+                            c['img'] = pimg.resize((thumb, thumb), _PIL.LANCZOS)
+                        except Exception:
+                            pass
+                badge_font = _pil_font(13)
 
                 N_STEPS = 16
                 frame_paths = []
-                for step_i in range(1, N_STEPS+1):
+                for step_i in range(1, N_STEPS + 1):
                     progress = step_i / N_STEPS
-                    frame = bg.crop((int(offset_x), int(offset_y), int(offset_x)+W, int(offset_y)+H)).copy()
+                    frame = base.copy()
                     draw = _ID.Draw(frame)
 
                     end_idx = max(1, int(len(pts) * progress))
                     line_pts = [proj(pt['lat'], pt['lng']) for pt in pts[:end_idx]]
                     if len(line_pts) > 1:
-                        draw.line(line_pts, fill=(255,255,255), width=13, joint='curve')
-                        draw.line(line_pts, fill=(240,133,30), width=8, joint='curve')
+                        draw.line(line_pts, fill=(255, 255, 255), width=13, joint='curve')
+                        draw.line(line_pts, fill=(240, 133, 30), width=8, joint='curve')
 
-                    sx, sy = proj(pts[0]['lat'], pts[0]['lng'])
-                    draw.ellipse([sx-13,sy-13,sx+13,sy+13], fill=(46,125,50), outline=(255,255,255), width=4)
+                    sx_, sy_ = proj(pts[0]['lat'], pts[0]['lng'])
+                    draw.ellipse([sx_ - 13, sy_ - 13, sx_ + 13, sy_ + 13], fill=(46, 125, 50), outline=(255, 255, 255), width=4)
                     if progress >= 0.99:
                         ex, ey = proj(pts[-1]['lat'], pts[-1]['lng'])
-                        draw.ellipse([ex-13,ey-13,ex+13,ey+13], fill=(198,40,40), outline=(255,255,255), width=4)
+                        draw.ellipse([ex - 13, ey - 13, ex + 13, ey + 13], fill=(198, 40, 40), outline=(255, 255, 255), width=4)
 
                     reached = end_idx / len(pts)
-                    for p, thumb in zip(photos_with_gps, photo_thumbs):
-                        if thumb is None: continue
-                        best_d, best_frac = 1e9, 0
-                        for i, pt in enumerate(pts):
-                            d = (pt['lat']-p['lat'])**2 + (pt['lng']-p['lng'])**2
-                            if d < best_d:
-                                best_d, best_frac = d, i/len(pts)
-                        if best_frac > reached:
+                    for c in clusters:
+                        if c['frac'] > reached or c['img'] is None:
                             continue
-                        x, y = proj(p['lat'], p['lng'])
-                        fx, fy = int(x-thumb_size/2), int(y-thumb_size)
-                        frame.paste(_PIL.new('RGB', (thumb_size+8, thumb_size+8), (255,255,255)),
-                                    (fx-4, fy-4))
-                        frame.paste(thumb, (fx, fy))
+                        x, y, tx_, ty_ = c['x'], c['y'], c['tx'], c['ty']
+                        draw.line([(x, y), (tx_, ty_)], fill=(255, 255, 255), width=5)
+                        draw.line([(x, y), (tx_, ty_)], fill=(43, 63, 107), width=2)
+                        draw.ellipse([x - 6, y - 6, x + 6, y + 6], fill=(43, 63, 107), outline=(255, 255, 255), width=2)
+                        fx, fy = int(tx_ - thumb / 2), int(ty_ - thumb / 2)
+                        draw.rounded_rectangle([fx - 3, fy - 3, fx + thumb + 3, fy + thumb + 3], radius=7, fill=(255, 255, 255))
+                        frame.paste(c['img'], (fx, fy))
+                        if c['count'] > 1:                     # „+N“-Plakette oben rechts
+                            bx, by = fx + thumb - 2, fy + 2
+                            draw.ellipse([bx - 12, by - 12, bx + 12, by + 12], fill=(240, 133, 30), outline=(255, 255, 255), width=2)
+                            _centered_text(draw, bx, by - 8, f"+{c['count'] - 1}", badge_font, (255, 255, 255))
 
                     # Build j: Einkehr an der Route – Marker (+ Namensschild bei bis zu 6 Treffern)
                     spot_font = _pil_font(18)
