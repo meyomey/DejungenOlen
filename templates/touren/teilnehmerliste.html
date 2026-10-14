@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Teilnehmerliste – {{ tour.title }}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    /* Build ab: druckbare Teilnehmerliste mit Telefon + Notfallkontakt (nur Tourleitung/Admin) */
+    :root { --navy:#2B3F6B; --gold:#f0a500; }
+    body { font-family:'Segoe UI',Arial,sans-serif; font-size:14px; color:#222; background:#fff; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 1rem; }
+    .no-print { display:flex; gap:.5rem; margin-bottom:1rem; flex-wrap:wrap; }
+    .head { background:var(--navy); color:#fff; padding:.9rem 1.2rem; border-radius:10px; margin-bottom:1rem; }
+    .head h1 { font-size:1.35rem; margin:0 0 .25rem; font-weight:700; }
+    .head .meta { font-size:.9rem; opacity:.9; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid #d9dde8; padding:.45rem .5rem; vertical-align:top; }
+    th { background:#f3f5fb; font-size:.78rem; text-transform:uppercase; letter-spacing:.03em; color:#555; }
+    td.num { width:2.2rem; color:#888; }
+    td.box { width:4.5rem; text-align:center; }
+    .box span { display:inline-block; width:1.1rem; height:1.1rem; border:1.5px solid #555; border-radius:3px; }
+    .muted { color:#888; }
+    .badge-maybe { background:#fff3cd; color:#7a5b00; border-radius:4px; padding:0 .35rem; font-size:.75rem; }
+    .foot { margin-top:1rem; font-size:.78rem; color:#777; display:flex; justify-content:space-between; flex-wrap:wrap; gap:.5rem; }
+    .notes { margin-top:1rem; }
+    .notes .line { border-bottom:1px solid #ccc; height:1.6rem; }
+    @media print {
+      .no-print { display:none !important; }
+      body { font-size:12.5px; }
+      .head { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      a { color:inherit; text-decoration:none; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="no-print">
+    <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="bi bi-printer me-1"></i>Drucken</button>
+    <a href="{{ url_for('tour_detail', tour_id=tour.id) }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Zurück zur Tour</a>
+    <span class="small text-muted align-self-center"><i class="bi bi-shield-lock me-1"></i>Vertraulich – Telefonnummern nur für die Tourleitung; nach der Tour bitte entsorgen.</span>
+  </div>
+
+  <div class="head">
+    <h1>{{ tour.title }}</h1>
+    <div class="meta">
+      <i class="bi bi-calendar3 me-1"></i>{{ 'Datum offen' if tour.is_date_open else tour.tour_date|de_date }}
+      {% if tour.start_time %} · {{ tour.start_time }} Uhr{% endif %}
+      {% if tour.meeting_desc %} · <i class="bi bi-geo-alt ms-1 me-1"></i>{{ tour.meeting_desc }}{% endif %}
+      {% if tour.gpx_km %} · {{ tour.gpx_km }} km{% elif tour.approx_km %} · ca. {{ tour.approx_km|round|int }} km{% endif %}
+      {% if einkehr %} · ☕ {{ einkehr }}{% endif %}
+      {% if tour.creator %} · Tourleitung: {{ tour.creator.display_name }}{% if tour.creator.phone %} (☎ {{ tour.creator.phone }}){% endif %}{% endif %}
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Name</th>
+        <th>Telefon</th>
+        <th>Notfallkontakt</th>
+        <th>Rad</th>
+        <th style="text-align:center">Dabei</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="num">{{ loop.index }}</td>
+        <td>
+          <strong>{{ r.user.name }}</strong>{% if r.user.nickname %} <span class="muted">„{{ r.user.nickname }}“</span>{% endif %}
+          {% if r.status == 'maybe' %} <span class="badge-maybe">vielleicht</span>{% endif %}
+        </td>
+        <td>{{ r.user.phone or '–' }}</td>
+        <td>
+          {% if r.user.emergency_name or r.user.emergency_phone %}
+            {{ r.user.emergency_name or '' }}{% if r.user.emergency_name and r.user.emergency_phone %} · {% endif %}{{ r.user.emergency_phone or '' }}
+          {% else %}<span class="muted">–</span>{% endif %}
+        </td>
+        <td class="muted">{{ r.user.bicycle_type or '' }}{% if r.user.is_ebike %} ⚡{% endif %}</td>
+        <td class="box"><span></span></td>
+      </tr>
+      {% endfor %}
+      {% for _ in range(3) %}
+      <tr>
+        <td class="num">{{ rows|length + loop.index }}</td>
+        <td>&nbsp;</td><td></td><td></td><td></td>
+        <td class="box"><span></span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if rides %}
+  <div class="notes">
+    <strong><i class="bi bi-car-front me-1"></i>Fahrgemeinschaften</strong>
+    <ul class="mb-0 small">
+      {% for r in rides %}
+      <li>{{ r.user.display_name }}{% if r.kind == 'offer' %} bietet {{ r.seats or 1 }} Platz/Plätze{% else %} sucht Mitfahrt{% endif %}{% if r.place %} · {{ r.place }}{% endif %}{% if r.note %} – {{ r.note }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="notes">
+    <strong>Notizen</strong>
+    <div class="line"></div><div class="line"></div><div class="line"></div>
+  </div>
+
+  <div class="foot">
+    <span>{{ rows|selectattr('status', 'equalto', 'attending')|list|length }} zugesagt{% set m = rows|selectattr('status', 'equalto', 'maybe')|list|length %}{% if m %}, {{ m }} vielleicht{% endif %}
+      · Stand {{ printed_at.strftime('%d.%m.%Y %H:%M') }} Uhr</span>
+    <span>{{ current_group.name if current_group else 'De jungen Olen' }} · Notruf 112</span>
+  </div>
+</div>
+</body>
+</html>

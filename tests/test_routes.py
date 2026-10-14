@@ -5,7 +5,7 @@ from tests.base import AppTestCase, app, appmod
 EXPECTED_NON_OK = {
     '/push/vapid-public-key': {503},      # ohne VAPID-Schlüssel in der Testumgebung
 }
-SKIP_ENDPOINTS = {'static', 'logout', 'run_migration_now'}
+SKIP_ENDPOINTS = {'static', 'logout'}
 
 
 class RoutesTest(AppTestCase):

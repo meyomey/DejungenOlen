@@ -45,6 +45,13 @@
       <span class="badge bg-danger ms-1">Abgesagt</span>
       {% endif %}
     </div>
+    {% if tour.status == 'cancelled' %}
+    {# Build ab: Absage-Hinweis mit Grund #}
+    <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small">
+      <i class="bi bi-x-octagon me-1"></i><strong>Diese Tour ist abgesagt.</strong>
+      {% if tour.cancel_reason %} Grund: {{ tour.cancel_reason }}{% endif %}
+    </div>
+    {% endif %}
     {# Build x: geplante Einkehr #}
     {% set ek = einkehr_info(tour) %}
     {% set can_manage = current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
@@ -90,6 +97,20 @@
        class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-pencil me-1"></i>Bearbeiten
     </a>
+    {% endif %}
+    {# Build ab: Absagen (mit Grund, benachrichtigt Teilnehmer) bzw. Absage zurücknehmen #}
+    {% if tour.status == 'planned' %}
+    <button type="button" class="btn btn-sm btn-outline-danger"
+            data-bs-toggle="modal" data-bs-target="#cancelTourModal">
+      <i class="bi bi-x-octagon me-1"></i>Absagen
+    </button>
+    {% elif tour.status == 'cancelled' %}
+    <form method="post" action="{{ url_for('tour_uncancel', tour_id=tour.id) }}" class="d-inline"
+          onsubmit="return confirm('Absage zurücknehmen? Die Tour ist dann wieder geplant und die Teilnehmer werden informiert.')">
+      <button class="btn btn-sm btn-outline-success">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>Absage zurücknehmen
+      </button>
+    </form>
     {% endif %}
     {# Als Vorlage speichern: Admin oder Organizer #}
     {% if current_user.is_admin or current_user.is_organizer %}
@@ -470,6 +491,13 @@
     <div class="card mb-3" id="teilnehmer">
       <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
         <span><i class="bi bi-people me-1"></i>Teilnehmer</span>
+        {% if can_manage %}
+        {# Build ab: druckbare Liste mit Telefon/Notfallkontakt – nur Tourleitung #}
+        <a href="{{ url_for('tour_participants_print', tour_id=tour.id) }}" target="_blank"
+           class="btn btn-sm btn-light py-0" title="Teilnehmerliste mit Telefon und Notfallkontakt drucken">
+          <i class="bi bi-printer me-1"></i>Liste
+        </a>
+        {% endif %}
       </div>
       <div class="card-body">
         {% macro plist(label, icon, color, items) %}
@@ -583,6 +611,111 @@
       </div>
       {% endif %}
     </div>
+
+    {# Build ab: Fahrgemeinschaften – Angebote mit freien Plätzen und Mitfahrwünsche #}
+    {% if tour.status == 'planned' or rides %}
+    <div class="card mb-3" id="fahrgemeinschaft">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-car-front me-1"></i>Fahrgemeinschaften</span>
+        {% if rides %}<span class="badge bg-light text-dark">{{ rides|length }}</span>{% endif %}
+      </div>
+      <div class="card-body">
+        {% set offers = rides|selectattr('kind', 'equalto', 'offer')|list %}
+        {% set requests_ = rides|selectattr('kind', 'equalto', 'request')|list %}
+        {% if not rides %}
+        <p class="small text-muted mb-2">Noch keine Einträge. Wer mit dem Auto zum Treffpunkt fährt und Platz
+          (auch fürs Rad) hat, kann das hier anbieten – wer eine Mitfahrt sucht, trägt sich als Gesuch ein.</p>
+        {% endif %}
+        {% if offers %}
+        <div class="text-muted small fw-semibold mb-1"><i class="bi bi-car-front-fill me-1 text-success"></i>Bieten Plätze an ({{ offers|length }})</div>
+        <ul class="list-unstyled small mb-2">
+          {% for r in offers %}
+          <li class="mb-1">
+            <a href="{{ url_for('profil', user_id=r.user_id) }}" class="fw-semibold text-decoration-none">{{ r.user.display_name }}</a>
+            · {{ r.seats or 1 }} Platz{{ '' if (r.seats or 1) == 1 else '/Plätze' }}
+            {% if r.place %} · ab {{ r.place }}{% endif %}
+            {% if r.note %} <span class="text-muted">– {{ r.note }}</span>{% endif %}
+            {% if r.user.phone and (can_manage or r.user_id == current_user.id) %}<span class="text-muted"> · ☎ {{ r.user.phone }}</span>{% endif %}
+            {% if can_manage and r.user_id != current_user.id %}
+            <form method="post" action="{{ url_for('tour_ride_delete', tour_id=tour.id) }}" class="d-inline"
+                  onsubmit="return confirm('Eintrag entfernen?')">
+              <input type="hidden" name="user_id" value="{{ r.user_id }}">
+              <button class="btn btn-sm py-0 px-1 text-muted" title="Eintrag entfernen"><i class="bi bi-x-lg"></i></button>
+            </form>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if requests_ %}
+        <div class="text-muted small fw-semibold mb-1"><i class="bi bi-person-raised-hand me-1 text-warning"></i>Suchen eine Mitfahrt ({{ requests_|length }})</div>
+        <ul class="list-unstyled small mb-2">
+          {% for r in requests_ %}
+          <li class="mb-1">
+            <a href="{{ url_for('profil', user_id=r.user_id) }}" class="fw-semibold text-decoration-none">{{ r.user.display_name }}</a>
+            {% if r.place %} · aus {{ r.place }}{% endif %}
+            {% if r.note %} <span class="text-muted">– {{ r.note }}</span>{% endif %}
+            {% if can_manage and r.user_id != current_user.id %}
+            <form method="post" action="{{ url_for('tour_ride_delete', tour_id=tour.id) }}" class="d-inline"
+                  onsubmit="return confirm('Eintrag entfernen?')">
+              <input type="hidden" name="user_id" value="{{ r.user_id }}">
+              <button class="btn btn-sm py-0 px-1 text-muted" title="Eintrag entfernen"><i class="bi bi-x-lg"></i></button>
+            </form>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if tour.status == 'planned' %}
+        <details class="mt-1" {% if not my_ride and not rides %}open{% endif %}>
+          <summary class="small fw-semibold cursor-pointer">
+            <i class="bi bi-pencil-square me-1"></i>{{ 'Meinen Eintrag ändern' if my_ride else 'Ich biete / suche eine Mitfahrt' }}
+          </summary>
+          <form method="post" action="{{ url_for('tour_ride_set', tour_id=tour.id) }}" class="mt-2">
+            <div class="d-flex flex-wrap gap-3 mb-2">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="kind" value="offer" id="ride-offer"
+                       {% if not my_ride or my_ride.kind == 'offer' %}checked{% endif %}
+                       onchange="document.getElementById('ride-seats-wrap').style.display=''">
+                <label class="form-check-label small" for="ride-offer">Ich fahre mit dem Auto und habe Platz</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="kind" value="request" id="ride-request"
+                       {% if my_ride and my_ride.kind == 'request' %}checked{% endif %}
+                       onchange="document.getElementById('ride-seats-wrap').style.display='none'">
+                <label class="form-check-label small" for="ride-request">Ich suche eine Mitfahrt</label>
+              </div>
+            </div>
+            <div class="row g-2">
+              <div class="col-4 col-md-2" id="ride-seats-wrap" {% if my_ride and my_ride.kind == 'request' %}style="display:none"{% endif %}>
+                <label class="form-label small mb-0">Plätze</label>
+                <input type="number" name="seats" class="form-control form-control-sm" min="1" max="9"
+                       value="{{ my_ride.seats if my_ride and my_ride.seats else 1 }}">
+              </div>
+              <div class="col-8 col-md-4">
+                <label class="form-label small mb-0">Ort (Abfahrt / Wohnort)</label>
+                <input type="text" name="place" class="form-control form-control-sm" maxlength="120"
+                       value="{{ my_ride.place or '' }}" placeholder="z. B. Thedinghausen">
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label small mb-0">Hinweis</label>
+                <input type="text" name="note" class="form-control form-control-sm" maxlength="200"
+                       value="{{ my_ride.note or '' }}" placeholder="z. B. Fahrradträger für 2 Räder">
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-2">
+              <button type="submit" class="btn btn-sm btn-djo">Speichern</button>
+              {% if my_ride %}
+              <button type="submit" class="btn btn-sm btn-outline-secondary"
+                      formaction="{{ url_for('tour_ride_delete', tour_id=tour.id) }}" formnovalidate>Eintrag entfernen</button>
+              {% endif %}
+            </div>
+          </form>
+        </details>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Weather widget -->
     {% if tour.status == 'planned' %}
@@ -1117,6 +1250,34 @@
 {% endif %}
 
 <!-- Als Vorlage speichern -->
+{# Build ab: Absage-Dialog #}
+{% if can_manage and tour.status == 'planned' %}
+<div class="modal fade" id="cancelTourModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('tour_cancel', tour_id=tour.id) }}">
+        <div class="modal-header border-0">
+          <h6 class="modal-title text-danger"><i class="bi bi-x-octagon me-1"></i>Tour absagen</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small">„{{ tour.title }}“ wird als <strong>abgesagt</strong> markiert.
+            Alle, die zugesagt haben oder noch unentschlossen sind, bekommen eine Push-Nachricht;
+            die Telegram-Gruppe wird informiert. Die Absage lässt sich später zurücknehmen.</p>
+          <label class="form-label small fw-semibold">Grund (optional, wird mitgeschickt)</label>
+          <input type="text" name="reason" class="form-control" maxlength="200"
+                 placeholder="z. B. Dauerregen angesagt, Tourleiter krank">
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Abbrechen</button>
+          <button type="submit" class="btn btn-danger btn-sm"><i class="bi bi-x-octagon me-1"></i>Jetzt absagen</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="modal fade" id="saveTemplateModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">

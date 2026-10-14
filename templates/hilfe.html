@@ -131,7 +131,19 @@ kbd { background:#e9ecef !important; border:1px solid #adb5bd !important; border
           <p class="text-muted small mb-3">Beim Anlegen oder Bearbeiten einer Tour lässt sich eine Einkehr aus der Gastro-Liste (oder als Freitext) eintragen – alternativ direkt aus der Karte der Tour-Seite („Als Einkehr festlegen“). Sie steht dann im Tour-Kopf, in der Tourtag-Erinnerung, im Kalender und in der Druckansicht; fällt der Tourtag auf einen Ruhetag, gibt es einen Hinweis.</p>
 
           <h6 class="fw-bold">Große Schrift</h6>
-          <p class="text-muted small mb-0">Im Konto-Menü (oben rechts auf deinen Namen) oder unter Profil bearbeiten kannst du <strong>„Große Schrift“</strong> einschalten: größere Schrift, Knöpfe und Eingabefelder auf allen Seiten – die Einstellung bleibt auf allen Geräten erhalten.</p>
+          <p class="text-muted small mb-3">Im Konto-Menü (oben rechts auf deinen Namen) oder unter Profil bearbeiten kannst du <strong>„Große Schrift“</strong> einschalten: größere Schrift, Knöpfe und Eingabefelder auf allen Seiten – die Einstellung bleibt auf allen Geräten erhalten.</p>
+
+          <h6 class="fw-bold">Erinnerungen vor der Tour</h6>
+          <p class="text-muted small mb-3">Am <strong>Vorabend</strong> (ab 18 Uhr) und am <strong>Tourtag</strong> (ab 7 Uhr) verschickt die App automatisch eine Erinnerung: in die Telegram-Gruppe und als Push an alle, die „Dabei“ oder „Vielleicht“ gewählt haben – mit Uhrzeit, Treffpunkt und Einkehr. Admins können die Uhrzeiten unter Benachrichtigungen ändern.</p>
+
+          <h6 class="fw-bold">Tour absagen</h6>
+          <p class="text-muted small mb-3">Tourleitung, Organisatoren und Admins können eine geplante Tour über <strong>„Absagen“</strong> absagen, gern mit Grund (z. B. Dauerregen). Alle Angemeldeten bekommen sofort eine Push-Nachricht, die Telegram-Gruppe wird informiert, und der Grund steht auf der Tour-Seite. Eine Absage lässt sich zurücknehmen. Wer beim Bearbeiten Datum, Uhrzeit oder Treffpunkt ändert, kann mit dem Haken <strong>„Änderung mitteilen“</strong> die Angemeldeten benachrichtigen.</p>
+
+          <h6 class="fw-bold">Fahrgemeinschaften</h6>
+          <p class="text-muted small mb-3">Auf jeder geplanten Tour gibt es die Karte <strong>Fahrgemeinschaften</strong>: Wer mit dem Auto zum Treffpunkt fährt und Platz (auch fürs Rad) hat, trägt ein Angebot ein; wer eine Mitfahrt sucht, ein Gesuch. Suchende bekommen eine Push-Nachricht, sobald jemand Plätze anbietet.</p>
+
+          <h6 class="fw-bold">Notfallkontakt &amp; Teilnehmerliste</h6>
+          <p class="text-muted small mb-0">Unter Profil bearbeiten kannst du deine <strong>Handynummer und einen Notfallkontakt</strong> hinterlegen. Diese Angaben sehen nur Tourleitung und Admins – auf der druckbaren <strong>Teilnehmerliste</strong> (Knopf „Liste“ in der Teilnehmer-Karte), die unterwegs mitgenommen wird. Andere Mitglieder sehen sie nicht.</p>
         </div>
       </div>
     </div>
@@ -289,6 +301,8 @@ kbd { background:#e9ecef !important; border:1px solid #adb5bd !important; border
                 <li>Fahrrad-Typ (Rennrad, E-Bike, MTB…)</li>
                 <li>Geburtstag (für Gruppen-Glückwünsche)</li>
                 <li>Kurze Bio</li>
+                <li>Handynummer &amp; Notfallkontakt (nur für Tourleitung sichtbar)</li>
+                <li>Passwort ändern (mit aktuellem Passwort) – oder auf der Anmeldeseite „Anmelde-Link per E-Mail“ nutzen</li>
               </ul>
             </div>
             <div class="col-12 col-sm-6">
@@ -386,7 +400,8 @@ kbd { background:#e9ecef !important; border:1px solid #adb5bd !important; border
               <div class="fw-semibold text-dark mb-1">System</div>
               <ul class="mb-0">
                 <li>Einstellungen (Name, Standard-Treffpunkt)</li>
-                <li>Datenbank-Backup erstellen</li>
+                <li>Backups: Datenbank täglich, Fotos/GPX im gewählten Intervall (im Hintergrund)</li>
+                <li>Erinnerungs-Uhrzeiten (Vorabend / Tourtag) festlegen</li>
                 <li>Geburtstags-Erinnerungen (14 Tage voraus)</li>
                 <li>Inaktive Mitglieder einsehen</li>
                 <li>API-Dokumentation unter <a href="{{ url_for('api_docs') }}">/api/docs</a></li>

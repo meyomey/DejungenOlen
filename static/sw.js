@@ -1,7 +1,10 @@
-// De jungen Olen – Service Worker v4
+// De jungen Olen – Service Worker
 // Features: Push Notifications, Offline Map Tiles, Asset Caching
+// Build ab: Der Platzhalter __BUILD__ wird von der Route /sw.js durch den aktuellen
+// App-Build ersetzt – nach jedem Deploy gibt es so einen neuen Cache und die
+// Browser laden CSS/JS frisch (vorher blieb 'djo-v4' über alle Builds gleich).
 
-const CACHE_VERSION = 'djo-v4';
+const CACHE_VERSION = 'djo-__BUILD__';
 const TILE_CACHE    = 'djo-tiles-v1';
 const SHELL_ASSETS  = [
   '/',

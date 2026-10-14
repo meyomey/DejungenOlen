@@ -2,6 +2,98 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-14 (Build ab) – Audit 3
+
+Drittes Komplett-Audit (Bericht in `docs/AUDIT_BERICHT.md`, Abschnitt „Audit 3“) und Umsetzung aller
+drei vereinbarten Pakete. 97 Smoke-Tests (27 neu in `tests/test_build_ab.py`).
+
+### Paket 1 – Pflicht (Erinnerungen, Absagen, Kleinkram)
+
+- **Tourtag-Erinnerung erst ab 7 Uhr** (Europe/Berlin, im Admin einstellbar): Bisher ging sie beim
+  ersten Seitenaufruf nach Mitternacht raus – nachts um 0:30 Uhr ein Push „Tour heute!“. Neue
+  gemeinsame Funktion `_run_tour_reminders(now)`; Tagesflags räumen ältere Flags auf (`_set_day_flag`),
+  statt in `site_config` jeden Tag eine neue Zeile zu hinterlassen.
+- **Vorabend-Erinnerung** („Morgen ist Tourtag!“, ab 18 Uhr, abschaltbar): Telegram an die Gruppe,
+  Push an „Dabei“ **und** „Vielleicht“ – mit Uhrzeit, Treffpunkt, Einkehr. Bisher gab es sie nur als
+  undokumentierten CLI-Befehl ohne Cron; `flask send-reminders` nutzt jetzt dieselbe Funktion.
+  Admin → Benachrichtigungen: Karte „Automatische Erinnerungen“ (Uhrzeiten, Vorabend an/aus) und
+  Test-Knöpfe „Tourtag“ / „Vorabend“ je Tour.
+- **Tour absagen** (`POST /touren/<id>/absagen`, Knopf „Absagen“ für Tourleitung/Organisator/Admin) mit
+  optionalem Grund (`tours.cancel_reason`, Migration): Push an Zugesagte/Unentschlossene, Telegram-
+  Nachricht, roter Hinweis mit Grund auf der Tour-Seite. **„Absage zurücknehmen“**
+  (`POST /touren/<id>/reaktivieren`) informiert ebenfalls. Bisher konnte nur der Admin über das
+  Status-Feld absagen – und niemand erfuhr davon.
+- **„Änderung mitteilen“** beim Bearbeiten (Haken, bei künftigen geplanten Touren vorausgewählt):
+  ändern sich Datum, Uhrzeit, Treffpunkt oder Titel, bekommen die Angemeldeten eine Push-Nachricht
+  „alt → neu“ und Telegram eine Zusammenfassung. Admin-Status-Feld akzeptiert nur noch
+  `planned/completed/cancelled`.
+- RSVP und Fahrgemeinschaft auf abgesagten/abgeschlossenen Touren gesperrt (Hinweis statt stiller Änderung).
+- Login: **„Angemeldet bleiben“ vorausgewählt** (Zielgruppe wurde sonst nach jedem Browserstart
+  abgemeldet); Bottom-Navigation **Schrift .6 → .75 rem**.
+- **Service-Worker-Cache je Build**: `/sw.js` ersetzt den Platzhalter `__BUILD__` durch den App-Build,
+  `style.css` wird mit `?v=<build>` eingebunden → nach jedem Deploy frische CSS/JS statt bis zu 24 h
+  alter Dateien aus dem Cache (`Cache-Control: no-cache` für den Worker selbst).
+- **Telegram-Escaping** (`_tg()`): Tourtitel, Treffpunkt, Kommentare, Challenge-Thema usw. werden
+  HTML-escaped – ein „<3“ oder „<b>“ im Titel ließ die ganze Nachricht scheitern (7 Stellen).
+- Live-Karte: OpenStreetMap-Hinweis oben rechts (unten verdeckte ihn die Statusleiste).
+
+### Paket 2 – Betrieb (Backup, Speicher, Datenbank)
+
+- **Backup in zwei Stufen** (`backup.sh [full|db]`): die **Datenbank täglich** (klein, Sekunden),
+  das **Komplett-Backup** (Datenbank + Fotos/GPX/Avatare) im gewählten Intervall. Videos sind nur
+  noch mit der neuen Einstellung „Videos einschließen“ dabei (sie lassen sich jederzeit neu rendern).
+  Automatische Läufe starten in einem **Hintergrund-Thread** (`_start_backup_in_background`) – der
+  auslösende Seitenaufruf hängt nicht mehr; ein Lock verhindert parallele Läufe („läuft bereits“).
+  Rotation (7 Tage / 8 Wochen / 12 Monate) **je Art getrennt**, Backup-Liste mit Spalte „Art“ und
+  Knopf „Nur Datenbank“; Wiederherstellung versteht beide Arten. Cron-Endpunkt liefert den Modus mit.
+- Wiederherstellung entpackt nur noch reguläre Dateien innerhalb des Zielordners (`_safe_extractall`,
+  kein `..`/absoluter Pfad/Symlink).
+- `parse_gpx`-Cache 64 → 16 Einträge (bei 10 000-Punkte-Tracks ≈ 40 statt 170 MB je Prozess).
+- **Tour-Seite, Druck- und Video-Seite betten höchstens 2 000 GPX-Punkte** ein (`gpx_for_page`,
+  3-D-Douglas-Peucker inkl. Höhe → Höhenprofil bleibt, Hügel verschwinden nicht); km/Anstieg bleiben
+  exakt. Vorher ~0,7 MB JSON pro Aufruf bei langen Tracks.
+- **Keine N+1-Abfragen** mehr: `badge_stats_bulk()` liefert Touren/km aller Mitglieder in einer Abfrage
+  (`/mitglieder` vorher 44 SQL bei 4 Mitgliedern → 8, `/profil/<id>` 96 → 8, `/rueckblick` 59 → 12;
+  Rangliste nutzt die schon berechneten Werte). Profil-Teilnahmen laden die Tour per `contains_eager`,
+  der Rückblick zählt Teilnehmer je Tour in einer Abfrage (`attend_counts`).
+- Video-Rendern: **Sperrdatei je Tour** (`.render_<id>.lock`, 15 min) – zweiter Klick/Tab startet
+  kein zweites ffmpeg, sondern zeigt „wird gerade erstellt“.
+
+### Paket 3 – Neue Funktionen
+
+- **Notfallkontakt**: Profil bearbeiten → „Erreichbarkeit & Notfallkontakt“ (Handy, Name/Telefon des
+  Notfallkontakts; `users.phone/emergency_name/emergency_phone`). Sichtbar **nur** auf der neuen
+  druckbaren **Teilnehmerliste** `GET /touren/<id>/teilnehmerliste` (Tourleitung/Organisator/Admin,
+  Knopf „Liste“ in der Teilnehmer-Karte): Name, Telefon, Notfallkontakt, Rad, Ankreuzkästchen,
+  Fahrgemeinschaften, Notizzeilen, „Notruf 112“.
+- **Fahrgemeinschaften** je geplanter Tour (`tour_rides`, ein Eintrag je Nutzer): „Ich fahre mit dem
+  Auto und habe Platz“ (Plätze 1–9, Ort, Hinweis) oder „Ich suche eine Mitfahrt“. Suchende bekommen
+  Push, sobald jemand Plätze anbietet; Organisatoren können Einträge entfernen; Tour löschen /
+  Nutzer anonymisieren räumen auf.
+- **Anmelde-Link per E-Mail** (nur wenn `MAIL_SERVER` gesetzt): Knopf auf der Login-Seite → Einmal-Link
+  (`/anmelden/<token>`, 15 Minuten, `password_resets.purpose='login'`), meldet dauerhaft an.
+  Antwort verrät nicht, ob die Adresse existiert; Limits 5/5 min je IP und 3/h je Konto; Login-Token
+  taugen nicht für den Passwort-Reset.
+
+### Sicherheit / Aufräumen
+
+- Passwort im Profil ändern **nur mit aktuellem Passwort**; Mindestlänge überall **8 Zeichen**
+  (Registrierung, Reset, Admin, Setup, Profil – vorher 6/8 gemischt).
+- Entfernt: `/admin/run-migration` (Token = Anfang des `SECRET_KEY`; Migration läuft ohnehin beim
+  Start) und acht `/proposals/…`-Stub-Routen (Feature längst entfernt).
+- Unverändert gelassen (bewusst): `/api/backup/trigger`-Token (in Plesk-Cron eingetragen), `.htaccess`.
+
+### Geänderte Dateien (Build ab)
+
+`app.py`, `models.py`, `backup.sh`, `static/sw.js`, `templates/base.html`, `templates/auth/login.html`,
+`templates/auth/register.html`, `templates/auth/reset_password.html`, `templates/setup.html`,
+`templates/profil_edit.html`, `templates/hilfe.html`, `templates/touren/detail.html`,
+`templates/touren/edit.html`, `templates/touren/live.html`, `templates/touren/teilnehmerliste.html` (neu),
+`templates/rueckblick.html`,
+`templates/admin/notifications.html`, `templates/admin/backups_list.html`, `templates/admin/dashboard.html`,
+`tests/test_build_ab.py` (neu), `tests/test_routes.py`, `README.md`, `CHANGELOG.md`,
+`docs/AUDIT_BERICHT.md`, `docs/BACKUP_WIEDERHERSTELLEN.md`, `docs/INSTALLATION_PLESK_FTP.md`.
+
 ## 1.4.0 – 2026-10-14 (Build aa) – Audit 2
 
 ### Live-Karte je Tour (Build aa)

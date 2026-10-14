@@ -24,7 +24,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
   <!-- Custom -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ app_build|replace(' ', '') }}">
   <script>
     // Apply dark mode before render to avoid flash
     if (localStorage.getItem('djo-dark') === '1') {
@@ -644,7 +644,7 @@ updateDarkUI();
 .bottom-nav-item {
   display: flex; flex-direction: column; align-items: center;
   color: rgba(255,255,255,.6); text-decoration: none;
-  font-size: .6rem; gap: 1px; padding: 4px 8px; border-radius: 8px;
+  font-size: .75rem; gap: 1px; padding: 4px 6px; border-radius: 8px;   /* Build ab: .6rem war für die Zielgruppe zu klein */
   transition: color .15s;
   min-width: 52px;
 }

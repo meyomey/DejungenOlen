@@ -51,12 +51,20 @@
                    placeholder="••••••••" required>
           </div>
           <div class="form-check mb-3">
-            <input class="form-check-input" type="checkbox" name="remember" id="remember">
+            <input class="form-check-input" type="checkbox" name="remember" id="remember" checked>
             <label class="form-check-label" for="remember">Angemeldet bleiben</label>
           </div>
           <button type="submit" class="btn btn-djo w-100">
             <i class="bi bi-box-arrow-in-right me-1"></i>Anmelden
           </button>
+          {% if mail_configured %}
+          {# Build ab: Anmelde-Link per E-Mail – gleiche E-Mail-Angabe, Passwortfeld darf leer bleiben #}
+          <button type="submit" class="btn btn-outline-secondary w-100 mt-2"
+                  formaction="{{ url_for('login_link_request') }}" formnovalidate
+                  title="Du bekommst einen Link per E-Mail, der dich ohne Passwort anmeldet (15 Minuten gültig)">
+            <i class="bi bi-envelope-paper me-1"></i>Ohne Passwort: Anmelde-Link per E-Mail
+          </button>
+          {% endif %}
         </form>
       </div>
       <div class="card-footer text-center">

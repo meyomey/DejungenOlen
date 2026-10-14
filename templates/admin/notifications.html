@@ -72,15 +72,58 @@
   </div>
 </div>
 
+<!-- Build ab: Uhrzeiten der automatischen Erinnerungen -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-1">
+      <i class="bi bi-alarm me-2" style="color:var(--djo-navy)"></i>Automatische Erinnerungen
+    </h6>
+    <p class="text-muted small mb-3">
+      Die App verschickt ohne Cronjob zwei Erinnerungen (Telegram an die Gruppe + Push an die Angemeldeten):
+      am <strong>Vorabend</strong> („Morgen ist Tourtag“) und am <strong>Tourtag</strong> („Heute ist Tourtag“).
+      Ausgelöst wird beim ersten Seitenaufruf nach der eingestellten Uhrzeit (Europe/Berlin), je Tag höchstens einmal.
+    </p>
+    <form method="post" action="{{ url_for('admin_reminder_settings') }}" class="row g-2 align-items-end">
+      <div class="col-6 col-md-3">
+        <label class="form-label small fw-semibold mb-1">Tourtag ab</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="reminder_morning_hour" class="form-control" min="0" max="23"
+                 value="{{ reminder_morning_hour }}">
+          <span class="input-group-text">Uhr</span>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small fw-semibold mb-1">Vorabend ab</label>
+        <div class="input-group input-group-sm">
+          <input type="number" name="reminder_evening_hour" class="form-control" min="0" max="23"
+                 value="{{ reminder_evening_hour }}">
+          <span class="input-group-text">Uhr</span>
+        </div>
+      </div>
+      <div class="col-12 col-md-4">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="reminder_evening_enabled" value="1"
+                 id="reminderEvening" {% if reminder_evening_enabled %}checked{% endif %}>
+          <label class="form-check-label small" for="reminderEvening">Vorabend-Erinnerung aktiv</label>
+        </div>
+      </div>
+      <div class="col-12 col-md-2">
+        <button type="submit" class="btn btn-djo btn-sm w-100"><i class="bi bi-check-lg me-1"></i>Speichern</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Tourtag-Erinnerung -->
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-body">
     <h6 class="fw-bold mb-1">
-      <i class="bi bi-calendar-check me-2" style="color:var(--djo-navy)"></i>Tourtag-Erinnerung testen
+      <i class="bi bi-calendar-check me-2" style="color:var(--djo-navy)"></i>Erinnerung testen
     </h6>
     <p class="text-muted small mb-3">
       Verschickt sofort Telegram + Push für die gewählte Tour, unabhängig
-      davon ob sie heute stattfindet.
+      davon ob sie heute oder morgen stattfindet – „Tourtag“ geht an Zugesagte,
+      „Vorabend“ zusätzlich an Unentschlossene.
     </p>
     {% if tours %}
     <div class="list-group">
@@ -97,9 +140,14 @@
             {% if t.start_time %} · {{ t.start_time }} Uhr{% endif %}
           </div>
         </div>
-        <button type="submit" class="btn btn-outline-djo btn-sm">
-          <i class="bi bi-send me-1"></i>Test senden
-        </button>
+        <div class="d-flex gap-1">
+          <button type="submit" class="btn btn-outline-djo btn-sm">
+            <i class="bi bi-send me-1"></i>Tourtag
+          </button>
+          <button type="submit" class="btn btn-outline-djo btn-sm" name="kind" value="evening">
+            <i class="bi bi-moon-stars me-1"></i>Vorabend
+          </button>
+        </div>
       </form>
       {% endfor %}
     </div>

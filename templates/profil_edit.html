@@ -87,6 +87,38 @@
         </div>
       </div>
 
+      {# Build ab: Erreichbarkeit & Notfallkontakt – nur Tourleitung/Admin sehen das (Teilnehmerliste) #}
+      <div class="card mb-3" id="notfall">
+        <div class="card-header card-header-djo">
+          <i class="bi bi-telephone me-1"></i>Erreichbarkeit &amp; Notfallkontakt
+          <span class="fw-normal opacity-75 ms-1">(optional)</span>
+        </div>
+        <div class="card-body">
+          <p class="small text-muted mb-3">
+            <i class="bi bi-shield-lock me-1"></i>Diese Angaben sehen <strong>nur Tourleitung und Admins</strong>
+            – auf der druckbaren Teilnehmerliste einer Tour, damit unterwegs jemand erreichbar ist.
+            Andere Mitglieder sehen sie nicht.
+          </p>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Mein Handy</label>
+              <input type="tel" name="phone" class="form-control" maxlength="40"
+                     value="{{ current_user.phone or '' }}" placeholder="0170 1234567">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Notfallkontakt – Name</label>
+              <input type="text" name="emergency_name" class="form-control" maxlength="80"
+                     value="{{ current_user.emergency_name or '' }}" placeholder="z. B. Partnerin, Sohn">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Notfallkontakt – Telefon</label>
+              <input type="tel" name="emergency_phone" class="form-control" maxlength="40"
+                     value="{{ current_user.emergency_phone or '' }}" placeholder="04204 123456">
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="card mb-3">
         <div class="card-header card-header-djo">
           <i class="bi bi-bicycle me-1"></i>Fahrrad
@@ -160,14 +192,19 @@
         </div>
         <div class="card-body">
           <div class="row g-3">
-            <div class="col-md-6">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Aktuelles Passwort</label>
+              <input type="password" name="current_password" class="form-control"
+                     autocomplete="current-password" placeholder="zur Bestätigung">
+            </div>
+            <div class="col-md-4">
               <label class="form-label fw-semibold">Neues Passwort</label>
               <input type="password" name="password" class="form-control"
-                     placeholder="Mindestens 6 Zeichen" minlength="6">
+                     autocomplete="new-password" placeholder="Mindestens 8 Zeichen" minlength="8">
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
               <label class="form-label fw-semibold">Bestätigen</label>
-              <input type="password" name="password2" class="form-control">
+              <input type="password" name="password2" class="form-control" autocomplete="new-password">
             </div>
           </div>
         </div>

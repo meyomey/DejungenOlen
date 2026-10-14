@@ -95,6 +95,10 @@ In Plesk → **Geplante Aufgaben**:
 0 2 * * * mkdir -p /PFAD/backups && bash /PFAD/backup.sh >> /PFAD/backups/backup.log 2>&1
 ```
 
+`backup.sh` ohne Argument (oder `full`) sichert Datenbank + Fotos/GPX; `backup.sh db` nur die
+Datenbank (klein, z. B. zusätzlich täglich). Videos kommen nur mit `INCLUDE_VIDEOS=1` mit.
+Ohne Cronjob erledigt die App beides selbst im Hintergrund (Admin → Backups: Intervall einstellen).
+
 ---
 
 ## Bekannte Besonderheiten

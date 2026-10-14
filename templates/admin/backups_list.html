@@ -27,12 +27,31 @@
           <i class="bi bi-envelope me-1"></i>E-Mail bei jedem automatischen Backup
         </label>
       </div>
+      <div class="form-check form-check-inline mb-0">
+        {# Build ab: Videos sind groß und lassen sich neu rendern – standardmäßig nicht im Backup #}
+        <input class="form-check-input" type="checkbox" name="backup_include_videos" value="1"
+               id="backupVideos" {% if backup_include_videos == '1' %}checked{% endif %}
+               onchange="this.form.submit()">
+        <label class="form-check-label small" for="backupVideos">
+          <i class="bi bi-film me-1"></i>Videos einschließen
+        </label>
+      </div>
     </form>
+    {% if backup_running %}
+    <div class="alert alert-info py-1 px-2 small mb-2"><i class="bi bi-hourglass-split me-1"></i>Ein Backup läuft gerade im Hintergrund.</div>
+    {% endif %}
     <div class="d-flex align-items-center gap-2 flex-wrap">
       <form method="post" action="{{ url_for('admin_backup') }}"
-            onsubmit="return confirm('Backup jetzt erstellen?')">
+            onsubmit="return confirm('Komplett-Backup (Datenbank + Fotos/GPX) jetzt erstellen?')">
         <button class="btn btn-djo btn-sm">
           <i class="bi bi-cloud-arrow-down me-1"></i>Jetzt erstellen
+        </button>
+      </form>
+      <form method="post" action="{{ url_for('admin_backup') }}"
+            onsubmit="return confirm('Nur die Datenbank jetzt sichern?')">
+        <input type="hidden" name="mode" value="db">
+        <button class="btn btn-outline-djo btn-sm" title="Kleines Backup nur mit der Datenbank">
+          <i class="bi bi-database me-1"></i>Nur Datenbank
         </button>
       </form>
       <form method="post" action="{{ url_for('admin_backup_rotate_now') }}"
@@ -44,10 +63,11 @@
     </div>
     {% if backup_interval != 'off' %}
     <div class="text-muted small mt-2">
-      <i class="bi bi-info-circle me-1"></i>Läuft automatisch beim nächsten Seitenaufruf nach Ablauf des Intervalls.
+      <i class="bi bi-info-circle me-1"></i>Das Komplett-Backup (Datenbank + Fotos/GPX) läuft im gewählten Intervall,
+      die <strong>Datenbank zusätzlich täglich</strong> – jeweils im Hintergrund beim nächsten Seitenaufruf nach Ablauf.
       Für zuverlässigere Auslösung unabhängig von Besuchen:
       <a href="{{ url_for('admin_backup_cron_info') }}">Cronjob-Anleitung</a>.
-      Alte Backups werden automatisch aufgeräumt (7 Tage täglich, 8 Wochen wöchentlich, 12 Monate monatlich).
+      Alte Backups werden je Art automatisch aufgeräumt (7 Tage täglich, 8 Wochen wöchentlich, 12 Monate monatlich).
     </div>
     {% endif %}
   </div>
@@ -69,6 +89,7 @@
     <thead>
       <tr>
         <th>Datum</th>
+        <th>Art</th>
         <th>Größe</th>
         <th class="text-end">Aktion</th>
       </tr>
@@ -77,6 +98,8 @@
       {% for b in backups %}
       <tr>
         <td>{{ b.mtime.strftime('%d.%m.%Y %H:%M') }} Uhr</td>
+        <td>{% if b.kind == 'db' %}<span class="badge bg-secondary">nur Datenbank</span>
+            {% else %}<span class="badge bg-success">komplett</span>{% endif %}</td>
         <td>{{ b.size_mb }} MB</td>
         <td class="text-end">
           <button type="button" class="btn btn-sm btn-outline-danger"
@@ -119,6 +142,7 @@
           <p>
             Backup vom <strong id="restoreDate"></strong> wiederherstellen?
             Die aktuelle Datenbank wird ersetzt (vorher automatisch gesichert).
+            Bei einem reinen Datenbank-Backup bleiben Fotos/GPX unberührt.
           </p>
           <label class="form-label small fw-semibold">
             Zum Bestätigen <code>WIEDERHERSTELLEN</code> eingeben:

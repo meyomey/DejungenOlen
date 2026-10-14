@@ -92,7 +92,8 @@ let sharing = false, following = false, watchId = null, lastSent = 0, lastPos = 
 let ownLatLng = null, ownMarker = null, accCircle = null, wakeLock = null, sentCount = 0;
 
 // ── Karte, Strecke, Treffpunkt, Einkehr ──────────────────────────────────────────────────────
-const map = L.map('live-map', {zoomControl: true});
+const map = L.map('live-map', {zoomControl: true, attributionControl: false});
+L.control.attribution({position: 'topright'}).addTo(map);   // Build ab: unten verdeckt die Statusleiste den OSM-Hinweis
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   {attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19}).addTo(map);
 let trackLine = null;

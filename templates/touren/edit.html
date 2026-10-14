@@ -111,6 +111,17 @@
                    value="{{ tour.external_link or '' }}">
           </div>
         </div>
+        {% if tour.status == 'planned' %}
+        {# Build ab: Teilnehmer über geänderte Eckdaten informieren #}
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" name="notify_changes" value="1" id="notify_changes"
+                 {% if not tour.is_date_open and tour.tour_date >= today %}checked{% endif %}>
+          <label class="form-check-label" for="notify_changes">
+            <i class="bi bi-bell me-1"></i>Änderung mitteilen
+            <span class="text-muted small">– Push an Zugesagte/Unentschlossene + Telegram, wenn sich Datum, Uhrzeit, Treffpunkt oder Titel ändern</span>
+          </label>
+        </div>
+        {% endif %}
         <button type="submit" class="btn btn-djo px-4">
           <i class="bi bi-check-lg me-1"></i>Speichern
         </button>

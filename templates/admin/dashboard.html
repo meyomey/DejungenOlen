@@ -267,7 +267,7 @@
           <form method="post" action="{{ url_for('admin_reset_pw', user_id=u.id) }}"
                 class="d-flex gap-2 align-items-center">
             <input type="password" name="password" class="form-control form-control-sm"
-                   placeholder="Neues Passwort (min. 6 Zeichen)" minlength="6" required
+                   placeholder="Neues Passwort (min. 8 Zeichen)" minlength="8" required
                    style="max-width:200px">
             <button type="submit" class="btn btn-sm btn-djo">Setzen</button>
             <button type="button" class="btn btn-sm btn-outline-secondary"

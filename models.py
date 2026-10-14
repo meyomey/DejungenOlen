@@ -47,6 +47,9 @@ class User(UserMixin, db.Model):
     morning_opener_until = db.Column(db.String(5), nullable=True)  # persönliche Frühöffner-Schwelle HH:MM
     calendar_token = db.Column(db.String(40), nullable=True, index=True)  # Build w: Kalender-Abo (webcal)
     large_text     = db.Column(db.Boolean, default=False)                  # Build x: Großschrift-Modus
+    phone           = db.Column(db.String(40), nullable=True)   # Build ab: Telefon (nur für Tourleitung sichtbar)
+    emergency_name  = db.Column(db.String(80), nullable=True)   # Build ab: Notfallkontakt Name
+    emergency_phone = db.Column(db.String(40), nullable=True)   # Build ab: Notfallkontakt Telefon
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
     last_login   = db.Column(db.DateTime, nullable=True)
 
@@ -114,6 +117,7 @@ class Tour(db.Model):
     gastro_spot_id = db.Column(db.Integer, db.ForeignKey('gastro_spots.id'), nullable=True)  # Build x: geplante Einkehr
     einkehr_text   = db.Column(db.String(200), nullable=True)               # Build x: Einkehr als Freitext
     attendance_reminded_at = db.Column(db.DateTime, nullable=True)          # Build x: Abend-Push „Wer war dabei?“ verschickt
+    cancel_reason  = db.Column(db.String(200), nullable=True)               # Build ab: Grund der Absage
     einkehr_spot   = db.relationship('GastroSpot', foreign_keys=[gastro_spot_id])
     created_by  = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     group_id    = db.Column(db.Integer, db.ForeignKey('groups.id'), nullable=True)
@@ -210,6 +214,23 @@ class LiveLocation(db.Model):
     speed      = db.Column(db.Float, nullable=True)   # Build aa: m/s
     heading    = db.Column(db.Float, nullable=True)   # Build aa: Grad
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    tour       = db.relationship('Tour')
+    user       = db.relationship('User')
+    __table_args__ = (db.UniqueConstraint('tour_id', 'user_id'),)
+
+
+class TourRide(db.Model):
+    """Build ab: Fahrgemeinschaft zu einer Tour – ein Eintrag je Nutzer und Tour,
+    entweder Angebot (freie Plätze) oder Gesuch (Mitfahrwunsch)."""
+    __tablename__ = 'tour_rides'
+    id         = db.Column(db.Integer, primary_key=True)
+    tour_id    = db.Column(db.Integer, db.ForeignKey('tours.id'), nullable=False, index=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    kind       = db.Column(db.String(10), nullable=False, default='offer')   # offer | request
+    seats      = db.Column(db.Integer, nullable=True)                        # freie Plätze (nur offer)
+    place      = db.Column(db.String(120), nullable=True)                    # Abfahrtsort / Wohnort
+    note       = db.Column(db.String(200), nullable=True)                    # z. B. „Fahrradträger für 2 Räder“
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     tour       = db.relationship('Tour')
     user       = db.relationship('User')
     __table_args__ = (db.UniqueConstraint('tour_id', 'user_id'),)
@@ -425,6 +446,7 @@ class PasswordReset(db.Model):
     user_id    = db.Column(db.Integer, db.ForeignKey('users.id'))
     token      = db.Column(db.String(64), unique=True, nullable=False)
     used       = db.Column(db.Boolean, default=False)
+    purpose    = db.Column(db.String(10), nullable=True, default='reset')   # Build ab: reset | login (Anmelde-Link)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship('User')

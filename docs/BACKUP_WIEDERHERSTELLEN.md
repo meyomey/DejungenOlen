@@ -28,16 +28,22 @@ Lauf sind neue, korrekte Backups vorhanden.
 ## Schritt 1 – Backup-Datei herunterladen
 
 1. Per FTP in `backups/` navigieren
-2. Die gewünschte `djo_backup_JJJJ-MM-TT_HHMMSS.tar.gz` auf den PC herunterladen
+2. Die gewünschte Datei auf den PC herunterladen. Seit Build ab gibt es zwei Arten:
+   - `djo_backup_JJJJ-MM-TT_HHMMSS.tar.gz` – **Komplett-Backup** (Datenbank + Fotos/GPX/Avatare;
+     Videos nur, wenn im Admin „Videos einschließen“ aktiv war), läuft im eingestellten Intervall
+   - `djo_db_JJJJ-MM-TT_HHMMSS.tar.gz` – **nur die Datenbank** (klein), läuft täglich
 3. Lokal entpacken:
    - **Windows:** 7-Zip oder WinRAR (Rechtsklick → Extrahieren)
    - **Mac:** Doppelklick öffnet es automatisch, oder Terminal: `tar -xzf dateiname.tar.gz`
 
 Im entpackten Ordner findest du:
 ```
-djo_backup_12345.sqlite      ← die Datenbank
-static/uploads/               ← alle Fotos, GPX-Tracks, Avatare, Logos
+djo_backup_12345.sqlite      ← die Datenbank (in beiden Arten)
+static/uploads/               ← alle Fotos, GPX-Tracks, Avatare, Logos (nur im Komplett-Backup)
 ```
+
+Am einfachsten ist die Wiederherstellung im Admin unter **Backups wiederherstellen** – dort werden
+beide Arten angezeigt (Spalte „Art“); bei einem reinen Datenbank-Backup bleiben die Fotos unberührt.
 
 ---
 

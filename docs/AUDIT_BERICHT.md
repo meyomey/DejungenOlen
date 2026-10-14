@@ -1,3 +1,66 @@
+# Audit-Bericht – De jungen Olen, Audit 3 (Version 1.4.0, Build ab, 14.10.2026)
+
+Drittes Komplett-Audit, Stand Build aa (Live-Karte). Die Berichte zu Audit 2 (1.4.0) und Audit 1 (1.2.0)
+stehen darunter. Umsetzung aller drei Pakete: Build ab (siehe `CHANGELOG.md`).
+
+## Vorgehen
+- Statisches Review von `app.py` (~10 100 Zeilen), `models.py`, `backup.sh`, `static/sw.js`, allen Templates
+- Dynamisch gegen eine temporäre SQLite-DB mit 2 Gruppen und 5 Rollen: XSS-Sweep (Nutzdaten in Titeln,
+  Treffpunkten, Kommentaren, Gastro-Namen, Live-Namen → alle Seiten + JSON-APIs), Mandanten-Zugriffe
+  (GET und POST auf fremde Touren/Fotos/Gastro/POI), Path Traversal, POST-Fuzzing aller Formular-Routen
+  (0 Abstürze), SQL-Profiling je Seite (Abfragen/Seite), Speicherverbrauch des GPX-Caches, Seitengrößen
+- Serverseitig durch den Betreiber geprüft: `.env`, `dejungen_olen.db`, `backups/`, `config.py` sind **nicht**
+  über das Web erreichbar („Dateien werden nicht gefunden“) → kein Handlungsbedarf
+
+## Ergebnis auf einen Blick
+Positiv: XSS-Sweep sauber, Mandanten-Trennung sauber (Gastro/POI gruppenübergreifend ist gewollt), Traversal
+→ 404, Fuzzing ohne 500er, Rate-Limits vorhanden, Migrationen vollständig, WAL aktiv, Security-Header gesetzt.
+
+| Nr. | Schwere | Befund | Status (Build ab) |
+|---|---|---|---|
+| A1 | **Hoch** (Nutzen) | Tourtag-Erinnerung ohne Uhrzeit-Schranke: ging beim ersten Seitenaufruf nach Mitternacht raus – auch ausgelöst durch anonyme Aufrufe | behoben: ab 7 Uhr (einstellbar), `_run_tour_reminders` |
+| A2 | **Hoch** (Nutzen) | Vorabend-Erinnerung nur als undokumentierter CLI-Befehl, nirgends eingerichtet | behoben: automatisch ab 18 Uhr, Telegram + Push, abschaltbar, Test-Knopf |
+| A3 | **Hoch** (Nutzen) | Absagen nur per Admin-Status-Feld, keine Benachrichtigung bei Absage oder Terminänderung | behoben: Absagen mit Grund, Reaktivieren, „Änderung mitteilen“, Status-Whitelist |
+| A4 | Mittel | „Angemeldet bleiben“ nicht vorausgewählt → Zielgruppe nach jedem Browserstart abgemeldet | behoben |
+| A5 | Mittel | Bottom-Navigation .6 rem (≈ 9,6 px) | behoben: .75 rem |
+| B6 | Mittel | Sind `.env`/DB/Backups über das Web erreichbar? | geprüft: nein – nichts zu tun |
+| B7 | Mittel | Service-Worker-Cache `djo-v4` über alle Builds gleich, `style.css` ohne Versionsparameter → alte CSS/JS nach Deploy | behoben: Cache-Name je Build, `?v=` |
+| B8 | Mittel | Backup synchron im Request (Seitenaufruf hängt), Videos immer dabei, 27 Generationen groß | behoben: Hintergrund-Thread, DB täglich + Komplett im Intervall, Videos optional, Rotation je Art |
+| B9 | Mittel | `parse_gpx`-Cache bis ~170 MB je Prozess | behoben: 16 Einträge |
+| B10 | Mittel | Kompletter GPX-Track im HTML der Tour-Seite (10 000 Punkte ≈ +0,7 MB) | behoben: ≤ 2 000 Punkte (3-D-Vereinfachung) |
+| B11 | Mittel | N+1-Abfragen: `/mitglieder` 44 SQL (4 Mitglieder), `/profil` 96, `/rueckblick` 59 | behoben: Bulk-Statistik, `contains_eager` |
+| B12 | Niedrig | `site_config` sammelt pro Tag neue Flag-Zeilen | behoben: `_set_day_flag` löscht ältere |
+| B13 | Mittel | Telegram-Nachrichten ohne HTML-Escaping (7 Stellen) – „<3“ im Titel ließ den Versand scheitern | behoben: `_tg()` |
+| B14 | Niedrig | Live-Karte: Statusleiste verdeckt OSM-Attribution | behoben: oben rechts |
+| C1 | Mittel | Passwortwechsel im Profil ohne aktuelles Passwort | behoben |
+| C2 | Niedrig | Mindestlänge 6/8 gemischt | behoben: überall 8 |
+| C3 | Niedrig | `/admin/run-migration` mit Token = Anfang des `SECRET_KEY` | entfernt |
+| C4 | Mittel | Video-Rendern ohne Sperre (Doppelklick = zwei ffmpeg-Läufe) | behoben: Sperrdatei je Tour |
+| C5 | Mittel | Backup-Wiederherstellung `extractall` ungefiltert | behoben: `_safe_extractall` |
+| C6 | Niedrig | `/api/backup/trigger`-Token aus `SECRET_KEY[:20]` | **bewusst gelassen** – in Plesk-Cron eingetragen |
+| C7 | Niedrig | Kein CSRF-Schutz (SameSite=Lax-Cookies mindern) | offen, wie bisher |
+| C8 | Niedrig | `HTTPS=true` in `.env` prüfen (Secure-Cookie) | Betreiber |
+| D1 | Niedrig | RSVP auf abgesagten/abgeschlossenen Touren möglich | behoben |
+| D2 | Niedrig | 8 `/proposals/…`-Stub-Routen | entfernt |
+| D3 | Niedrig | Root-`.htaccess` nur `php_value` | gelassen |
+
+## Neue Funktionen aus dem Audit (Paket 3)
+- Notfallkontakt im Profil + druckbare Teilnehmerliste (nur Tourleitung/Admin)
+- Fahrgemeinschaften je Tour
+- Anmelde-Link per E-Mail (ohne Passwort), nur bei konfiguriertem SMTP
+
+## Messwerte (vorher, 60 + 10 Touren, 4 Mitglieder)
+`/gastro` 157 KB · `/archiv` 94 KB · Tour-Detail 186 KB / 25 SQL · `/` 33 SQL · `/touren` 22 SQL ·
+Live 53 KB / 6 SQL. Nach Build ab (gemessen mit 11 Mitgliedern, 30 Touren): `/mitglieder` 8 SQL,
+`/profil/<id>` 8 SQL, `/rueckblick` 12 SQL, `/rangliste` 6 SQL – unabhängig von der Mitglieder-/Tourenzahl.
+
+## Testabdeckung
+97 Smoke-Tests (`python -m unittest`), davon 27 neu in `tests/test_build_ab.py`. Offene Testlücken:
+Registrierung/Einladung, Passwort-Reset-Formular, Kommentare, Foto-Upload, Zeitabstimmung, Vorlagen,
+Ankündigungen.
+
+---
+
 # Audit-Bericht – De jungen Olen (Version 1.4.0, 13.10.2026)
 
 Zweites Komplett-Audit (Stand Repo `main` = 1.3.0, Build 2026-10-07 h). Der erste Bericht (1.2.0) steht am Ende.

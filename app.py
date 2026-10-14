@@ -73,7 +73,7 @@ import requests as http_requests
 
 from config import Config
 from models import (db, Group, User, InviteToken, Tour, TourParticipant, TourPhoto, TourVideo,
-                    GastroPhoto, TimeVote, LiveLocation,
+                    GastroPhoto, TimeVote, LiveLocation, TourRide,
                     PasswordReset, GastroSpot, GastroReview, POI, TourComment, SiteConfig,
                     RouteRating, TourTemplate, PushSubscription, Announcement)
 
@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-14 aa'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-14 ab'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -478,6 +478,14 @@ def send_push_to_group(group_id, title, body, url=None, exclude_user_id=None):
     return sent
 
 
+def _tg(value):
+    """Build ab: Nutzertext für Telegram (parse_mode HTML) entschärfen – ein „<3“ oder
+    ein „<b>“ im Tourtitel würde sonst die ganze Nachricht ungültig machen bzw. als
+    Formatierung wirken."""
+    import html as _html
+    return _html.escape(str(value if value is not None else ''), quote=False)
+
+
 def send_telegram(text):
     """Send a message to the configured Telegram group/channel."""
     token   = cfg('telegram_bot_token')
@@ -755,7 +763,62 @@ def login():
             return redirect(_safe_redirect_target(request.args.get('next')) or url_for('index'))
         flash('E-Mail oder Passwort falsch.', 'danger')
     return render_template('auth/login.html', announcements=login_announcements,
-                           contact_email=login_contact_email)
+                           contact_email=login_contact_email,
+                           mail_configured=bool(os.getenv('MAIL_SERVER')))   # Build ab: Anmelde-Link
+
+
+LOGIN_LINK_MSG = ('Falls diese E-Mail-Adresse registriert ist, wurde ein Anmelde-Link verschickt. '
+                  'Bitte auch den Spam-Ordner prüfen. Der Link ist 15 Minuten gültig.')
+
+
+@app.route('/login-link', methods=['POST'])
+def login_link_request():
+    """Build ab: Anmelden ohne Passwort – ein einmaliger Link per E-Mail (15 Minuten gültig).
+    Gedacht für Mitglieder, die sich ihr Passwort nicht merken wollen; Antwort verrät nicht,
+    ob die Adresse existiert."""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    email = request.form.get('email', '').strip().lower()
+    ip = request.remote_addr or 'unknown'
+    if _rate_limit(f'loginlink:{ip}', max_calls=5, window=300):
+        flash('Zu viele Anfragen. Bitte 5 Minuten warten.', 'danger')
+        return redirect(url_for('login'))
+    if not email or '@' not in email:
+        flash('Bitte zuerst deine E-Mail-Adresse eintragen.', 'warning')
+        return redirect(url_for('login'))
+    if not os.getenv('MAIL_SERVER'):
+        flash('E-Mail-Versand ist nicht eingerichtet – bitte mit Passwort anmelden.', 'warning')
+        return redirect(url_for('login'))
+    user = User.query.filter_by(email=email).first()
+    if user and user.is_active and not _rate_limit(f'loginlink:user:{user.id}', max_calls=3, window=3600):
+        token = secrets.token_urlsafe(32)
+        db.session.add(PasswordReset(user_id=user.id, token=token, purpose='login'))
+        db.session.commit()
+        link = url_for('login_link', token=token, _external=True)
+        send_mail(to=user.email, subject=f'{cfg("site_name") or "De jungen Olen"} – dein Anmelde-Link',
+                  body=(f'Moin {user.display_name},\n\n'
+                        f'mit diesem Link bist du sofort angemeldet (15 Minuten gültig, einmal nutzbar):\n'
+                        f'{link}\n\n'
+                        f'Falls du das nicht warst, ignoriere diese E-Mail einfach.\n\n'
+                        f'{cfg("site_name") or "De jungen Olen"}'))
+    flash(LOGIN_LINK_MSG, 'info')
+    return redirect(url_for('login'))
+
+
+@app.route('/anmelden/<token>')
+def login_link(token):
+    """Build ab: Einmal-Link aus der E-Mail einlösen → angemeldet (dauerhaft, wie „Angemeldet bleiben“)."""
+    pr = PasswordReset.query.filter_by(token=token, used=False, purpose='login').first()
+    if (pr is None or pr.user is None or not pr.user.is_active or not pr.created_at
+            or pr.created_at < datetime.utcnow() - timedelta(minutes=15)):
+        flash('Dieser Anmelde-Link ist ungültig oder abgelaufen – bitte einen neuen anfordern.', 'warning')
+        return redirect(url_for('login'))
+    pr.used = True
+    pr.user.last_login = datetime.utcnow()
+    login_user(pr.user, remember=True)
+    db.session.commit()
+    flash(f'Willkommen, {pr.user.display_name}!', 'success')
+    return redirect(url_for('index'))
 
 
 @app.route('/logout')
@@ -781,8 +844,8 @@ def register(token):
         if pw != pw2:
             flash('Passwörter stimmen nicht überein.', 'danger')
             return render_template('auth/register.html', invite=invite)
-        if len(pw) < 6:
-            flash('Passwort muss mindestens 6 Zeichen haben.', 'danger')
+        if len(pw) < 8:
+            flash('Passwort muss mindestens 8 Zeichen haben.', 'danger')
             return render_template('auth/register.html', invite=invite)
         if User.query.filter_by(email=email).first():
             flash('Diese E-Mail ist bereits registriert.', 'danger')
@@ -844,7 +907,9 @@ def forgot_password():
 
 @app.route('/passwort-reset/<token>', methods=['GET', 'POST'])
 def reset_password(token):
-    pr = PasswordReset.query.filter_by(token=token, used=False).first_or_404()
+    pr = (PasswordReset.query.filter_by(token=token, used=False)
+          .filter(db.or_(PasswordReset.purpose == None, PasswordReset.purpose == 'reset'))   # noqa: E711  Build ab
+          .first_or_404())
     # Audit 1.4.0: Link ist (wie in der Mail versprochen) nur 1 Stunde gültig
     if pr.user is None or not pr.created_at or \
             pr.created_at < datetime.utcnow() - timedelta(hours=1):
@@ -853,8 +918,8 @@ def reset_password(token):
     if request.method == 'POST':
         pw  = request.form.get('password', '')
         pw2 = request.form.get('password2', '')
-        if pw != pw2 or len(pw) < 6:
-            flash('Passwörter stimmen nicht überein oder mindestens 6 Zeichen nötig.', 'danger')
+        if pw != pw2 or len(pw) < 8:
+            flash('Passwörter stimmen nicht überein oder mindestens 8 Zeichen nötig.', 'danger')
             return render_template('auth/reset_password.html')
         pr.user.set_password(pw)
         pr.used = True
@@ -1466,14 +1531,14 @@ def tour_create():
                 km_str = f'📏 ca. {tour.approx_km:.0f} km\n'
             tg_msg = (
                 f'🚴 <b>Neue Tour geplant!</b>\n\n'
-                f'📋 <b>{title}</b>\n'
+                f'📋 <b>{_tg(title)}</b>\n'
                 f'📅 {datum}'
-                f'{" um " + start_time + " Uhr" if start_time and not tour.is_date_open else ""}\n'
+                f'{" um " + _tg(start_time) + " Uhr" if start_time and not tour.is_date_open else ""}\n'
                 f'{km_str}'
-                f'💪 Schwierigkeit: {tour.difficulty_label}\n'
+                f'💪 Schwierigkeit: {_tg(tour.difficulty_label)}\n'
             )
             if meet_desc:
-                tg_msg += f'📍 Treffpunkt: {meet_desc}\n'
+                tg_msg += f'📍 Treffpunkt: {_tg(meet_desc)}\n'
             tg_msg += f'\n👉 {app.config["BASE_URL"]}/touren/{tour.id}'
             send_telegram(tg_msg)
         except Exception as e:
@@ -1520,7 +1585,7 @@ def tour_create():
                            prefill=session.pop('prefill_from_proposal', None))
 
 
-@__import__('functools').lru_cache(maxsize=64)
+@__import__('functools').lru_cache(maxsize=16)      # Build ab: 64 → 16 (ca. 40 MB statt 170 MB bei großen Tracks)
 def parse_gpx(filepath):
     """Return dict with track points, km, ascent; or None on error."""
     try:
@@ -1575,6 +1640,73 @@ def parse_gpx(filepath):
     except Exception as e:
         app.logger.error(f'GPX parse error: {e}')
         return None
+
+
+GPX_PAGE_MAX_PTS = 2000   # Build ab: mehr Punkte landen nicht mehr im HTML der Tour-Seite
+
+
+def _thin_points(points, max_pts=GPX_PAGE_MAX_PTS):
+    """Build ab: GPX-Punkte (dicts mit lat/lng/ele) auf höchstens max_pts reduzieren.
+    Douglas-Peucker in 3D (Lage in Metern + Höhe), damit ein Hügel auf gerader Straße
+    im Höhenprofil nicht verschwindet; die Toleranz wird verdoppelt, bis es passt.
+    Die Punkt-Objekte selbst bleiben erhalten (Reihenfolge, alle Schlüssel)."""
+    import math
+    n = len(points)
+    if n <= max_pts:
+        return points
+    idx = list(range(n))
+    if n > 12000:                                        # Vorab ausdünnen: hält die Rechenzeit klein
+        step = n // 12000 + 1
+        idx = idx[::step]
+        if idx[-1] != n - 1:
+            idx.append(n - 1)
+    mid = sum(float(points[i]['lat']) for i in idx) / len(idx)
+    m_lat, m_lng = 111320.0, 111320.0 * max(0.2, math.cos(math.radians(mid)))
+    xyz = [(float(points[i]['lat']) * m_lat, float(points[i]['lng']) * m_lng,
+            float(points[i].get('ele') or 0.0)) for i in idx]
+
+    def rdp(tol):
+        keep = [False] * len(xyz)
+        keep[0] = keep[-1] = True
+        stack = [(0, len(xyz) - 1)]
+        while stack:
+            a, b = stack.pop()
+            if b <= a + 1:
+                continue
+            ax, ay, az = xyz[a]
+            dx, dy, dz = xyz[b][0] - ax, xyz[b][1] - ay, xyz[b][2] - az
+            seg = dx * dx + dy * dy + dz * dz
+            best_d, best_i = -1.0, a
+            for i in range(a + 1, b):
+                px, py, pz = xyz[i][0] - ax, xyz[i][1] - ay, xyz[i][2] - az
+                t = max(0.0, min(1.0, (px * dx + py * dy + pz * dz) / seg)) if seg else 0.0
+                d = math.sqrt((px - t * dx) ** 2 + (py - t * dy) ** 2 + (pz - t * dz) ** 2)
+                if d > best_d:
+                    best_d, best_i = d, i
+            if best_d > tol:
+                keep[best_i] = True
+                stack.append((a, best_i))
+                stack.append((best_i, b))
+        return [i for i, k in zip(idx, keep) if k]
+
+    tol, out = 2.0, idx
+    while len(out) > max_pts and tol < 5000:
+        out = rdp(tol)
+        tol *= 2
+    if len(out) > max_pts:                               # Notnagel: gleichmäßig ausdünnen
+        step = len(out) // max_pts + 1
+        out = out[::step] + [out[-1]]
+    return [points[i] for i in out]
+
+
+@__import__('functools').lru_cache(maxsize=16)
+def gpx_for_page(filepath):
+    """Build ab: parse_gpx-Ergebnis mit auf GPX_PAGE_MAX_PTS ausgedünnten Punkten – für das
+    JSON in Tour-Detail, Druckansicht und Video-Seite. km/Anstieg bleiben die exakten Werte."""
+    data = parse_gpx(filepath)
+    if not data or not data.get('points'):
+        return data
+    return {**data, 'points': _thin_points(data['points'])}
 
 
 GASTRO_NEAR_M = 150   # Build j: Einkehr gilt als "an der Route", wenn sie höchstens so viele Meter neben dem Track liegt
@@ -1840,6 +1972,13 @@ def tour_detail(tour_id):
 
     videos = TourVideo.query.filter_by(tour_id=tour_id).order_by(TourVideo.created_at).all()
 
+    # Build ab: Fahrgemeinschaften (Angebote zuerst)
+    from sqlalchemy.orm import joinedload as _jl
+    rides = (TourRide.query.filter_by(tour_id=tour_id).options(_jl(TourRide.user))
+             .order_by(TourRide.kind.asc(), TourRide.created_at.asc()).all())
+    rides = [r for r in rides if r.user]
+    my_ride = next((r for r in rides if r.user_id == current_user.id), None)
+
     # Build q: Einkehr-Orte höchstens GASTRO_NEAR_M m neben dem Track (zuschaltbare Karten-Ebene);
     # gleicher Helfer wie die Video-Folie, Track dafür auf ≤ 1500 Punkte ausgedünnt
     gastro_near = []
@@ -1855,7 +1994,7 @@ def tour_detail(tour_id):
                            attending=attending,
                            maybe=maybe,
                            declined=declined,
-                           gpx_data=json.dumps(gpx_data) if gpx_data else 'null',
+                           gpx_data=json.dumps(gpx_for_page(gpx_path)) if gpx_data else 'null',   # Build ab: ≤ 2000 Punkte
                            show_live=(tour.status != 'cancelled' and (tour.is_date_open or
                                       tour.tour_date >= date.today() - timedelta(days=1))),   # Build aa
                            gastro_near=gastro_near,
@@ -1864,6 +2003,7 @@ def tour_detail(tour_id):
                            comments=comments,
                            all_users=all_users,
                            participant_ids=participant_ids,
+                           rides=rides, my_ride=my_ride,                 # Build ab
                            today=date.today())
 
 
@@ -1876,6 +2016,10 @@ def tour_rsvp(tour_id):
         abort(400)
     if tour.is_date_open:
         flash('Anmeldung erst möglich wenn ein Termin feststeht.', 'warning')
+        return redirect(url_for('tour_detail', tour_id=tour_id))
+    if tour.status != 'planned':                       # Build ab
+        flash('Die Tour ist ' + ('abgesagt' if tour.status == 'cancelled' else 'abgeschlossen')
+              + ' – eine Anmeldung ist nicht mehr möglich.', 'warning')
         return redirect(url_for('tour_detail', tour_id=tour_id))
 
     rsvp = TourParticipant.query.filter_by(
@@ -1891,6 +2035,80 @@ def tour_rsvp(tour_id):
     labels = {'attending': 'Dabei!', 'maybe': 'Vielleicht', 'declined': 'Abgesagt'}
     flash(f'Anmeldung: {labels[status]}', 'success')
     return redirect(url_for('tour_detail', tour_id=tour_id))
+
+
+@app.route('/touren/<int:tour_id>/mitfahrt', methods=['POST'])
+@login_required
+def tour_ride_set(tour_id):
+    """Build ab: Fahrgemeinschaft anbieten (kind=offer, seats) oder suchen (kind=request) –
+    ein Eintrag je Nutzer und Tour, wird beim erneuten Speichern überschrieben.
+    Bei einem neuen Angebot bekommen alle Suchenden der Tour eine Push-Nachricht."""
+    tour = _tour_or_404(tour_id)
+    if tour.status != 'planned':
+        flash('Fahrgemeinschaften nur für geplante Touren.', 'warning')
+        return redirect(url_for('tour_detail', tour_id=tour_id) + '#fahrgemeinschaft')
+    kind = request.form.get('kind', 'offer')
+    if kind not in ('offer', 'request'):
+        abort(400)
+    seats = _parse_int(request.form.get('seats')) if kind == 'offer' else None
+    if kind == 'offer' and (seats is None or seats < 1 or seats > 9):
+        seats = 1
+    ride = TourRide.query.filter_by(tour_id=tour_id, user_id=current_user.id).first()
+    is_new_offer = kind == 'offer' and (ride is None or ride.kind != 'offer')
+    if ride is None:
+        ride = TourRide(tour_id=tour_id, user_id=current_user.id)
+        db.session.add(ride)
+    ride.kind  = kind
+    ride.seats = seats
+    ride.place = (request.form.get('place') or '').strip()[:120] or None
+    ride.note  = (request.form.get('note') or '').strip()[:200] or None
+    db.session.commit()
+    if is_new_offer:
+        body = f'{current_user.display_name} bietet {seats} Platz/Plätze an'
+        if ride.place:
+            body += f' (ab {ride.place})'
+        for r in TourRide.query.filter_by(tour_id=tour_id, kind='request').all():
+            if r.user_id != current_user.id and r.user:
+                try:
+                    send_push_to_user(r.user, title=f'🚗 Mitfahrgelegenheit: {tour.title}', body=body,
+                                      url=f'/touren/{tour_id}#fahrgemeinschaft')
+                except Exception as e:
+                    app.logger.warning(f'ride push failed: {e}')
+    flash('Fahrgemeinschaft gespeichert.' if kind == 'offer' else 'Mitfahrwunsch gespeichert.', 'success')
+    return redirect(url_for('tour_detail', tour_id=tour_id) + '#fahrgemeinschaft')
+
+
+@app.route('/touren/<int:tour_id>/mitfahrt/loeschen', methods=['POST'])
+@login_required
+def tour_ride_delete(tour_id):
+    """Build ab: eigenen Fahrgemeinschafts-Eintrag entfernen (Organisator/Admin: jeden per user_id)."""
+    tour = _tour_or_404(tour_id)
+    uid = current_user.id
+    if (current_user.is_admin or current_user.is_organizer) and request.form.get('user_id'):
+        uid = _parse_int(request.form.get('user_id')) or current_user.id
+    TourRide.query.filter_by(tour_id=tour.id, user_id=uid).delete(synchronize_session=False)
+    db.session.commit()
+    flash('Eintrag entfernt.', 'info')
+    return redirect(url_for('tour_detail', tour_id=tour_id) + '#fahrgemeinschaft')
+
+
+@app.route('/touren/<int:tour_id>/teilnehmerliste')
+@login_required
+def tour_participants_print(tour_id):
+    """Build ab: druckbare Teilnehmerliste mit Telefon und Notfallkontakt – nur für
+    Organisatoren, Admins und den Ersteller der Tour (Datenschutz: nicht für alle sichtbar)."""
+    tour = _tour_or_404(tour_id)
+    if not _can_manage_tour(tour):
+        abort(403)
+    from sqlalchemy.orm import joinedload
+    rows = (TourParticipant.query.filter(TourParticipant.tour_id == tour.id,
+                                         TourParticipant.status.in_(['attending', 'maybe']))
+            .options(joinedload(TourParticipant.user)).all())
+    rows = [r for r in rows if r.user]
+    rows.sort(key=lambda r: (0 if r.status == 'attending' else 1, (r.user.name or '').lower()))
+    rides = TourRide.query.filter_by(tour_id=tour.id).options(joinedload(TourRide.user)).all()
+    return render_template('touren/teilnehmerliste.html', tour=tour, rows=rows, rides=rides,
+                           einkehr=_tour_einkehr_text(tour), printed_at=_berlin_now())
 
 
 @app.route('/touren/<int:tour_id>/gpx', methods=['POST'])
@@ -2257,6 +2475,7 @@ def tour_edit(tour_id):
         if not new_title or (tour_date_str and parsed_date is None):
             flash('Bitte Titel und ein gültiges Datum angeben.', 'danger')
             return redirect(url_for('tour_edit', tour_id=tour.id))
+        before = _tour_change_snapshot(tour)           # Build ab: für „Änderung mitteilen“
         tour.title        = new_title
         tour.description  = request.form.get('description', '').strip() or None
         tour.tour_date    = parsed_date if parsed_date else date(9999, 12, 31)
@@ -2269,9 +2488,21 @@ def tour_edit(tour_id):
         tour.meeting_lng  = _parse_float(request.form.get('meeting_lng'))
         _apply_einkehr_form(tour)                      # Build x: geplante Einkehr
         if current_user.is_admin:
-            tour.status = request.form.get('status', tour.status)
+            new_status = request.form.get('status', tour.status)
+            if new_status in ('planned', 'completed', 'cancelled'):   # Build ab: Whitelist
+                tour.status = new_status
+                if new_status != 'cancelled':
+                    tour.cancel_reason = None
         db.session.commit()
         flash('Tour aktualisiert.', 'success')
+        if request.form.get('notify_changes'):         # Build ab
+            changes = _tour_changes(before, _tour_change_snapshot(tour))
+            if changes and tour.status == 'planned':
+                n = _notify_tour_change(tour, changes)
+                flash(f'Änderung mitgeteilt ({", ".join(c[0] for c in changes)}): '
+                      f'{n} Push-Nachricht(en) + Telegram.', 'info')
+            elif not changes:
+                flash('Keine mitteilenswerte Änderung (Datum, Uhrzeit, Treffpunkt, Titel) – nichts verschickt.', 'info')
         return redirect(url_for('tour_detail', tour_id=tour.id))
     return render_template('touren/edit.html', tour=tour,
                            difficulties=Config.DIFFICULTY_CHOICES,
@@ -2311,11 +2542,131 @@ def tour_delete(tour_id):
     return redirect(url_for('tour_list'))
 
 
+def _tour_change_snapshot(tour):
+    """Build ab: die Felder, über deren Änderung Teilnehmer informiert werden."""
+    return {
+        'Titel':      tour.title or '',
+        'Datum':      ('offen' if tour.is_date_open else tour.tour_date.strftime('%d.%m.%Y')),
+        'Uhrzeit':    tour.start_time or '–',
+        'Treffpunkt': tour.meeting_desc or '–',
+    }
+
+
+def _tour_changes(before, after):
+    """Build ab: [(Feld, alt, neu), …] für alle geänderten Felder."""
+    return [(k, before[k], after[k]) for k in before if before[k] != after.get(k)]
+
+
+def _tour_notify_targets(tour, include_maybe=True, exclude_user_id=None):
+    """Build ab: Nutzer, die zu einer Tour benachrichtigt werden (Dabei + ggf. Vielleicht)."""
+    states = ['attending', 'maybe'] if include_maybe else ['attending']
+    ids = {p.user_id for p in TourParticipant.query.filter(
+        TourParticipant.tour_id == tour.id, TourParticipant.status.in_(states)).all()}
+    ids.discard(exclude_user_id)
+    return User.query.filter(User.id.in_(ids), User.is_active == True).all() if ids else []   # noqa: E712
+
+
+def _notify_tour_change(tour, changes):
+    """Build ab: Push an Zugesagte/Unentschlossene + Telegram, wenn Datum/Uhrzeit/Treffpunkt/Titel
+    einer geplanten Tour geändert wurden. Liefert die Zahl der Push-Nachrichten."""
+    lines = [f'{k}: {old} → {new}' for k, old, new in changes]
+    sent = 0
+    try:
+        tg = (f'✏️ <b>Tour geändert: {_tg(tour.title)}</b>\n\n'
+              + '\n'.join(_tg(l) for l in lines)
+              + f'\n\n👉 {app.config["BASE_URL"]}/touren/{tour.id}')
+        send_telegram(tg)
+    except Exception as e:
+        app.logger.warning(f'Telegram tour change failed: {e}')
+    body = ' · '.join(lines)
+    for u in _tour_notify_targets(tour, exclude_user_id=current_user.id):
+        try:
+            n, _ = send_push_to_user(u, title=f'✏️ Geändert: {tour.title}', body=body[:180],
+                                     url=f'/touren/{tour.id}')
+            sent += n
+        except Exception as e:
+            app.logger.warning(f'Push tour change failed for user {u.id}: {e}')
+    return sent
+
+
+@app.route('/touren/<int:tour_id>/absagen', methods=['POST'])
+@login_required
+def tour_cancel(tour_id):
+    """Build ab: Tour absagen (Organisator, Admin oder Ersteller) – mit optionalem Grund;
+    Zugesagte und Unentschlossene bekommen Push, die Gruppe eine Telegram-Nachricht."""
+    tour = _tour_or_404(tour_id)
+    if not _can_manage_tour(tour):
+        abort(403)
+    if tour.status == 'cancelled':
+        flash('Die Tour ist bereits abgesagt.', 'info')
+        return redirect(url_for('tour_detail', tour_id=tour.id))
+    if tour.status == 'completed':
+        flash('Eine abgeschlossene Tour kann nicht mehr abgesagt werden.', 'warning')
+        return redirect(url_for('tour_detail', tour_id=tour.id))
+    reason = (request.form.get('reason') or '').strip()[:200] or None
+    tour.status = 'cancelled'
+    tour.cancel_reason = reason
+    db.session.commit()
+
+    datum = 'Datum offen' if tour.is_date_open else tour.tour_date.strftime('%d.%m.%Y')
+    sent = 0
+    try:
+        tg = (f'❌ <b>Tour abgesagt: {_tg(tour.title)}</b>\n\n'
+              f'📅 {datum}{" um " + _tg(tour.start_time) + " Uhr" if tour.start_time else ""}\n')
+        if reason:
+            tg += f'📝 Grund: {_tg(reason)}\n'
+        tg += f'\n👉 {app.config["BASE_URL"]}/touren/{tour.id}'
+        send_telegram(tg)
+    except Exception as e:
+        app.logger.warning(f'Telegram cancel failed: {e}')
+    body = f'{tour.title} · {datum}' + (f' · Grund: {reason}' if reason else '')
+    for u in _tour_notify_targets(tour, exclude_user_id=current_user.id):
+        try:
+            n, _ = send_push_to_user(u, title='❌ Tour abgesagt', body=body[:180], url=f'/touren/{tour.id}')
+            sent += n
+        except Exception as e:
+            app.logger.warning(f'Push cancel failed for user {u.id}: {e}')
+    flash(f'Tour abgesagt. {sent} Push-Nachricht(en) verschickt, Telegram informiert.', 'warning')
+    return redirect(url_for('tour_detail', tour_id=tour.id))
+
+
+@app.route('/touren/<int:tour_id>/reaktivieren', methods=['POST'])
+@login_required
+def tour_uncancel(tour_id):
+    """Build ab: Absage zurücknehmen – Tour ist wieder geplant, Teilnehmer werden informiert."""
+    tour = _tour_or_404(tour_id)
+    if not _can_manage_tour(tour):
+        abort(403)
+    if tour.status != 'cancelled':
+        flash('Die Tour ist nicht abgesagt.', 'info')
+        return redirect(url_for('tour_detail', tour_id=tour.id))
+    tour.status = 'planned'
+    tour.cancel_reason = None
+    db.session.commit()
+    datum = 'Datum offen' if tour.is_date_open else tour.tour_date.strftime('%d.%m.%Y')
+    sent = 0
+    try:
+        send_telegram(f'✅ <b>Tour findet doch statt: {_tg(tour.title)}</b>\n\n📅 {datum}'
+                      f'{" um " + _tg(tour.start_time) + " Uhr" if tour.start_time else ""}'
+                      f'\n\n👉 {app.config["BASE_URL"]}/touren/{tour.id}')
+    except Exception as e:
+        app.logger.warning(f'Telegram uncancel failed: {e}')
+    for u in _tour_notify_targets(tour, exclude_user_id=current_user.id):
+        try:
+            n, _ = send_push_to_user(u, title='✅ Tour findet statt', body=f'{tour.title} · {datum}',
+                                     url=f'/touren/{tour.id}')
+            sent += n
+        except Exception as e:
+            app.logger.warning(f'Push uncancel failed for user {u.id}: {e}')
+    flash(f'Absage zurückgenommen – die Tour ist wieder geplant. {sent} Push-Nachricht(en) verschickt.', 'success')
+    return redirect(url_for('tour_detail', tour_id=tour.id))
+
+
 def _delete_tour_dependents(tour_id):
     """Löscht Datensätze ohne DB-Cascade, die sonst als Waisen zurückbleiben
-    (Videos, Kommentare, Zeitabstimmung, Bewertungen, Live-Standorte).
+    (Videos, Kommentare, Zeitabstimmung, Bewertungen, Live-Standorte, Fahrgemeinschaften).
     Teilnehmer und Fotos räumt SQLAlchemy über die Relationship-Cascade ab."""
-    for model in (TourVideo, TourComment, TimeVote, RouteRating, LiveLocation):
+    for model in (TourVideo, TourComment, TimeVote, RouteRating, LiveLocation, TourRide):
         try:
             model.query.filter_by(tour_id=tour_id).delete(synchronize_session=False)
         except Exception as e:
@@ -2385,7 +2736,7 @@ def tour_video(tour_id):
     if tour.gpx_file:
         gpx_path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
         if os.path.exists(gpx_path):
-            gpx_data = parse_gpx(gpx_path)
+            gpx_data = gpx_for_page(gpx_path)          # Build ab: ≤ 2000 Punkte im Seiten-JSON
 
     attending_count = TourParticipant.query.filter_by(
         tour_id=tour_id, status='attending'
@@ -2451,6 +2802,22 @@ def tour_video_render(tour_id):
         flash('FFmpeg nicht gefunden. Bitte ffmpeg-Binary ins Projektverzeichnis legen.', 'danger')
         return redirect(url_for('tour_video', tour_id=tour_id))
     app.logger.info(f'FFmpeg gefunden: {ffmpeg_bin}')
+
+    # Build ab: pro Tour nur ein Rendern gleichzeitig – ein zweiter Klick (oder ein zweiter
+    # Browser-Tab) würde sonst einen weiteren ffmpeg-Lauf auf demselben Shared Hosting starten.
+    lock_dir = app.config['UPLOAD_FOLDER_VIDEOS']
+    os.makedirs(lock_dir, exist_ok=True)
+    lock_path = os.path.join(lock_dir, f'.render_{tour_id}.lock')
+    try:
+        if os.path.exists(lock_path) and (_time.time() - os.path.getmtime(lock_path)) > 900:
+            os.remove(lock_path)                        # verwaiste Sperre (> 15 min) aufräumen
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(lock_fd)
+    except FileExistsError:
+        flash('Für diese Tour wird gerade ein Video erstellt – bitte einen Moment warten und dann die Seite neu laden.', 'warning')
+        return redirect(url_for('tour_video', tour_id=tour_id))
+    except OSError as e:
+        app.logger.warning(f'Video-Sperre {lock_path}: {e}')
 
     tmpdir = tempfile.mkdtemp(prefix='djo_video_')
     try:
@@ -3874,6 +4241,10 @@ def tour_video_render(tour_id):
         return redirect(url_for('tour_video', tour_id=tour_id))
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+        try:
+            os.remove(lock_path)                        # Build ab: Render-Sperre freigeben
+        except OSError:
+            pass
 # ─── Archiv: add old tour manually ───────────────────────────────────────────
 
 @app.route('/archiv/neu', methods=['GET', 'POST'])
@@ -4019,6 +4390,40 @@ LIVE_FRESH_S = 5 * 60       # „aktuell“ – zählt für die Spannweite der G
 def _berlin_today():
     from zoneinfo import ZoneInfo
     return datetime.now(ZoneInfo('Europe/Berlin')).date()
+
+
+def _berlin_now():
+    """Build ab: aktuelle Uhrzeit in Europe/Berlin (Server läuft in UTC)."""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo('Europe/Berlin'))
+    except Exception:
+        return datetime.now()
+
+
+def _cfg_int(key, default, lo=None, hi=None):
+    """Build ab: Ganzzahl aus SiteConfig mit Default und Wertebereich."""
+    try:
+        v = int(str(cfg(key) or '').strip())
+    except (TypeError, ValueError):
+        return default
+    if lo is not None and v < lo:
+        return default
+    if hi is not None and v > hi:
+        return default
+    return v
+
+
+def _set_day_flag(prefix, flag_key):
+    """Build ab: Tagesflag (z. B. morning_reminder_sent_2026-10-14) setzen und ältere
+    Flags mit demselben Präfix löschen – sonst sammelt sich in site_config pro Tag
+    eine neue Zeile an. Commit macht der Aufrufer."""
+    try:
+        SiteConfig.query.filter(SiteConfig.key.like(prefix + '%'),
+                                SiteConfig.key != flag_key).delete(synchronize_session=False)
+    except Exception as e:
+        app.logger.warning(f'Flag-Aufräumen {prefix}: {e}')
+    SiteConfig.set(flag_key, '1')
 
 
 def _initials(name):
@@ -4438,6 +4843,25 @@ def global_search():
     return render_template('suche.html', q=q, results=results)
 
 
+def _safe_extractall(tf, dest):
+    """Build ab: tar-Archiv entpacken, aber nur reguläre Dateien/Ordner mit relativen
+    Pfaden innerhalb von dest – keine absoluten Pfade, kein „..“, keine Symlinks/Geräte.
+    (Python 3.12 bringt dafür filter='data' mit; der Server hat 3.11.)"""
+    dest_real = os.path.realpath(dest)
+    safe = []
+    for m in tf.getmembers():
+        if not (m.isfile() or m.isdir()):
+            continue
+        name = m.name.replace('\\', '/')
+        if name.startswith('/') or '..' in name.split('/'):
+            continue
+        target = os.path.realpath(os.path.join(dest_real, name))
+        if target != dest_real and not target.startswith(dest_real + os.sep):
+            continue
+        safe.append(m)
+    tf.extractall(dest, members=safe)
+
+
 def _rotate_backups():
     """Räumt alte Backups nach Generationen-Prinzip auf:
     - letzte 7 Tage: alle behalten
@@ -4446,13 +4870,16 @@ def _rotate_backups():
     - älter: gelöscht
     Erwartet Dateinamen mit Datum, z.B. backup_2026-05-12_...  – Dateien ohne
     erkennbares Datum werden nicht angefasst (sicherer Default).
+    Build ab: Komplett-Backups (djo_backup_), Datenbank-Backups (djo_db_) und
+    sonstige Dateien werden getrennt rotiert, damit nicht ein kleines DB-Backup
+    den Wochen-/Monatsplatz des Komplett-Backups belegt.
     """
     backup_dir = os.path.join(os.path.dirname(__file__), 'backups')
     if not os.path.isdir(backup_dir):
         return 0
     import re as _re
     date_re = _re.compile(r'(\d{4}-\d{2}-\d{2})')
-    entries = []
+    groups = {'djo_backup_': [], 'djo_db_': [], '': []}
     for fname in os.listdir(backup_dir):
         fpath = os.path.join(backup_dir, fname)
         if not os.path.isfile(fpath):
@@ -4464,10 +4891,17 @@ def _rotate_backups():
             fdate = datetime.strptime(m.group(1), '%Y-%m-%d').date()
         except ValueError:
             continue
-        entries.append((fdate, fname, fpath))
+        key = next((k for k in ('djo_backup_', 'djo_db_') if fname.startswith(k)), '')
+        groups[key].append((fdate, fname, fpath))
+    deleted = 0
+    for entries in groups.values():
+        if entries:
+            deleted += _rotate_backup_entries(entries)
+    return deleted
 
-    if not entries:
-        return 0
+
+def _rotate_backup_entries(entries):
+    """Generationen-Rotation für eine Liste (datum, name, pfad); liefert gelöschte Anzahl."""
     entries.sort(key=lambda x: x[0], reverse=True)
 
     today = date.today()
@@ -4501,23 +4935,37 @@ def _rotate_backups():
     return deleted
 
 
-def _run_backup(triggered_by='manuell'):
+_backup_lock = __import__('threading').Lock()   # Build ab: nie zwei Backups gleichzeitig (pro Prozess)
+
+
+def _run_backup(triggered_by='manuell', mode='full'):
     """Führt backup.sh aus und protokolliert Zeitpunkt/Ergebnis in SiteConfig.
-    Gibt (erfolgreich: bool, meldung: str) zurück."""
+    Gibt (erfolgreich: bool, meldung: str) zurück.
+    Build ab: mode='full' = Datenbank + Fotos/GPX (Videos nur, wenn die Einstellung
+    backup_include_videos aktiv ist), mode='db' = nur die Datenbank (klein, täglich)."""
     import subprocess
     backup_script = os.path.join(os.path.dirname(__file__), 'backup.sh')
     if not os.path.exists(backup_script):
         return False, 'backup.sh nicht gefunden.'
+    if mode not in ('full', 'db'):
+        mode = 'full'
+    if not _backup_lock.acquire(blocking=False):
+        return False, 'Ein Backup läuft bereits – bitte kurz warten.'
     try:
+        env = dict(os.environ, INCLUDE_VIDEOS='1' if cfg('backup_include_videos') == '1' else '0')
         result = subprocess.run(
-            ['bash', backup_script],
-            capture_output=True, text=True, timeout=120
+            ['bash', backup_script, mode],
+            capture_output=True, text=True, timeout=600 if mode == 'full' else 120, env=env
         )
         now_iso = datetime.utcnow().isoformat()
         if result.returncode == 0:
             SiteConfig.set('backup_last_run', now_iso)
             SiteConfig.set('backup_last_status', 'ok')
             SiteConfig.set('backup_last_trigger', triggered_by)
+            SiteConfig.set('backup_last_mode', mode)
+            SiteConfig.set('backup_last_db_run', now_iso)
+            if mode == 'full':
+                SiteConfig.set('backup_last_full_run', now_iso)
             db.session.commit()
             msg = result.stdout.strip() or 'Backup erstellt.'
             # Alte Backups nach Generationen-Prinzip aufräumen
@@ -4541,8 +4989,9 @@ def _run_backup(triggered_by='manuell'):
             SiteConfig.set('backup_last_run', now_iso)
             SiteConfig.set('backup_last_status', 'error')
             SiteConfig.set('backup_last_trigger', triggered_by)
+            SiteConfig.set('backup_last_mode', mode)
             db.session.commit()
-            err = result.stderr[:300]
+            err = (result.stderr or result.stdout or '')[:300]
             if triggered_by != 'manuell' and cfg('backup_notify_email') == '1':
                 admin_mail = cfg('admin_email')
                 if admin_mail:
@@ -4554,29 +5003,63 @@ def _run_backup(triggered_by='manuell'):
             return False, f'Backup-Fehler: {err}'
     except Exception as e:
         return False, f'Backup fehlgeschlagen: {e}'
+    finally:
+        _backup_lock.release()
 
 
 def _backup_is_due():
-    """Prüft anhand der Einstellungen, ob ein automatisches Backup fällig ist."""
+    """Prüft anhand der Einstellungen, ob ein automatisches Backup fällig ist.
+    Build ab: liefert den fälligen Modus – 'full' (Datenbank + Uploads, nach dem
+    eingestellten Intervall), 'db' (nur Datenbank, täglich) oder None.
+    Komplett-Backups werden ab backup_last_full_run gerechnet; fehlt der Wert
+    (ältere Installation), zählt backup_last_run."""
     interval = cfg('backup_interval') or 'off'
     if interval == 'off':
-        return False
-    last_run_str = cfg('backup_last_run')
-    if not last_run_str:
-        return True  # noch nie gelaufen
-    try:
-        last_run = datetime.fromisoformat(last_run_str)
-    except ValueError:
-        return True
-    now = datetime.utcnow()
-    elapsed = now - last_run
+        return None
+
+    def _elapsed(key, fallback=None):
+        raw = cfg(key) or (cfg(fallback) if fallback else None)
+        if not raw:
+            return None
+        try:
+            return datetime.utcnow() - datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+
     thresholds = {
         'daily':   timedelta(hours=23),
         'weekly':  timedelta(days=6, hours=23),
         'monthly': timedelta(days=27),
     }
-    threshold = thresholds.get(interval)
-    return bool(threshold and elapsed >= threshold)
+    full_gap = _elapsed('backup_last_full_run', 'backup_last_run')
+    if full_gap is None or full_gap >= thresholds[interval]:
+        return 'full'
+    db_gap = _elapsed('backup_last_db_run', 'backup_last_run')
+    if db_gap is None or db_gap >= timedelta(hours=23):
+        return 'db'
+    return None
+
+
+def _start_backup_in_background(mode, triggered_by='auto'):
+    """Build ab: automatisches Backup in einem Hintergrund-Thread, damit der auslösende
+    Seitenaufruf nicht mehrere Sekunden (bei großen Foto-Ordnern Minuten) hängt.
+    Der Lock in _run_backup verhindert parallele Läufe; läuft schon eines, passiert nichts."""
+    import threading
+
+    def _worker():
+        with app.app_context():
+            try:
+                ok, msg = _run_backup(triggered_by=triggered_by, mode=mode)
+                app.logger.info(f'Hintergrund-Backup ({mode}, {triggered_by}): {"ok" if ok else "FEHLER"} – {msg}')
+            except Exception as e:
+                app.logger.warning(f'Hintergrund-Backup Fehler: {e}')
+            finally:
+                db.session.remove()
+
+    if _backup_lock.locked():
+        return False
+    threading.Thread(target=_worker, name=f'djo-backup-{mode}', daemon=True).start()
+    return True
 
 
 @app.route('/admin/backup', methods=['POST'])
@@ -4585,9 +5068,10 @@ def admin_backup():
     """Manuelles Backup aus dem Admin-Dashboard."""
     if not current_user.is_admin:
         abort(403)
-    ok, msg = _run_backup(triggered_by='manuell')
+    mode = 'db' if request.form.get('mode') == 'db' else 'full'    # Build ab
+    ok, msg = _run_backup(triggered_by='manuell', mode=mode)
     flash(msg, 'success' if ok else 'danger')
-    return redirect(url_for('admin_dashboard'))
+    return redirect(url_for('admin_backups_list'))
 
 
 # ─── Admin routes ─────────────────────────────────────────────────────────────
@@ -4896,7 +5380,7 @@ def _anonymize_user(user):
     user.bio           = None
     user.birthday      = None
     # Geräte-/Standortdaten und offene Reset-Links gehören niemandem mehr
-    for model in (PushSubscription, LiveLocation, PasswordReset):
+    for model in (PushSubscription, LiveLocation, PasswordReset, TourRide):
         try:
             model.query.filter_by(user_id=user.id).delete(synchronize_session=False)
         except Exception as e:
@@ -6375,27 +6859,16 @@ def api_overpass_gastro():
 
 @app.cli.command('send-reminders')
 def send_reminders():
-    """Send Telegram reminders for tomorrow's tours. Run via cron daily."""
-    from datetime import timedelta
-    tomorrow = date.today() + timedelta(days=1)
-    tours = _gq(Tour).filter_by(tour_date=tomorrow, status='planned').all()
+    """Vorabend-Erinnerung (Telegram + Push) für die Touren von morgen – optional per
+    Cron; seit Build ab verschickt der Selbst-Trigger dieselbe Nachricht automatisch."""
+    tomorrow = _berlin_today() + timedelta(days=1)
+    tours = Tour.query.filter_by(tour_date=tomorrow, status='planned').all()
     if not tours:
         print('Keine Touren morgen.')
         return
     for t in tours:
-        attending = TourParticipant.query.filter_by(tour_id=t.id, status='attending').count()
-        msg = (
-            f'⏰ <b>Erinnerung: Morgen ist Tourtag!</b>\n\n'
-            f'🚴 <b>{t.title}</b>\n'
-            f'📅 {t.tour_date.strftime("%d.%m.%Y") if t.tour_date else "Datum offen"}'
-            f'{" um " + t.start_time + " Uhr" if t.start_time else ""}\n'
-            f'👥 {attending} Teilnehmer angemeldet\n'
-        )
-        if t.meeting_desc:
-            msg += f'📍 Treffpunkt: {t.meeting_desc}\n'
-        msg += f'\n👉 {app.config["BASE_URL"]}/touren/{t.id}'
-        send_telegram(msg)
-        print(f'Reminder gesendet: {t.title}')
+        attendees, push_sent = _send_evening_reminder_for_tour(t)
+        print(f'Reminder gesendet: {t.title} ({push_sent}/{attendees} Push)')
 
 
 # ─── Phase 3: Kommentare ─────────────────────────────────────────────────────
@@ -6445,8 +6918,8 @@ def tour_comment(tour_id):
         tg_preview = content if len(content) <= 200 else content[:197] + '…'
         tg_msg = (
             f'💬 <b>Neuer Kommentar</b>\n\n'
-            f'{current_user.display_name} zu <b>{tour.title}</b>:\n'
-            f'"{tg_preview}"\n\n'
+            f'{_tg(current_user.display_name)} zu <b>{_tg(tour.title)}</b>:\n'
+            f'"{_tg(tg_preview)}"\n\n'
             f'👉 {app.config["BASE_URL"]}/touren/{tour_id}#kommentare'
         )
         send_telegram(tg_msg)
@@ -6484,16 +6957,28 @@ BADGE_DEFINITIONS = [
     ('km_2500',      '🛸', '2.500 km',           '2.500 km Gesamtstrecke',                  lambda c,km: km >= 2500),
 ]
 
-def compute_badges(user):
-    """Return list of earned badge dicts for a user."""
-    confirmed = TourParticipant.query.filter_by(
-        user_id=user.id, confirmed_present=True
-    ).all()
-    tour_count = len(confirmed)
-    total_km   = sum(
-        tp.tour.gpx_km for tp in confirmed
-        if tp.tour and tp.tour.gpx_km
-    )
+def badge_stats_bulk(user_ids):
+    """Build ab: {user_id: (touren_mitgefahren, km_gesamt)} in EINER Abfrage statt
+    je Nutzer eine – für Mitgliederliste, Rangliste und Rückblick."""
+    if not user_ids:
+        return {}
+    rows = (db.session.query(TourParticipant.user_id,
+                             db.func.count(TourParticipant.id),
+                             db.func.coalesce(db.func.sum(Tour.gpx_km), 0.0))
+            .join(Tour, Tour.id == TourParticipant.tour_id)
+            .filter(TourParticipant.user_id.in_(list(user_ids)),
+                    TourParticipant.confirmed_present == True)                # noqa: E712
+            .group_by(TourParticipant.user_id).all())
+    return {uid: (int(cnt or 0), float(km or 0.0)) for uid, cnt, km in rows}
+
+
+def compute_badges(user, stats=None):
+    """Return list of earned badge dicts for a user.
+    Build ab: optional stats=(tour_count, total_km) aus badge_stats_bulk(), sonst eine
+    Aggregat-Abfrage statt einer Abfrage pro Teilnahme."""
+    if stats is None:
+        stats = badge_stats_bulk([user.id]).get(user.id, (0, 0.0))
+    tour_count, total_km = stats
     earned = []
     for bid, icon, label, desc, check in BADGE_DEFINITIONS:
         if check(tour_count, total_km):
@@ -6551,10 +7036,12 @@ def profil(user_id):
     stats  = user_stats(user)
     badges = compute_badges(user)
 
+    from sqlalchemy.orm import contains_eager
     participations = (
         TourParticipant.query
         .filter_by(user_id=user_id, confirmed_present=True)
         .join(Tour)
+        .options(contains_eager(TourParticipant.tour))     # Build ab: Tour gleich mitladen (kein N+1)
         .order_by(Tour.tour_date.desc())
         .all()
     )
@@ -6613,7 +7100,8 @@ def rangliste():
             'rsvp_count':    user_tours[uid],
             'tours_by_year': dict(user_year[uid]),
         }
-        ranking.append({'user': u, **s, 'badges': compute_badges(u)})
+        ranking.append({'user': u, **s,
+                        'badges': compute_badges(u, stats=(user_tours[uid], user_km[uid]))})   # Build ab: keine Extra-Abfragen
 
     ranking.sort(key=lambda r: (r['tour_count'], r['total_km']), reverse=True)
     annual = sorted(ranking, key=lambda r: r['tours_by_year'].get(year, 0), reverse=True)
@@ -7134,7 +7622,7 @@ def _self_trigger_attendance_reminder():
             except Exception:
                 hour = datetime.now().hour
             if hour >= 17:                      # Tagesflag erst setzen, wenn der Abendlauf wirklich stattfand
-                SiteConfig.set(flag_key, '1')
+                _set_day_flag('attendance_reminder_run_', flag_key)   # Build ab: alte Tagesflags mit löschen
                 db.session.commit()
     except Exception as e:
         app.logger.warning(f'Self-trigger attendance reminder error: {e}')
@@ -7467,11 +7955,12 @@ def api_backup_trigger():
             or not _hmac.compare_digest(token.encode(), expected.encode())):
         return jsonify({'error': 'invalid token'}), 403
 
-    if not _backup_is_due():
+    due = _backup_is_due()
+    if not due:
         return jsonify({'ok': True, 'skipped': True, 'reason': 'not due yet'})
 
-    ok, msg = _run_backup(triggered_by='cron')
-    return jsonify({'ok': ok, 'message': msg})
+    ok, msg = _run_backup(triggered_by='cron', mode=due)
+    return jsonify({'ok': ok, 'mode': due, 'message': msg})
 
 
 @app.route('/admin/backup/einstellungen', methods=['POST'])
@@ -7484,10 +7973,12 @@ def admin_backup_settings():
         interval = 'off'
     SiteConfig.set('backup_interval', interval)
     SiteConfig.set('backup_notify_email', '1' if request.form.get('backup_notify_email') == '1' else '0')
+    SiteConfig.set('backup_include_videos', '1' if request.form.get('backup_include_videos') == '1' else '0')  # Build ab
     db.session.commit()
     labels = {'off': 'deaktiviert', 'daily': 'täglich', 'weekly': 'wöchentlich', 'monthly': 'monatlich'}
-    flash(f'Automatisches Backup: {labels[interval]}.', 'success')
-    return redirect(url_for('admin_dashboard'))
+    flash(f'Automatisches Komplett-Backup: {labels[interval]}'
+          + (' – Datenbank zusätzlich täglich.' if interval != 'off' else '.'), 'success')
+    return redirect(url_for('admin_backups_list'))
 
 
 @app.route('/admin/backup/cron-info')
@@ -7524,11 +8015,36 @@ def admin_reminder_test():
     if request.method == 'POST':
         tour_id = request.form.get('tour_id')
         tour = _tour_or_404(tour_id)
+        if request.form.get('kind') == 'evening':                      # Build ab
+            attendees, push_sent = _send_evening_reminder_for_tour(tour)
+            flash(f'Vorabend-Erinnerung für „{tour.title}" verschickt: Telegram-Nachricht gesendet, '
+                  f'{push_sent} von {attendees} Teilnehmer(n) (Dabei/Vielleicht) per Push benachrichtigt.',
+                  'success')
+            return redirect(url_for('admin_notifications'))
         attendees, push_sent = _send_morning_reminder_for_tour(tour)
         flash(f'Test-Erinnerung für „{tour.title}" verschickt: '
               f'Telegram-Nachricht gesendet, {push_sent} von {attendees} '
               f'zugesagten Teilnehmer(n) per Push benachrichtigt.', 'success')
         return redirect(url_for('admin_notifications'))
+    return redirect(url_for('admin_notifications'))
+
+
+@app.route('/admin/benachrichtigungen/erinnerungen', methods=['POST'])
+@login_required
+@admin_required
+def admin_reminder_settings():
+    """Build ab: Uhrzeiten der automatischen Erinnerungen (Tourtag / Vorabend)."""
+    def _hour(name, default):
+        try:
+            h = int(request.form.get(name, default))
+        except (TypeError, ValueError):
+            h = default
+        return str(min(23, max(0, h)))
+    SiteConfig.set('reminder_morning_hour', _hour('reminder_morning_hour', 7))
+    SiteConfig.set('reminder_evening_hour', _hour('reminder_evening_hour', 18))
+    SiteConfig.set('reminder_evening_enabled', '1' if request.form.get('reminder_evening_enabled') else '0')
+    db.session.commit()
+    flash('Erinnerungs-Zeiten gespeichert.', 'success')
     return redirect(url_for('admin_notifications'))
 
 
@@ -7784,7 +8300,10 @@ def admin_notifications():
                            telegram_configured=telegram_configured,
                            push_available=push_available,
                            push_sub_count=push_sub_count,
-                           tours=upcoming)
+                           tours=upcoming,
+                           reminder_morning_hour=_cfg_int('reminder_morning_hour', 7, 0, 23),     # Build ab
+                           reminder_evening_hour=_cfg_int('reminder_evening_hour', 18, 0, 23),
+                           reminder_evening_enabled=(cfg('reminder_evening_enabled') != '0'))
 
 
 def _resolve_live_db_path():
@@ -7938,18 +8457,22 @@ def admin_backups_list():
     entries = []
     if os.path.isdir(backups_dir):
         for fname in sorted(os.listdir(backups_dir), reverse=True):
-            if not fname.startswith('djo_backup_') or not fname.endswith('.tar.gz'):
+            if not fname.endswith('.tar.gz') or not (fname.startswith('djo_backup_') or fname.startswith('djo_db_')):
                 continue
             fpath = os.path.join(backups_dir, fname)
             try:
                 size_mb = round(os.path.getsize(fpath) / (1024*1024), 1)
                 mtime = datetime.fromtimestamp(os.path.getmtime(fpath))
-                entries.append({'filename': fname, 'size_mb': size_mb, 'mtime': mtime})
+                entries.append({'filename': fname, 'size_mb': size_mb, 'mtime': mtime,
+                                'kind': 'db' if fname.startswith('djo_db_') else 'full'})   # Build ab
             except OSError:
                 continue
+    entries.sort(key=lambda e: e['mtime'], reverse=True)
     return render_template('admin/backups_list.html', backups=entries,
                            backup_interval=cfg('backup_interval') or 'off',
-                           backup_notify_email=cfg('backup_notify_email') or '0')
+                           backup_notify_email=cfg('backup_notify_email') or '0',
+                           backup_include_videos=cfg('backup_include_videos') or '0',
+                           backup_running=_backup_lock.locked())
 
 
 @app.route('/admin/backups/<path:filename>/wiederherstellen', methods=['POST'])
@@ -7983,7 +8506,7 @@ def admin_backup_restore(filename):
     try:
         with tempfile.TemporaryDirectory() as tmp_extract:
             with tarfile.open(backup_path, 'r:gz') as tf:
-                tf.extractall(tmp_extract)
+                _safe_extractall(tf, tmp_extract)          # Build ab: kein Ausbrechen aus dem Zielordner
 
             sqlite_files = _glob.glob(os.path.join(tmp_extract, '*.sqlite'))
             if not sqlite_files:
@@ -8102,14 +8625,20 @@ def rueckblick(year=None):
      .group_by(TourPhoto.tour_id).all())
     total_photos = sum(photo_counts.values())
 
-    # Participation count per user this year
-    part_counts = {}
-    for t in tours:
-        for p in t.participants.filter_by(confirmed_present=True):
-            part_counts[p.user_id] = part_counts.get(p.user_id, 0) + 1
+    # Participation count per user this year – Build ab: eine Abfrage statt einer je Tour
+    tour_ids = [t.id for t in tours]
+    part_counts = dict(db.session.query(TourParticipant.user_id, db.func.count(TourParticipant.id))
+                       .filter(TourParticipant.tour_id.in_(tour_ids),
+                               TourParticipant.confirmed_present == True)          # noqa: E712
+                       .group_by(TourParticipant.user_id).all()) if tour_ids else {}
 
     most_active = sorted(part_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-    most_active = [(User.query.get(uid), cnt) for uid, cnt in most_active]
+    _users = {u.id: u for u in User.query.filter(User.id.in_([uid for uid, _ in most_active])).all()} if most_active else {}
+    most_active = [(_users.get(uid), cnt) for uid, cnt in most_active if _users.get(uid)]
+    # Teilnehmerzahl je Tour für die Liste (vorher t.attending_count = eine COUNT-Abfrage je Tour)
+    attend_counts = dict(db.session.query(TourParticipant.tour_id, db.func.count(TourParticipant.id))
+                         .filter(TourParticipant.tour_id.in_(tour_ids), TourParticipant.status == 'attending')
+                         .group_by(TourParticipant.tour_id).all()) if tour_ids else {}
 
     # Monthly distribution
     monthly = {}
@@ -8137,6 +8666,7 @@ def rueckblick(year=None):
                            most_active=most_active,
                            monthly_json=monthly_json,
                            longest=longest,
+                           attend_counts=attend_counts,
                            available_years=available_years)
 
 
@@ -8215,6 +8745,9 @@ def profil_edit():
         current_user.is_ebike    = bool(request.form.get('is_ebike'))
         current_user.large_text  = bool(request.form.get('large_text'))   # Build x
         current_user.bio         = request.form.get('bio','').strip() or None
+        current_user.phone           = request.form.get('phone', '').strip()[:40] or None            # Build ab
+        current_user.emergency_name  = request.form.get('emergency_name', '').strip()[:80] or None
+        current_user.emergency_phone = request.form.get('emergency_phone', '').strip()[:40] or None
         bday = request.form.get('birthday','').strip()
         if bday:
             try:
@@ -8228,11 +8761,13 @@ def profil_edit():
         pw = request.form.get('password','').strip()
         if pw:
             pw2 = request.form.get('password2','').strip()
-            if pw == pw2 and len(pw) >= 8:
+            if not current_user.check_password(request.form.get('current_password', '')):   # Build ab
+                flash('Passwort nicht geändert: das aktuelle Passwort war falsch.', 'warning')
+            elif pw == pw2 and len(pw) >= 8:
                 current_user.set_password(pw)
                 flash('Passwort geändert.', 'info')
             else:
-                flash('Passwörter stimmen nicht überein oder zu kurz.', 'warning')
+                flash('Passwörter stimmen nicht überein oder zu kurz (mindestens 8 Zeichen).', 'warning')
 
         db.session.commit()
         flash('Profil gespeichert!', 'success')
@@ -8526,8 +9061,8 @@ def admin_change_email(user_id):
 def admin_reset_pw(user_id):
     user = User.query.get_or_404(user_id)
     pw   = request.form.get('password','').strip()
-    if len(pw) < 6:
-        flash('Passwort muss mindestens 6 Zeichen haben.', 'danger')
+    if len(pw) < 8:
+        flash('Passwort muss mindestens 8 Zeichen haben.', 'danger')
         return redirect(url_for('admin_dashboard'))
     user.set_password(pw)
     db.session.commit()
@@ -8671,56 +9206,6 @@ def enable_wal():
             conn.commit()
     except Exception as e:
         app.logger.warning(f'WAL mode not set: {e}')
-
-
-# ── Proposal-Stub-Routen (Feature entfernt) ──────────────────────────────────
-@app.route('/proposals/new', methods=['GET','POST'])
-@login_required
-def proposal_new():
-    flash('Das Vorschläge-Feature wurde entfernt. Touren direkt unter „Neue Tour" erstellen.', 'info')
-    return redirect(url_for('tour_list'))
-
-@app.route('/proposals/<int:prop_id>', methods=['GET'])
-@app.route('/proposals/<int:prop_id>/edit', methods=['GET','POST'])
-@login_required
-def proposal_edit(prop_id):
-    flash('Das Vorschläge-Feature wurde entfernt.', 'info')
-    return redirect(url_for('tour_list'))
-
-@app.route('/proposals/<int:prop_id>/delete', methods=['POST'])
-@login_required
-def proposal_delete(prop_id):
-    return redirect(url_for('tour_list'))
-
-@app.route('/proposals/<int:prop_id>/to-tour', methods=['POST'])
-@login_required
-def proposal_to_tour(prop_id):
-    return redirect(url_for('tour_list'))
-
-@app.route('/proposals/<int:prop_id>/vote', methods=['POST'])
-@login_required
-def proposal_vote(prop_id):
-    return redirect(url_for('tour_list'))
-
-@app.route('/proposals/<int:prop_id>/add-dates', methods=['GET','POST'])
-@login_required
-def proposal_add_dates(prop_id):
-    return redirect(url_for('tour_list'))
-
-@app.route('/proposals/<int:prop_id>/gpx')
-@login_required
-def proposal_gpx_download(prop_id):
-    return redirect(url_for('tour_list'))
-
-@app.route('/proposals/dates/<int:option_id>/confirm', methods=['POST'])
-@login_required
-def proposal_confirm_date(option_id):
-    return redirect(url_for('tour_list'))
-
-@app.route('/proposals/<int:prop_id>/list')
-@login_required
-def proposal_list(prop_id=None):
-    return redirect(url_for('tour_list'))
 
 
 @app.route('/gruppe/wechseln/<int:group_id>', methods=['POST'])
@@ -8983,27 +9468,6 @@ def group_delete(group_id):
     return redirect(url_for('admin_groups'))
 
 
-@app.route('/admin/run-migration', methods=['GET', 'POST'])
-def run_migration_now():
-    """Einmalige Route um migrate_db() manuell auszuführen.
-    WICHTIG: Nach Ausführung wieder entfernen oder absichern!
-    """
-    # Simple security: require a secret token
-    token = request.args.get('token', '')
-    expected = app.config.get('SECRET_KEY', '')[:16]
-    import hmac as _hmac
-    if (not expected or expected.startswith('change-me')
-            or not _hmac.compare_digest(token.encode(), expected.encode())):
-        return 'Bitte token= Parameter angeben (erste 16 Zeichen des SECRET_KEY)', 403
-
-    try:
-        migrate_db()
-        return '<h2>✅ Migration erfolgreich!</h2><p>Bitte Seite neu laden und diese URL danach nicht mehr aufrufen.</p>', 200
-    except Exception as e:
-        import traceback
-        return f'<h2>❌ Fehler:</h2><pre>{traceback.format_exc()}</pre>', 500
-
-
 def migrate_db():
     """Add missing columns to existing tables without losing data."""
     from sqlalchemy import text, inspect
@@ -9061,6 +9525,11 @@ def migrate_db():
     add_column('users', 'birthday',  'DATE')
     add_column('live_locations', 'speed',   'REAL')   # Build aa: Tempo (m/s) und Richtung (Grad)
     add_column('live_locations', 'heading', 'REAL')
+    add_column('tours', 'cancel_reason', 'VARCHAR(200)')          # Build ab: Absage-Grund
+    add_column('users', 'phone',           'VARCHAR(40)')          # Build ab: Telefon / Notfallkontakt
+    add_column('users', 'emergency_name',  'VARCHAR(80)')
+    add_column('users', 'emergency_phone', 'VARCHAR(40)')
+    add_column('password_resets', 'purpose', 'VARCHAR(10)')       # Build ab: reset | login (Anmelde-Link)
 
     # ── Multi-Tenancy: Gruppen ────────────────────────────────────────────────
     # groups-Tabelle (Audit 1.4.0: eigene Verbindung – vorher wurde die bereits
@@ -9297,8 +9766,9 @@ def _self_trigger_backup():
     if random.random() > 0.02:  # ~2% Chance pro Request
         return
     try:
-        if _backup_is_due():
-            _run_backup(triggered_by='auto')
+        due = _backup_is_due()
+        if due:
+            _start_backup_in_background(due, triggered_by='auto')   # Build ab: nicht mehr im Request
     except Exception as e:
         app.logger.warning(f'Self-trigger backup error: {e}')
 
@@ -9317,15 +9787,15 @@ def _send_morning_reminder_for_tour(tour):
     try:
         tg_msg = (
             f'⏰ <b>Heute ist Tourtag!</b>\n\n'
-            f'🚴 <b>{tour.title}</b>\n'
-            f'{"🕐 " + tour.start_time + " Uhr" + chr(10) if tour.start_time else ""}'
+            f'🚴 <b>{_tg(tour.title)}</b>\n'
+            f'{"🕐 " + _tg(tour.start_time) + " Uhr" + chr(10) if tour.start_time else ""}'
             f'👥 {len(attendee_ids)} Teilnehmer angemeldet\n'
         )
         if tour.meeting_desc:
-            tg_msg += f'📍 Treffpunkt: {tour.meeting_desc}\n'
+            tg_msg += f'📍 Treffpunkt: {_tg(tour.meeting_desc)}\n'
         _ek = _tour_einkehr_text(tour)                 # Build x
         if _ek:
-            tg_msg += f'☕ Einkehr: {_ek}\n'
+            tg_msg += f'☕ Einkehr: {_tg(_ek)}\n'
         tg_msg += f'\n👉 {app.config["BASE_URL"]}/touren/{tour.id}'
         send_telegram(tg_msg)
     except Exception as e:
@@ -9346,6 +9816,78 @@ def _send_morning_reminder_for_tour(tour):
     return len(attendee_ids), push_sent
 
 
+def _send_evening_reminder_for_tour(tour):
+    """Build ab: Vorabend-Erinnerung „Morgen ist Tourtag“ – Telegram an die Gruppe,
+    Push an Zugesagte und Unentschlossene (die sollen sich noch festlegen).
+    Liefert (anzahl_empfänger, push_gesendet)."""
+    rows = TourParticipant.query.filter(TourParticipant.tour_id == tour.id,
+                                        TourParticipant.status.in_(['attending', 'maybe'])).all()
+    attending = sum(1 for r in rows if r.status == 'attending')
+    user_ids = [r.user_id for r in rows]
+    _ek = _tour_einkehr_text(tour)
+    try:
+        tg_msg = (
+            f'⏰ <b>Erinnerung: Morgen ist Tourtag!</b>\n\n'
+            f'🚴 <b>{_tg(tour.title)}</b>\n'
+            f'📅 {tour.tour_date.strftime("%d.%m.%Y") if tour.tour_date else "Datum offen"}'
+            f'{" um " + _tg(tour.start_time) + " Uhr" if tour.start_time else ""}\n'
+            f'👥 {attending} Teilnehmer angemeldet\n'
+        )
+        if tour.meeting_desc:
+            tg_msg += f'📍 Treffpunkt: {_tg(tour.meeting_desc)}\n'
+        if _ek:
+            tg_msg += f'☕ Einkehr: {_tg(_ek)}\n'
+        tg_msg += f'\n👉 {app.config["BASE_URL"]}/touren/{tour.id}'
+        send_telegram(tg_msg)
+    except Exception as e:
+        app.logger.warning(f'Telegram evening reminder failed: {e}')
+
+    push_sent = 0
+    if user_ids:
+        body = f'Morgen{" um " + tour.start_time + " Uhr" if tour.start_time else ""}: {tour.title}'
+        if tour.meeting_desc:
+            body += f' · {tour.meeting_desc}'
+        for u in User.query.filter(User.id.in_(user_ids)).all():
+            try:
+                n, _ = send_push_to_user(u, title='📅 Morgen ist Tourtag!', body=body,
+                                         url=f'/touren/{tour.id}')
+                push_sent += n
+            except Exception as e:
+                app.logger.warning(f'evening push failed for user {u.id}: {e}')
+    return len(user_ids), push_sent
+
+
+def _run_tour_reminders(now=None):
+    """Build ab: Tourtag- und Vorabend-Erinnerung prüfen und bei Fälligkeit verschicken.
+    Beide laufen frühestens ab der im Admin einstellbaren Uhrzeit (Europe/Berlin) –
+    vorher ging die Tourtag-Erinnerung kurz nach Mitternacht raus. Ein Tagesflag pro
+    Art verhindert Doppelversand; ältere Flags werden dabei gelöscht.
+    Liefert die Zahl der erinnerten Touren."""
+    now = now or _berlin_now()
+    today = now.date()
+    done = 0
+
+    if now.hour >= _cfg_int('reminder_morning_hour', 7, 0, 23):
+        flag_key = f'morning_reminder_sent_{today.isoformat()}'
+        if cfg(flag_key) != '1':
+            for tour in Tour.query.filter(Tour.status == 'planned', Tour.tour_date == today).all():
+                _send_morning_reminder_for_tour(tour)
+                done += 1
+            _set_day_flag('morning_reminder_sent_', flag_key)
+            db.session.commit()
+
+    if cfg('reminder_evening_enabled') != '0' and now.hour >= _cfg_int('reminder_evening_hour', 18, 0, 23):
+        tomorrow = today + timedelta(days=1)
+        flag_key = f'evening_reminder_sent_{tomorrow.isoformat()}'
+        if cfg(flag_key) != '1':
+            for tour in Tour.query.filter(Tour.status == 'planned', Tour.tour_date == tomorrow).all():
+                _send_evening_reminder_for_tour(tour)
+                done += 1
+            _set_day_flag('evening_reminder_sent_', flag_key)
+            db.session.commit()
+    return done
+
+
 @app.before_request
 def _self_trigger_morning_reminder():
     if request.endpoint in ('static', 'service_worker', 'api_backup_trigger'):
@@ -9354,23 +9896,10 @@ def _self_trigger_morning_reminder():
     if random.random() > 0.03:  # ~3% Chance pro Request
         return
     try:
-        today = date.today()
-        flag_key = f'morning_reminder_sent_{today.isoformat()}'
-        if cfg(flag_key) == '1':
-            return  # heute schon für alle fälligen Touren verschickt
-
-        due_tours = Tour.query.filter(
-            Tour.status == 'planned',
-            Tour.tour_date == today,
-        ).all()
-
-        for tour in due_tours:
-            _send_morning_reminder_for_tour(tour)
-
-        SiteConfig.set(flag_key, '1')
-        db.session.commit()
+        _run_tour_reminders()
     except Exception as e:
-        app.logger.warning(f'Self-trigger morning reminder error: {e}')
+        db.session.rollback()
+        app.logger.warning(f'Self-trigger tour reminder error: {e}')
 
 
 @app.route('/archiv/suche')
@@ -9588,14 +10117,13 @@ def tour_ical(tour_id):
 @login_required
 def mitglieder():
     users = _gq(User).filter_by(is_active=True).order_by(User.name).all()
-    # Attach quick stats
+    # Build ab: Statistik für alle Mitglieder in einer Abfrage (vorher ~2 Abfragen je Mitglied)
+    stats = badge_stats_bulk([u.id for u in users])
     members_data = []
     for u in users:
-        confirmed = TourParticipant.query.filter_by(
-            user_id=u.id, confirmed_present=True
-        ).count()
-        members_data.append({'user': u, 'tour_count': confirmed,
-                             'badges': compute_badges(u)})
+        st = stats.get(u.id, (0, 0.0))
+        members_data.append({'user': u, 'tour_count': st[0],
+                             'badges': compute_badges(u, stats=st)})
     return render_template('mitglieder.html', members=members_data)
 
 
@@ -9653,8 +10181,8 @@ def challenge_set():
     flash(f'Challenge-Thema gesetzt: {theme}', 'success')
     send_telegram(
         f'📸 <b>Neue Foto-Challenge!</b>\n\n'
-        f'Thema: <b>{theme}</b>\n'
-        f'{request.form.get("description","")}\n\n'
+        f'Thema: <b>{_tg(theme)}</b>\n'
+        f'{_tg(request.form.get("description",""))}\n\n'
         f'Macht mit! 👉 {app.config["BASE_URL"]}/challenge'
     )
     return redirect(url_for('foto_challenge'))
@@ -9700,7 +10228,7 @@ def tour_telegram_share(tour_id):
     tour = _tour_or_404(tour_id)
     msg  = (
         f'📖 <b>Tour im Archiv</b>\n\n'
-        f'🚴 <b>{tour.title}</b>\n'
+        f'🚴 <b>{_tg(tour.title)}</b>\n'
         f'📅 {tour.tour_date.strftime("%d.%m.%Y") if tour.tour_date else "Datum offen"}\n'
     )
     if tour.gpx_km:
@@ -9720,10 +10248,18 @@ def tour_telegram_share(tour_id):
 @app.route('/sw.js')
 def service_worker():
     """Serve service worker from root scope."""
-    from flask import make_response, send_from_directory
-    resp = make_response(send_from_directory('static', 'sw.js'))
-    resp.headers['Content-Type'] = 'application/javascript'
+    # Build ab: Cache-Name trägt den Build – nach jedem Deploy holt sich der Browser frische
+    # CSS/JS-Dateien statt bis zu 24 h alte aus dem Service-Worker-Cache.
+    sw_path = os.path.join(app.static_folder, 'sw.js')
+    try:
+        with open(sw_path, encoding='utf-8') as f:
+            body = f.read().replace('__BUILD__', re.sub(r'[^a-z0-9]+', '-', APP_BUILD.lower()))
+    except OSError:
+        abort(404)
+    resp = make_response(body)
+    resp.headers['Content-Type'] = 'application/javascript; charset=utf-8'
     resp.headers['Service-Worker-Allowed'] = '/'
+    resp.headers['Cache-Control'] = 'no-cache'
     return resp
 
 
@@ -9739,7 +10275,7 @@ def tour_print(tour_id):
     if tour.gpx_file:
         gpx_path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
         if os.path.exists(gpx_path):
-            gpx_data = parse_gpx(gpx_path)
+            gpx_data = gpx_for_page(gpx_path)          # Build ab: ≤ 2000 Punkte im Seiten-JSON
 
     photos = tour.photos.filter(
         TourPhoto.lat != None
@@ -9982,7 +10518,7 @@ def setup_wizard(key=''):
     if not name:        errors.append('Name fehlt.')
     if not email:       errors.append('E-Mail fehlt.')
     if pw != pw2:       errors.append('Passwörter stimmen nicht überein.')
-    if len(pw) < 6:     errors.append('Passwort muss mindestens 6 Zeichen haben.')
+    if len(pw) < 8:     errors.append('Passwort muss mindestens 8 Zeichen haben.')
     if User.query.filter_by(email=email).first():
         errors.append('Diese E-Mail ist bereits registriert.')
 

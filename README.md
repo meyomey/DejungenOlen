@@ -22,6 +22,11 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 - Startzeit-Abstimmung (09:00–11:00 Uhr)
 - Termin nachträglich fixieren (Organizer)
 - Tour-Karten mit Cover-Foto aus Tourfotos + Kartenvorschau
+- Tour absagen (mit Grund) / Absage zurücknehmen – Push an Angemeldete + Telegram; „Änderung mitteilen“
+  beim Bearbeiten von Datum, Uhrzeit, Treffpunkt
+- Automatische Erinnerungen am Vorabend (ab 18 Uhr) und am Tourtag (ab 7 Uhr), Uhrzeiten im Admin einstellbar
+- Fahrgemeinschaften je Tour (Plätze anbieten / Mitfahrt suchen, Push an Suchende)
+- Druckbare Teilnehmerliste mit Telefon und Notfallkontakt (nur Tourleitung/Admin)
 
 ### 🗺️ Karte & GPX
 - GPX-Upload mit automatischer Streckenberechnung (km, Höhenmeter)
@@ -56,7 +61,8 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 ### 👤 Benutzer & Profile
 - Einladungsbasierte Registrierung (kein offener Zugang)
 - Rollen: Admin / Organizer / Mitglied
-- Avatare, Fahrrad-Typ, Bio, Geburtstag
+- Avatare, Fahrrad-Typ, Bio, Geburtstag, Handynummer + Notfallkontakt (nur für Tourleitung sichtbar)
+- Anmelde-Link per E-Mail (ohne Passwort, 15 Minuten gültig) – wenn SMTP konfiguriert ist
 - Persönliche Tour-Statistiken
 - Letzter Login sichtbar (eigenes Profil)
 
@@ -76,7 +82,9 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 - Einladungslinks erstellen und verwalten
 - Geburtstags-Erinnerung (14 Tage voraus)
 - Inaktive Mitglieder anzeigen (>90 Tage)
-- Datenbank-Backup
+- Backups: Datenbank täglich, Komplett-Backup (Fotos/GPX, Videos optional) im gewählten Intervall –
+  im Hintergrund, Rotation 7 Tage / 8 Wochen / 12 Monate je Art, Wiederherstellung im Admin
+- Erinnerungs-Uhrzeiten, Test-Knöpfe für Tourtag-/Vorabend-Erinnerung
 - API-Dokumentation unter `/api/docs`
 
 ### 📱 Mobile & PWA
@@ -135,7 +143,7 @@ keine Netzverbindungen auf (Push, Telegram, E-Mail, Overpass und Wetter sind dur
 
 ```bash
 # im Projektordner, mit aktivierter virtueller Umgebung
-python -m unittest                      # alle Tests (~10 s)
+python -m unittest                      # alle Tests (~30 s)
 python -m unittest -v tests.test_touren # ein Modul, ausführlich
 python -m unittest tests.test_routes.RoutesTest.test_all_get_routes_member
 ```
@@ -148,6 +156,7 @@ python -m unittest tests.test_routes.RoutesTest.test_all_get_routes_member
 | `tests/test_downloads.py` | GPX-Download, Archiv-ZIP, Tour-Paket (tour.txt), Druckansicht |
 | `tests/test_live.py` | Live-Karte: Zeitfenster, `open_now`, Initialen, Migration, API-Rechte, veraltete Standorte, Seiten; Gruppen-Karte (Filter, Popup-Daten, „offen“) |
 | `tests/test_helpers.py` | `parse_gpx`, Track-Vereinfachung, SVG-Vorschau, ICS-Maskierung/-Faltung, Formular-Parser, Template-Filter |
+| `tests/test_build_ab.py` | Erinnerungen mit Uhrzeit-Schranke, Absage/Reaktivierung + Benachrichtigung, „Änderung mitteilen“, Anmelde-Link, Notfallkontakt/Teilnehmerliste, Fahrgemeinschaften, Backup-Modi/Rotation/sicheres Entpacken, GPX-Ausdünnung, Service-Worker-Cache, entfernte Routen |
 
 Vor jeder Auslieferung einmal `python -m unittest` laufen lassen – ein roter Test heißt: nicht hochladen.
 
@@ -190,7 +199,7 @@ dejungen_olen/
 ├── passenger_wsgi.py         # Phusion Passenger Einstiegspunkt
 ├── requirements.txt
 ├── .env.example               # Vorlage für Umgebungsvariablen
-├── backup.sh                 # Tägliches Backup (Plesk-Cron)
+├── backup.sh                 # Backup: `backup.sh db` (nur Datenbank) / `backup.sh full` (+ Fotos/GPX)
 ├── make_deploy_zip.py        # Deploy-Pakete erzeugen (siehe unten)
 ├── CHANGELOG.md
 ├── docs/                     # Anleitungen & Audit-Bericht
