@@ -188,17 +188,6 @@
           <input type="url" name="base_url" class="form-control"
                  value="{{ settings.base_url }}" placeholder="https://deine-domain.de">
         </div>
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Google Places API-Key</label>
-          <input type="text" name="google_places_api_key" class="form-control font-monospace"
-                 value="{{ settings.get('google_places_api_key','') }}"
-                 placeholder="AIza...">
-          <div class="form-text">
-            Für „Daten aus Google Places" auf Gastro-Detailseiten.
-            Key erstellen unter <a href="https://console.cloud.google.com/apis/library/places-backend.googleapis.com" target="_blank">Google Cloud Console</a>
-            → Places API aktivieren.
-          </div>
-        </div>
       </div>
     </div>
   </div>

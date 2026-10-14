@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 r'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-14 s'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -4773,10 +4773,32 @@ GASTRO_TYPES = [
     ('other',      '📍 Sonstiges'),
 ]
 
+def _gastro_can_edit(spot):
+    """Build s: Eintrag ändern/löschen dürfen Admins, Organisatoren und wer ihn angelegt hat."""
+    return bool(current_user.is_authenticated and
+                (current_user.is_organizer or spot.added_by == current_user.id))
+
+
+def _geo_dist_m(lat1, lng1, lat2, lng2):
+    """Abstand zweier Koordinaten in Metern (äquirektangular – für wenige Kilometer völlig ausreichend)."""
+    import math
+    m_lng = 111320.0 * max(0.2, math.cos(math.radians((lat1 + lat2) / 2)))
+    return math.hypot((lat1 - lat2) * 111320.0, (lng1 - lng2) * m_lng)
+
+
+def _gastro_delete_photo_file(photo):
+    try:
+        path = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], photo.filename)
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError as e:
+        app.logger.warning(f'Gastro-Foto-Datei nicht gelöscht: {e}')
+
+
 @app.route('/gastro/<int:spot_id>/fotos', methods=['POST'])
 @login_required
 def gastro_upload_photo(spot_id):
-    """Foto zu Gastro-Spot hochladen."""
+    """Foto zu Gastro-Spot hochladen (Build s: erstmals in der Detailseite eingebunden)."""
     spot = GastroSpot.query.get_or_404(spot_id)
     f    = request.files.get('photo')
     if not f or not f.filename:
@@ -4791,31 +4813,28 @@ def gastro_upload_photo(spot_id):
     save_path = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], filename)
     f.save(save_path)
     _resize_photo_if_needed(save_path)
-    caption = request.form.get('caption', '').strip() or None
-    photo = GastroPhoto(spot_id=spot_id, user_id=current_user.id,
+    caption = request.form.get('caption', '').strip()[:200] or None
+    photo = GastroPhoto(spot_id=spot.id, user_id=current_user.id,
                         filename=filename, caption=caption)
     db.session.add(photo)
     db.session.commit()
     flash('Foto hochgeladen.', 'success')
-    return redirect(url_for('gastro_detail', spot_id=spot_id))
+    return redirect(url_for('gastro_detail', spot_id=spot_id) + '#fotos')
 
 
 @app.route('/gastro/fotos/<int:photo_id>/loeschen', methods=['POST'])
 @login_required
 def gastro_delete_photo(photo_id):
-    """Gastro-Foto löschen."""
+    """Gastro-Foto löschen (eigenes Foto, Admin/Organisator oder Ersteller des Eintrags)."""
     photo = GastroPhoto.query.get_or_404(photo_id)
-    if not (current_user.is_admin or current_user.is_organizer or
-            photo.user_id == current_user.id):
+    if not (photo.user_id == current_user.id or _gastro_can_edit(photo.spot)):
         abort(403)
-    path = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], photo.filename)
-    if os.path.exists(path):
-        os.remove(path)
+    _gastro_delete_photo_file(photo)
     spot_id = photo.spot_id
     db.session.delete(photo)
     db.session.commit()
     flash('Foto gelöscht.', 'success')
-    return redirect(url_for('gastro_detail', spot_id=spot_id))
+    return redirect(url_for('gastro_detail', spot_id=spot_id) + '#fotos')
 
 
 @app.route('/gastro')
@@ -4838,7 +4857,9 @@ def gastro_list():
 
     spots = GastroSpot.query
     if q:
-        spots = spots.filter(GastroSpot.name.ilike(f'%{q}%'))
+        like = f'%{q}%'                                   # Build s: auch Adresse und Notizen durchsuchen
+        spots = spots.filter(db.or_(GastroSpot.name.ilike(like), GastroSpot.address.ilike(like),
+                                    GastroSpot.notes.ilike(like)))
     if typ:
         spots = spots.filter_by(spot_type=typ)
     if morning_only:
@@ -4847,36 +4868,48 @@ def gastro_list():
             GastroSpot.opens_at <= morning_threshold
         )
     spots = spots.order_by(GastroSpot.name).all()
+
+    # Build s: Bewertungsschnitt in EINER Abfrage statt je Karte neu (vorher 221 Abfragen bei 30
+    # Einträgen); die Frühöffner-Schwelle liest das Model jetzt einmal je Request (models.morning_threshold)
+    from sqlalchemy import func as _func
+    avg_rows = (db.session.query(GastroReview.spot_id, _func.avg(GastroReview.score))
+                .filter(GastroReview.score != None).group_by(GastroReview.spot_id).all())
+    avgs = {sid: round(float(a), 1) for sid, a in avg_rows if a is not None}
+    for sp in spots:
+        sp._avg_rating = avgs.get(sp.id)
     return render_template('gastro/list.html', spots=spots,
                            gastro_types=GASTRO_TYPES,
                            morning_only=morning_only, typ=typ, q=q,
                            morning_threshold=morning_threshold)
 
 
+def _gastro_fill_from_form(spot):
+    """Build s: Formularfelder in einen Eintrag übernehmen (neu und bearbeiten identisch)."""
+    spot.name      = request.form.get('name', '').strip()[:120]
+    spot.spot_type = request.form.get('spot_type', 'cafe') or 'cafe'
+    spot.address   = request.form.get('address', '').strip()[:200] or None
+    spot.opens_at  = request.form.get('opens_at', '').strip()[:5] or None
+    spot.closes_at = request.form.get('closes_at', '').strip()[:5] or None
+    spot.phone     = request.form.get('phone', '').strip()[:30] or None
+    spot.website   = _clean_url(request.form.get('website'))        # Audit 1.4.0: nur http(s)
+    spot.notes     = request.form.get('notes', '').strip() or None
+    osm_id = request.form.get('osm_id', '').strip()[:30]
+    if osm_id:
+        spot.osm_id = osm_id
+    spot.lat = _parse_float(request.form.get('lat'))
+    spot.lng = _parse_float(request.form.get('lng'))
+
+
 @app.route('/gastro/neu', methods=['GET', 'POST'])
 @login_required
 def gastro_new():
     if request.method == 'POST':
+        spot = GastroSpot(added_by=current_user.id)
+        _gastro_fill_from_form(spot)
         # Audit 1.4.0: Name/Koordinaten prüfen statt 500 bei leeren Feldern
-        name = request.form.get('name', '').strip()
-        lat  = _parse_float(request.form.get('lat'))
-        lng  = _parse_float(request.form.get('lng'))
-        if not name or lat is None or lng is None:
+        if not spot.name or spot.lat is None or spot.lng is None:
             flash('Bitte Name angeben und einen Punkt auf der Karte wählen.', 'danger')
             return render_template('gastro/form.html', spot=None, gastro_types=GASTRO_TYPES)
-        spot = GastroSpot(
-            name       = name,
-            spot_type  = request.form.get('spot_type','cafe'),
-            address    = request.form.get('address','').strip() or None,
-            lat        = lat,
-            lng        = lng,
-            opens_at   = request.form.get('opens_at','') or None,
-            closes_at  = request.form.get('closes_at','') or None,
-            phone      = request.form.get('phone','').strip() or None,
-            website    = _clean_url(request.form.get('website')),
-            notes      = request.form.get('notes','').strip() or None,
-            added_by   = current_user.id,
-        )
         db.session.add(spot)
         db.session.commit()
         flash(f'"{spot.name}" wurde hinzugefügt!', 'success')
@@ -4891,10 +4924,9 @@ def gastro_detail(spot_id):
     reviews = GastroReview.query.filter_by(spot_id=spot_id).order_by(GastroReview.created_at.desc()).all()
     my_rev  = GastroReview.query.filter_by(spot_id=spot_id, user_id=current_user.id).first()
     photos  = GastroPhoto.query.filter_by(spot_id=spot_id).order_by(GastroPhoto.created_at).all()
-    places_key = cfg('google_places_api_key') or ''
     return render_template('gastro/detail.html', spot=spot,
                            reviews=reviews, my_rev=my_rev,
-                           photos=photos, places_key=places_key)
+                           photos=photos, can_edit=_gastro_can_edit(spot))
 
 
 @app.route('/gastro/<int:spot_id>/bewerten', methods=['POST'])
@@ -4931,8 +4963,12 @@ def gastro_review(spot_id):
 @login_required
 def gastro_delete(spot_id):
     spot = GastroSpot.query.get_or_404(spot_id)
-    if spot.added_by != current_user.id and not current_user.is_admin:
+    if not _gastro_can_edit(spot):
         abort(403)
+    # Build s: Fotos (Dateien + Datensätze) mit entfernen – vorher IntegrityError/500, sobald ein Foto hing
+    for photo in GastroPhoto.query.filter_by(spot_id=spot_id).all():
+        _gastro_delete_photo_file(photo)
+        db.session.delete(photo)
     db.session.delete(spot)
     db.session.commit()
     flash('Eintrag gelöscht.', 'success')
@@ -4942,107 +4978,69 @@ def gastro_delete(spot_id):
 @app.route('/gastro/<int:spot_id>/bearbeiten', methods=['GET', 'POST'])
 @login_required
 def gastro_edit(spot_id):
+    """Build s: Bearbeiten war unerreichbar (kein Link) und das Formular blieb leer – jetzt vorbelegt."""
     spot = GastroSpot.query.get_or_404(spot_id)
-    if spot.added_by != current_user.id and not current_user.is_admin:
+    if not _gastro_can_edit(spot):
         abort(403)
     if request.method == 'POST':
-        spot.name      = request.form.get('name', '').strip()
-        spot.spot_type = request.form.get('spot_type', 'other')
-        spot.address   = request.form.get('address', '').strip() or None
-        spot.opens_at  = request.form.get('opens_at', '').strip() or None
-        spot.closes_at = request.form.get('closes_at', '').strip() or None
-        spot.phone     = request.form.get('phone', '').strip() or None
-        spot.website   = _clean_url(request.form.get('website'))   # Audit 1.4.0: nur http(s)
-        spot.notes     = request.form.get('notes', '').strip() or None
-        try:
-            spot.lat = float(request.form.get('lat'))
-            spot.lng = float(request.form.get('lng'))
-        except (TypeError, ValueError):
+        _gastro_fill_from_form(spot)
+        if spot.lat is None or spot.lng is None:
+            db.session.rollback()
             flash('Ungültige Koordinaten.', 'danger')
-            return render_template('gastro/form.html', spot=spot, gastro_types=GASTRO_TYPES)
+            return render_template('gastro/form.html', spot=GastroSpot.query.get(spot_id), gastro_types=GASTRO_TYPES)
         if not spot.name:
+            db.session.rollback()
             flash('Name ist erforderlich.', 'danger')
-            return render_template('gastro/form.html', spot=spot, gastro_types=GASTRO_TYPES)
+            return render_template('gastro/form.html', spot=GastroSpot.query.get(spot_id), gastro_types=GASTRO_TYPES)
         db.session.commit()
         flash('Eintrag aktualisiert.', 'success')
         return redirect(url_for('gastro_detail', spot_id=spot.id))
     return render_template('gastro/form.html', spot=spot, gastro_types=GASTRO_TYPES)
 
 
-
-@app.route('/api/gastro/<int:spot_id>/places-lookup')
+@app.route('/api/gastro/<int:spot_id>/osm-lookup')
 @login_required
-def gastro_places_lookup(spot_id):
-    """Search Google Places API for a gastro spot and return structured data."""
+def gastro_osm_lookup(spot_id):
+    """Build s: Ersatz für den Google-Places-Abgleich (brauchte einen kostenpflichtigen API-Key und war
+    nie in der Oberfläche eingebunden). Sucht den Eintrag in OpenStreetMap – über die gespeicherte
+    osm_id, sonst im Umkreis von 80 m – und liefert Kandidaten mit Öffnungszeiten, Adresse, Kontakt."""
     spot = GastroSpot.query.get_or_404(spot_id)
-    api_key = cfg('google_places_api_key', '').strip()
-    if not api_key:
-        return jsonify({'error': 'Kein Google Places API-Key konfiguriert.'}), 400
-    try:
-        q = f"{spot.name} {spot.address or ''}".strip()
-        # Text search to get place_id
-        search_resp = http_requests.get(
-            'https://maps.googleapis.com/maps/api/place/textsearch/json',
-            params={'query': q, 'location': f'{spot.lat},{spot.lng}',
-                    'radius': 500, 'language': 'de', 'key': api_key},
-            timeout=10
-        )
-        search_data = search_resp.json()
-        if not search_data.get('results'):
-            return jsonify({'results': []})
-        # Get details for top 3 results
-        results = []
-        for place in search_data['results'][:3]:
-            pid = place.get('place_id')
-            det = http_requests.get(
-                'https://maps.googleapis.com/maps/api/place/details/json',
-                params={'place_id': pid, 'language': 'de',
-                        'fields': 'name,formatted_address,formatted_phone_number,website,opening_hours,geometry',
-                        'key': api_key},
-                timeout=10
-            ).json().get('result', {})
-            oh = det.get('opening_hours', {})
-            opens_at = closes_at = None
-            if oh.get('periods'):
-                for p in oh['periods']:
-                    if p.get('open', {}).get('day') == 1:  # Monday as reference
-                        opens_at  = p['open'].get('time', '')[:2] + ':' + p['open'].get('time', '')[2:]
-                        closes_at = p.get('close', {}).get('time', '')
-                        if closes_at:
-                            closes_at = closes_at[:2] + ':' + closes_at[2:]
-                        break
-            results.append({
-                'name':     det.get('name', place.get('name', '')),
-                'address':  det.get('formatted_address', ''),
-                'phone':    det.get('formatted_phone_number', ''),
-                'website':  det.get('website', ''),
-                'opens_at':  opens_at or '',
-                'closes_at': closes_at or '',
-                'weekday_text': oh.get('weekday_text', []),
-            })
-        return jsonify({'results': results})
-    except Exception as e:
-        app.logger.error(f'Google Places error: {e}')
-        return jsonify({'error': str(e)}), 502
+    m = re.match(r'^(node|way|relation)/(\d+)$', spot.osm_id or '')
+    elements, source, error, query = None, None, None, None
+    if m:
+        query = f'[out:json][timeout:15];{m.group(1)}({m.group(2)});out center tags;'
+        elements, source, error = _overpass_fetch(query, ('osm', spot.osm_id))
+    if not elements:                                      # keine osm_id oder Objekt in OSM gelöscht
+        query = _overpass_gastro_query_around(spot.lat, spot.lng, 80)
+        elements, source, error = _overpass_fetch(query, ('near', round(spot.lat, 5), round(spot.lng, 5)))
+    if elements is None:
+        return jsonify({'error': f'Overpass nicht erreichbar: {error}', 'query': query}), 502
+    results = _overpass_elements_to_results(elements)
+    for r in results:
+        r['distance_m'] = int(round(_geo_dist_m(spot.lat, spot.lng, r['lat'], r['lng'])))
+    results.sort(key=lambda r: r['distance_m'])
+    return jsonify({'results': results[:5], 'source': source})
 
 
 @app.route('/gastro/<int:spot_id>/import', methods=['POST'])
 @login_required
 def gastro_import(spot_id):
-    """Import selected fields from external lookup into the gastro spot."""
+    """Ausgewählte Felder aus dem OSM-Abgleich (JSON) in den Eintrag übernehmen."""
     spot = GastroSpot.query.get_or_404(spot_id)
-    if spot.added_by != current_user.id and not current_user.is_admin:
+    if not _gastro_can_edit(spot):
         abort(403)
     fields = request.get_json(silent=True) or {}   # Audit 1.4.0: kein 415 bei fehlendem Content-Type
-    if 'name'      in fields and fields['name']:     spot.name     = str(fields['name'])[:120]
-    if 'address'   in fields and fields['address']:  spot.address  = str(fields['address'])[:200]
-    if 'phone'     in fields and fields['phone']:    spot.phone    = str(fields['phone'])[:30]
-    if 'website'   in fields and fields['website']:  spot.website  = _clean_url(str(fields['website']))
-    if 'opens_at'  in fields and fields['opens_at']: spot.opens_at = fields['opens_at']
-    if 'closes_at' in fields and fields['closes_at']:spot.closes_at= fields['closes_at']
+    if fields.get('name'):      spot.name      = str(fields['name'])[:120]
+    if fields.get('address'):   spot.address   = str(fields['address'])[:200]
+    if fields.get('phone'):     spot.phone     = str(fields['phone'])[:30]
+    if fields.get('website'):   spot.website   = _clean_url(str(fields['website']))
+    if fields.get('osm_id'):    spot.osm_id    = str(fields['osm_id'])[:30]
+    for key in ('opens_at', 'closes_at'):
+        val = str(fields.get(key) or '').strip()
+        if re.match(r'^\d{2}:\d{2}$', val):
+            setattr(spot, key, val)
     db.session.commit()
     return jsonify({'ok': True})
-
 
 
 @app.route('/touren/<int:tour_id>/videos', methods=['POST'])
@@ -5463,7 +5461,9 @@ OVERPASS_ENDPOINTS = [            # Build r: Reihenfolge nach Verlässlichkeit (
     'https://overpass.kumi.systems/api/interpreter',
     'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ]
-_overpass_cache: dict = {}        # gerundete bbox → (Zeitstempel, Trefferliste); entlastet die Server, weniger Rate-Limits
+_overpass_cache: dict = {}        # Cache-Schlüssel → (Zeitstempel, Overpass-Elemente); entlastet die Server, weniger Rate-Limits
+OVERPASS_AMENITY = '"amenity"~"^(cafe|bar|pub|restaurant|fast_food|biergarten|ice_cream)$"'
+OVERPASS_SHOP    = '"shop"~"^(bakery|pastry|ice_cream)$"'
 
 
 def _osm_user_agent():
@@ -5482,14 +5482,20 @@ def _overpass_gastro_query(s, w, n, e):
     und Eisdielen (shop=bakery|pastry|ice_cream, amenity=ice_cream); „bakery“ war vorher fälschlich
     als amenity abgefragt und fand nie etwas."""
     bbox = f'{s},{w},{n},{e}'
-    am = '"amenity"~"^(cafe|bar|pub|restaurant|fast_food|biergarten|ice_cream)$"'
-    sh = '"shop"~"^(bakery|pastry|ice_cream)$"'
-    return (f'[out:json][timeout:15];\n(\n  node[{am}]({bbox});\n  way[{am}]({bbox});\n'
-            f'  node[{sh}]({bbox});\n  way[{sh}]({bbox});\n);\nout center 80;\n')
+    return (f'[out:json][timeout:15];\n(\n  node[{OVERPASS_AMENITY}]({bbox});\n  way[{OVERPASS_AMENITY}]({bbox});\n'
+            f'  node[{OVERPASS_SHOP}]({bbox});\n  way[{OVERPASS_SHOP}]({bbox});\n);\nout center 80;\n')
+
+
+def _overpass_gastro_query_around(lat, lng, radius_m, limit=20):
+    """Build s: Gastronomie im Umkreis eines Punktes (für den OSM-Abgleich eines Eintrags)."""
+    ar = f'around:{int(radius_m)},{lat:.6f},{lng:.6f}'
+    return (f'[out:json][timeout:15];\n(\n  node[{OVERPASS_AMENITY}]({ar});\n  way[{OVERPASS_AMENITY}]({ar});\n'
+            f'  node[{OVERPASS_SHOP}]({ar});\n  way[{OVERPASS_SHOP}]({ar});\n);\nout center {int(limit)};\n')
 
 
 def _overpass_elements_to_results(elements):
-    """Overpass-Elemente → kompakte Trefferliste (Name, Art, Position, Öffnungszeiten, Kontakt, Adresse)."""
+    """Overpass-Elemente → kompakte Trefferliste (Name, Art, Position, Öffnungszeiten, Kontakt, Adresse).
+    osm_id im OSM-Format „node/123“ (Build s), damit ein Eintrag später eindeutig wiedergefunden wird."""
     results = []
     for el in elements or []:
         tags = el.get('tags', {}) or {}
@@ -5501,7 +5507,7 @@ def _overpass_elements_to_results(elements):
         street = ' '.join(x for x in (tags.get('addr:street'), tags.get('addr:housenumber')) if x)
         city = ' '.join(x for x in (tags.get('addr:postcode'), tags.get('addr:city')) if x)
         results.append({
-            'osm_id':  str(el.get('id', '')),
+            'osm_id':  f"{el.get('type', 'node')}/{el.get('id', '')}",
             'name':    tags.get('name') or kind or 'Unbekannt',
             'type':    kind,
             'lat':     lat,
@@ -5514,14 +5520,63 @@ def _overpass_elements_to_results(elements):
     return results
 
 
+def _overpass_fetch(query, cache_key=None, ttl=600, budget_s=40):
+    """Build r/s: Overpass-Abfrage mit identifizierendem User-Agent, Ausweich-Servern (12 s je Server,
+    Gesamtbudget budget_s, damit Passenger nicht abbricht) und kleinem In-Memory-Cache.
+    Rückgabe (elements, quelle, fehler) – elements ist None, wenn kein Server geantwortet hat."""
+    now = _time.time()
+    if cache_key is not None:
+        hit = _overpass_cache.get(cache_key)
+        if hit and now - hit[0] < ttl:
+            return hit[1], 'cache', None
+    headers = {'User-Agent': _osm_user_agent(), 'Accept': 'application/json',
+               'Referer': request.host_url if request else ''}
+    status_hint = {406: 'Anfrage abgelehnt (406, User-Agent)', 429: 'zu viele Anfragen (429)',
+                   504: 'Server überlastet (504)', 403: 'Zugriff verweigert (403)',
+                   400: 'Abfrage abgelehnt (400)'}
+    last_error = 'Unbekannter Fehler'
+    deadline = now + budget_s
+    for endpoint in OVERPASS_ENDPOINTS:
+        if _time.time() > deadline:
+            break
+        host = endpoint.split('/')[2]
+        try:
+            resp = http_requests.post(endpoint, data={'data': query}, headers=headers, timeout=12)
+            if resp.status_code != 200:
+                last_error = f'{status_hint.get(resp.status_code, "HTTP " + str(resp.status_code))} bei {host}'
+                app.logger.warning(f'Overpass {endpoint} -> {resp.status_code}: {(resp.text or "")[:200]!r}')
+                if resp.status_code == 400:               # Syntaxfehler – andere Server antworten gleich
+                    break
+                continue
+            try:
+                data = resp.json()
+            except ValueError:
+                last_error = f'kein JSON von {host}'
+                app.logger.error(f'Overpass JSON-Fehler ({endpoint}): {(resp.text or "")[:200]!r}')
+                continue
+            elements = data.get('elements') or []
+            if cache_key is not None:
+                if len(_overpass_cache) > 200:            # Cache klein halten
+                    for old in sorted(_overpass_cache, key=lambda k: _overpass_cache[k][0])[:100]:
+                        _overpass_cache.pop(old, None)
+                _overpass_cache[cache_key] = (_time.time(), elements)
+            return elements, host, None
+        except http_requests.exceptions.Timeout:
+            last_error = f'Zeitüberschreitung bei {host}'
+            app.logger.warning(last_error)
+        except Exception as ex:
+            last_error = f'{host}: {ex.__class__.__name__}'
+            app.logger.error(f'Overpass error ({endpoint}): {ex}')
+    return None, None, last_error
+
+
 @app.route('/api/overpass-gastro')
 @login_required
 def api_overpass_gastro():
     """Search OSM for amenities in a bounding box (Proxy für die Gastro-Suche „OSM-Gebiet“).
-    Build r: identifizierender User-Agent (sonst 406), mehr Ausweich-Server mit kürzeren Einzel-
-    Timeouts, 10-Minuten-Cache je Kartenausschnitt, aussagekräftige Fehlertexte; bei Fehlern wird
-    die Abfrage mitgeliefert, damit der Browser sie notfalls direkt an overpass-api.de stellen kann
-    (eigene IP, eigener Referer – hilft, wenn die Hosting-IP im Rate-Limit steckt)."""
+    Build r: identifizierender User-Agent (sonst 406), Ausweich-Server, Cache, sprechende Fehlertexte;
+    bei Fehlern wird die Abfrage mitgeliefert, damit der Browser sie direkt an overpass-api.de stellen
+    kann (eigene IP, eigener Referer – hilft, wenn die Hosting-IP im Rate-Limit steckt)."""
     try:
         s = float(request.args.get('s'))
         w = float(request.args.get('w'))
@@ -5534,51 +5589,13 @@ def api_overpass_gastro():
     if (n - s) > 0.5 or (e - w) > 0.5:
         return jsonify({'error': 'Kartenausschnitt zu groß – bitte näher heranzoomen.', 'zoom_in': True}), 400
 
-    key = (round(s, 3), round(w, 3), round(n, 3), round(e, 3))
-    now = _time.time()
-    hit = _overpass_cache.get(key)
-    if hit and now - hit[0] < 600:
-        return jsonify({'results': hit[1], 'cached': True})
-
     query = _overpass_gastro_query(s, w, n, e)
-    headers = {'User-Agent': _osm_user_agent(), 'Accept': 'application/json',
-               'Referer': request.host_url}
-    status_hint = {406: 'Anfrage abgelehnt (406, User-Agent)', 429: 'zu viele Anfragen (429)',
-                   504: 'Server überlastet (504)', 403: 'Zugriff verweigert (403)'}
-    last_error = 'Unbekannter Fehler'
-    deadline = now + 40                                   # Gesamtbudget, Passenger soll nicht abbrechen
-    for endpoint in OVERPASS_ENDPOINTS:
-        if _time.time() > deadline:
-            break
-        host = endpoint.split('/')[2]
-        try:
-            resp = http_requests.post(endpoint, data={'data': query}, headers=headers, timeout=12)
-            if resp.status_code != 200:
-                last_error = f'{status_hint.get(resp.status_code, "HTTP " + str(resp.status_code))} bei {host}'
-                app.logger.warning(f'Overpass {endpoint} -> {resp.status_code}: {(resp.text or "")[:200]!r}')
-                continue
-            try:
-                data = resp.json()
-            except ValueError:
-                preview = resp.text[:200] if resp.text else '(leer)'
-                last_error = f'kein JSON von {host}'
-                app.logger.error(f'Overpass JSON-Fehler ({endpoint}): {preview}')
-                continue
-            results = _overpass_elements_to_results(data.get('elements'))
-            if len(_overpass_cache) > 200:                # Cache klein halten
-                for old in sorted(_overpass_cache, key=lambda k: _overpass_cache[k][0])[:100]:
-                    _overpass_cache.pop(old, None)
-            _overpass_cache[key] = (_time.time(), results)
-            return jsonify({'results': results, 'source': host})
-        except http_requests.exceptions.Timeout:
-            last_error = f'Zeitüberschreitung bei {host}'
-            app.logger.warning(last_error)
-            continue
-        except Exception as ex:
-            last_error = f'{host}: {ex.__class__.__name__}'
-            app.logger.error(f'Overpass error ({endpoint}): {ex}')
-            continue
-    return jsonify({'error': f'Overpass nicht erreichbar: {last_error}', 'query': query}), 502
+    key = ('bbox', round(s, 3), round(w, 3), round(n, 3), round(e, 3))
+    elements, source, error = _overpass_fetch(query, key)
+    if elements is None:
+        return jsonify({'error': f'Overpass nicht erreichbar: {error}', 'query': query}), 502
+    return jsonify({'results': _overpass_elements_to_results(elements), 'source': source,
+                    'cached': source == 'cache'})
 
 
 # ─── Phase 2: Telegram reminder CLI ──────────────────────────────────────────
@@ -6853,7 +6870,6 @@ def admin_settings():
             'default_start_time', 'default_meeting_desc',
             'default_meeting_lat', 'default_meeting_lng',
             'morning_opener_until', 'site_name', 'base_url',
-            'google_places_api_key',
         ]
         for key in keys:
             val = request.form.get(key, '').strip()

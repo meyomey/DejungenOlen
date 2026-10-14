@@ -2,7 +2,32 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build r) – Audit 2
+## 1.4.0 – 2026-10-14 (Build s) – Audit 2
+
+### Gastro-Bereich: Fehler und tote Funktionen (Build s)
+
+- **Bearbeiten repariert:** Die Route gab es, aber keinen Link, und das Formular blieb beim
+  Bearbeiten leer. Jetzt: Bearbeiten-Button in der Detailseite (Ersteller, Organisatoren, Admins),
+  Formular vollständig vorbelegt, Karte startet beim Eintrag, Marker ziehbar; die OSM-/Namenssuche
+  ergänzt im Bearbeiten-Modus nur leere Felder.
+- **Fotos eingebunden:** Upload (mit Bildunterschrift), Galerie und Löschen in der Detailseite;
+  Löschen eines Eintrags mit Fotos führte zu einem 500er (NOT NULL) – Fotos und Dateien werden jetzt
+  mit entfernt (zusätzlich Cascade im Model).
+- **OSM-Abgleich statt Google Places:** Der Places-Abgleich brauchte einen kostenpflichtigen Key und war
+  nie in der Oberfläche. Neu: „Daten aus OSM holen“ auf der Detailseite – sucht über die gespeicherte
+  osm_id, sonst im Umkreis von 80 m, zeigt Unterschiede (alt → neu) und übernimmt nur nach Klick
+  (`/api/gastro/<id>/osm-lookup`, `/gastro/<id>/import` mit Validierung). Places-Route und
+  Admin-Feld „Google Places API-Key“ entfernt.
+- **Namenssuche (Nominatim):** Treffer im Kartenausschnitt zuerst (viewbox) und nach Entfernung
+  sortiert statt weltweit; Trefferliste HTML-sicher (Namen mit Apostroph brachen den Klick);
+  übernimmt jetzt auch Schließzeit, Telefon, Website und die OSM-Verknüpfung.
+- **Liste:** 221 → 16 Datenbank-Abfragen bei 30 Einträgen (Bewertungsschnitt in einer Abfrage,
+  Frühöffner-Schwelle einmal je Request über `models.morning_threshold()` – berücksichtigt jetzt
+  auch die persönliche Schwelle); Suche findet zusätzlich Adresse und Notizen.
+- osm_id wird ab jetzt im OSM-Format `node/123` gespeichert und in der Detailseite verlinkt.
+- Betroffene Dateien: `app.py` (Gastro-Abschnitt, Overpass-Helfer `_overpass_fetch`, Admin-Keys,
+  Build-Kennung), `models.py` (`morning_threshold`, `avg_rating`-Cache, Cascade),
+  `templates/gastro/form.html`, `templates/gastro/detail.html`, `templates/admin/settings.html`.
 
 ### Gastro-Suche „OSM-Gebiet“ repariert (Build r)
 

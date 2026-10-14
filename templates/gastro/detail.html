@@ -16,21 +16,24 @@
     </h2>
     <div class="text-muted">{{ spot.type_label }}</div>
   </div>
+  {% if can_edit %}
   <div class="d-flex gap-2">
-    {% if current_user.is_admin or spot.added_by == current_user.id %}
+    <!-- Build s: Bearbeiten war bisher nirgends verlinkt -->
+    <a href="{{ url_for('gastro_edit', spot_id=spot.id) }}" class="btn btn-outline-djo btn-sm">
+      <i class="bi bi-pencil me-1"></i>Bearbeiten
+    </a>
     <form method="post" action="{{ url_for('gastro_delete', spot_id=spot.id) }}"
-          onsubmit="return confirm('Eintrag löschen?')">
-      <button class="btn btn-outline-danger btn-sm">
+          onsubmit="return confirm('Eintrag „{{ spot.name|replace("'", "’") }}“ wirklich löschen?')">
+      <button class="btn btn-outline-danger btn-sm" title="Eintrag löschen">
         <i class="bi bi-trash"></i>
       </button>
     </form>
-    {% endif %}
   </div>
+  {% endif %}
 </div>
 
 <div class="row g-4">
   <div class="col-12 col-lg-7">
-
     <!-- Map -->
     <div class="card mb-3">
       <div class="card-body p-2">
@@ -62,13 +65,13 @@
           {% if spot.phone %}
           <div class="col-12 col-sm-6">
             <div class="small text-muted fw-semibold">Telefon</div>
-            <a href="tel:{{ spot.phone }}">{{ spot.phone }}</a>
+            <a href="tel:{{ spot.phone|replace(' ', '') }}">{{ spot.phone }}</a>
           </div>
           {% endif %}
           {% if spot.website %}
           <div class="col-12 col-sm-6">
             <div class="small text-muted fw-semibold">Website</div>
-            <a href="{{ spot.website }}" target="_blank" class="text-truncate d-block">
+            <a href="{{ spot.website }}" target="_blank" rel="noopener" class="text-truncate d-block">
               {{ spot.website | replace('https://','') | replace('http://','') | truncate(40) }}
             </a>
           </div>
@@ -76,10 +79,70 @@
           {% if spot.notes %}
           <div class="col-12">
             <div class="small text-muted fw-semibold">Notizen</div>
-            <div>{{ spot.notes }}</div>
+            <div style="white-space:pre-line">{{ spot.notes }}</div>
+          </div>
+          {% endif %}
+          {% if not (spot.opens_at or spot.closes_at or spot.address or spot.phone or spot.website or spot.notes) %}
+          <div class="col-12 text-muted small">
+            Noch keine Details hinterlegt{% if can_edit %} – über „Bearbeiten“ ergänzen oder rechts aus OpenStreetMap holen{% endif %}.
           </div>
           {% endif %}
         </div>
+        {% if spot.creator or spot.osm_id %}
+        <div class="text-muted mt-3" style="font-size:.7rem">
+          {% if spot.creator %}Angelegt von {{ spot.creator.display_name }}{% if spot.created_at %} am {{ spot.created_at.strftime('%d.%m.%Y') }}{% endif %}{% endif %}
+          {% if spot.osm_id %} · OSM: <a href="https://www.openstreetmap.org/{{ spot.osm_id }}" target="_blank" rel="noopener" class="text-muted">{{ spot.osm_id }}</a>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Build s: Fotos (Routen gab es schon, aber keine Oberfläche) -->
+    <div class="card mb-3" id="fotos">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-camera me-1"></i>Fotos
+        {% if photos %}<span class="badge bg-light text-dark ms-1">{{ photos|length }}</span>{% endif %}
+      </div>
+      <div class="card-body">
+        {% if photos %}
+        <div class="row g-2 mb-3">
+          {% for p in photos %}
+          <div class="col-6 col-sm-4">
+            <div class="position-relative">
+              <a href="{{ url_for('serve_photo', filename=p.filename) }}" target="_blank" rel="noopener">
+                <img src="{{ url_for('serve_photo', filename=p.filename) }}" alt="{{ p.caption or spot.name }}" loading="lazy"
+                     style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px">
+              </a>
+              {% if can_edit or p.user_id == current_user.id %}
+              <form method="post" action="{{ url_for('gastro_delete_photo', photo_id=p.id) }}"
+                    class="position-absolute top-0 end-0 m-1" onsubmit="return confirm('Foto löschen?')">
+                <button class="btn btn-sm btn-light py-0 px-1" title="Foto löschen"><i class="bi bi-trash text-danger"></i></button>
+              </form>
+              {% endif %}
+              <div class="text-muted text-truncate mt-1" style="font-size:.72rem" title="{{ p.caption or '' }}">
+                {{ p.caption or '' }}{% if p.caption and p.user %} · {% endif %}{% if p.user %}{{ p.user.display_name }}{% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted small">Noch keine Fotos – wer dort war, kann eins hochladen.</p>
+        {% endif %}
+        <form method="post" action="{{ url_for('gastro_upload_photo', spot_id=spot.id) }}"
+              enctype="multipart/form-data" class="row g-2 align-items-end">
+          <div class="col-12 col-sm-6">
+            <label class="form-label small mb-1">Foto hochladen (JPG, PNG, WebP)</label>
+            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="form-control form-control-sm" required>
+          </div>
+          <div class="col-8 col-sm-4">
+            <label class="form-label small mb-1">Bildunterschrift</label>
+            <input type="text" name="caption" class="form-control form-control-sm" maxlength="200" placeholder="optional">
+          </div>
+          <div class="col-4 col-sm-2">
+            <button class="btn btn-djo btn-sm w-100" title="Hochladen"><i class="bi bi-upload"></i></button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -123,8 +186,8 @@
             {% endfor %}
           </div>
           <div class="mb-2">
-            <textarea name="note" class="form-control form-control-sm" rows="2"
-                      placeholder="Kurze Notiz (optional)…">{{ my_rev.note if my_rev else '' }}</textarea>
+            <textarea name="note" class="form-control form-control-sm" rows="2" maxlength="300"
+                      placeholder="Kurze Notiz (optional)…">{{ my_rev.note if my_rev and my_rev.note else '' }}</textarea>
           </div>
           <button type="submit" class="btn btn-djo btn-sm">Bewertung speichern</button>
         </form>
@@ -171,43 +234,128 @@
           🕐 Öffnet {{ spot.opens_at }} Uhr – für Vormittagstouren evtl. zu spät.
         </div>
         {% endif %}
+
         <div class="mt-3 d-grid gap-1">
           <a href="https://www.google.com/maps/dir/?api=1&destination={{ spot.lat }},{{ spot.lng }}&travelmode=bicycling"
-             target="_blank" class="btn btn-djo btn-sm">
+             target="_blank" rel="noopener" class="btn btn-djo btn-sm">
             <i class="bi bi-compass me-1"></i>Google Maps (Fahrrad)
           </a>
           <a href="https://www.komoot.com/plan/@{{ spot.lat }},{{ spot.lng }},16z"
-             target="_blank" class="btn btn-outline-secondary btn-sm">
+             target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">
             🌿 Komoot
           </a>
-
           <a href="geo:{{ spot.lat }},{{ spot.lng }}?z=16"
              class="btn btn-outline-secondary btn-sm">
             📱 OsmAnd / Maps-App
           </a>
           <a href="https://maps.apple.com/?daddr={{ spot.lat }},{{ spot.lng }}&dirflg=c"
-             target="_blank" class="btn btn-outline-secondary btn-sm">
+             target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">
             🍎 Apple Maps
           </a>
           <a href="https://www.openstreetmap.org/?mlat={{ spot.lat }}&mlon={{ spot.lng }}&zoom=16"
-             target="_blank" class="btn btn-outline-secondary btn-sm">
+             target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">
             🗺️ OpenStreetMap
           </a>
         </div>
       </div>
     </div>
+
+    {% if can_edit %}
+    <!-- Build s: OSM-Abgleich (ersetzt den nie eingebundenen Google-Places-Abgleich) -->
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-arrow-repeat me-1"></i>Mit OpenStreetMap abgleichen
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">
+          Holt Öffnungszeiten, Adresse, Telefon und Website aus OSM
+          {% if spot.osm_id %}(verknüpft mit {{ spot.osm_id }}){% else %}– gesucht wird im Umkreis von 80 m um den Marker{% endif %}.
+          Übernommen wird nur, was du bestätigst.
+        </p>
+        <button type="button" class="btn btn-outline-djo btn-sm w-100" onclick="osmLookup()">
+          <i class="bi bi-search me-1"></i>Daten aus OSM holen
+        </button>
+        <div id="osm-lookup-results" class="mt-2"></div>
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const map = L.map('spot-map').setView([{{ spot.lat }}, {{ spot.lng }}], 16);
+const SPOT = {{ {'id': spot.id, 'name': spot.name, 'lat': spot.lat, 'lng': spot.lng,
+                 'address': spot.address or '', 'phone': spot.phone or '', 'website': spot.website or '',
+                 'opens_at': spot.opens_at or '', 'closes_at': spot.closes_at or '', 'osm_id': spot.osm_id or ''}|tojson }};
+
+const map = L.map('spot-map').setView([SPOT.lat, SPOT.lng], 16);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '© OpenStreetMap'
 }).addTo(map);
-L.marker([{{ spot.lat }}, {{ spot.lng }}])
+L.marker([SPOT.lat, SPOT.lng])
  .addTo(map)
- .bindPopup('<b>{{ spot.name }}</b>').openPopup();
+ .bindPopup('<b>' + escHtml(SPOT.name) + '</b>').openPopup();
+
+// ── Build s: OSM-Abgleich ─────────────────────────────────────────────────────
+const OSM_FIELD_LABELS = {address: 'Adresse', phone: 'Telefon', website: 'Website', opens_at: 'Öffnet', closes_at: 'Schließt'};
+const OSM_KIND_LABEL = {cafe: 'Café', bar: 'Bar', pub: 'Kneipe', restaurant: 'Restaurant', biergarten: 'Biergarten',
+                        fast_food: 'Imbiss', bakery: 'Bäckerei', pastry: 'Konditorei', ice_cream: 'Eisdiele'};
+
+function osmLookup() {
+  const el = document.getElementById('osm-lookup-results');
+  el.innerHTML = '<div class="text-muted small py-1"><span class="spinner-border spinner-border-sm me-1"></span>Frage OpenStreetMap…</div>';
+  fetch(`/api/gastro/${SPOT.id}/osm-lookup`)
+    .then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.results) throw new Error(d.error || ('Server antwortet mit HTTP ' + r.status));
+      return d;
+    })
+    .then(d => renderOsmCandidates(d, el))
+    .catch(err => { el.innerHTML = `<p class="text-danger small mb-0">${escHtml(err.message)}</p>`; });
+}
+
+function osmChanges(c) {          // Felder, die in OSM gefüllt sind und sich vom Eintrag unterscheiden
+  const upd = {};
+  const m = (c.opening_hours || '').match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
+  const vals = {address: c.address, phone: c.phone, website: c.website,
+                opens_at: m ? m[1] : '', closes_at: m ? m[2] : ''};
+  for (const k in vals) { if (vals[k] && vals[k] !== SPOT[k]) upd[k] = vals[k]; }
+  if (c.osm_id && c.osm_id !== SPOT.osm_id) upd.osm_id = c.osm_id;
+  return upd;
+}
+
+function renderOsmCandidates(d, el) {
+  if (!d.results.length) {
+    el.innerHTML = '<p class="text-muted small mb-0">In OpenStreetMap nichts Passendes gefunden (Umkreis 80 m). Marker prüfen oder Eintrag in OSM ergänzen.</p>';
+    return;
+  }
+  el.innerHTML = d.results.map((c, i) => {
+    const upd = osmChanges(c);
+    const rows = Object.keys(upd).filter(k => k !== 'osm_id').map(k =>
+      `<div class="small"><span class="text-muted">${OSM_FIELD_LABELS[k]}:</span>
+         ${SPOT[k] ? '<s class="text-muted">' + escHtml(SPOT[k]) + '</s> → ' : ''}<strong>${escHtml(upd[k])}</strong></div>`).join('');
+    const onlyLink = Object.keys(upd).length === 1 && upd.osm_id;
+    return `<div class="border rounded p-2 mb-2">
+      <div class="small"><strong>${escHtml(c.name)}</strong>
+        <span class="text-muted">${escHtml(OSM_KIND_LABEL[c.type] || c.type)} · ${c.distance_m} m vom Marker</span></div>
+      ${c.opening_hours ? '<div class="small">🕐 ' + escHtml(c.opening_hours) + '</div>' : ''}
+      ${rows || '<div class="small text-success">Keine Unterschiede – Eintrag ist aktuell.</div>'}
+      ${Object.keys(upd).length ? `<button type="button" class="btn btn-djo btn-sm mt-2" data-idx="${i}">${onlyLink ? 'Mit OSM verknüpfen' : 'Übernehmen'}</button>` : ''}
+    </div>`;
+  }).join('') + `<div class="text-muted" style="font-size:.7rem">Quelle: OpenStreetMap${d.source && d.source !== 'cache' ? ' (' + escHtml(d.source) + ')' : ''}</div>`;
+  el.querySelectorAll('button[data-idx]').forEach(btn =>
+    btn.addEventListener('click', () => applyOsm(d.results[+btn.dataset.idx], btn)));
+}
+
+function applyOsm(c, btn) {
+  btn.disabled = true;
+  fetch(`/gastro/${SPOT.id}/import`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(osmChanges(c))
+  })
+    .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status)); })
+    .then(() => location.reload())
+    .catch(err => { btn.disabled = false; alert('Übernahme fehlgeschlagen: ' + err.message); });
+}
 </script>
 {% endblock %}
