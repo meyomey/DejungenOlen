@@ -2,7 +2,10 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build m) – Audit 2
+## 1.4.0 – 2026-10-13 (Build n) – Audit 2
+
+### Server-MP4: animiertes Höhenprofil (Build n)
+- Neue Folie „Höhenprofil“ (3,5 s) im MP4 – an derselben Stelle wie in der Browser-Vorschau (nach den Fotos, vor dem Outro) und über dasselbe Häkchen „Höhenprofil zeigen“ steuerbar (Formularfeld `show_profile`, Standard an). Die Kurve baut sich von links nach rechts auf (gefüllte Fläche mit Verlauf + Linie), mit Höhen-Raster, km-Achse aus den echten Streckenkilometern, laufendem Höhenwert an der Spitze und Markierung des höchsten Punkts („↑ 92 m“). Höhen werden leicht geglättet (Mittel über 5 Punkte); Tracks ohne Höhendaten (flacher als 1 m) bekommen keine Folie. `build_profile_frames()` in `tour_video_render`.
 
 ### Video: Logo freigestellt, Titelfolie mit Wetter/Teilnehmern, km in der Kartenkopfzeile (Build m)
 - **Gruppenlogo ohne schwarzen Kasten:** Logos ohne echten Alphakanal (JPEG bzw. vor Build f verkleinerte PNGs) werden beim Rendern automatisch freigestellt – `_logo_auto_alpha()` macht den einfarbigen Hintergrund von den Ecken aus per Flood-Fill transparent (schwarz, weiß oder jede andere Eckfarbe); innenliegende Flächen in derselben Farbe bleiben erhalten. Logos mit Transparenz bleiben unverändert. Sauberste Kanten gibt weiterhin ein neu hochgeladenes PNG mit Transparenz (bleibt seit Build f erhalten).

@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 m'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 n'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3106,6 +3106,131 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'build_gastro_frames error: {e}', exc_info=True)
                 return []
 
+        def build_profile_frames(gpx_points):
+            """Build n: animiertes Höhenprofil (3,5 s) wie in der Browser-Vorschau – die Kurve
+            baut sich von links nach rechts auf (gefüllte Fläche + Linie), mit Höhen-Raster,
+            km-Achse, laufendem Höhenwert an der Spitze und Markierung des höchsten Punkts.
+            x-Achse = echte Streckenkilometer. Ohne Höhendaten (flacher als 1 m) → [].
+            Liefert [(frame, dauer), …] für frames_to_segment()."""
+            if not PIL_OK or not gpx_points or len(gpx_points) < 2:
+                return []
+            try:
+                import math
+                _ID = _ID_MOD
+                from PIL import ImageChops as _ICH
+                step = max(1, len(gpx_points) // 300)
+                pts = gpx_points[::step]
+                if step > 1 and (len(gpx_points) - 1) % step:
+                    pts.append(gpx_points[-1])
+                raw = [float(p.get('ele') or 0) for p in pts]
+                k = 2                                                   # Glättung: Mittel über 5 Punkte
+                eles = [sum(raw[max(0, i - k):i + k + 1]) / len(raw[max(0, i - k):i + k + 1]) for i in range(len(raw))]
+                e_min, e_max = min(eles), max(eles)
+                if e_max - e_min < 1 or not any(raw):
+                    return []
+                m_lat = 111320.0
+                m_lng = 111320.0 * max(0.2, math.cos(math.radians(pts[0]['lat'])))
+                dist = [0.0]
+                for a, b in zip(pts, pts[1:]):
+                    dist.append(dist[-1] + math.hypot((b['lat'] - a['lat']) * m_lat, (b['lng'] - a['lng']) * m_lng))
+                total_m = dist[-1] or 1.0
+                i_max = eles.index(e_max)
+
+                BG, LINE, GRID, TXT = (30, 45, 80), (100, 181, 246), (70, 90, 130), (190, 200, 220)
+                left, right = SAFE + 95, W - SAFE - 40
+                top = int(H * 0.28)
+                bottom = int(H * 0.62) if H > W * 1.2 else int(H * 0.80)
+                lo = e_min - (e_max - e_min) * 0.05
+                hi = e_max + (e_max - e_min) * 0.10
+
+                def X(i):
+                    return left + (right - left) * dist[i] / total_m
+
+                def Y(e):
+                    return bottom - (bottom - top) * (e - lo) / (hi - lo)
+
+                # Raster-Schritte so wählen, dass 3–6 Linien bzw. höchstens 8 km-Marken entstehen
+                e_step = next((st for st in (5, 10, 20, 25, 50, 100, 200, 500, 1000) if (hi - lo) / st <= 6), 1000)
+                km_step = next((st for st in (1, 2, 5, 10, 20, 25, 50, 100) if total_m / 1000 / st <= 8), 100)
+                title_font = _pil_font(min(42, int(W / 22)))
+                sub_font = _pil_font(24, bold=False)
+                ax_font = _pil_font(20, bold=False)
+                tip_font = _pil_font(24)
+                curve = [(X(i), Y(eles[i])) for i in range(len(pts))]
+                # Vertikaler Verlauf für die Füllung (oben kräftig, unten schwach), einmal vorbereitet
+                grad = _PIL.linear_gradient('L').rotate(180).resize((W, max(1, bottom - top)))
+                grad = grad.point(lambda v: int(18 + v * 0.45))
+                alpha_full = _PIL.new('L', (W, H), 0)
+                alpha_full.paste(grad, (0, top))
+                date_str = tour.tour_date.strftime('%d.%m.%Y') if (tour.tour_date and not tour.is_date_open) else ''
+                sub_bits = [b for b in (date_str, f'{tour.gpx_km} km' if tour.gpx_km else '',
+                                        f'{int(tour.gpx_ascent)} Hm' if tour.gpx_ascent else '') if b]
+
+                def draw_slide(progress):
+                    canvas = _PIL.new('RGB', (W, H), BG)
+                    draw = _ID.Draw(canvas)
+                    _centered_text(draw, W // 2, int(H * 0.10), 'Höhenprofil', title_font, (255, 255, 255))
+                    if sub_bits:
+                        _centered_text(draw, W // 2, int(H * 0.10) + title_font.size + 14, '  ·  '.join(sub_bits), sub_font, TXT)
+                    # Höhen-Raster (gepunktet) + Beschriftung
+                    e_t = math.ceil(lo / e_step) * e_step
+                    while e_t <= hi:
+                        y = Y(e_t)
+                        for x in range(left, right, 14):
+                            draw.line([(x, y), (min(x + 6, right), y)], fill=GRID, width=2)
+                        lbl = f'{int(e_t)} m'
+                        draw.text((left - 12 - draw.textlength(lbl, font=ax_font), y - ax_font.size * 0.65), lbl, font=ax_font, fill=TXT)
+                        e_t += e_step
+                    # km-Achse
+                    draw.line([(left, bottom), (right, bottom)], fill=GRID, width=2)
+                    km_t = 0
+                    while km_t * 1000 <= total_m + 1:
+                        x = left + (right - left) * (km_t * 1000) / total_m
+                        draw.line([(x, bottom), (x, bottom + 8)], fill=GRID, width=2)
+                        lbl = f'{km_t} km' if km_t else '0'
+                        draw.text((x - draw.textlength(lbl, font=ax_font) / 2, bottom + 12), lbl, font=ax_font, fill=TXT)
+                        km_t += km_step
+                    # Kurve bis zum Fortschritt: Fläche mit Verlauf + Linie
+                    end = max(2, int(round(len(pts) * min(1.0, progress))))
+                    seg = curve[:end]
+                    poly = _PIL.new('L', (W, H), 0)
+                    _ID.Draw(poly).polygon([(seg[0][0], bottom)] + seg + [(seg[-1][0], bottom)], fill=255)
+                    canvas.paste(LINE, (0, 0), _ICH.multiply(poly, alpha_full))
+                    draw.line(seg, fill=LINE, width=5, joint='curve')
+                    # höchster Punkt, sobald erreicht
+                    if i_max < end - 1 or progress >= 1:
+                        mx, my = curve[i_max]
+                        draw.ellipse([mx - 6, my - 6, mx + 6, my + 6], fill=(255, 255, 255))
+                        if progress >= 1 or abs(seg[-1][0] - mx) > 90:
+                            lbl = f'↑ {int(round(e_max))} m'
+                            tw = draw.textlength(lbl, font=ax_font)
+                            draw.text((min(max(left, mx - tw / 2), right - tw), my - 34), lbl, font=ax_font, fill=(255, 255, 255))
+                    # Spitze mit laufendem Höhenwert
+                    if progress < 1:
+                        tx, ty = seg[-1]
+                        draw.ellipse([tx - 9, ty - 9, tx + 9, ty + 9], fill=LINE, outline=(255, 255, 255), width=3)
+                        lbl = f'{int(round(eles[end - 1]))} m'
+                        tw = draw.textlength(lbl, font=tip_font)
+                        lx = tx + 16 if tx + 16 + tw < right else tx - 16 - tw
+                        draw.text((lx, ty - tip_font.size - 6), lbl, font=tip_font, fill=(255, 255, 255),
+                                  stroke_width=2, stroke_fill=BG)
+                    paste_watermark(canvas, 'tr')
+                    return canvas
+
+                total, anim_secs, step_fps = 3.5, 2.6, 15
+                frames = []
+                for i in range(int(anim_secs * step_fps)):
+                    fpath = os.path.join(tmpdir, f'profile_{i:03d}.jpg')
+                    draw_slide((i / step_fps) / anim_secs).save(fpath, 'JPEG', quality=88)
+                    frames.append((fpath, round(1 / step_fps, 4)))
+                fpath = os.path.join(tmpdir, 'profile_hold.jpg')
+                draw_slide(1.0).save(fpath, 'JPEG', quality=88)
+                frames.append((fpath, round(total - anim_secs, 3)))
+                return frames
+            except Exception as e:
+                app.logger.warning(f'build_profile_frames error: {e}', exc_info=True)
+                return []
+
         def make_outro_frame(dst_path, group_name):
             if not PIL_OK:
                 return False
@@ -3383,6 +3508,7 @@ def tour_video_render(tour_id):
         show_track  = request.form.get('show_track', '1') == '1'
         show_stats  = request.form.get('show_stats', '1') == '1'
         show_gastro = request.form.get('show_gastro', '1') == '1'   # Build j: Einkehr-Folie + Karten-Marker
+        show_profile = request.form.get('show_profile', '1') == '1' # Build n: Höhenprofil-Folie (wie Vorschau)
         _slide_secs = 0.0  # Summe aller Folien-Sekunden (für Audio-Fade-Timing)
 
         # GPX einmal parsen: Punkte für die Karte, Zeitstempel für Fahrzeit/Schnitt (Build j),
@@ -3469,6 +3595,15 @@ def tour_video_render(tour_id):
                         cf.write(f"file '{fallback_seg}'\n")
                         _slide_secs += photo_dur
                         n_valid += 1
+
+            # 3b. Höhenprofil (Build n) – animiert, nach den Fotos wie in der Browser-Vorschau
+            if show_profile and _gpx_points:
+                prof_frames = build_profile_frames(_gpx_points)
+                if prof_frames:
+                    prof_seg = os.path.join(tmpdir, 'seg_profile.mp4')
+                    if frames_to_segment(prof_frames, prof_seg):
+                        cf.write(f"file '{prof_seg}'\n")
+                        _slide_secs += sum(d for _, d in prof_frames)
 
             # 4. Outro (6s – lang genug um Gruppenname + Domain lesen zu können)
             outro_frame = os.path.join(tmpdir, 'slide_outro.jpg')
