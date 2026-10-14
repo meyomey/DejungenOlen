@@ -2,7 +2,33 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-14 (Build u) – Audit 2
+## 1.4.0 – 2026-10-14 (Build v) – Audit 2
+
+### Archiv & Downloads: GPX, Tour-Paket, Foto-Download (Build v)
+
+- **Archiv-Liste**: je Tour ein GPX-Download-Symbol und ein „Tour-Paket“-Symbol direkt in der Zeile
+  (mobil als kleine Leiste unter der Karte); oben **„GPX-ZIP (n)“** lädt alle Tracks der aktuellen
+  Auswahl – ohne Filter alle Jahre, sonst Suchbegriff/Jahr/Level (`/archiv/gpx-zip`). Dateinamen
+  `2025-06-14_Titel.gpx`, bei gleichem Namen `_2`, `_3`. Nebenbei: die Jahresauswahl im Archiv war
+  ohne vorherige Suche leer und `year=abc` lieferte einen 500er – beides behoben.
+- **Tour-Paket** (`/touren/<id>/paket`, Button auf der Tour-Seite neben „GPX herunterladen“): ZIP mit
+  dem GPX-Track, allen Fotos (`fotos/01_Beschriftung.jpg`, Reihenfolge wie auf der Seite, unverändert
+  gespeichert) und `tour.txt` (Datum, Status, Strecke/Höhenmeter, Wetter, Treffpunkt, Link,
+  Beschreibung, Teilnehmer, Fotoliste mit Fotograf/Zeit/Koordinaten, Videoliste). Videos bleiben
+  wegen der Größe draußen.
+- **Foto-Lightbox**: Download-Button oben rechts speichert das aktuelle Foto als
+  `Datum_Titel_NN.jpg`.
+- **Auslieferung privater Dateien**: GPX läuft jetzt über `/touren/<id>/gpx-datei` (Login +
+  Gruppen-Prüfung + sprechender Dateiname), Videos über die vorhandene Route `/videos/file/…`
+  (mit Range-Unterstützung fürs Spulen); keine Seite verweist mehr direkt auf
+  `/static/uploads/{gpx,photos,videos}`. Zusätzlich legt die App in diesen drei Ordnern einmalig
+  eine `.htaccess` („Require all denied“) an – wirkt, falls der Hoster `/static` an der App vorbei
+  über Apache ausliefert; der Login-Schutz aus Audit 1.4.0 (`_protect_private_uploads`) bleibt.
+- ZIPs werden in einer Temp-Datei statt im Arbeitsspeicher aufgebaut (auch der Jahres-Export im
+  Rückblick), Fotos im Paket unkomprimiert (schneller, JPEG lässt sich ohnehin nicht verkleinern).
+- Betroffene Dateien: `app.py` (Abschnitt „Build v: Downloads“, `archiv`, `archiv_suche`,
+  `gpx_export_all`, `_auto_migrate_once`), `templates/touren/archiv.html`,
+  `templates/touren/detail.html`.
 
 ### Einkehr entlang der Strecke aus OpenStreetMap (Build u)
 

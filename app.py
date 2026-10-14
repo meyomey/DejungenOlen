@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-14 u'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-14 v'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3960,10 +3960,13 @@ def archiv():
                 cover_photos[p.tour_id] = p
                 seen.add(p.tour_id)
 
+    # Build v: Jahresauswahl auch ohne Suche füllen; GPX-Zähler für den ZIP-Button
+    gpx_total = q.filter(Tour.gpx_file != None).count()
     return render_template('touren/archiv.html', tours=tours,
                            part_counts=part_counts, photo_counts=photo_counts,
                            page=page, pages=pages, total=total,
-                           cover_photos=cover_photos)
+                           cover_photos=cover_photos, all_years=_archiv_years(),
+                           q='', year='', diff='', gpx_total=gpx_total)
 
 
 @app.route('/hilfe')
@@ -6176,39 +6179,274 @@ def rangliste():
                            year=year)
 
 
+# ─── Build v: Downloads – GPX-Einzeldatei, GPX-ZIP nach Auswahl, Tour-Paket ──
+
+def _safe_filename_part(text, maxlen=40):
+    """Titel → Dateinamen-tauglicher Teil (Umlaute bleiben, alles andere wird zu _)."""
+    part = re.sub(r'[^A-Za-z0-9äöüÄÖÜß_-]+', '_', (text or '').strip()).strip('_')
+    return part[:maxlen].rstrip('_') or 'Tour'
+
+
+def _tour_file_stem(tour):
+    """'2025-06-14_Deichtour' – Datumsteil 'offen', wenn kein echtes Datum gesetzt ist."""
+    d = tour.tour_date.strftime('%Y-%m-%d') if (tour.tour_date and not tour.is_date_open) else 'offen'
+    return f'{d}_{_safe_filename_part(tour.title)}'
+
+
+def _tour_gpx_path(tour):
+    """Absoluter Pfad der GPX-Datei – None, wenn keine gesetzt oder die Datei fehlt."""
+    if not tour.gpx_file:
+        return None
+    path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], os.path.basename(tour.gpx_file))
+    return path if os.path.isfile(path) else None
+
+
+def _archiv_filter_query(q='', year='', diff=''):
+    """Auswahl der Archiv-Suche (abgeschlossene Touren der Gruppe), auch für den GPX-ZIP-Download."""
+    tours = _gq(Tour).filter(Tour.status == 'completed')
+    if q:
+        tours = tours.filter(Tour.title.ilike(f'%{q}%'))
+    if year and str(year).isdigit():
+        tours = tours.filter(db.extract('year', Tour.tour_date) == int(year))
+    if diff in ('leicht', 'mittel', 'schwer'):
+        tours = tours.filter(Tour.difficulty == diff)
+    return tours
+
+
+def _archiv_years():
+    """Jahre mit abgeschlossenen Touren (neueste zuerst), ohne den Platzhalter 9999."""
+    rows = (_gq(Tour).with_entities(db.extract('year', Tour.tour_date))
+            .filter(Tour.status == 'completed', Tour.tour_date != None,
+                    Tour.tour_date != date(9999, 12, 31))
+            .distinct().order_by(db.extract('year', Tour.tour_date).desc()).all())
+    return [int(r[0]) for r in rows if r[0] is not None]
+
+
+def _zip_response(fill, download_name):
+    """ZIP in einer Temp-Datei aufbauen (nicht im RAM) und als Download ausliefern.
+    fill(zf) schreibt die Einträge; die Temp-Datei verschwindet nach dem Senden."""
+    import tempfile, zipfile
+    tmp = tempfile.TemporaryFile()
+    with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zf:
+        fill(zf)
+    tmp.seek(0)
+    return send_file(tmp, mimetype='application/zip', as_attachment=True,
+                     download_name=download_name, max_age=0)
+
+
+def _gpx_zip(tours, download_name):
+    """GPX-Dateien mehrerer Touren als ZIP ('2025-06-14_Titel.gpx', bei Namensgleichheit _2, _3 …)."""
+    used = set()
+
+    def fill(zf):
+        for t in tours:
+            src = _tour_gpx_path(t)
+            if not src:
+                continue
+            stem, name, n = _tour_file_stem(t), None, 1
+            while True:
+                name = f'{stem}.gpx' if n == 1 else f'{stem}_{n}.gpx'
+                if name not in used:
+                    break
+                n += 1
+            used.add(name)
+            zf.write(src, name)
+    return _zip_response(fill, download_name)
+
+
+@app.route('/touren/<int:tour_id>/gpx-datei')
+@login_required
+def tour_gpx_download(tour_id):
+    """GPX einer Tour – nur mit Login und nur für die eigene Gruppe, mit sprechendem Dateinamen."""
+    tour = _tour_or_404(tour_id)
+    if not _tour_gpx_path(tour):
+        abort(404)
+    return send_from_directory(app.config['UPLOAD_FOLDER_GPX'], os.path.basename(tour.gpx_file),
+                               as_attachment=True, download_name=_tour_file_stem(tour) + '.gpx',
+                               mimetype='application/gpx+xml', max_age=0)
+
+
+@app.route('/archiv/gpx-zip')
+@login_required
+def archiv_gpx_zip():
+    """GPX-Tracks der aktuellen Archiv-Auswahl (Suchbegriff/Jahr/Level – oder alle Jahre) als ZIP."""
+    q    = request.args.get('q', '').strip()
+    year = request.args.get('year', '').strip()
+    diff = request.args.get('diff', '').strip()
+    tours = (_archiv_filter_query(q, year, diff).filter(Tour.gpx_file != None)
+             .order_by(Tour.tour_date.asc()).all())
+    tours = [t for t in tours if _tour_gpx_path(t)]
+    if not tours:
+        flash('In dieser Auswahl gibt es keine GPX-Tracks.', 'warning')
+        if q or year or diff:
+            return redirect(url_for('archiv_suche', q=q, year=year, diff=diff))
+        return redirect(url_for('archiv'))
+    label = year if year.isdigit() else 'alle_Jahre'
+    if q:
+        label += '_' + _safe_filename_part(q, 20)
+    if diff:
+        label += '_' + diff
+    return _gpx_zip(tours, f'dejungen_olen_gpx_{label}.zip')
+
+
+def _tour_package_text(tour, participants, photos, photo_names, videos, gpx_name):
+    """Inhalt der tour.txt im Tour-Paket (reiner Text, UTF-8)."""
+    L = []
+    grp = Group.query.get(tour.group_id) if tour.group_id else None
+    head = f'{grp.name if grp else "De jungen Olen"} – Tour-Paket'
+    L += [head, '=' * len(head), '']
+    if tour.tour_date and not tour.is_date_open:
+        d = tour.tour_date
+        datum = f'{_DE_WEEKDAYS[d.weekday()][:2]}, {d.strftime("%d.%m.%Y")}'
+        if tour.start_time:
+            datum += f' · {tour.start_time} Uhr'
+    else:
+        datum = 'offen'
+    status = {'planned': 'geplant', 'completed': 'abgeschlossen', 'cancelled': 'abgesagt'}.get(tour.status, tour.status)
+    if tour.gpx_km:
+        strecke = f'{tour.gpx_km:.1f} km'.replace('.', ',')
+        if tour.gpx_ascent:
+            strecke += f' · {int(tour.gpx_ascent)} Hm'
+        strecke += ' (aus GPX)'
+    elif tour.approx_km:
+        strecke = f'ca. {tour.approx_km:g} km'.replace('.', ',')
+    else:
+        strecke = '–'
+    treff = tour.meeting_desc or ''
+    if tour.meeting_lat and tour.meeting_lng:
+        treff += f' ({tour.meeting_lat:.5f}, {tour.meeting_lng:.5f})'
+    rows = [('Titel', tour.title), ('Datum', datum), ('Status', status),
+            ('Schwierigkeit', tour.difficulty_label), ('Strecke', strecke),
+            ('Treffpunkt', treff.strip() or '–'), ('Link', tour.external_link or ''),
+            ('Organisiert von', tour.creator.display_name if tour.creator else ''),
+            ('Tour-Seite', url_for('tour_detail', tour_id=tour.id, _external=True))]
+    try:
+        w = json.loads(tour.weather_json or '{}').get('data') or {}
+        if w.get('label'):
+            rows.insert(5, ('Wetter', f'{w.get("icon", "")} {w.get("label")}, '
+                                      f'{w.get("temp_min", "?")}–{w.get("temp_max", "?")} °C'.strip()))
+    except (ValueError, AttributeError):
+        pass
+    for k, v in rows:
+        if v:
+            L.append(f'{k + ":":<17}{v}')
+    if tour.description:
+        L += ['', 'Beschreibung', '-' * 12, tour.description.strip()]
+    confirmed = [p for p in participants if p.confirmed_present]
+    listed    = confirmed or [p for p in participants if p.status == 'attending']
+    title     = (f'Teilnehmer ({len(listed)}, bestätigt)' if confirmed
+                 else f'Angemeldet ({len(listed)})')
+    L += ['', title, '-' * len(title)]
+    L += [f'- {p.user.display_name}' for p in listed] or ['–']
+    title = f'Fotos ({len(photos)})'
+    L += ['', title, '-' * len(title)]
+    for p, name in zip(photos, photo_names):
+        bits = [name]
+        if p.caption:
+            bits.append(f'„{p.caption}“')
+        bits.append(f'von {p.user.display_name}')
+        if p.taken_at:
+            bits.append(p.taken_at.strftime('%d.%m.%Y %H:%M'))
+        if p.lat and p.lng:
+            bits.append(f'{p.lat:.5f}, {p.lng:.5f}')
+        L.append(' – '.join(bits))
+    if not photos:
+        L.append('–')
+    if videos:
+        title = f'Videos ({len(videos)}) – nicht im Paket (zu groß), Download auf der Tour-Seite'
+        L += ['', title, '-' * len(title)]
+        L += [f'- {v.title or v.filename}' + (f' ({v.filesize / 1048576:.1f} MB)' if v.filesize else '')
+              for v in videos]
+    L += ['', 'Dateien', '-' * 7]
+    L.append(f'{gpx_name} – GPX-Track' if gpx_name else '(kein GPX-Track vorhanden)')
+    if photos:
+        L.append(f'fotos/ – {len(photos)} Fotos (max. 1600 px, Reihenfolge wie auf der Tour-Seite)')
+    L += ['', f'Erstellt am {datetime.now().strftime("%d.%m.%Y %H:%M")} von {current_user.display_name} '
+              f'– De jungen Olen {APP_VERSION}']
+    return '\r\n'.join(L) + '\r\n'
+
+
+@app.route('/touren/<int:tour_id>/paket')
+@login_required
+def tour_package(tour_id):
+    """Tour-Paket: GPX-Track, alle Fotos und tour.txt als ZIP (Videos bleiben wegen der Größe draußen)."""
+    tour   = _tour_or_404(tour_id)
+    stem   = _tour_file_stem(tour)
+    gpx    = _tour_gpx_path(tour)
+    photos = tour.photos.order_by(db.text('COALESCE(sort_order, 999999) ASC'),
+                                  TourPhoto.taken_at.asc().nullslast(),
+                                  TourPhoto.created_at.asc()).all()
+    videos = TourVideo.query.filter_by(tour_id=tour.id).order_by(TourVideo.created_at).all()
+    participants = (TourParticipant.query.filter_by(tour_id=tour.id)
+                    .join(User, TourParticipant.user_id == User.id).order_by(User.name).all())
+    folder = os.path.realpath(app.config['UPLOAD_FOLDER_PHOTOS'])
+    files, names = [], []
+    for i, p in enumerate(photos, 1):
+        src = os.path.realpath(os.path.join(folder, p.filename or ''))
+        if not (src.startswith(folder + os.sep) and os.path.isfile(src)):
+            continue
+        ext  = os.path.splitext(src)[1].lower() or '.jpg'
+        name = f'{i:02d}' + (f'_{_safe_filename_part(p.caption, 30)}' if p.caption else '') + ext
+        files.append((p, src, name))
+        names.append(name)
+    photos_ok = [f[0] for f in files]
+    gpx_name  = f'{stem}.gpx' if gpx else None
+    text      = _tour_package_text(tour, participants, photos_ok, names, videos, gpx_name)
+
+    def fill(zf):
+        import zipfile
+        zf.writestr('tour.txt', text.encode('utf-8'))
+        if gpx:
+            zf.write(gpx, gpx_name)
+        for _p, src, name in files:                      # JPEGs: nicht erneut komprimieren
+            zf.write(src, f'fotos/{name}', compress_type=zipfile.ZIP_STORED)
+    return _zip_response(fill, f'{stem}_Tour-Paket.zip')
+
+
+# Apache soll die privaten Upload-Ordner nie direkt ausliefern. Greift nur, falls der Hoster
+# /static über Apache bedient (bei Passenger läuft ohnehin alles über die App, siehe
+# _protect_private_uploads). Fotos/Videos/GPX gehen ausschließlich über serve_photo,
+# serve_video und tour_gpx_download, daher ist das Verbot gefahrlos.
+_UPLOAD_HTACCESS = (
+    '# De jungen Olen – von der App angelegt (Build v).\n'
+    '# Fotos, Videos und GPX-Dateien werden nur über die App (mit Login) ausgeliefert.\n'
+    '<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n'
+    '<IfModule !mod_authz_core.c>\n    Order deny,allow\n    Deny from all\n</IfModule>\n')
+
+
+def _ensure_upload_htaccess():
+    """Legt in den privaten Upload-Ordnern einmalig eine .htaccess an (fehlertolerant)."""
+    for key in ('UPLOAD_FOLDER_GPX', 'UPLOAD_FOLDER_PHOTOS', 'UPLOAD_FOLDER_VIDEOS'):
+        folder = app.config.get(key)
+        if not folder:
+            continue
+        try:
+            os.makedirs(folder, exist_ok=True)
+            path = os.path.join(folder, '.htaccess')
+            if not os.path.exists(path):
+                with open(path, 'w', encoding='utf-8') as fh:
+                    fh.write(_UPLOAD_HTACCESS)
+        except OSError as ex:
+            app.logger.warning(f'.htaccess in {folder} nicht anlegbar: {ex}')
+
+
 # ─── Phase 3: Jahresrückblick ─────────────────────────────────────────────────
 
 @app.route('/touren/gpx-export')
 @login_required
 def gpx_export_all():
-    """Alle GPX-Tracks eines Jahres als ZIP herunterladen."""
-    import zipfile, io
-    year = request.args.get('year', date.today().year, type=int)
+    """Alle GPX-Tracks eines Jahres als ZIP herunterladen (Jahresrückblick)."""
+    year  = request.args.get('year', date.today().year, type=int)
     tours = _gq(Tour).filter(
         db.extract('year', Tour.tour_date) == year,
         Tour.gpx_file != None,
         Tour.status == 'completed'
     ).order_by(Tour.tour_date).all()
-
+    tours = [t for t in tours if _tour_gpx_path(t)]
     if not tours:
         flash(f'Keine GPX-Tracks für {year} gefunden.', 'warning')
         return redirect(url_for('rueckblick', year=year))
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for t in tours:
-            src = os.path.join(app.config['UPLOAD_FOLDER_GPX'], t.gpx_file)
-            if os.path.exists(src):
-                dt_str = t.tour_date.strftime('%Y-%m-%d') if t.tour_date else 'offen'
-                safe_title = re.sub(r'[^a-zA-Z0-9_äöüÄÖÜß-]', '_', t.title)[:40]
-                zf.write(src, f'{dt_str}_{safe_title}.gpx')
-    buf.seek(0)
-    return send_file(
-        buf,
-        mimetype='application/zip',
-        as_attachment=True,
-        download_name=f'dejungen_olen_gpx_{year}.zip'
-    )
+    return _gpx_zip(tours, f'dejungen_olen_gpx_{year}.zip')    # Build v: Temp-Datei statt RAM
 
 
 @app.route('/admin/backup/status', methods=['POST'])
@@ -8035,6 +8273,7 @@ def _auto_migrate_once():
             init_site_config()
         except Exception as e:
             app.logger.warning(f'Auto-migrate error: {e}')
+        _ensure_upload_htaccess()                      # Build v
         _db_migrated = True
 
 
@@ -8129,21 +8368,11 @@ def archiv_suche():
     year   = request.args.get('year','')
     diff   = request.args.get('diff','')
 
-    tours = _gq(Tour).filter_by(status='completed')
-    if q:
-        tours = tours.filter(Tour.title.ilike(f'%{q}%'))
-    if year:
-        tours = tours.filter(db.extract('year', Tour.tour_date) == int(year))
-    if diff:
-        tours = tours.filter_by(difficulty=diff)
-    tours = tours.order_by(Tour.tour_date.desc()).all()
-
-    all_years = _gq(Tour).with_entities(
-        db.extract('year', Tour.tour_date)
-    ).filter(Tour.status == 'completed').distinct().order_by(
-        db.extract('year', Tour.tour_date).desc()
-    ).all()
-    all_years = [int(r[0]) for r in all_years if r[0] is not None]
+    # Build v: gemeinsame Auswahl mit dem GPX-ZIP-Download (archiv_gpx_zip)
+    base      = _archiv_filter_query(q, year, diff)
+    tours     = base.order_by(Tour.tour_date.desc()).all()
+    gpx_total = base.filter(Tour.gpx_file != None).count()
+    all_years = _archiv_years()
 
     tour_ids = [t.id for t in tours]
     part_counts = dict(db.session.query(
@@ -8167,7 +8396,7 @@ def archiv_suche():
                            q=q, year=year, diff=diff, all_years=all_years,
                            is_search=True, part_counts=part_counts,
                            photo_counts=photo_counts, cover_photos=cover_photos,
-                           page=1, pages=1, total=len(tours))
+                           page=1, pages=1, total=len(tours), gpx_total=gpx_total)
 
 
 # ─── Gruppen-Meilensteine ─────────────────────────────────────────────────────

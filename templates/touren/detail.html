@@ -318,11 +318,20 @@
       <input type="file" id="gpx-input" name="gpx_file" accept=".gpx"
              class="d-none" onchange="dzPickFile(this,'gpx-name','gpx-form')">
     </form>
-    {% elif tour.gpx_file %}
-    <div class="mb-3">
-      <a href="{{ url_for('static', filename='uploads/gpx/' + tour.gpx_file) }}"
-         class="btn btn-sm btn-outline-djo" download>
+    {% endif %}
+    {# Build v: GPX über Login-geschützte Route; Tour-Paket = GPX + alle Fotos + tour.txt #}
+    {% if tour.gpx_file or photos %}
+    <div class="mb-3 d-flex flex-wrap gap-2">
+      {% if tour.gpx_file %}
+      <a href="{{ url_for('tour_gpx_download', tour_id=tour.id) }}"
+         class="btn btn-sm btn-outline-djo" title="GPX-Track dieser Tour herunterladen">
         <i class="bi bi-download me-1"></i>GPX herunterladen
+      </a>
+      {% endif %}
+      <a href="{{ url_for('tour_package', tour_id=tour.id) }}"
+         class="btn btn-sm btn-outline-djo"
+         title="GPX-Track, alle Fotos und eine Tour-Info als ZIP (ohne Videos)">
+        <i class="bi bi-file-zip me-1"></i>Tour-Paket (ZIP)
       </a>
     </div>
     {% endif %}
@@ -816,10 +825,10 @@
                             display:block;max-height:85vh;
                             object-fit:contain"
                      playsinline>
-                <source src="{{ url_for('static', filename='uploads/videos/' + v.filename) }}"
+                <source src="{{ url_for('serve_video', filename=v.filename) }}"
                         type="video/mp4">
                 Dein Browser unterstützt kein HTML5-Video.
-                <a href="{{ url_for('static', filename='uploads/videos/' + v.filename) }}" download>
+                <a href="{{ url_for('serve_video', filename=v.filename) }}" download>
                   Video herunterladen
                 </a>
               </video>
@@ -832,7 +841,7 @@
                   </div>
                 </div>
                 <div class="d-flex gap-1 ms-2">
-                  <a href="{{ url_for('static', filename='uploads/videos/' + v.filename) }}"
+                  <a href="{{ url_for('serve_video', filename=v.filename) }}"
                      download class="btn btn-outline-secondary btn-sm py-0 px-2" title="Herunterladen">
                     <i class="bi bi-download"></i>
                   </a>
@@ -1067,6 +1076,9 @@
             </div>
           </div>
         </div>
+        {# Build v: aktuelles Foto speichern #}
+        <a id="lb-download" href="#" download class="btn btn-outline-light btn-sm py-0 px-2 me-2"
+           title="Foto herunterladen"><i class="bi bi-download"></i></a>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-0 d-flex align-items-center justify-content-center position-relative"
@@ -1267,6 +1279,9 @@ function buildElevOverlay() {
 let _lbModal = null;
 let _lbPhotos = [];  // [{src, cap}]
 let _lbIdx   = 0;
+// Build v: Dateiname für „Foto herunterladen“ (Datum_Titel_NN.jpg)
+const LB_DL_PREFIX = {{ ((tour.tour_date.strftime('%Y-%m-%d') if (tour.tour_date and not tour.is_date_open) else 'Tour') ~ '_' ~ tour.title)|tojson }}
+  .replace(/[^A-Za-z0-9äöüÄÖÜß_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48);
 
 // Build gallery index from all photo thumbnails on page
 function _buildLbIndex() {
@@ -1320,6 +1335,13 @@ function _lbShow() {
   }
   document.getElementById('lb-counter').textContent =
     _lbPhotos.length > 1 ? `${_lbIdx+1} / ${_lbPhotos.length}` : '';
+  // Build v: Download-Button auf das aktuelle Foto zeigen lassen
+  const dl = document.getElementById('lb-download');
+  if (dl) {
+    const m = (p.src || '').split('?')[0].match(/\.(jpe?g|png|webp|gif|heic)$/i);
+    dl.href = p.src;
+    dl.download = LB_DL_PREFIX + '_' + String(_lbIdx + 1).padStart(2, '0') + '.' + (m ? m[1].toLowerCase() : 'jpg');
+  }
   const prev = document.getElementById('lb-prev');
   const next = document.getElementById('lb-next');
   if (prev) prev.style.opacity = _lbIdx > 0 ? '1' : '0.3';
