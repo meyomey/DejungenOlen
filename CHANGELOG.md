@@ -2,7 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build l) – Audit 2
+## 1.4.0 – 2026-10-13 (Build m) – Audit 2
+
+### Video: Logo freigestellt, Titelfolie mit Wetter/Teilnehmern, km in der Kartenkopfzeile (Build m)
+- **Gruppenlogo ohne schwarzen Kasten:** Logos ohne echten Alphakanal (JPEG bzw. vor Build f verkleinerte PNGs) werden beim Rendern automatisch freigestellt – `_logo_auto_alpha()` macht den einfarbigen Hintergrund von den Ecken aus per Flood-Fill transparent (schwarz, weiß oder jede andere Eckfarbe); innenliegende Flächen in derselben Farbe bleiben erhalten. Logos mit Transparenz bleiben unverändert. Sauberste Kanten gibt weiterhin ein neu hochgeladenes PNG mit Transparenz (bleibt seit Build f erhalten).
+- **Titelfolie** zeigt wie die Browser-Vorschau zusätzlich Wetter (gezeichnetes Symbol + Tageshöchsttemperatur) und Teilnehmerzahl („5 dabei“).
+- **Kartenkopfzeile** zeigt wie die Vorschau „68 % der Strecke · 13.8 / 20.0 km“.
 
 ### Kartenfolie: Foto-Kacheln größer (Build l)
 - Foto-Kacheln auf der Kartenfolie von 7 % auf 8,4 % der kurzen Bildkante vergrößert: Browser-Vorschau 50 → 60 px, Server-MP4 (1080er Formate) 76 → 90 px. Abstand zur Verbindungslinie und Bündel-Radius wachsen automatisch mit.

@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-13 l'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-13 m'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -1615,6 +1615,43 @@ def gastro_near_track(points, max_m=GASTRO_NEAR_M, limit=12):
         return []
 
 
+def _logo_auto_alpha(img, max_px=400):
+    """Build m: Logos ohne echte Transparenz (JPEG oder PNG ohne Alphakanal, z. B. rundes Logo
+    auf schwarzem/weißem Grund) bekommen eine: Der einfarbige Hintergrund wird von den vier Ecken
+    aus per Flood-Fill (mit Toleranz für JPEG-Artefakte) freigestellt – innenliegende Flächen in
+    derselben Farbe bleiben erhalten. Logos mit vorhandener Transparenz oder ohne einheitliche
+    Eckfarbe werden unverändert (als RGBA) zurückgegeben."""
+    try:
+        from PIL import Image as _I, ImageDraw as _D, ImageChops as _C, ImageFilter as _F
+        rgba = img.convert('RGBA')
+        if max(rgba.size) > max_px:
+            rgba.thumbnail((max_px, max_px), _I.LANCZOS)
+        if rgba.getchannel('A').getextrema()[0] < 250:
+            return rgba                                   # hat schon Transparenz
+        rgb = rgba.convert('RGB')
+        w, h = rgb.size
+        corners = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]
+        ref = rgb.getpixel(corners[0])
+        if any(sum(abs(rgb.getpixel(c)[i] - ref[i]) for i in range(3)) > 60 for c in corners):
+            return rgba                                   # kein einheitlicher Hintergrund
+        sentinel = (255, 0, 255) if sum(abs(ref[i] - (255, 0, 255)[i]) for i in range(3)) > 150 else (0, 255, 0)
+        tmp = rgb.copy()
+        for c in corners:
+            _D.floodfill(tmp, c, sentinel, thresh=70)
+        bg_mask = _C.difference(tmp, _I.new('RGB', tmp.size, sentinel)).convert('L').point(lambda v: 255 if v == 0 else 0)
+        alpha = _C.invert(bg_mask).filter(_F.GaussianBlur(0.6))   # Kante leicht weich
+        if alpha.getextrema()[0] == 255:
+            return rgba                                   # nichts freigestellt
+        rgba.putalpha(alpha)
+        return rgba
+    except Exception as e:
+        app.logger.warning(f'_logo_auto_alpha: {e}')
+        try:
+            return img.convert('RGBA')
+        except Exception:
+            return None
+
+
 def _tour_day_weather(tour):
     """Tageswetter am Treffpunkt für den Tourtag (Open-Meteo) → dict oder None.
     Voraussetzungen: festes Datum, Treffpunkt-Koordinaten (meeting_lat/lng) und der Server
@@ -2795,6 +2832,23 @@ def tour_video_render(tour_id):
                 if tour.gpx_km:
                     extra = f'{tour.gpx_km} km' + (f'  ·  {int(tour.gpx_ascent)} Hm' if tour.gpx_ascent else '')
                     _centered_text(draw, cx, cy+below+55, extra, _pil_font(24, bold=False), (210,210,210))
+                # Build m: Wetter (gezeichnetes Symbol + Temperatur) und Teilnehmerzahl wie in der Vorschau
+                bits_font = _pil_font(22, bold=False)
+                bits = []
+                if _weather:
+                    bits.append(f"{_weather['temp_max']}°C")
+                if _attending_count:
+                    bits.append(f'{_attending_count} dabei')
+                if bits:
+                    txt = '   ·   '.join(bits)
+                    ty = cy + below + (95 if tour.gpx_km else 55)
+                    tw = draw.textlength(txt, font=bits_font)
+                    icon_s = 30 if _weather else 0
+                    gx = cx - (tw + (icon_s + 10 if icon_s else 0)) / 2
+                    if _weather:
+                        _draw_weather_icon(draw, gx + icon_s / 2, ty + 12, icon_s, _weather.get('kind') or 'thermo', (0, 0, 0), 1.0)
+                        gx += icon_s + 10
+                    draw.text((gx, ty), txt, font=bits_font, fill=(210, 210, 210), stroke_width=1, stroke_fill=(0, 0, 0))
                 canvas.save(dst_path, 'JPEG', quality=92)
                 return True
             except Exception as e:
@@ -3284,6 +3338,8 @@ def tour_video_render(tour_id):
                     draw.rounded_rectangle([24,24,W-24,88], radius=10, fill=(20,30,20))
                     draw.text((42,38), tour.title[:34], font=_pil_font(min(26,int(W/24))), fill=(255,255,255))
                     pct_text = f'{int(progress*100)}% der Strecke'
+                    if tour.gpx_km:   # Build m: gefahrene / gesamte km wie in der Vorschau
+                        pct_text += f' · {tour.gpx_km * progress:.1f} / {tour.gpx_km} km'
                     draw.text((42,64), pct_text, font=_pil_font(18, bold=False), fill=(220,220,220))
                     draw.text((W-190, H-34), '\u00A9 OpenStreetMap', font=_pil_font(16, bold=False), fill=(0,0,0))
                     paste_watermark(frame, 'bl')
@@ -3320,7 +3376,7 @@ def tour_video_render(tour_id):
             _logo_path = os.path.join(app.root_path, 'static', 'uploads', 'group_logos', _grp.logo)
             if os.path.exists(_logo_path):
                 try:
-                    logo_rgba = _PIL.open(_logo_path).convert('RGBA')
+                    logo_rgba = _logo_auto_alpha(_PIL.open(_logo_path))   # Build m: Hintergrund freistellen
                 except Exception:
                     logo_rgba = None
 
