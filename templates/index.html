@@ -381,7 +381,7 @@ function _initIdxMap(el) {
   var lng = parseFloat(el.dataset.lng) || null;
   var m = L.map(el, {zoomControl:false,attributionControl:false,
     dragging:false,scrollWheelZoom:false,doubleClickZoom:false,
-    boxZoom:false,keyboard:false,tap:false});
+    boxZoom:false,keyboard:false});
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:16}).addTo(m);
   _idxMaps[id] = m;
   if (hasGpx) {

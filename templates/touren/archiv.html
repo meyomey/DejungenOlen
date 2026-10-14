@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "touren/_track.html" import track_svg %}
 {% block title %}Archiv – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
 {% block content %}
 
@@ -81,10 +82,12 @@
     <table class="table table-hover mb-0">
       <thead class="table-admin">
         <tr>
+          <th style="width:78px"></th>
           <th>Datum</th>
           <th>Tour</th>
           <th>Level</th>
           <th>km</th>
+          <th title="Fahrzeit · Ø Tempo (aus GPX-Zeitstempeln)">⏱</th>
           <th>👥</th>
           <th>📷</th>
           <th></th>
@@ -94,11 +97,15 @@
         {% for t in tours %}
         <tr onclick="location.href='{{ url_for('tour_detail', tour_id=t.id) }}'"
             style="cursor:pointer">
+          <td class="py-1">{{ track_svg(t, 66, 44) }}</td>
           <td class="text-nowrap small">{{ t.tour_date.strftime('%d.%m.%Y') if (t.tour_date and not t.is_date_open) else 'offen' }}</td>
           <td><strong>{{ t.title }}</strong></td>
           <td><span class="badge badge-{{ t.difficulty }}">{{ t.difficulty_label }}</span></td>
           <td class="text-nowrap small">
             {% if t.gpx_km %}{{ t.gpx_km }}{% else %}–{% endif %}
+          </td>
+          <td class="text-nowrap small">
+            {% if t.gpx_moving_s %}{{ t.gpx_moving_s|hm }}{% if t.gpx_avg_kmh %}<span class="text-muted"> · Ø {{ t.gpx_avg_kmh|de1 }}</span>{% endif %}{% else %}–{% endif %}
           </td>
           <td class="small">
             {% set confirmed = part_counts.get(t.id, 0) %}
@@ -130,6 +137,15 @@
                class="btn btn-sm btn-outline-secondary" title="Bearbeiten">
               <i class="bi bi-pencil"></i>
             </a>
+            {% endif %}
+            {% if current_user.is_organizer %}
+            {# Build w: Tour als neue geplante Tour übernehmen #}
+            <form method="post" action="{{ url_for('tour_repeat', tour_id=t.id) }}" class="d-inline"
+                  onsubmit="return confirm('„' + {{ t.title|tojson|forceescape }} + '“ nochmal fahren? Es wird eine neue geplante Tour ohne Termin angelegt.')">
+              <button class="btn btn-sm btn-outline-success" title="Nochmal fahren – neue Tour aus dieser anlegen">
+                <i class="bi bi-arrow-repeat"></i>
+              </button>
+            </form>
             {% endif %}
           </div>
           </td>
@@ -174,6 +190,7 @@
               {{ t.tour_date.strftime('%d.%m.%Y') if (t.tour_date and not t.is_date_open) else 'offen' }}
             </div>
           </div>
+          {{ track_svg(t, 72, 48, 'me-2 flex-shrink-0') }}
           <span class="badge badge-{{ t.difficulty }} flex-shrink-0">{{ t.difficulty_label }}</span>
         </div>
         {% endif %}
@@ -183,6 +200,9 @@
           {% endif %}
           {% if t.gpx_ascent %}
           <span>⛰️ {{ t.gpx_ascent|int }} m</span>
+          {% endif %}
+          {% if t.gpx_moving_s %}
+          <span title="Fahrzeit · Ø Tempo">⏱ {{ t.gpx_moving_s|hm }}{% if t.gpx_avg_kmh %} · Ø {{ t.gpx_avg_kmh|de1 }}{% endif %}</span>
           {% endif %}
           <span>
             👥 {% set confirmed = part_counts.get(t.id, 0) %}
@@ -196,18 +216,28 @@
     </div>
   </a>
   {# Build v: Downloads unter der Karte (außerhalb des Karten-Links) #}
-  {% if t.gpx_file or photo_counts.get(t.id, 0) %}
+  {% if t.gpx_file or photo_counts.get(t.id, 0) or current_user.is_organizer %}
   <div class="d-flex justify-content-end gap-2 mb-2" style="margin-top:-.3rem">
+    {% if current_user.is_organizer %}
+    <form method="post" action="{{ url_for('tour_repeat', tour_id=t.id) }}" class="d-inline"
+          onsubmit="return confirm('„' + {{ t.title|tojson|forceescape }} + '“ nochmal fahren? Es wird eine neue geplante Tour ohne Termin angelegt.')">
+      <button class="btn btn-sm btn-outline-success py-0" title="Nochmal fahren">
+        <i class="bi bi-arrow-repeat me-1"></i>Nochmal
+      </button>
+    </form>
+    {% endif %}
     {% if t.gpx_file %}
     <a href="{{ url_for('tour_gpx_download', tour_id=t.id) }}"
        class="btn btn-sm btn-outline-secondary py-0" title="GPX-Track herunterladen">
       <i class="bi bi-download me-1"></i>GPX
     </a>
     {% endif %}
+    {% if t.gpx_file or photo_counts.get(t.id, 0) %}
     <a href="{{ url_for('tour_package', tour_id=t.id) }}"
        class="btn btn-sm btn-outline-secondary py-0" title="GPX + Fotos + Tour-Info als ZIP">
       <i class="bi bi-file-zip me-1"></i>Tour-Paket
     </a>
+    {% endif %}
   </div>
   {% endif %}
   {% endfor %}

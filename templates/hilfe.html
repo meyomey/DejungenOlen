@@ -70,7 +70,7 @@ kbd { background:#e9ecef !important; border:1px solid #adb5bd !important; border
             {% for icon, title, desc in [
               ('bi-calendar3','Touren planen','Neue Touren anlegen, Termin abstimmen, RSVP'),
               ('bi-camera','Fotos teilen','Fotos hochladen, beschriften, in Lightbox ansehen'),
-              ('bi-map','Karte','Treffpunkte, GPX-Tracks, Live-Standort'),
+              ('bi-map','Karten','Gruppen-Karte mit Gastro &amp; Treffpunkten, GPX-Tracks, Live-Karte am Tourtag'),
               ('bi-trophy','Rangliste','Wer ist am meisten gefahren?'),
               ('bi-cloud-sun','Wetter','14-Tage-Vorhersage direkt bei der Tour'),
               ('bi-person-circle','Profil','Fahrrad, Avatar, persönliche Stats'),
@@ -119,7 +119,19 @@ kbd { background:#e9ecef !important; border:1px solid #adb5bd !important; border
           <p class="text-muted small mb-3">Routenideen ohne fixen Termin. Du kannst sie bewerten (👍 / 😐 / 👎) und so dem Organizer helfen zu entscheiden, welche Tour als nächstes stattfindet.</p>
 
           <h6 class="fw-bold">Startzeit-Abstimmung</h6>
-          <p class="text-muted small mb-0">Bei jeder Tour kannst du für eine Startzeit zwischen 09:00 und 11:00 Uhr abstimmen. Erreichbar über den <span style="background:#2B3F6B;color:#fff;border-radius:4px;padding:1px 7px;font-size:.78rem;font-weight:600;white-space:nowrap">Startzeit</span>-Button.</p>
+          <p class="text-muted small mb-3">Bei jeder Tour kannst du für eine Startzeit zwischen 09:00 und 11:00 Uhr abstimmen. Erreichbar über den <span style="background:#2B3F6B;color:#fff;border-radius:4px;padding:1px 7px;font-size:.78rem;font-weight:600;white-space:nowrap">Startzeit</span>-Button.</p>
+
+          <h6 class="fw-bold">Kalender-Abo</h6>
+          <p class="text-muted small mb-3">Unter <strong>Profil bearbeiten → Kalender-Abo</strong> gibt es deinen persönlichen Kalender-Link. Einmal im Handy-Kalender abonniert, erscheinen alle geplanten Touren der Gruppe automatisch – Änderungen und Absagen kommen von allein nach. Den Link bitte nicht weitergeben; über „Link erneuern“ wird ein alter Link ungültig.</p>
+
+          <h6 class="fw-bold">Ich war dabei</h6>
+          <p class="text-muted small mb-3">Am Tourtag und bis drei Tage danach findest du in der Teilnehmer-Karte den Knopf <strong>„Ich war dabei“</strong>. Erst eine bestätigte Teilnahme zählt für die Rangliste. Organisatoren bekommen abends eine Erinnerung „Wer war dabei?“ und können die Liste abhaken.</p>
+
+          <h6 class="fw-bold">Geplante Einkehr</h6>
+          <p class="text-muted small mb-3">Beim Anlegen oder Bearbeiten einer Tour lässt sich eine Einkehr aus der Gastro-Liste (oder als Freitext) eintragen – alternativ direkt aus der Karte der Tour-Seite („Als Einkehr festlegen“). Sie steht dann im Tour-Kopf, in der Tourtag-Erinnerung, im Kalender und in der Druckansicht; fällt der Tourtag auf einen Ruhetag, gibt es einen Hinweis.</p>
+
+          <h6 class="fw-bold">Große Schrift</h6>
+          <p class="text-muted small mb-0">Im Konto-Menü (oben rechts auf deinen Namen) oder unter Profil bearbeiten kannst du <strong>„Große Schrift“</strong> einschalten: größere Schrift, Knöpfe und Eingabefelder auf allen Seiten – die Einstellung bleibt auf allen Geräten erhalten.</p>
         </div>
       </div>
     </div>
@@ -200,8 +212,23 @@ kbd { background:#e9ecef !important; border:1px solid #adb5bd !important; border
           <div class="d-flex gap-3 align-items-start mb-3">
             <div class="feature-icon">📍</div>
             <div>
-              <div class="fw-semibold small">Live-Standort teilen</div>
-              <div class="text-muted small">Über den 📍-Button in der Karten-Toolbar kannst du deinen Standort während der Tour mit anderen Teilnehmern teilen. Die Standorte werden alle 15 Sekunden aktualisiert.</div>
+              <div class="fw-semibold small">Live-Karte: Wo ist die Gruppe gerade?</div>
+              <div class="text-muted small">Jede Tour hat eine eigene Live-Karte (Knopf <strong>📍 Live</strong> in der Karten-Toolbar oder die grüne Leiste unter der Karte).
+                Dort kann jeder aus der Gruppe <strong>zuschauen</strong> – auch Daheimgebliebene. Wer <strong>„Standort teilen“</strong> einschaltet, erscheint für die anderen als
+                Punkt mit seinen Initialen; die Liste daneben zeigt, wer wo auf der Strecke ist und wie weit die Gruppe auseinandergezogen ist.
+                Teilen geht am Tourtag (einen Tag davor und danach), wird höchstens alle 10 Sekunden gesendet und endet automatisch beim Schließen der Seite.
+                <em>„Karte folgt mir“</em> hält die eigene Position in der Mitte, <em>⛶</em> schaltet auf Vollbild. Der Bildschirm bleibt dabei an, solange die Seite offen ist.</div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-3 align-items-start mb-3">
+            <div class="feature-icon">🗺</div>
+            <div>
+              <div class="fw-semibold small">Gruppen-Karte (Menü Karte → Gruppen-Karte)</div>
+              <div class="text-muted small">Alle Gastro-Einträge, gemerkten Orte und Treffpunkte der Gruppe auf einer Karte – Nahe beieinander liegende Punkte werden
+                zu Zahlen gebündelt, ein Tipp darauf zoomt hinein. Die Filterleiste grenzt die Gastronomie ein (Suche, Typ, ☀️ Frühöffner, 🍽️ Mittagstisch, 🟢 jetzt geöffnet).
+                Die Sprechblasen zeigen Öffnungszeiten, Ruhetage, Mittagstisch, ob gerade geöffnet ist, sowie Links zu Details, Tour oder Route.
+                Ebenen und Filter merkt sich der Browser bis zum nächsten Besuch. <em>Touren-Tracks</em> blendet die Strecken der letzten Touren ein.</div>
             </div>
           </div>
 
@@ -236,7 +263,15 @@ kbd { background:#e9ecef !important; border:1px solid #adb5bd !important; border
       <div class="card shadow-sm border-0">
         <div class="card-header card-header-djo">🍺 Gastronomie</div>
         <div class="card-body">
-          <p class="text-muted small mb-0">Einkehrmöglichkeiten entlang eurer Strecken – von der Gruppe gepflegt. Mit Bewertung, Öffnungszeiten und Karte. Unter dem Menüpunkt <strong>Mehr → Gastronomie</strong> erreichbar.</p>
+          <p class="text-muted small mb-3">Einkehrmöglichkeiten entlang eurer Strecken – von der Gruppe gepflegt. Mit Bewertung, Öffnungszeiten und Karte. Unter dem Menüpunkt <strong>Mehr → Gastronomie</strong> erreichbar.</p>
+          <h6 class="fw-bold">🍽️ Mittagstisch finden</h6>
+          <p class="text-muted small mb-2">In der Gastro-Liste gibt es den Filter <strong>Mittagstisch</strong> („ja / mittags offen“ oder ein bestimmter Wochentag). Auf der Tour-Seite („Einkehr entlang der Strecke“) und bei der OpenStreetMap-Suche im Eintragsformular schaltet das Häkchen <strong>„nur mittags“</strong> alle Treffer weg, die mittags nichts anbieten.</p>
+          <ul class="text-muted small mb-2">
+            <li><span class="badge bg-warning text-dark">🍽️ Mittagstisch</span> – im Eintrag bestätigt oder in OpenStreetMap als <code>lunch</code> eingetragen (meist mit Zeiten/Details).</li>
+            <li><span class="badge bg-success-subtle text-success border border-success-subtle">🕛 mittags geöffnet Mo–Fr</span> – aus den Öffnungszeiten (bzw. Küchenzeiten) abgeleitet: um 12:45 Uhr offen und mindestens eine Stunde zwischen 12 und 14 Uhr. Ob es warme Küche gibt, sagt das nicht – wer es weiß, trägt „Mittagstisch: ja“ im Eintrag nach.</li>
+            <li><span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">mittags geschlossen</span> – laut Öffnungszeiten als Mittagsrast ungeeignet. Fällt die geplante Einkehr einer Tour darauf, zeigt der Tour-Kopf „mittags geschlossen am Tourtag?“.</li>
+          </ul>
+          <p class="text-muted small mb-0">Ohne lesbare Öffnungszeiten gibt es keine Aussage – dann hilft nur Anrufen oder der Eintrag mit „Mittagstisch: ja/nein“ samt Zeiten.</p>
         </div>
       </div>
     </div>

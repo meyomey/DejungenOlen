@@ -2,7 +2,150 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-14 (Build v) – Audit 2
+## 1.4.0 – 2026-10-14 (Build aa) – Audit 2
+
+### Live-Karte je Tour (Build aa)
+
+- Befund: Der Menüpunkt hieß „Live-Karte“, zeigte aber nichts Lebendiges; das eigentliche Standort-Teilen
+  steckte hinter einem unbeschrifteten 📍 auf der (3 300 Zeilen schweren) Tour-Seite, sendete
+  ungedrosselt (≈ jede Sekunde ein POST), lief beim Verlassen der Seite weiter (roter Punkt bis zu 10
+  Minuten), fragte auch bei verdecktem Tab weiter ab, und nur wer selbst sendete, sah die anderen.
+- Neue schlanke Seite **`/touren/<id>/live`** (`templates/touren/live.html`, Route `tour_live`):
+  Strecke (vereinfachter GPX-Track), Treffpunkt 🏁, geplante Einkehr ☕ und die Standorte der Mitfahrer
+  als farbige Punkte mit Initialen (grün < 1 min, gelb < 5 min, grau älter; Richtungspfeil bei Fahrt).
+  **Zuschauen kann jeder aus der Gruppe** (Nachzügler, Pannen, Daheimgebliebene) – ohne selbst zu senden.
+- Knöpfe: „📍 Standort teilen“, „🎯 Karte folgt mir“ (endet beim Verschieben der Karte), „👥 Alle
+  zeigen“, „⛶“ Vollbild (per CSS, funktioniert auch auf iPhone/iPad). Liste „Unterwegs“ mit
+  Streckenkilometer, Tempo, Alter des Signals und Spannweite der Gruppe („über 1,8 km verteilt“).
+- Unter der Haube: ein gemeinsamer `watchPosition`, Senden höchstens alle 10 s (ohne Bewegung alle
+  30 s), `sendBeacon` beim Schließen der Seite → Punkt verschwindet sofort, keine Abfragen bei
+  verdecktem Tab, Wake Lock hält den Bildschirm an, automatisches Ende nach 8 h, Fehlertexte auf Deutsch
+  (Standortfreigabe verweigert, kein GPS …).
+- Server (`app.py`, Abschnitt „Build aa: Live-Karte“): Teilen nur **vom Vortag bis einen Tag nach dem
+  Tourtag** (Organisatoren jederzeit, abgesagte Touren nie) → sonst 403 mit Hinweis; `speed`/`heading`
+  werden gespeichert (Migration `live_locations.speed/heading`); Standorte älter als 15 min ausgeblendet,
+  älter als 24 h gelegentlich gelöscht; `/api/location/tour/<id>` liest Nutzer per Join (vorher je Zeile
+  eine Abfrage); `/api/location/stop` nimmt die `tour_id` auch aus der URL (leerer Beacon-Body).
+- Tour-Seite: Toolbar-Knopf „📍 Live“ und grüne Leiste „Live-Karte öffnen“ unter der Karte (ab dem Vortag,
+  nicht bei abgesagten/älteren Touren); der alte Live-JS-Block (~90 Zeilen) ist entfernt.
+
+### Gruppen-Karte (Build aa)
+
+- Menüpunkt heißt jetzt **„Gruppen-Karte“** (vorher irreführend „Live-Karte“); Hilfe-Text neu.
+- Sprechblasen vollständig: Öffnungszeiten, Ruhetag-Badge, Mittagstisch-Badge (gleiche Logik wie die
+  Gastro-Liste, `osm_gastro.js`), **„🟢 jetzt geöffnet – bis 18:00“ / „🔴 geschlossen – öffnet 09:00“**
+  (neue Funktion `open_now()` auf Basis von `_oh_week`, Zeitzone Europe/Berlin), Bewertung, Notiz,
+  Adresse, Links „Details & Bewertungen“, „Route (Fahrrad)“; Treffpunkte mit „Zur Tour“ (orange =
+  geplant, grau = gefahren) und Datum **„offen“ statt „31.12.9999“**; POIs mit Link auf die Ortsliste.
+- **Filterleiste** für die Gastro-Ebene: Suche (Name/Adresse/Notiz/Typ), Typ, ☀️ Frühöffner,
+  🍽️ Mittagstisch, 🟢 jetzt geöffnet – mit Trefferzähler. Gastro und POIs werden **gebündelt**
+  (MarkerCluster, ab Zoom 14 einzeln).
+- Startansicht auf dem **Standard-Treffpunkt** der Gruppe (Site-Config), ohne Treffpunkt werden alle
+  Punkte eingepasst; Ebenen- und Filterwahl merkt sich der Browser (`localStorage`).
+- Bewertungsschnitt in einer Abfrage statt je Eintrag; nur Touren mit Koordinaten und nicht abgesagt
+  (max. 40 neueste).
+- Veraltete Leaflet-Option `tap:` aus allen Karten entfernt (Leaflet ≥ 1.8 kennt sie nicht mehr).
+- Tests: `tests/test_live.py` (11 Tests: Zeitfenster, `open_now`, Initialen, Migration, API-Rechte,
+  Stale/Cleanup, Live-Seite, Tour-Seite, Gruppen-Karte) – Suite jetzt 70 Tests.
+
+## 1.4.0 – 2026-10-14 (Build z) – Audit 2
+
+### Mittagstisch finden (Build z)
+
+- Wunsch aus der Gruppe: bei der Suche nach einer Einkehr muss ein Restaurant **mit Mittagstisch**
+  zu finden sein. Da OpenStreetMap den Tag `lunch=*` in Deutschland nur selten enthält, wertet die
+  App zusätzlich die Öffnungszeiten aus.
+- Neue Auswertung `noon_days()` (app.py, nach `closed_days`): liest OSM-`opening_hours` **und**
+  deutschen Freitext („Montag Ruhetag, Di–So 11.30–14 Uhr und 17–22 Uhr“, „täglich 10–22 Uhr“,
+  „Dienstag bis Sonntag …“) je Wochentag; „mittags geöffnet“ = um 12:45 Uhr offen und mindestens
+  60 Minuten zwischen 12 und 14 Uhr. Küchenzeiten (`opening_hours:kitchen`) gehen vor, Feiertags-
+  regeln (`PH`) werden übersprungen, Texte ohne Uhrzeit ergeben bewusst **keine** Aussage.
+  Dieselbe Logik liegt für die Browser-Fallbacks in `static/js/osm_gastro.js` (ohne Lookbehind,
+  läuft auch auf älteren iPads).
+- OSM-Treffer (Streckensuche auf der Tour-Seite, Kartenausschnitt-Suche im Formular) tragen jetzt
+  `lunch`/`lunch_text` (aus `lunch=*`, `lunch:menu/buffet/specials/tourist_menu=*`), Küchenzeiten,
+  Küche (`cuisine`, eingedeutscht) und den abgeleiteten Status; Abzeichen
+  „🍽️ Mittagstisch“ / „🕛 mittags geöffnet Mo–Fr“ / „mittags geschlossen“ in Listen und Popups.
+  Häkchen **„nur mittags“** filtert ohne neue Overpass-Abfrage.
+- Eigene Gastro-Einträge: neue Spalten `gastro_spots.lunch` (yes/no/leer) und `lunch_text`
+  (Migration automatisch); Formular mit Auswahl „keine Angabe / ja / nein“ + Textfeld, OSM-Übernahme
+  füllt beides vor; Schnell-Übernahme von der Tour-Seite übernimmt die OSM-Angabe mit.
+- Gastro-Liste: Filter **Mittagstisch** („ja / mittags offen“ oder „mittags offen am Mo … So“),
+  Abzeichen auf den Karten, Mittagstisch im Volltext-Filter („mittag“ eintippen), Detailseite mit
+  Abschnitt „Mittagstisch“ und Hinweis-Kasten.
+- Geplante Einkehr: Tour-Kopf zeigt „🍽️ Mittagstisch“ bzw. warnt „mittags geschlossen am Tourtag?“
+  (wenn der Ruhetag-Hinweis nicht schon greift); Kurztext (Erinnerung, ICS, tour.txt, Druck) ergänzt
+  „Mittagstisch: …“ bzw. „Achtung: am Tourtag mittags geschlossen?“.
+- Hilfe-Seite: Abschnitt „Mittagstisch finden“ erklärt die drei Abzeichen.
+- Tests: `tests/test_gastro.py` +7 (Parser mit OSM- und Freitext-Fällen, Küchenzeiten, OSM-Tag-
+  Zuordnung, Listenfilter inkl. Wochentag, Formular/Schnell-Übernahme, Einkehr-Hinweis, statische JS-
+  Datei) → 59 Tests.
+
+### Smoke-Tests im Repo (Build y)
+
+- Neuer Ordner `tests/` (nur Standardbibliothek `unittest`, keine neue Abhängigkeit): `python -m unittest`
+  im Projektordner führt 52 Tests in ≈10 s aus – eigene SQLite-Datei im Temp-Ordner, Upload-Ordner
+  umgebogen, keine Netzzugriffe (Push/Telegram/E-Mail/Overpass/Wetter als Attrappen, zufällige
+  Hintergrund-Trigger abgeschaltet). Läuft unter Windows, macOS und Linux.
+- Abgedeckt: Login/Zugriffsschutz, **alle GET-Routen** als Mitglied/Organisator/Admin, Gruppen-Trennung,
+  Touren (Anlegen, RSVP, GPX-Kennzahlen, Archiv, „Nochmal fahren“, Anwesenheit, Kalender-Abo, Großschrift),
+  Gastro (Schnell-Übernahme, Overpass-Attrappe mit 406-Ausweich/Cache/502, Streckensuche, Einkehr),
+  Downloads (GPX, Archiv-ZIP, Tour-Paket, Druck) und reine Helfer (parse_gpx, Vorschau, ICS, Parser).
+- Dabei gefunden und behoben: das Großschrift-CSS aus Build x stand versehentlich innerhalb der
+  Mobil-Media-Query in `base.html` und hätte am Desktop nicht gegriffen.
+- README: Abschnitt „Tests“.
+
+## 1.4.0 – 2026-10-14 (Build x) – Audit 2
+
+### Großschrift, geplante Einkehr, Anwesenheit (Build x)
+
+- **Großschrift-Modus** (pro Nutzer, `users.large_text`): umschaltbar im Konto-Menü („Große Schrift“ /
+  „Normale Schrift“, Desktop und Mobil) und als Haken unter Profil bearbeiten. Setzt `<html class="big-text">`:
+  Grundschrift +20 %, größere Knöpfe/Eingabefelder/Haken (min. 44 px), kräftigere Grautöne, Mini-Schriften
+  angehoben – auf allen Geräten gleich, da serverseitig gespeichert.
+- **Geplante Einkehr an der Tour** (`tours.gastro_spot_id` + `tours.einkehr_text`): Auswahl aus der
+  Gastro-Liste und/oder Freitext beim Anlegen/Bearbeiten; auf der Tour-Seite außerdem per Klick aus der
+  Gastro-Ebene der Karte und aus der OSM-Streckensuche („☕ Als Einkehr festlegen“, legt OSM-Treffer bei
+  Bedarf erst in der Gastro-Liste an). Anzeige im Tour-Kopf (mit Öffnungszeiten und Warnung „Ruhetag am
+  Tourtag?“), eigener Marker in der Karte, in der Tourtag-Erinnerung (Telegram + Push), im Kalender-Eintrag
+  (ICS/Abo), in der Druckansicht, in `tour.txt` des Tour-Pakets und als erste Zeile der Video-Folie
+  „Einkehr unterwegs“. „Nochmal fahren“ übernimmt die Einkehr.
+- **Anwesenheit abhaken**: Teilnehmer können am Tourtag und bis drei Tage danach selbst „Ich war dabei“
+  drücken (zählt für die Rangliste; legt bei Bedarf die Teilnahme an). Organisatoren sehen das Formular
+  „Anwesenheit bestätigen“ jetzt auch bei vergangenen, noch nicht abgeschlossenen Touren (aufgeklappt,
+  solange nichts bestätigt ist) und in der Touren-Übersicht einen Hinweis auf Touren der letzten 14 Tage ohne
+  Bestätigung. Abends ab 17 Uhr (Europe/Berlin) geht ohne Cron ein Push „✅ Wer war dabei?“ an Ersteller
+  und Organisatoren der Gruppe (ohne Push-Abo: E-Mail an den Ersteller), einmal je Tour
+  (`tours.attendance_reminded_at`); Admin → Werkzeuge kann den Lauf sofort anstoßen.
+- Hilfe-Seite um Kalender-Abo, „Ich war dabei“, geplante Einkehr und Große Schrift ergänzt.
+- Betroffene Dateien: `app.py`, `models.py`, `templates/base.html`, `templates/profil_edit.html`,
+  `templates/hilfe.html`, `templates/touren/create.html`, `templates/touren/edit.html`,
+  `templates/touren/detail.html`, `templates/touren/list.html`, `templates/touren/print.html`,
+  `templates/admin/tools.html`.
+
+## 1.4.0 – 2026-10-14 (Build w) – Audit 2
+
+### Kalender-Abo, Fahrzeit/Ø-Tempo, Streckenvorschau, „Nochmal fahren“ (Build w)
+
+- **Kalender-Abo (webcal)**: Profil → Bearbeiten → „Kalender-Abo“ (Button auch oben in der
+  Touren-Übersicht). Persönlicher Link `/kalender/<token>.ics` ohne Login – Touren der eigenen Gruppe
+  aus den letzten 12 Monaten und alle kommenden; Änderungen und Absagen (STATUS:CANCELLED) kommen
+  beim nächsten Abgleich automatisch an. „Link erneuern“ macht den alten ungültig; inaktive Konten
+  liefern 404. Einzel-ICS nutzt denselben Ereignis-Bauer: stabile UID, korrekt maskierte Kommas/
+  Semikolons/Zeilenumbrüche, Zeilen ≤ 75 Oktette, GEO/URL-Felder.
+- **Fahrzeit und Ø-Tempo** (reine Fahrzeit ohne Pausen, aus GPX-Zeitstempeln): neue Spalten
+  `tours.gpx_moving_s`, `gpx_avg_kmh`; Anzeige in Tour-Detail (Kacheln), Archiv (Spalte ⏱) und
+  Jahresrückblick („Fahrzeit gesamt“, streckengewichtetes „Ø Tempo“). Neue Uploads werden sofort
+  erfasst, ältere Touren beim ersten Aufruf der Tour-Seite oder gesammelt über
+  Admin → Werkzeuge → „GPX-Kennzahlen nachrechnen“ (≈20 s pro Klick).
+- **Mini-Streckenvorschau** im Archiv (Tabelle und Karten ohne Titelfoto): Inline-SVG aus dem auf
+  ≤ 60 Punkte vereinfachten Track (`tours.gpx_preview`), keine Kachel-Anfragen.
+- **„Nochmal fahren“** (Organisatoren): Button in Archiv-Zeilen und auf abgeschlossenen/abgesagten
+  Tour-Seiten legt eine neue geplante Tour ohne Termin an – Titel, Beschreibung, Startzeit, Level,
+  Link, Treffpunkt und GPX-Kopie werden übernommen, Teilnehmer/Fotos/Fahrzeit nicht.
+- Betroffene Dateien: `app.py`, `models.py`, `templates/touren/_track.html` (neu),
+  `templates/touren/archiv.html`, `templates/touren/detail.html`, `templates/touren/list.html`,
+  `templates/rueckblick.html`, `templates/profil_edit.html`, `templates/admin/tools.html`.
 
 ### Archiv & Downloads: GPX, Tour-Paket, Foto-Download (Build v)
 

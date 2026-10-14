@@ -28,7 +28,8 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 - Leaflet/OSM-Karte mit GPX-Track, Start/Ziel-Marker, Treffpunkt
 - Höhenprofil (Chart.js)
 - Kartenvorschau auf Tourenkarten (lazy-loading Leaflet Mini-Maps)
-- Live-Standort teilen während der Tour
+- Live-Karte je Tour (`/touren/<id>/live`): zuschauen oder Standort teilen, Mitfahrer mit Initialen, Streckenkilometer, Vollbild, Wake Lock
+- Gruppen-Karte: Gastro (mit Öffnungszeiten, Ruhetag, Mittagstisch, „jetzt geöffnet“, Filter, Clustering), Orte, Treffpunkte
 - Offline-Kartenkacheln cachen (Service Worker)
 - Kartensperre auf Mobile (Tippen zum Aktivieren)
 - Export: alle GPX-Tracks eines Jahres als ZIP
@@ -66,6 +67,9 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 
 ### 🍺 Gastronomie
 - Einkehrmöglichkeiten mit Bewertung, Öffnungszeiten, Karte
+- Mittagstisch: Filter in der Gastro-Liste (auch nach Wochentag), Häkchen „nur mittags“ in der
+  OpenStreetMap-Suche (Tour-Seite und Eintragsformular); Abzeichen aus OSM-Tag `lunch` oder aus den
+  Öffnungs-/Küchenzeiten abgeleitet („mittags geöffnet Mo–Fr“ / „mittags geschlossen“)
 
 ### ⚙️ Admin
 - Mitglieder verwalten (Rollen, Sperren, Passwort-Reset)
@@ -123,6 +127,32 @@ Beim ersten Aufruf erscheint der Setup-Wizard: Admin-Account anlegen, erste Grup
 
 ---
 
+## Tests (Smoke-Tests)
+
+Im Ordner `tests/` liegen Smoke-Tests auf Basis der Standardbibliothek (`unittest`) – keine
+zusätzlichen Pakete nötig. Sie laufen gegen eine eigene SQLite-Datei im Temp-Ordner und bauen
+keine Netzverbindungen auf (Push, Telegram, E-Mail, Overpass und Wetter sind durch Attrappen ersetzt).
+
+```bash
+# im Projektordner, mit aktivierter virtueller Umgebung
+python -m unittest                      # alle Tests (~10 s)
+python -m unittest -v tests.test_touren # ein Modul, ausführlich
+python -m unittest tests.test_routes.RoutesTest.test_all_get_routes_member
+```
+
+| Modul | Prüft |
+|---|---|
+| `tests/test_routes.py` | Login, Zugriffsschutz, **jede GET-Route** als Mitglied/Organisator/Admin ohne 500er, Gruppen-Trennung |
+| `tests/test_touren.py` | Tour anlegen/bearbeiten, RSVP, GPX-Upload → Fahrzeit/Ø-Tempo/Vorschau, Archiv, „Nochmal fahren“, „Ich war dabei“, Abend-Erinnerung, Kalender-Abo/ICS, Großschrift |
+| `tests/test_gastro.py` | Gastro-Liste, Schnell-Übernahme mit Duplikat-Schutz, Overpass-Suche (Attrappe: 406-Ausweich, Cache, 502), Streckensuche, Öffnungszeiten-Helfer, geplante Einkehr, Mittagstisch (Parser, OSM-Tags, Filter, Formular, Einkehr-Hinweis) |
+| `tests/test_downloads.py` | GPX-Download, Archiv-ZIP, Tour-Paket (tour.txt), Druckansicht |
+| `tests/test_live.py` | Live-Karte: Zeitfenster, `open_now`, Initialen, Migration, API-Rechte, veraltete Standorte, Seiten; Gruppen-Karte (Filter, Popup-Daten, „offen“) |
+| `tests/test_helpers.py` | `parse_gpx`, Track-Vereinfachung, SVG-Vorschau, ICS-Maskierung/-Faltung, Formular-Parser, Template-Filter |
+
+Vor jeder Auslieferung einmal `python -m unittest` laufen lassen – ein roter Test heißt: nicht hochladen.
+
+---
+
 ## Deployment (Plesk / Netcup)
 
 Vollständige Anleitung: [docs/INSTALLATION_PLESK_FTP.md](docs/INSTALLATION_PLESK_FTP.md)
@@ -152,6 +182,7 @@ Für vollständig getrennte Server/Domains: [docs/NEUE_GRUPPE.md](docs/NEUE_GRUP
 
 ```
 dejungen_olen/
+├── tests/                 # Smoke-Tests (python -m unittest)
 ├── app.py                  # Flask-App (150 Routen)
 ├── config.py                # Konfiguration (liest aus .env)
 ├── models.py                 # SQLAlchemy-Modelle
@@ -184,6 +215,7 @@ dejungen_olen/
 │       ├── archiv.html        # Tourarchiv
 │       └── geplant.html       # Touren ohne Termin
 └── static/
+    ├── js/osm_gastro.js        # Mittagstisch-Auswertung im Browser (OSM-Fallback, Abzeichen, Filter)
     ├── uploads/                # Fotos, GPX, Avatare, Videos, Gruppen-Logos
     └── sw.js                    # Service Worker (Offline-Karte)
 ```

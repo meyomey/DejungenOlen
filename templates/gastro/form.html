@@ -65,6 +65,26 @@
                        placeholder="z. B. Mo Ruhetag, Di–So 9–18 Uhr" value="{{ vals.hours_text }}">
                 <div class="form-text">Freitext oder OSM-Format („Mo-Fr 08:00-18:00; Su off“) – Ruhetage werden erkannt und hervorgehoben.</div>
               </div>
+              <div class="mb-3" id="lunch-group">
+                <label class="form-label fw-semibold">🍽️ Mittagstisch</label>
+                <div class="d-flex flex-wrap gap-3 mb-1">
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="lunch" id="flunch0" value="" {% if vals.lunch not in ('yes', 'no') %}checked{% endif %}>
+                    <label class="form-check-label" for="flunch0">keine Angabe</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="lunch" id="flunch1" value="yes" {% if vals.lunch == 'yes' %}checked{% endif %}>
+                    <label class="form-check-label" for="flunch1">ja, gibt es</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="lunch" id="flunch2" value="no" {% if vals.lunch == 'no' %}checked{% endif %}>
+                    <label class="form-check-label" for="flunch2">nein</label>
+                  </div>
+                </div>
+                <input type="text" name="lunch_text" class="form-control" id="flunchtext" maxlength="200"
+                       placeholder="z. B. Mo–Fr 11:30–14:00, wechselnde Wochenkarte ab 9,50 €" value="{{ vals.lunch_text }}">
+                <div class="form-text">Ohne Angabe leitet die App aus den Öffnungszeiten ab, ob mittags (12–14 Uhr) geöffnet ist.</div>
+              </div>
               <div class="mb-3">
                 <label class="form-label fw-semibold">Telefon</label>
                 <input type="text" name="phone" class="form-control" id="fphone" maxlength="30" placeholder="+49 ..." value="{{ vals.phone }}">
@@ -173,10 +193,14 @@
               <p class="text-muted small mb-2">
                 Kartenausschnitt wählen → alle Gaststätten, Bäckereien und Eisdielen im sichtbaren Bereich suchen.
               </p>
-              <button type="button" class="btn btn-outline-djo btn-sm w-100 mb-2"
+              <button type="button" class="btn btn-outline-djo btn-sm w-100 mb-1"
                       onclick="searchOverpass()">
                 <i class="bi bi-grid me-1"></i>Gaststätten im Kartenbereich suchen
               </button>
+              <div class="form-check small mb-2">
+                <input class="form-check-input" type="checkbox" id="osm-lunch-only" onchange="rerenderOverpass()">
+                <label class="form-check-label" for="osm-lunch-only">🍽️ nur mit Mittagstisch bzw. mittags geöffnet</label>
+              </div>
               <div id="osm-results"></div>
             </div>
 
@@ -220,6 +244,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/osm_gastro.js') }}?v={{ app_build|urlencode }}"></script>
 <script>
 // ── Picker map ────────────────────────────────────────────────────────────────
 // Build s: Im Bearbeiten-Modus startet die Karte beim Eintrag (Marker ziehbar); die Standort-
@@ -303,9 +328,9 @@ function overpassDirect(query) {            // Direktabfrage aus dem Browser (CO
       const kind = t.amenity || t.shop || '';
       const street = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ');
       const city = [t['addr:postcode'], t['addr:city']].filter(Boolean).join(' ');
-      return {osm_id: (el.type || 'node') + '/' + (el.id || ''), name: t.name || kind || 'Unbekannt', type: kind, lat, lng,
+      return osmLunchEnrich({osm_id: (el.type || 'node') + '/' + (el.id || ''), name: t.name || kind || 'Unbekannt', type: kind, lat, lng,
               opening_hours: t.opening_hours || '', phone: t.phone || t['contact:phone'] || '',
-              website: t.website || t['contact:website'] || '', address: [street, city].filter(Boolean).join(', ')};
+              website: t.website || t['contact:website'] || '', address: [street, city].filter(Boolean).join(', ')}, t);   // Build z
     }).filter(Boolean)
   }));
 }
@@ -334,10 +359,20 @@ function searchOverpass() {
     });
 }
 
+function rerenderOverpass() {                                               // Build z: Filter „nur mittags“ ohne neue Abfrage
+  const el = document.getElementById('osm-results');
+  if (window.__osmLastData && el) renderOverpassResults(window.__osmLastData, el);
+}
+
 function renderOverpassResults(data, el) {
-  const res = (data && data.results) || [];
+  window.__osmLastData = data;
+  const lunchOnly = !!(document.getElementById('osm-lunch-only') || {}).checked;
+  const all = (data && data.results) || [];
+  const res = lunchOnly ? all.filter(r => lunchMatches(r, '')) : all;
   if (!res.length) {
-    el.innerHTML = '<p class="text-muted small">Keine Gastronomie im sichtbaren Bereich gefunden (OSM-Daten) – Ausschnitt verschieben oder etwas herauszoomen.</p>';
+    el.innerHTML = all.length
+      ? `<p class="text-muted small">Keiner der ${all.length} Treffer hat laut OpenStreetMap einen Mittagstisch oder ist mittags geöffnet – Häkchen abwählen, um alle zu sehen.</p>`
+      : '<p class="text-muted small">Keine Gastronomie im sichtbaren Bereich gefunden (OSM-Daten) – Ausschnitt verschieben oder etwas herauszoomen.</p>';
     return;
   }
   const c = map.getCenter();
@@ -349,8 +384,10 @@ function renderOverpassResults(data, el) {
       <div class="border rounded p-2 mb-1 small osm-hit" style="cursor:pointer" data-hit='${escHtml(JSON.stringify(r))}'>
         <strong>${escHtml(r.name)}</strong>
         <span class="text-muted ms-1">${escHtml(OSM_TYPE_LABEL[r.type] || r.type)} · ${fmtDist(r.dist_m)}</span>
+        ${lunchBadgeHtml(r)}${r.cuisine ? ' <small class="text-muted">· ' + escHtml(r.cuisine) + '</small>' : ''}
         ${r.address ? '<br><small class="text-muted">' + escHtml(r.address) + '</small>' : ''}
         ${r.opening_hours ? '<br><small>🕐 ' + escHtml(r.opening_hours) + '</small>' : ''}
+        ${r.kitchen_hours ? '<br><small>🍳 Küche: ' + escHtml(r.kitchen_hours) + '</small>' : ''}
       </div>`).join('');
   el.querySelectorAll('.osm-hit').forEach(div => div.addEventListener('click', () => fillForm(JSON.parse(div.dataset.hit))));
 }
@@ -372,6 +409,15 @@ function fillForm(r) {
     if (m) { setIfEmptyOr('fopens', m[1], overwrite); setIfEmptyOr('fcloses', m[2], overwrite); }
     setIfEmptyOr('fhours', r.opening_hours, overwrite);                      // Build t: kompletter OSM-Text (Ruhetage!)
   }
+  if (r.lunch === 'yes' || r.lunch === 'no') {                              // Build z: Mittagstisch aus OSM
+    const cur = document.querySelector('input[name="lunch"]:checked');
+    if (overwrite || !cur || !cur.value) {
+      const rb = document.getElementById(r.lunch === 'yes' ? 'flunch1' : 'flunch2');
+      if (rb) rb.checked = true;
+    }
+  }
+  if (r.lunch_text) setIfEmptyOr('flunchtext', r.lunch_text, overwrite);
+  else if (r.kitchen_hours && r.lunch !== 'no') setIfEmptyOr('flunchtext', 'Küche: ' + r.kitchen_hours, overwrite);
   setIfEmptyOr('fphone', r.phone, overwrite);
   setIfEmptyOr('fwebsite', r.website, overwrite);
   if (r.osm_id) document.getElementById('fosm').value = r.osm_id;

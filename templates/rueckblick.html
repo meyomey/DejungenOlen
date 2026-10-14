@@ -35,6 +35,11 @@
     ('bi-arrow-up','#e74c3c', total_ascent, 'm Anstieg', ''),
     ('bi-camera','#27ae60', total_photos, 'Fotos', ''),
   ] %}
+  {# Build w: Fahrzeit gesamt + Ø Tempo (nur Touren mit Zeitstempeln im GPX) #}
+  {% if total_moving_s %}
+  {% set stats = stats + [('bi-stopwatch','#8e44ad', total_moving_s|hm, 'Fahrzeit gesamt', ''),
+                          ('bi-speedometer2','#16a085', (avg_kmh_year|de1) ~ ' km/h', 'Ø Tempo', '')] %}
+  {% endif %}
   {% for icon, color, val, label, _ in stats %}
   <div class="col-6 col-md-3">
     <div class="card border-0 shadow-sm text-center h-100">

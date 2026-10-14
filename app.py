@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-14 v'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-14 aa'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -1216,11 +1216,22 @@ def tour_list():
                 'total': len(ratings),
             }
 
+    # Build x: Organisatoren sehen, welche Touren der letzten 14 Tage noch keine bestätigte Anwesenheit haben
+    attendance_todo = []
+    if current_user.is_organizer or current_user.is_admin:
+        try:
+            from flask import g as _g_list
+            _grp_list = getattr(_g_list, 'group', None)
+            attendance_todo = _attendance_todo(_grp_list.id if _grp_list else None, today)
+        except Exception as e:
+            app.logger.warning(f'attendance_todo: {e}')
+
     return render_template('touren/list.html',
                            tours=tours_dated, tours_open=tours_open,
                            today=today, weather_map={},
                            default_lat=default_lat, default_lng=default_lng,
-                           cover_photos=cover_photos, rating_map=rating_map)
+                           cover_photos=cover_photos, rating_map=rating_map,
+                           attendance_todo=attendance_todo)
 
 
 @app.route('/touren/vorlagen')
@@ -1383,6 +1394,7 @@ def tour_create():
         # Marker for "date open" - we use 9999-12-31 as sentinel value
         # because SQLite cannot ALTER COLUMN to remove NOT NULL constraint
         tour._date_open = not bool(tour_date)
+        _apply_einkehr_form(tour)                      # Build x: geplante Einkehr
         db.session.add(tour)
         try:
             db.session.flush()  # get ID before commit
@@ -1414,6 +1426,7 @@ def tour_create():
             if parsed:
                 tour.gpx_km     = parsed.get('km')
                 tour.gpx_ascent = parsed.get('ascent')
+                _tour_apply_gpx_metrics(tour, parsed)          # Build w
         elif proposal_gpx:
             # Audit 1.4.0: nur Dateinamen aus dem GPX-Ordner zulassen (kein Path Traversal)
             proposal_gpx = os.path.basename(proposal_gpx)
@@ -1428,6 +1441,7 @@ def tour_create():
                 if parsed:
                     tour.gpx_km     = parsed.get('km')
                     tour.gpx_ascent = parsed.get('ascent')
+                    _tour_apply_gpx_metrics(tour, parsed)      # Build w
 
         # Auto-RSVP creator
         rsvp = TourParticipant(tour_id=tour.id, user_id=current_user.id, status='attending')
@@ -1603,13 +1617,15 @@ def gastro_near_track(points, max_m=GASTRO_NEAR_M, limit=12):
                 if d < best_d:
                     best_d, best_i = d, i
             if best_d <= max_m:
+                li = lunch_info(sp)                                                   # Build z
                 found.append({'id': sp.id, 'name': sp.name, 'spot_type': sp.spot_type,
                               'type_label': labels.get(sp.spot_type, 'Einkehr'),
                               'lat': sp.lat, 'lng': sp.lng, 'dist_m': int(round(best_d)),
                               'km': round(cum[best_i] / 1000, 1),
                               'frac': best_i / max(1, len(pts) - 1),
                               'opens_at': sp.opens_at or '', 'hours': hours_de(getattr(sp, 'hours_text', None)),
-                              'closed_days': closed_days(getattr(sp, 'hours_text', None))})   # Build t
+                              'closed_days': closed_days(getattr(sp, 'hours_text', None)),   # Build t
+                              'lunch_status': li['status'], 'lunch_label': li['label']})
         found.sort(key=lambda x: (x['km'], x['name']))
         return found[:limit]
     except Exception as e:
@@ -1797,6 +1813,13 @@ def tour_detail(tour_id):
         gpx_path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
         if os.path.exists(gpx_path):
             gpx_data = parse_gpx(gpx_path)
+            if gpx_data and tour.gpx_preview is None:      # Build w: Fahrzeit/Vorschau einmalig nachtragen
+                try:
+                    _tour_apply_gpx_metrics(tour, gpx_data)
+                    db.session.commit()
+                except Exception as _ex:
+                    db.session.rollback()
+                    app.logger.warning(f'GPX-Kennzahlen Tour {tour.id}: {_ex}')
 
     # Photos sorted: sort_order zuerst (Drag & Drop), dann EXIF-Datum
     from sqlalchemy import text as sa_text
@@ -1833,6 +1856,8 @@ def tour_detail(tour_id):
                            maybe=maybe,
                            declined=declined,
                            gpx_data=json.dumps(gpx_data) if gpx_data else 'null',
+                           show_live=(tour.status != 'cancelled' and (tour.is_date_open or
+                                      tour.tour_date >= date.today() - timedelta(days=1))),   # Build aa
                            gastro_near=gastro_near,
                            photos=photos,
                            videos=videos,
@@ -1888,6 +1913,7 @@ def tour_upload_gpx(tour_id):
     if parsed:
         tour.gpx_km     = parsed['km']
         tour.gpx_ascent = parsed['ascent']
+        _tour_apply_gpx_metrics(tour, parsed)                  # Build w
     db.session.commit()
 
     flash(f'GPX hochgeladen! {parsed["km"]} km, {parsed["ascent"]} m Anstieg' if parsed else 'GPX hochgeladen.', 'success')
@@ -2241,6 +2267,7 @@ def tour_edit(tour_id):
         tour.meeting_desc = request.form.get('meeting_desc', '').strip() or None
         tour.meeting_lat  = _parse_float(request.form.get('meeting_lat'))
         tour.meeting_lng  = _parse_float(request.form.get('meeting_lng'))
+        _apply_einkehr_form(tour)                      # Build x: geplante Einkehr
         if current_user.is_admin:
             tour.status = request.form.get('status', tour.status)
         db.session.commit()
@@ -3221,8 +3248,12 @@ def tour_video_render(tour_id):
                             name += '…'
                         draw.text((x0 + 76, y + row_h//2 - name_font.size - 2), name, font=name_font,
                                   fill=lerp(tile_col, (255, 255, 255), a))
-                        sub = (f"{sp['type_label']} · km {sp['km']:.1f}".replace('.', ',') +
-                               f" · {sp['dist_m']} m neben der Route")
+                        if sp.get('planned') and not sp.get('km_known'):     # Build x
+                            sub = f"Geplante Einkehr · {sp['type_label']}"
+                        else:
+                            sub = (f"{sp['type_label']} · km {sp['km']:.1f}".replace('.', ',') +
+                                   f" · {sp['dist_m']} m neben der Route" +
+                                   (' · geplant' if sp.get('planned') else ''))
                         draw.text((x0 + 76, y + row_h//2 + 6), sub, font=sub_font, fill=lerp(tile_col, (210, 210, 210), a))
                     if more > 0:
                         a = max(0.0, min(1.0, (progress - 0.1 - len(rows)*0.1) * 4))
@@ -3665,6 +3696,10 @@ def tour_video_render(tour_id):
                     _ride = {k: _parsed.get(k) for k in ('moving_s', 'total_s', 'avg_kmh', 'max_kmh')}
         if show_gastro and _gpx_points:
             _near_spots = gastro_near_track(_gpx_points)
+        if show_gastro:                                   # Build x: geplante Einkehr immer zuerst
+            _planned = _planned_einkehr_entry(tour, _gpx_points)
+            if _planned:
+                _near_spots = [_planned] + [sp for sp in _near_spots if sp.get('id') != _planned['id']]
         if len(_gpx_points) >= 2:   # Build o: Track-Umriss + km-Stände für die Mini-Karte auf den Fotos
             try:
                 import math as _m
@@ -3888,6 +3923,7 @@ def archiv_new():
                         tour.gpx_km = parsed['km']
                     if not tour.gpx_ascent and parsed.get('ascent'):
                         tour.gpx_ascent = parsed['ascent']
+                    _tour_apply_gpx_metrics(tour, parsed)      # Build w
                     db.session.commit()
             except Exception as e:
                 app.logger.warning(f'archiv_new GPX upload failed: {e}')
@@ -3975,19 +4011,119 @@ def hilfe():
     return render_template('hilfe.html')
 
 
+# ─── Build aa: Live-Karte (Standorte der Mitfahrer) ────────────────────────────────────────────
+LIVE_STALE_S = 15 * 60      # ohne neues Signal nach 15 Minuten ausgeblendet
+LIVE_FRESH_S = 5 * 60       # „aktuell“ – zählt für die Spannweite der Gruppe
+
+
+def _berlin_today():
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo('Europe/Berlin')).date()
+
+
+def _initials(name):
+    """„Hein Mück“ → „HM“, „Fiete“ → „FI“ – für die Marker auf der Live-Karte."""
+    parts = [x for x in re.split(r'[\s\-]+', (name or '').strip()) if x]
+    if not parts:
+        return '?'
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
+def _live_share_window(tour, user=None, today=None):
+    """(erlaubt, Hinweis): Standort teilen geht vom Vortag bis einen Tag nach dem Tourtag; Organisatoren
+    jederzeit (zum Ausprobieren und Vorführen). Zuschauen darf unabhängig davon jeder in der Gruppe."""
+    user = user or current_user
+    if tour.status == 'cancelled':
+        return False, 'Die Tour ist abgesagt.'
+    if getattr(user, 'is_organizer', False):
+        return True, ''
+    if tour.is_date_open:
+        return False, 'Die Tour hat noch keinen Termin – Standort teilen geht ab dem Vortag der Tour.'
+    delta = (tour.tour_date - (today or _berlin_today())).days
+    if delta > 1:
+        return False, f'Standort teilen geht ab dem Vortag der Tour (Tourtag: {tour.tour_date.strftime("%d.%m.%Y")}).'
+    if delta < -1:
+        return False, 'Die Tour liegt zurück – Standort teilen war bis einen Tag danach möglich.'
+    return True, ''
+
+
+def _live_locations_payload(tour_id, now=None):
+    """Aktuelle Standorte einer Tour – eine Abfrage mit Nutzer-Join (vorher je Zeile ein User-Zugriff)."""
+    now = now or datetime.utcnow()
+    cutoff = now - timedelta(seconds=LIVE_STALE_S)
+    rows = (db.session.query(LiveLocation, User)
+            .join(User, User.id == LiveLocation.user_id)
+            .filter(LiveLocation.tour_id == tour_id, LiveLocation.updated_at >= cutoff)
+            .order_by(LiveLocation.updated_at.desc()).all())
+    out = []
+    for loc, u in rows:
+        name = u.display_name if u else 'Unbekannt'
+        out.append({'user_id': loc.user_id, 'name': name, 'initials': _initials(name),
+                    'lat': loc.lat, 'lng': loc.lng, 'accuracy': loc.accuracy,
+                    'speed': loc.speed, 'heading': loc.heading,
+                    'ago': max(0, int((now - loc.updated_at).total_seconds()))})
+    return out
+
+
+def _live_cleanup(now=None):
+    """Zeilen älter als ein Tag löschen (wird aus location_update gelegentlich aufgerufen)."""
+    now = now or datetime.utcnow()
+    n = LiveLocation.query.filter(LiveLocation.updated_at < now - timedelta(days=1)).delete(synchronize_session=False)
+    return n
+
+
+@app.route('/touren/<int:tour_id>/live')
+@login_required
+def tour_live(tour_id):
+    """Build aa: schlanke Live-Karte einer Tour – Track, Treffpunkt, Einkehr und die Standorte der
+    Mitfahrer. Zuschauen kann jeder in der Gruppe (Nachzügler, Daheimgebliebene), teilen im Zeitfenster
+    um den Tourtag. Bewusst ohne Fotos/Videos/Kommentare: schnell geladen, große Knöpfe, Vollbild."""
+    tour = _tour_or_404(tour_id)
+    track = []
+    if tour.gpx_file:
+        path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
+        if os.path.exists(path):
+            try:
+                pts = (parse_gpx(path) or {}).get('points') or []
+                track = [[round(a, 5), round(b, 5)] for a, b in _simplify_track(pts, 600)]
+            except Exception as e:
+                app.logger.warning(f'Live-Karte Tour {tour_id}: GPX nicht lesbar: {e}')
+    meeting = None
+    if tour.meeting_lat and tour.meeting_lng:
+        meeting = {'lat': tour.meeting_lat, 'lng': tour.meeting_lng, 'desc': tour.meeting_desc or 'Treffpunkt'}
+    ek = _einkehr_info(tour)
+    einkehr = None
+    if ek and ek.get('lat') and ek.get('lng'):
+        einkehr = {'lat': ek['lat'], 'lng': ek['lng'], 'name': ek['name'], 'url': ek['url'],
+                   'hours': ek['hours'], 'lunch_label': ek.get('lunch_label', '')}
+    can_share, share_hint = _live_share_window(tour)
+    me_name = current_user.display_name
+    me = {'id': current_user.id, 'name': me_name, 'initials': _initials(me_name)}
+    datum = '' if tour.is_date_open else (['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][tour.tour_date.weekday()]
+                                          + ', ' + tour.tour_date.strftime('%d.%m.%Y'))
+    return render_template('touren/live.html', tour=tour, datum=datum,
+                           track_json=_json_for_script(track), meeting_json=_json_for_script(meeting),
+                           einkehr_json=_json_for_script(einkehr), me_json=_json_for_script(me),
+                           locations_json=_json_for_script(_live_locations_payload(tour.id)),
+                           can_share=can_share, share_hint=share_hint,
+                           stale_s=LIVE_STALE_S, fresh_s=LIVE_FRESH_S)
+
+
 @app.route('/api/location/update', methods=['POST'])
 @login_required
 def location_update():
-    """Eigenen Live-Standort aktualisieren."""
-    data = request.get_json() or {}
+    """Eigenen Live-Standort melden. Build aa: nur im Zeitfenster um den Tourtag (403 mit Hinweis),
+    zusätzlich Tempo/Richtung, Antwort enthält gleich alle Standorte (spart dem Sender das Polling)."""
+    data = request.get_json(silent=True) or {}
     tour_id  = data.get('tour_id')
     lat      = data.get('lat')
     lng      = data.get('lng')
     accuracy = data.get('accuracy')
-    if not all([tour_id, lat, lng]):
+    if tour_id is None or lat is None or lng is None:
         return jsonify({'error': 'missing data'}), 400
-    # Audit 1.4.0: Zahlen erzwingen (keine Strings/Objekte in der DB)
-    try:
+    try:                                                  # Audit 1.4.0: Zahlen erzwingen
         tour_id  = int(tour_id)
         lat, lng = float(lat), float(lng)
         accuracy = float(accuracy) if accuracy is not None else None
@@ -3995,54 +4131,54 @@ def location_update():
         return jsonify({'error': 'invalid data'}), 400
     if not (-90 <= lat <= 90 and -180 <= lng <= 180):
         return jsonify({'error': 'invalid coordinates'}), 400
-    _tour_or_404(tour_id)
-    from datetime import datetime as _dt
-    existing = LiveLocation.query.filter_by(
-        tour_id=tour_id, user_id=current_user.id
-    ).first()
+
+    def _opt_float(v, lo, hi):
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return f if lo <= f <= hi and f == f else None
+    speed   = _opt_float(data.get('speed'), 0, 60)        # m/s
+    heading = _opt_float(data.get('heading'), 0, 360)     # Grad
+    tour = _tour_or_404(tour_id)
+    ok, hint = _live_share_window(tour)
+    if not ok:
+        return jsonify({'error': hint}), 403
+    now = datetime.utcnow()
+    existing = LiveLocation.query.filter_by(tour_id=tour_id, user_id=current_user.id).first()
     if existing:
-        existing.lat = lat; existing.lng = lng
-        existing.accuracy = accuracy
-        existing.updated_at = _dt.utcnow()
+        existing.lat, existing.lng, existing.accuracy = lat, lng, accuracy
+        existing.speed, existing.heading = speed, heading
+        existing.updated_at = now
     else:
-        db.session.add(LiveLocation(
-            tour_id=tour_id, user_id=current_user.id,
-            lat=lat, lng=lng, accuracy=accuracy
-        ))
+        db.session.add(LiveLocation(tour_id=tour_id, user_id=current_user.id, lat=lat, lng=lng,
+                                    accuracy=accuracy, speed=speed, heading=heading, updated_at=now))
+    import random
+    if random.random() < 0.05:
+        _live_cleanup(now)
     db.session.commit()
-    return jsonify({'ok': True})
+    return jsonify({'ok': True, 'locations': _live_locations_payload(tour_id, now)})
 
 
 @app.route('/api/location/tour/<int:tour_id>')
 @login_required
 def location_get(tour_id):
-    """Alle Live-Standorte einer Tour abrufen (Polling)."""
+    """Alle aktuellen Live-Standorte einer Tour (Polling der Live-Karte)."""
     _tour_or_404(tour_id)   # Audit 1.4.0: nur Touren der eigenen Gruppe
-    from datetime import datetime as _dt, timedelta
-    # Nur Standorte die in den letzten 10 Minuten aktualisiert wurden
-    cutoff = _dt.utcnow() - timedelta(minutes=10)
-    locs = LiveLocation.query.filter(
-        LiveLocation.tour_id == tour_id,
-        LiveLocation.updated_at >= cutoff
-    ).all()
-    return jsonify({'locations': [{
-        'user_id':  l.user_id,
-        'name':     l.user.display_name if l.user else 'Unbekannt',
-        'lat':      l.lat,
-        'lng':      l.lng,
-        'accuracy': l.accuracy,
-        'ago':      int((_dt.utcnow() - l.updated_at).total_seconds()),
-    } for l in locs]})
+    return jsonify({'locations': _live_locations_payload(tour_id), 'stale_s': LIVE_STALE_S})
 
 
 @app.route('/api/location/stop', methods=['POST'])
 @login_required
 def location_stop():
-    """Eigenen Live-Standort entfernen."""
-    data = request.get_json() or {}
-    LiveLocation.query.filter_by(
-        tour_id=data.get('tour_id'), user_id=current_user.id
-    ).delete()
+    """Eigenen Live-Standort entfernen – auch per sendBeacon beim Verlassen der Seite (dann steht die
+    tour_id in der URL und der Body ist leer)."""
+    data = request.get_json(silent=True) or {}
+    raw = data.get('tour_id') or request.form.get('tour_id') or request.args.get('tour_id') or ''
+    tour_id = _parse_int(str(raw))
+    if not tour_id:
+        return jsonify({'error': 'tour_id fehlt'}), 400
+    LiveLocation.query.filter_by(tour_id=tour_id, user_id=current_user.id).delete()
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -4846,11 +4982,275 @@ def closed_days(text):
     return seen
 
 
+# ─── Build z: Mittagstisch – Öffnungszeiten je Wochentag auswerten ─────────────────────────────
+_OH_DE2EN = {'Mo': 'Mo', 'Di': 'Tu', 'Mi': 'We', 'Do': 'Th', 'Fr': 'Fr', 'Sa': 'Sa', 'So': 'Su'}
+_OH_TOKEN = re.compile(
+    r'(?P<sep>;)'
+    r'|(?P<allday>24/7)'
+    r'|(?P<time>(?<!\d)(?P<h1>\d{1,2})(?:[:.](?P<m1>\d{2}))?\s*-\s*(?P<h2>\d{1,2})(?:[:.](?P<m2>\d{2}))?(?!\d))'
+    r'|(?P<open>(?<!\d)(?P<h3>\d{1,2})(?:[:.](?P<m3>\d{2}))?\+)'
+    r'|(?P<days>\b(?P<d1>Mo|Tu|We|Th|Fr|Sa|Su)\b(?:\s*-\s*\b(?P<d2>Mo|Tu|We|Th|Fr|Sa|Su)\b)?)'
+    r'|(?P<off>\b(?i:off|closed|geschlossen|ruhetag)\b)'
+    r'|(?P<hol>\b(?:PH|SH)\b)')
+_LUNCH_SUB_DE = {'menu': 'Mittagsmenü', 'buffet': 'Buffet', 'specials': 'Tagesgerichte', 'tourist_menu': 'Touristenmenü'}
+_CUISINE_DE = {'german': 'deutsch', 'regional': 'regional', 'local': 'regional', 'italian': 'italienisch', 'pizza': 'Pizza',
+               'pasta': 'Pasta', 'greek': 'griechisch', 'burger': 'Burger', 'kebab': 'Döner', 'turkish': 'türkisch',
+               'asian': 'asiatisch', 'chinese': 'chinesisch', 'thai': 'thailändisch', 'vietnamese': 'vietnamesisch',
+               'indian': 'indisch', 'sushi': 'Sushi', 'japanese': 'japanisch', 'fish': 'Fisch', 'seafood': 'Fisch & Meeresfrüchte',
+               'steak_house': 'Steakhaus', 'international': 'international', 'bavarian': 'bayrisch', 'austrian': 'österreichisch',
+               'french': 'französisch', 'spanish': 'spanisch', 'tapas': 'Tapas', 'mexican': 'mexikanisch', 'american': 'amerikanisch',
+               'coffee_shop': 'Kaffee & Kuchen', 'cake': 'Kuchen', 'ice_cream': 'Eis', 'breakfast': 'Frühstück',
+               'sausage': 'Wurst', 'friture': 'Frittiertes', 'chicken': 'Hähnchen', 'bistro': 'Bistro', 'crepe': 'Crêpes',
+               'pancake': 'Pfannkuchen', 'vegetarian': 'vegetarisch', 'vegan': 'vegan', 'barbecue': 'Grill',
+               'fine_dining': 'gehobene Küche', 'bakery': 'Backwaren', 'sandwich': 'Sandwiches', 'noodle': 'Nudeln',
+               'balkan': 'Balkan', 'croatian': 'kroatisch', 'portuguese': 'portugiesisch', 'frisian': 'friesisch',
+               'lunch': 'Mittagstisch', 'soup': 'Suppen', 'potato': 'Kartoffelgerichte', 'dumplings': 'Klöße'}
+
+
+def _oh_normalize(text):
+    """Deutschen Öffnungszeiten-Freitext in die OSM-Schreibweise überführen (Tagesnamen, „bis“, „Uhr“,
+    „täglich“, „Feiertag“, „Ruhetag:“), damit _oh_week() beides mit einem Tokenizer lesen kann."""
+    s = str(text).replace('–', '-').replace('—', '-').replace('−', '-').replace('||', ';')
+    s = re.sub(r'(\d)\s*h\b', r'\1 ', s, flags=re.I)                  # „9h–18h“
+    s = re.sub(r'\bUhr\b', ' ', s, flags=re.I)
+    s = re.sub(r'\b(?:täglich|taeglich|daily|jeden Tag|alle Tage)\b', 'Mo-Su', s, flags=re.I)
+    s = re.sub(r'\bbis\b', '-', s, flags=re.I)
+    s = re.sub(r'\b(montags?|dienstags?|mittwochs?|donnerstags?|freitags?|samstags?|sonnabends?|sonntags?)\b',
+               lambda m: _OH_DE2EN[_DE_DAY_WORDS[m.group(1).lower().rstrip('s')]], s, flags=re.I)
+    s = re.sub(r'\b(Di|Mi|Do|So)\b\.?', lambda m: _OH_DE2EN[m.group(1)], s)
+    s = re.sub(r'\bFeiertage?n?s?\b', 'PH', s, flags=re.I)
+    s = re.sub(r'\bRuhetage?\s*:\s*', 'Ruhetag ', s, flags=re.I)
+    return s
+
+
+def _oh_week(text):
+    """Build z: Öffnungszeiten (OSM-opening_hours oder deutscher Kurztext) → Dict Wochentag (0 = Mo … 6 = So)
+    → Liste offener Zeitfenster in Minuten [(start, ende), …]; [] = geschlossen, None = keine Angabe.
+    Spätere Regeln überschreiben frühere (OSM-Semantik); nennt eine Regel mit Uhrzeit ausdrücklich Tage,
+    gelten nicht genannte Tage als geschlossen. Rückgabe None, wenn nichts Verwertbares erkannt wurde."""
+    if not text:
+        return None
+    s = _oh_normalize(text)
+    groups = []
+
+    def new():
+        return {'days': [], 'times': [], 'off': False, 'hol': False, 'explicit': True}
+
+    def flush(g):
+        if not (g['times'] or g['off']):
+            if g['days'] and not g['hol']:
+                g['times'] = [(0, 1440)]            # „Di-So“ ohne Uhrzeit: geöffnet, Zeiten unbekannt
+            else:
+                return
+        if not g['days']:
+            if g['hol']:
+                return                              # „PH off“: betrifft nur Feiertage
+            g['days'] = list(range(7))
+            g['explicit'] = False
+        groups.append(g)
+
+    g = new()
+    for m in _OH_TOKEN.finditer(s):
+        kind = m.lastgroup
+        if kind == 'sep':
+            flush(g); g = new()
+        elif kind == 'hol':
+            g['hol'] = True
+        elif kind == 'days':
+            if g['days'] and (g['times'] or g['off']):  # „Mo-Fr 9-18, Sa 9-13“: neue Gruppe in derselben Regel
+                flush(g); g = new()
+            a = _OH_DAYS_EN.index(m.group('d1'))
+            if m.group('d2'):
+                b = _OH_DAYS_EN.index(m.group('d2'))
+                rng = list(range(a, b + 1)) if a <= b else list(range(a, 7)) + list(range(0, b + 1))
+            else:
+                rng = [a]
+            g['days'] += [d for d in rng if d not in g['days']]
+        elif kind == 'off':
+            g['off'] = True
+            g['times'] = []
+        elif kind == 'allday':
+            g['times'].append((0, 1440))
+        elif kind == 'open':
+            h, mi = int(m.group('h3')), int(m.group('m3') or 0)
+            if h <= 24 and mi < 60:
+                g['times'].append((h * 60 + mi, 1440))
+        else:                                       # time
+            h1, m1 = int(m.group('h1')), int(m.group('m1') or 0)
+            h2, m2 = int(m.group('h2')), int(m.group('m2') or 0)
+            if h1 > 24 or h2 > 24 or m1 >= 60 or m2 >= 60:
+                continue
+            a, b = h1 * 60 + m1, h2 * 60 + m2
+            if b <= a:
+                b += 1440                           # über Mitternacht
+            g['times'].append((a, b))
+    flush(g)
+    if not groups:
+        return None
+    week = {i: None for i in range(7)}
+    for x in groups:
+        for d in x['days']:
+            week[d] = [] if x['off'] else list(x['times'])
+    if any(x['explicit'] and not x['off'] for x in groups):
+        for d in range(7):
+            if week[d] is None:
+                week[d] = []
+    return week
+
+
+def noon_days(text, kitchen=None):
+    """Build z: Wochentage (OSM-Kürzel Mo…Su), an denen laut Öffnungszeiten mittags geöffnet ist –
+    um 12:45 Uhr offen und mindestens 60 Minuten zwischen 12 und 14 Uhr. Küchenzeiten
+    (opening_hours:kitchen) gehen vor, wenn lesbar. None = keine Uhrzeiten erkennbar."""
+    week = _oh_week(kitchen) if kitchen else None
+    if not week or not any(week.values()):
+        week = _oh_week(text)
+    if not week or not any(week.values()):
+        return None
+    out = []
+    for i, code in enumerate(_OH_DAYS_EN):
+        for a, b in (week.get(i) or []):
+            if a <= 765 < b and min(b, 840) - max(a, 720) >= 60:
+                out.append(code)
+                break
+    return out
+
+
+def days_de(codes):
+    """['Mo','Tu','We','Th','Fr'] → „Mo–Fr“, ['Tu','Th','Sa'] → „Di, Do, Sa“, alle sieben → „täglich“."""
+    idx = sorted({_OH_DAYS_EN.index(c) for c in (codes or []) if c in _OH_DAYS_EN})
+    if len(idx) == 7:
+        return 'täglich'
+    runs, run = [], []
+    for i in idx:
+        if run and i != run[-1] + 1:
+            runs.append(run); run = []
+        run.append(i)
+    if run:
+        runs.append(run)
+    parts = []
+    for r in runs:
+        de = [_OH_DAYS_DE[_OH_DAYS_EN[i]] for i in r]
+        parts.append(f'{de[0]}–{de[-1]}' if len(de) >= 3 else ', '.join(de))
+    return ', '.join(parts)
+
+
+def _lunch_status(flag, text, days):
+    """Gemeinsame Bewertung für eigene Einträge und OSM-Treffer → (status, label, kurz).
+    status: 'yes' Mittagstisch bestätigt · 'no' ausdrücklich keiner · 'noon' laut Öffnungszeiten mittags
+    geöffnet · 'noon_closed' laut Öffnungszeiten mittags zu · None keine Angaben."""
+    flag = (flag or '').strip().lower()
+    text = (text or '').strip()
+    if flag == 'yes':
+        return 'yes', '🍽️ Mittagstisch' + (f': {text}' if text else ''), 'Mittagstisch'
+    if flag == 'no':
+        return 'no', 'kein Mittagstisch' + (f' ({text})' if text else ''), 'kein Mittagstisch'
+    if days:
+        kurz = 'mittags geöffnet' + ('' if len(days) == 7 else ' ' + days_de(days))
+        return 'noon', '🕛 ' + kurz, kurz
+    if days is not None:
+        return 'noon_closed', 'mittags geschlossen', 'mittags geschlossen'
+    return None, '', ''
+
+
+@app.template_global('lunch_info')
+def lunch_info(spot):
+    """Build z: Mittagstisch-Auskunft zu einem Gastro-Eintrag (Flag + Text aus dem Formular, sonst aus den
+    Öffnungszeiten abgeleitet) → Dict(status, label, short, days (deutsche Kürzel), days_de, text, noon_known)."""
+    hours = getattr(spot, 'hours_text', None) or ''
+    if not hours and getattr(spot, 'opens_at', None) and getattr(spot, 'closes_at', None):
+        hours = f'{spot.opens_at}-{spot.closes_at}'
+    days = noon_days(hours)
+    status, label, short = _lunch_status(getattr(spot, 'lunch', None), getattr(spot, 'lunch_text', None), days)
+    return {'status': status, 'label': label, 'short': short,
+            'days': [_OH_DAYS_DE[d] for d in (days or [])], 'days_de': days_de(days) if days else '',
+            'text': (getattr(spot, 'lunch_text', None) or '').strip(), 'noon_known': days is not None}
+
+
+def _lunch_from_tags(tags):
+    """Build z: OSM-Tags lunch=yes|no|menu|buffet|<Zeiten>, lunch:menu/buffet/specials/tourist_menu=*
+    → ('yes' | 'no' | None, Kurztext für die Anzeige)."""
+    main = (tags.get('lunch') or '').strip()
+    if main.lower() == 'no':
+        return 'no', ''
+    parts = []
+    if main and main.lower() != 'yes':
+        parts.append({'menu': 'Mittagsmenü', 'buffet': 'Buffet'}.get(main.lower()) or hours_de(main))
+    for key, label in _LUNCH_SUB_DE.items():
+        v = (tags.get('lunch:' + key) or '').strip()
+        if v and v.lower() != 'no':
+            parts.append(label + ('' if v.lower() == 'yes' else ' ' + hours_de(v)))
+    if main or parts:
+        return 'yes', ' · '.join(parts)[:200]
+    return None, ''
+
+
+def _cuisine_de(value):
+    """OSM cuisine=german;regional → „deutsch, regional“."""
+    out = []
+    for v in re.split(r'[;,]', value or ''):
+        v = v.strip().lower()
+        if v:
+            out.append(_CUISINE_DE.get(v, v.replace('_', ' ')))
+    return ', '.join(dict.fromkeys(out))
+
+
+def _lunch_enrich_result(r, tags):
+    """OSM-Treffer um Mittagstisch-Felder ergänzen (Server und Browser-Fallback liefern dieselben Felder)."""
+    r['lunch'], r['lunch_text'] = _lunch_from_tags(tags)
+    r['kitchen_hours'] = tags.get('opening_hours:kitchen', '') or ''
+    r['cuisine'] = _cuisine_de(tags.get('cuisine', ''))
+    days = noon_days(r.get('opening_hours', ''), r['kitchen_hours'])
+    r['noon_days'] = [_OH_DAYS_DE[d] for d in (days or [])]
+    r['noon_known'] = days is not None
+    r['lunch_status'], r['lunch_label'], _kurz = _lunch_status(r['lunch'], r['lunch_text'], days)
+    return r
+
+
+def open_now(hours_text, opens_at=None, closes_at=None, now=None):
+    """Build aa: ('open' | 'closed' | None, 'HH:MM') – offen bis wann bzw. heute wieder ab wann;
+    None, wenn keine Uhrzeiten lesbar sind. Zeitbasis Europe/Berlin."""
+    hours = hours_text or ''
+    if not hours and opens_at and closes_at:
+        hours = f'{opens_at}-{closes_at}'
+    week = _oh_week(hours)
+    if not week or not any(week.values()):
+        return None, ''
+    if now is None:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo('Europe/Berlin'))
+    wd, minute = now.weekday(), now.hour * 60 + now.minute
+
+    def fmt(m):
+        return f'{(m // 60) % 24:02d}:{m % 60:02d}'
+    for a, b in (week.get((wd - 1) % 7) or []):          # gestern über Mitternacht hinaus geöffnet
+        if b > 1440 and minute < b - 1440:
+            return 'open', fmt(b - 1440)
+    wins = week.get(wd)
+    if wins is None:
+        return None, ''
+    for a, b in wins:
+        if a <= minute < b:
+            return 'open', ('' if (a, b) == (0, 1440) else fmt(b))   # „Di-So“ ohne Uhrzeit: offen, Ende unbekannt
+    later = sorted(a for a, b in wins if a > minute)
+    return 'closed', (fmt(later[0]) if later else '')
+
+
+def _lunch_matches(status, noon_days_de, day=''):
+    """Filter „Mittagstisch“: status yes/noon zählt; mit Wochentag (deutsches Kürzel) muss der Tag passen –
+    ein bestätigter Mittagstisch ohne lesbare Zeiten gilt für jeden Tag."""
+    if status == 'yes':
+        return not day or not noon_days_de or day in noon_days_de
+    if status == 'noon':
+        return not day or day in noon_days_de
+    return False
+
+
 def _gastro_form_vals(spot=None, form=None):
     """Build t: Formularwerte – aus dem Eintrag (Bearbeiten) oder aus der fehlgeschlagenen Eingabe
     (vorher gingen bei einer Fehlermeldung alle eingegebenen Werte verloren)."""
     keys = ('name', 'spot_type', 'address', 'opens_at', 'closes_at', 'hours_text', 'phone', 'website',
-            'notes', 'osm_id', 'lat', 'lng')
+            'notes', 'osm_id', 'lat', 'lng', 'lunch', 'lunch_text')   # Build z: Mittagstisch
     if form is not None:
         vals = {k: (form.get(k) or '') for k in keys}
     elif spot is not None:
@@ -5078,6 +5478,9 @@ def api_gastro_quick_add():
         notes=str(f.get('notes') or '').strip()[:500] or None,
         osm_id=osm_id, added_by=current_user.id,
     )
+    lunch = str(f.get('lunch') or '').strip().lower()                                # Build z: Mittagstisch
+    spot.lunch = lunch if lunch in ('yes', 'no') else None
+    spot.lunch_text = str(f.get('lunch_text') or '').strip()[:200] or None
     db.session.add(spot)
     db.session.commit()
     return jsonify({'ok': True, 'existing': False, 'id': spot.id, 'name': spot.name,
@@ -5154,6 +5557,9 @@ def gastro_list():
     morning_only = request.args.get('morning') == '1'
     typ          = request.args.get('type', '')
     q            = request.args.get('q', '').strip()
+    mittag       = request.args.get('mittag', '').strip()          # Build z: '' | '1' | 'Mo'…'So'
+    if mittag not in ('', '1', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'):
+        mittag = ''
 
     # Persönliche Schwelle zuerst, dann Site-Config, dann Fallback
     morning_threshold = (current_user.morning_opener_until
@@ -5179,6 +5585,11 @@ def gastro_list():
             GastroSpot.opens_at <= morning_threshold
         )
     spots = spots.order_by(GastroSpot.name).all()
+    lunch_by_id = {sp.id: lunch_info(sp) for sp in spots}            # Build z: Mittagstisch je Eintrag
+    if mittag:
+        spots = [sp for sp in spots
+                 if _lunch_matches(lunch_by_id[sp.id]['status'], lunch_by_id[sp.id]['days'],
+                                   '' if mittag == '1' else mittag)]
 
     # Build s: Bewertungsschnitt in EINER Abfrage statt je Karte neu (vorher 221 Abfragen bei 30
     # Einträgen); die Frühöffner-Schwelle liest das Model jetzt einmal je Request (models.morning_threshold)
@@ -5193,13 +5604,15 @@ def gastro_list():
                  'lat': sp.lat, 'lng': sp.lng, 'opens': sp.opens_at or '', 'hours': hours_de(sp.hours_text),
                  'closed': closed_days(sp.hours_text), 'morning': bool(sp.is_morning_friendly),
                  'address': sp.address or '', 'rating': sp.avg_rating,
+                 'lunch_status': lunch_by_id[sp.id]['status'], 'lunch_label': lunch_by_id[sp.id]['label'],
+                 'lunch_text': lunch_by_id[sp.id]['text'], 'noon_days': lunch_by_id[sp.id]['days'],
                  'url': url_for('gastro_detail', spot_id=sp.id)} for sp in spots]
     meeting = None
     m_lat, m_lng = _parse_float(cfg('default_meeting_lat')), _parse_float(cfg('default_meeting_lng'))
     if m_lat is not None and m_lng is not None:
         meeting = {'lat': m_lat, 'lng': m_lng, 'desc': cfg('default_meeting_desc') or 'Treffpunkt'}
     return render_template('gastro/list.html', spots=spots, spots_js=spots_js, meeting=meeting,
-                           gastro_types=GASTRO_TYPES,
+                           gastro_types=GASTRO_TYPES, lunch_by_id=lunch_by_id, mittag=mittag,
                            morning_only=morning_only, typ=typ, q=q,
                            morning_threshold=morning_threshold)
 
@@ -5212,6 +5625,9 @@ def _gastro_fill_from_form(spot):
     spot.opens_at  = request.form.get('opens_at', '').strip()[:5] or None
     spot.closes_at = request.form.get('closes_at', '').strip()[:5] or None
     spot.hours_text = request.form.get('hours_text', '').strip()[:300] or None   # Build t
+    lunch = request.form.get('lunch', '').strip().lower()                           # Build z: Mittagstisch
+    spot.lunch      = lunch if lunch in ('yes', 'no') else None
+    spot.lunch_text = request.form.get('lunch_text', '').strip()[:200] or None
     spot.phone     = request.form.get('phone', '').strip()[:30] or None
     spot.website   = _clean_url(request.form.get('website'))        # Audit 1.4.0: nur http(s)
     spot.notes     = request.form.get('notes', '').strip() or None
@@ -5579,42 +5995,69 @@ def poi_delete(poi_id):
 @app.route('/karte')
 @login_required
 def global_map():
-    # Collect all geo-tagged data for the map
+    """Gruppen-Karte. Build aa: Popups mit Öffnungszeiten/Ruhetag/Mittagstisch/„jetzt geöffnet“ und Links,
+    Filterdaten (Typ, Frühöffner, Mittagstisch, Suche), Treffpunkte mit Tour-Link, Startansicht auf dem
+    Standard-Treffpunkt der Gruppe."""
     pois = POI.query.filter(
         (POI.is_shared == True) | (POI.added_by == current_user.id)
-    ).all()
-    gastro = GastroSpot.query.all()
-    tours  = _gq(Tour).filter(
-        Tour.meeting_lat != None
-    ).filter(Tour.tour_date!=None).order_by(Tour.tour_date.desc()).limit(30).all()
+    ).order_by(POI.name).all()
+    gastro = GastroSpot.query.order_by(GastroSpot.name).all()
+    from sqlalchemy import func as _func                  # Bewertungsschnitt in einer Abfrage (wie gastro_list)
+    avg_rows = (db.session.query(GastroReview.spot_id, _func.avg(GastroReview.score))
+                .filter(GastroReview.score != None).group_by(GastroReview.spot_id).all())
+    avgs = {sid: round(float(a), 1) for sid, a in avg_rows if a is not None}
+    tours = (_gq(Tour).filter(Tour.meeting_lat != None, Tour.meeting_lng != None,
+                              Tour.status != 'cancelled')
+             .order_by(Tour.tour_date.desc()).limit(40).all())
+    today = _berlin_today()
 
-    pois_json   = _json_for_script([{
+    pois_json = _json_for_script([{
         'id': p.id, 'name': p.name, 'cat': p.category,
         'icon': p.category_icon, 'label': p.category_label,
-        'lat': p.lat, 'lng': p.lng, 'desc': p.description or ''
+        'lat': p.lat, 'lng': p.lng, 'desc': p.description or '',
+        'mine': p.added_by == current_user.id, 'url': url_for('poi_list', cat=p.category),
     } for p in pois])
 
-    gastro_json = _json_for_script([{
-        'id': g.id, 'name': g.name, 'type': g.type_label,
-        'lat': g.lat, 'lng': g.lng,
-        'opens': g.opens_at or '', 'closes': g.closes_at or '',
-        'morning': g.is_morning_friendly,
-        'rating': g.avg_rating,
-        'notes': g.notes or ''
-    } for g in gastro])
+    gastro_rows = []
+    for g in gastro:
+        g._avg_rating = avgs.get(g.id)
+        li = lunch_info(g)
+        state, until = open_now(g.hours_text, g.opens_at, g.closes_at)
+        gastro_rows.append({
+            'id': g.id, 'name': g.name, 'type': g.type_label, 'spot_type': g.spot_type,
+            'lat': g.lat, 'lng': g.lng,
+            'opens': g.opens_at or '', 'closes': g.closes_at or '',
+            'hours': hours_de(g.hours_text), 'closed': closed_days(g.hours_text),
+            'morning': bool(g.is_morning_friendly), 'rating': g.avg_rating,
+            'notes': (g.notes or '')[:120], 'address': g.address or '',
+            'lunch_status': li['status'], 'lunch_label': li['label'], 'lunch_text': li['text'],
+            'noon_days': li['days'], 'open_now': state, 'open_until': until,
+            'url': url_for('gastro_detail', spot_id=g.id),
+            'text': f'{g.name} {g.address or ""} {g.notes or ""} {g.type_label} {li["short"]}'.lower(),
+        })
+    gastro_json = _json_for_script(gastro_rows)
 
     meetings_json = _json_for_script([{
         'id': t.id, 'title': t.title,
         'lat': t.meeting_lat, 'lng': t.meeting_lng,
         'desc': t.meeting_desc or '',
-        'date': t.tour_date.strftime('%d.%m.%Y') if t.tour_date else 'offen',
-        'status': t.status
-    } for t in tours if t.meeting_lat])
+        'date': 'offen' if t.is_date_open else t.tour_date.strftime('%d.%m.%Y'),
+        'time': t.start_time or '',
+        'status': t.status,
+        'upcoming': bool(t.status == 'planned' and (t.is_date_open or t.tour_date >= today)),
+        'url': url_for('tour_detail', tour_id=t.id),
+    } for t in tours])
+
+    home = None
+    h_lat, h_lng = _parse_float(cfg('default_meeting_lat')), _parse_float(cfg('default_meeting_lng'))
+    if h_lat is not None and h_lng is not None:
+        home = {'lat': h_lat, 'lng': h_lng, 'desc': cfg('default_meeting_desc') or 'Treffpunkt'}
 
     return render_template('karte.html',
                            pois_json=pois_json,
                            gastro_json=gastro_json,
                            meetings_json=meetings_json,
+                           home_json=_json_for_script(home),
                            poi_categories=POI_CATEGORIES,
                            gastro_types=GASTRO_TYPES,
                            morning_threshold=(current_user.morning_opener_until
@@ -5836,7 +6279,7 @@ def _overpass_elements_to_results(elements):
         kind = tags.get('amenity') or tags.get('shop') or ''
         street = ' '.join(x for x in (tags.get('addr:street'), tags.get('addr:housenumber')) if x)
         city = ' '.join(x for x in (tags.get('addr:postcode'), tags.get('addr:city')) if x)
-        results.append({
+        results.append(_lunch_enrich_result({
             'osm_id':  f"{el.get('type', 'node')}/{el.get('id', '')}",
             'name':    tags.get('name') or kind or 'Unbekannt',
             'type':    kind,
@@ -5846,7 +6289,7 @@ def _overpass_elements_to_results(elements):
             'phone':   tags.get('phone') or tags.get('contact:phone') or '',
             'website': tags.get('website') or tags.get('contact:website') or '',
             'address': ', '.join(x for x in (street, city) if x),
-        })
+        }, tags))                                   # Build z: lunch/kitchen/cuisine + „mittags geöffnet“
     return results
 
 
@@ -6179,6 +6622,550 @@ def rangliste():
                            year=year)
 
 
+# ─── Build w: Fahrzeit/Streckenvorschau, Kalender-Abo, „Nochmal fahren“ ──────
+
+def _track_preview(points, max_pts=60):
+    """Mini-Streckenvorschau als kompakter String 'B,H|x,y x,y …' (längere Seite = 1000 Einheiten,
+    y nach unten, Längengrad mit cos(Breite) gestaucht) – wird in der Archiv-Liste als Inline-SVG
+    gezeichnet, ganz ohne Kachel-Anfragen. Leerer String, wenn der Track zu kurz ist."""
+    import math
+    pts = _simplify_track(points or [], max_pts=max_pts)
+    if len(pts) < 2:
+        return ''
+    kx = math.cos(math.radians(sum(p[0] for p in pts) / len(pts)))
+    xs = [p[1] * kx for p in pts]
+    ys = [p[0] for p in pts]
+    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+    span = max(maxx - minx, maxy - miny)
+    if span <= 0:
+        return ''
+    scale = 1000.0 / span
+    w = max(1, round((maxx - minx) * scale))
+    h = max(1, round((maxy - miny) * scale))
+    coords = ' '.join(f'{round((x - minx) * scale)},{round((maxy - y) * scale)}' for x, y in zip(xs, ys))
+    return f'{w},{h}|{coords}'
+
+
+def _tour_apply_gpx_metrics(tour, parsed):
+    """Fahrzeit, Ø-Tempo (nur bei Zeitstempeln im GPX) und Streckenvorschau aus einem
+    parse_gpx-Ergebnis übernehmen. gpx_preview != NULL gilt danach als „berechnet“."""
+    tour.gpx_moving_s = int(parsed['moving_s']) if parsed.get('moving_s') else None
+    tour.gpx_avg_kmh  = float(parsed['avg_kmh']) if parsed.get('avg_kmh') else None
+    tour.gpx_preview  = _track_preview(parsed.get('points') or [])
+
+
+@app.template_filter('hm')
+def _hm_filter(seconds):
+    """Sekunden → '2:35 h'."""
+    m = int(round((seconds or 0) / 60))
+    return f'{m // 60}:{m % 60:02d} h'
+
+
+@app.template_filter('de1')
+def _de1_filter(value):
+    """Zahl mit einer Nachkommastelle und Komma ('16,8')."""
+    try:
+        return f'{float(value):.1f}'.replace('.', ',')
+    except (TypeError, ValueError):
+        return ''
+
+
+@app.route('/admin/gpx-kennzahlen', methods=['POST'])
+@login_required
+@admin_required
+def admin_gpx_metrics():
+    """Fahrzeit/Ø-Tempo/Streckenvorschau für ältere Touren nachrechnen – zeitbegrenzt
+    (≈20 s pro Klick), bei Bedarf mehrfach klicken."""
+    import time as _time
+    t0, done, failed = _time.time(), 0, 0
+    pending = (Tour.query.filter(Tour.gpx_file != None, Tour.gpx_preview == None)
+               .order_by(Tour.tour_date.desc()).limit(500).all())
+    for t in pending:
+        if _time.time() - t0 > 20:
+            break
+        path = _tour_gpx_path(t)
+        parsed = parse_gpx(path) if path else None
+        if parsed:
+            _tour_apply_gpx_metrics(t, parsed)
+            done += 1
+        else:
+            t.gpx_preview = ''           # Datei fehlt oder unlesbar – nicht wieder versuchen
+            failed += 1
+    db.session.commit()
+    rest = Tour.query.filter(Tour.gpx_file != None, Tour.gpx_preview == None).count()
+    msg = f'GPX-Kennzahlen: {done} Touren berechnet'
+    if failed:
+        msg += f', {failed} ohne lesbare GPX-Datei'
+    msg += f' – noch {rest} offen, bitte erneut klicken.' if rest else ' – alle Touren sind aktuell.'
+    flash(msg, 'info' if rest else 'success')
+    return redirect(url_for('admin_tools'))
+
+
+# Kalender-Abo (webcal): ein Token je Mitglied, Feed ohne Login, nur Touren der eigenen Gruppe
+
+def _ics_escape(text):
+    """Text für iCalendar maskieren (Backslash, Semikolon, Komma, Zeilenumbruch)."""
+    return (str(text or '').replace('\\', '\\\\').replace(';', '\\;').replace(',', '\\,')
+            .replace('\r\n', '\\n').replace('\n', '\\n'))
+
+
+def _ics_fold(line):
+    """RFC 5545: Zeilen auf höchstens 75 Oktette falten (Fortsetzungszeile beginnt mit Leerzeichen)."""
+    out, cur, used = [], '', 0
+    for ch in line:
+        b = len(ch.encode('utf-8'))
+        if used + b > 74:
+            out.append(cur)
+            cur, used = ' ' + ch, 1 + b
+        else:
+            cur += ch
+            used += b
+    out.append(cur)
+    return '\r\n'.join(out)
+
+
+def _ics_join(lines):
+    return '\r\n'.join(_ics_fold(l) for l in lines) + '\r\n'
+
+
+def _ics_event_lines(tour, stamp):
+    """VEVENT-Zeilen einer Tour: stabile UID (Aktualisierungen ersetzen den Termin statt ihn zu
+    doppeln), Start/Ende als lokale Zeit (4 h Dauer wie bisher), Absagen als STATUS:CANCELLED."""
+    base = (app.config.get('BASE_URL') or request.url_root).rstrip('/')
+    m = re.match(r'^\s*(\d{1,2})(?::(\d{2}))?', tour.start_time or '09:00')
+    hh = min(int(m.group(1)), 23) if m else 9
+    mm = min(int(m.group(2) or 0), 59) if m else 0
+    d = tour.tour_date.strftime('%Y%m%d') if (tour.tour_date and not tour.is_date_open) else '20000101'
+    desc = []
+    if tour.status == 'cancelled':
+        desc.append('ABGESAGT')
+    if tour.difficulty:
+        desc.append(f'Schwierigkeit: {tour.difficulty_label}')
+    if tour.gpx_km:
+        desc.append(f'Strecke: {tour.gpx_km} km' + (f', {int(tour.gpx_ascent)} Hm' if tour.gpx_ascent else ''))
+    elif tour.approx_km:
+        desc.append(f'Strecke: ca. {tour.approx_km:g} km')
+    einkehr = _tour_einkehr_text(tour)
+    if einkehr:
+        desc.append(f'Einkehr: {einkehr}')
+    if tour.description:
+        desc.append(tour.description.strip())
+    desc.append(f'Details: {base}/touren/{tour.id}')
+    summary = ('Abgesagt: ' if tour.status == 'cancelled' else '🚴 ') + tour.title
+    lines = ['BEGIN:VEVENT',
+             f'UID:tour-{tour.id}@dejungenolen',
+             f'DTSTAMP:{stamp}',
+             f'DTSTART:{d}T{hh:02d}{mm:02d}00',
+             f'DTEND:{d}T{min(hh + 4, 23):02d}{mm:02d}00',
+             f'SUMMARY:{_ics_escape(summary)}',
+             f'DESCRIPTION:{_ics_escape(chr(10).join(desc))}']
+    if tour.meeting_desc:
+        lines.append(f'LOCATION:{_ics_escape(tour.meeting_desc)}')
+    if tour.meeting_lat and tour.meeting_lng:
+        lines.append(f'GEO:{tour.meeting_lat:.6f};{tour.meeting_lng:.6f}')
+    lines.append(f'URL:{base}/touren/{tour.id}')
+    lines.append('STATUS:' + ('CANCELLED' if tour.status == 'cancelled' else 'CONFIRMED'))
+    lines.append('END:VEVENT')
+    return lines
+
+
+def _tour_einkehr_text(tour):
+    """Build x: geplante Einkehr als Kurztext (Erinnerung, ICS, tour.txt, Teilen) – '' wenn keine."""
+    info = _einkehr_info(tour)
+    if not info:
+        return ''
+    if info['spot']:
+        parts = [info['name']]
+        if info['type_label']:
+            parts.append(info['type_label'])
+        if info['hours']:
+            parts.append(info['hours'])
+        if info.get('lunch') == 'yes':                     # Build z
+            parts.append(info['lunch_label'].replace('🍽️ ', '', 1))
+        txt = ' · '.join(parts)
+        if info['warn']:
+            txt += ' – Achtung: am Tourtag Ruhetag?'
+        elif info.get('noon_warn'):
+            txt += ' – Achtung: am Tourtag mittags geschlossen?'
+        if info['text']:
+            txt += f' ({info["text"]})'
+        return txt
+    return info['text']
+
+
+def _calendar_urls(user):
+    """(https-URL, webcal-URL) des persönlichen Kalender-Feeds; Token wird beim ersten Aufruf erzeugt."""
+    if not user.calendar_token:
+        user.calendar_token = secrets.token_urlsafe(18)
+        db.session.commit()
+    https_url = url_for('calendar_feed', token=user.calendar_token, _external=True)
+    return https_url, re.sub(r'^https?://', 'webcal://', https_url)
+
+
+@app.route('/kalender/<token>.ics')
+def calendar_feed(token):
+    """Abonnierbarer Kalender (Token statt Login): Touren der eigenen Gruppe aus den letzten
+    12 Monaten und alle kommenden; Änderungen und Absagen erscheinen beim nächsten Abgleich."""
+    if not re.fullmatch(r'[A-Za-z0-9_-]{16,64}', token or ''):
+        abort(404)
+    user = User.query.filter_by(calendar_token=token).first()
+    if not user or not user.is_active:
+        abort(404)
+    q = Tour.query.filter(Tour.tour_date != None, Tour.tour_date != date(9999, 12, 31),
+                          Tour.tour_date >= date.today() - timedelta(days=365),
+                          Tour.status.in_(('planned', 'completed', 'cancelled')))
+    if user.group_id:
+        q = q.filter(Tour.group_id == user.group_id)
+    tours = q.order_by(Tour.tour_date).all()
+    grp = Group.query.get(user.group_id) if user.group_id else None
+    stamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+    lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//De jungen Olen//Radgruppe//DE',
+             'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+             f'X-WR-CALNAME:{_ics_escape((grp.name if grp else "De jungen Olen") + " – Touren")}',
+             'X-WR-TIMEZONE:Europe/Berlin',
+             'REFRESH-INTERVAL;VALUE=DURATION:PT6H', 'X-PUBLISHED-TTL:PT6H']
+    for t in tours:
+        lines += _ics_event_lines(t, stamp)
+    lines.append('END:VCALENDAR')
+    resp = make_response(_ics_join(lines))
+    resp.headers['Content-Type'] = 'text/calendar; charset=utf-8'
+    resp.headers['Content-Disposition'] = 'inline; filename="touren.ics"'
+    resp.headers['Cache-Control'] = 'private, max-age=300'
+    return resp
+
+
+@app.route('/profil/kalender/erneuern', methods=['POST'])
+@login_required
+def profil_calendar_renew():
+    """Neuen Kalender-Link erzeugen – der alte Link funktioniert danach nicht mehr."""
+    current_user.calendar_token = secrets.token_urlsafe(18)
+    db.session.commit()
+    flash('Neuer Kalender-Link erzeugt. Bitte das Abo auf dem Handy mit dem neuen Link neu einrichten.', 'success')
+    return redirect(url_for('profil_edit') + '#kalender')
+
+
+@app.route('/touren/<int:tour_id>/nochmal', methods=['POST'])
+@login_required
+@organizer_required
+def tour_repeat(tour_id):
+    """„Nochmal fahren“: Kopie einer (Archiv-)Tour als neue geplante Tour ohne Termin –
+    Titel, Beschreibung, Startzeit, Level, Link, Treffpunkt und GPX-Track werden übernommen,
+    Teilnehmer, Fotos und Fahrzeit nicht."""
+    src = _tour_or_404(tour_id)
+    new_gpx = None
+    path = _tour_gpx_path(src)
+    if path:
+        import shutil
+        new_gpx = f'tour_again_{secrets.token_hex(6)}.gpx'
+        shutil.copy2(path, os.path.join(app.config['UPLOAD_FOLDER_GPX'], new_gpx))
+    from flask import g as _g
+    grp = getattr(_g, 'group', None)
+    tour = Tour(
+        title=src.title, description=src.description,
+        tour_date=date(9999, 12, 31),            # Termin legt der Organisator gleich fest
+        start_time=src.start_time, difficulty=src.difficulty, approx_km=src.approx_km,
+        external_link=src.external_link, gpx_file=new_gpx,
+        gpx_km=src.gpx_km if new_gpx else None, gpx_ascent=src.gpx_ascent if new_gpx else None,
+        gpx_preview=(src.gpx_preview or None) if new_gpx else None,
+        meeting_lat=src.meeting_lat, meeting_lng=src.meeting_lng, meeting_desc=src.meeting_desc,
+        status='planned', created_by=current_user.id,
+        group_id=src.group_id or (grp.id if grp else None),
+    )
+    for col in ('gastro_spot_id', 'einkehr_text'):          # Build x: geplante Einkehr mitnehmen
+        if hasattr(Tour, col):
+            setattr(tour, col, getattr(src, col))
+    db.session.add(tour)
+    db.session.commit()
+    flash(f'„{src.title}“ wird nochmal gefahren – jetzt den Termin festlegen!', 'success')
+    return redirect(url_for('tour_detail', tour_id=tour.id))
+
+
+# ─── Build x: Großschrift, geplante Einkehr, Anwesenheit ───────────────────────────────────
+
+GASTRO_TYPE_LABELS = {'cafe': 'Café', 'kneipe': 'Kneipe/Gasthaus', 'baeckerei': 'Bäckerei',
+                      'restaurant': 'Restaurant', 'imbiss': 'Imbiss', 'other': 'Einkehr'}
+
+
+def _einkehr_info(tour, today=None):
+    """Geplante Einkehr einer Tour als Dict für Templates/Texte oder None.
+    Felder: spot (GastroSpot|None), name, type_label, hours, closed_days, warn (Tourtag = Ruhetag),
+    url, lat, lng, address, text (Freitext)."""
+    spot = None
+    if getattr(tour, 'gastro_spot_id', None):
+        spot = db.session.get(GastroSpot, tour.gastro_spot_id)
+    text = (getattr(tour, 'einkehr_text', None) or '').strip()
+    if not spot and not text:
+        return None
+    if not spot:
+        return {'spot': None, 'name': text, 'type_label': '', 'hours': '', 'closed_days': [],
+                'warn': False, 'url': '', 'lat': None, 'lng': None, 'address': '', 'text': text,
+                'lunch': None, 'lunch_label': '', 'noon_warn': False}
+    cdays = closed_days(getattr(spot, 'hours_text', None)) or []
+    lunch = lunch_info(spot)                                   # Build z: Mittagstisch / mittags geöffnet
+    warn = noon_warn = False
+    try:
+        if tour.tour_date and not tour.is_date_open:
+            wd = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][tour.tour_date.weekday()]
+            warn = any(d.startswith(wd) for d in cdays)
+            noon_warn = bool(lunch['noon_known'] and lunch['status'] not in ('yes', 'no')
+                             and wd not in lunch['days'])
+    except Exception:
+        warn = noon_warn = False
+    hours = hours_de(getattr(spot, 'hours_text', None)) or ''
+    if not hours and spot.opens_at:
+        hours = f'ab {spot.opens_at} Uhr'
+    return {'spot': spot, 'name': spot.name,
+            'type_label': GASTRO_TYPE_LABELS.get(spot.spot_type, 'Einkehr'),
+            'hours': hours, 'closed_days': cdays, 'warn': warn,
+            'url': url_for('gastro_detail', spot_id=spot.id),
+            'lat': spot.lat, 'lng': spot.lng, 'address': spot.address or '', 'text': text,
+            'lunch': lunch['status'], 'lunch_label': lunch['label'], 'noon_warn': noon_warn}
+
+
+def gastro_spot_choices():
+    """Auswahlliste für die Tour-Formulare (alle Gastro-Einträge, alphabetisch)."""
+    try:
+        return [(sp.id, sp.name, GASTRO_TYPE_LABELS.get(sp.spot_type, 'Einkehr'))
+                for sp in GastroSpot.query.order_by(GastroSpot.name).all()]
+    except Exception:
+        return []
+
+
+app.jinja_env.globals['einkehr_info'] = _einkehr_info
+app.jinja_env.globals['gastro_spot_choices'] = gastro_spot_choices
+
+
+def _apply_einkehr_form(tour):
+    """Formularfelder gastro_spot_id / einkehr_text (Tour anlegen/bearbeiten) auf die Tour schreiben."""
+    raw = (request.form.get('gastro_spot_id') or '').strip()
+    spot_id = int(raw) if raw.isdigit() else None
+    if spot_id and not db.session.get(GastroSpot, spot_id):
+        spot_id = None
+    tour.gastro_spot_id = spot_id
+    tour.einkehr_text = (request.form.get('einkehr_text') or '').strip()[:200] or None
+
+
+def _planned_einkehr_entry(tour, points):
+    """Video (Build j-Folie): geplante Einkehr als erste Zeile – mit km/Abstand, wenn ein Track da ist."""
+    info = _einkehr_info(tour)
+    if not info or not info['spot']:
+        return None
+    sp = info['spot']
+    entry = {'id': sp.id, 'name': sp.name, 'spot_type': sp.spot_type, 'type_label': info['type_label'],
+             'lat': sp.lat, 'lng': sp.lng, 'dist_m': 0, 'km': 0.0, 'frac': 0.0,
+             'opens_at': sp.opens_at or '', 'hours': info['hours'], 'closed_days': info['closed_days'],
+             'lunch_status': info.get('lunch'), 'lunch_label': info.get('lunch_label', ''),
+             'planned': True, 'km_known': False}
+    try:
+        import math as _m
+        pts = [pt for pt in points if pt.get('lat') is not None and pt.get('lng') is not None]
+        if len(pts) >= 2:
+            m_lat = 111_320.0
+            m_lng = 111_320.0 * _m.cos(_m.radians(pts[0]['lat']))
+            cum, best_d, best_i = [0.0], 1e12, 0
+            for a, b in zip(pts, pts[1:]):
+                cum.append(cum[-1] + _m.hypot((b['lat'] - a['lat']) * m_lat, (b['lng'] - a['lng']) * m_lng))
+            for i, pt in enumerate(pts):
+                d = _m.hypot((pt['lat'] - sp.lat) * m_lat, (pt['lng'] - sp.lng) * m_lng)
+                if d < best_d:
+                    best_d, best_i = d, i
+            entry.update({'dist_m': int(round(best_d)), 'km': round(cum[best_i] / 1000, 1),
+                          'frac': best_i / max(1, len(pts) - 1), 'km_known': True})
+    except Exception:
+        pass
+    return entry
+
+
+def _can_manage_tour(tour):
+    return current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id
+
+
+@app.route('/touren/<int:tour_id>/einkehr', methods=['POST'])
+@login_required
+def tour_set_einkehr(tour_id):
+    """Geplante Einkehr setzen/entfernen – aus der Gastro-Ebene, der OSM-Streckensuche (JSON) oder
+    dem ✕ in der Tour-Kopfzeile (Formular). spot_id leer/0 = entfernen."""
+    tour = _tour_or_404(tour_id)
+    if not _can_manage_tour(tour):
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    raw = data.get('spot_id') if data else request.form.get('spot_id')
+    raw = str(raw if raw is not None else '').strip()
+    spot = db.session.get(GastroSpot, int(raw)) if raw.isdigit() and int(raw) > 0 else None
+    tour.gastro_spot_id = spot.id if spot else None
+    if 'einkehr_text' in (data or request.form):
+        tour.einkehr_text = str((data or request.form).get('einkehr_text') or '').strip()[:200] or None
+    elif not spot:
+        tour.einkehr_text = None
+    db.session.commit()
+    txt = _tour_einkehr_text(tour)
+    if data or request.is_json:
+        return jsonify({'ok': True, 'spot_id': tour.gastro_spot_id, 'text': txt})
+    flash(f'Einkehr: {txt}' if txt else 'Einkehr entfernt.', 'success')
+    return redirect(url_for('tour_detail', tour_id=tour.id))
+
+
+@app.route('/profil/grossschrift', methods=['POST'])
+@login_required
+def profil_large_text():
+    """Großschrift-Modus ein-/ausschalten (pro Nutzer gespeichert) – aus dem Konto-Menü."""
+    current_user.large_text = not bool(getattr(current_user, 'large_text', False))
+    db.session.commit()
+    flash('Große Schrift eingeschaltet.' if current_user.large_text else 'Normale Schrift eingeschaltet.', 'info')
+    from urllib.parse import urlsplit
+    ref = urlsplit(request.referrer or '')
+    if ref.netloc == request.host and ref.path and not ref.path.startswith('/profil/grossschrift'):
+        return redirect(ref.path + (f'?{ref.query}' if ref.query else ''))   # nur eigener Host, nur Pfad
+    return redirect(url_for('my_profil'))
+
+
+def _self_confirm_window(tour, today=None):
+    """Darf ein Teilnehmer „Ich war dabei“ drücken? Nur am Tourtag und bis 3 Tage danach."""
+    today = today or date.today()
+    if not tour.tour_date or tour.is_date_open or tour.status not in ('planned', 'completed'):
+        return False
+    return tour.tour_date <= today <= tour.tour_date + timedelta(days=3)
+
+
+@app.route('/touren/<int:tour_id>/ich-war-dabei', methods=['POST'])
+@login_required
+def tour_self_confirm(tour_id):
+    """Selbstbestätigung der Teilnahme (zählt für die Rangliste) – am Tourtag und bis 3 Tage danach."""
+    tour = _tour_or_404(tour_id)
+    if not _self_confirm_window(tour):
+        flash('Die Teilnahme kann nur am Tourtag und bis drei Tage danach bestätigt werden.', 'warning')
+        return redirect(url_for('tour_detail', tour_id=tour.id))
+    p = TourParticipant.query.filter_by(tour_id=tour.id, user_id=current_user.id).first()
+    if not p:
+        p = TourParticipant(tour_id=tour.id, user_id=current_user.id, status='attending')
+        db.session.add(p)
+    p.status = 'attending'
+    p.confirmed_present = True
+    db.session.commit()
+    flash('Danke – deine Teilnahme ist bestätigt.', 'success')
+    return redirect(url_for('tour_detail', tour_id=tour.id) + '#teilnehmer')
+
+
+def _attendance_recipients(tour):
+    """Ersteller + aktive Organisatoren/Admins der Tour-Gruppe (ohne Dubletten)."""
+    seen, out = set(), []
+    q = User.query.filter(User.is_active == True, User.role.in_(['organizer', 'admin']))  # noqa: E712
+    if tour.group_id:
+        q = q.filter(User.group_id == tour.group_id)
+    cands = ([tour.creator] if tour.creator else []) + q.all()
+    for u in cands:
+        if u and u.id not in seen:
+            seen.add(u.id)
+            out.append(u)
+    return out
+
+
+def _attendance_open(tour):
+    return not any(p.confirmed_present for p in tour.participants)
+
+
+def _send_attendance_reminder_for_tour(tour):
+    """Abend-Push „Wer war dabei?“ an Ersteller/Organisatoren; ohne Push-Abo E-Mail an den Ersteller."""
+    n_att = sum(1 for p in tour.participants if p.status == 'attending')
+    body = f'„{tour.title}“ ({tour.tour_date.strftime("%d.%m.")}): {n_att} angemeldet – bitte Anwesenheit abhaken, damit die Rangliste stimmt.'
+    url = f'/touren/{tour.id}#anwesenheit'
+    sent = 0
+    for u in _attendance_recipients(tour):
+        try:
+            n, _ = send_push_to_user(u, title='✅ Wer war dabei?', body=body, url=url)
+            sent += n
+        except Exception as e:
+            app.logger.warning(f'attendance push failed for user {u.id}: {e}')
+    if not sent and tour.creator and tour.creator.email:
+        try:
+            send_mail(tour.creator.email, f'Wer war dabei? – {tour.title}',
+                      f'Moin {tour.creator.display_name},\n\n{body}\n\n'
+                      f'{app.config["BASE_URL"]}{url}\n\nDe jungen Olen')
+        except Exception as e:
+            app.logger.warning(f'attendance mail failed: {e}')
+    tour.attendance_reminded_at = datetime.utcnow()
+    return sent
+
+
+def _run_attendance_reminders(force=False):
+    """Fällige Touren (Tourtag bis 3 Tage zurück, nichts bestätigt, noch nicht erinnert) anstoßen.
+    Ohne force nur abends ab 17 Uhr (Europe/Berlin). Liefert die Zahl der erinnerten Touren."""
+    today = date.today()
+    if not force:
+        try:
+            from zoneinfo import ZoneInfo
+            hour = datetime.now(ZoneInfo('Europe/Berlin')).hour
+        except Exception:
+            hour = datetime.now().hour
+        if hour < 17:
+            return 0
+    due = Tour.query.filter(Tour.status.in_(['planned', 'completed']),
+                            Tour.tour_date <= today,
+                            Tour.tour_date >= today - timedelta(days=3),
+                            Tour.attendance_reminded_at == None).all()   # noqa: E711
+    done = 0
+    for tour in due:
+        if _attendance_open(tour):
+            _send_attendance_reminder_for_tour(tour)
+            done += 1
+        else:
+            tour.attendance_reminded_at = datetime.utcnow()   # schon abgehakt → nicht mehr erinnern
+    if due:
+        db.session.commit()
+    return done
+
+
+@app.before_request
+def _self_trigger_attendance_reminder():
+    """Wie die Morgen-Erinnerung: ohne Cron, ~3 % der Requests prüfen abends, ob eine Tour offen ist."""
+    if request.endpoint in ('static', 'service_worker', 'api_backup_trigger'):
+        return
+    import random
+    if random.random() > 0.03:
+        return
+    try:
+        flag_key = f'attendance_reminder_run_{date.today().isoformat()}'
+        if cfg(flag_key) == '1':
+            return
+        if _run_attendance_reminders() >= 0:
+            try:
+                from zoneinfo import ZoneInfo
+                hour = datetime.now(ZoneInfo('Europe/Berlin')).hour
+            except Exception:
+                hour = datetime.now().hour
+            if hour >= 17:                      # Tagesflag erst setzen, wenn der Abendlauf wirklich stattfand
+                SiteConfig.set(flag_key, '1')
+                db.session.commit()
+    except Exception as e:
+        app.logger.warning(f'Self-trigger attendance reminder error: {e}')
+
+
+def _attendance_todo(group_id, today=None, days=14):
+    """Für Organisatoren: Touren der letzten `days` Tage ohne eine einzige bestätigte Teilnahme."""
+    today = today or date.today()
+    q = Tour.query.filter(Tour.status.in_(['planned', 'completed']),
+                          Tour.tour_date <= today,
+                          Tour.tour_date >= today - timedelta(days=days))
+    if group_id:
+        q = q.filter(Tour.group_id == group_id)
+    return [t for t in q.order_by(Tour.tour_date.desc()).all() if _attendance_open(t)]
+
+
+@app.route('/admin/anwesenheit-erinnern', methods=['POST'])
+@login_required
+@admin_required
+def admin_attendance_reminders():
+    """Admin → Werkzeuge: Abend-Erinnerung sofort prüfen/verschicken (ohne Uhrzeit-Sperre)."""
+    try:
+        n = _run_attendance_reminders(force=True)
+        flash(f'Anwesenheits-Erinnerung: {n} Tour(en) angestoßen.' if n else
+              'Anwesenheits-Erinnerung: keine offene Tour der letzten 3 Tage.', 'success' if n else 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Fehler: {e}', 'danger')
+    return redirect(url_for('admin_tools'))
+
+
 # ─── Build v: Downloads – GPX-Einzeldatei, GPX-ZIP nach Auswahl, Tour-Paket ──
 
 def _safe_filename_part(text, maxlen=40):
@@ -6317,7 +7304,8 @@ def _tour_package_text(tour, participants, photos, photo_names, videos, gpx_name
         treff += f' ({tour.meeting_lat:.5f}, {tour.meeting_lng:.5f})'
     rows = [('Titel', tour.title), ('Datum', datum), ('Status', status),
             ('Schwierigkeit', tour.difficulty_label), ('Strecke', strecke),
-            ('Treffpunkt', treff.strip() or '–'), ('Link', tour.external_link or ''),
+            ('Treffpunkt', treff.strip() or '–'), ('Einkehr', _tour_einkehr_text(tour)),   # Build x
+            ('Link', tour.external_link or ''),
             ('Organisiert von', tour.creator.display_name if tour.creator else ''),
             ('Tour-Seite', url_for('tour_detail', tour_id=tour.id, _external=True))]
     try:
@@ -7103,6 +8091,10 @@ def rueckblick(year=None):
 
     total_km      = sum(t.gpx_km for t in tours if t.gpx_km)
     total_ascent  = sum(t.gpx_ascent for t in tours if t.gpx_ascent)
+    # Build w: Fahrzeit (nur Touren mit Zeitstempeln im GPX) und streckengewichtetes Ø-Tempo
+    total_moving_s = sum(t.gpx_moving_s for t in tours if t.gpx_moving_s)
+    km_timed       = sum(t.gpx_km for t in tours if t.gpx_moving_s and t.gpx_km)
+    avg_kmh_year   = round(km_timed / (total_moving_s / 3600), 1) if total_moving_s else None
     # Fotozählung in einer Abfrage statt N+1
     photo_counts = dict(db.session.query(
         TourPhoto.tour_id, db.func.count(TourPhoto.id)
@@ -7140,6 +8132,7 @@ def rueckblick(year=None):
                            year=year, tours=tours,
                            total_km=round(total_km,1),
                            total_ascent=int(total_ascent),
+                           total_moving_s=total_moving_s, avg_kmh_year=avg_kmh_year,
                            total_photos=total_photos,
                            most_active=most_active,
                            monthly_json=monthly_json,
@@ -7220,6 +8213,7 @@ def profil_edit():
         current_user.nickname    = request.form.get('nickname','').strip() or None
         current_user.bicycle_type = request.form.get('bicycle_type', current_user.bicycle_type)
         current_user.is_ebike    = bool(request.form.get('is_ebike'))
+        current_user.large_text  = bool(request.form.get('large_text'))   # Build x
         current_user.bio         = request.form.get('bio','').strip() or None
         bday = request.form.get('birthday','').strip()
         if bday:
@@ -7243,7 +8237,8 @@ def profil_edit():
         db.session.commit()
         flash('Profil gespeichert!', 'success')
         return redirect(url_for('my_profil'))
-    return render_template('profil_edit.html')
+    cal_https, cal_webcal = _calendar_urls(current_user)              # Build w: Kalender-Abo
+    return render_template('profil_edit.html', cal_https=cal_https, cal_webcal=cal_webcal)
 
 
 # ─── Photo management: delete, edit GPS, manual GPS set ─────────────────────
@@ -8036,6 +9031,8 @@ def migrate_db():
     # users table – new columns added over time
     add_column('users', 'last_login', 'DATETIME')
     add_column('gastro_spots', 'hours_text', 'VARCHAR(300)')   # Build t: Öffnungszeiten-Text / Ruhetage
+    add_column('gastro_spots', 'lunch',      'VARCHAR(10)')    # Build z: Mittagstisch yes/no/NULL
+    add_column('gastro_spots', 'lunch_text', 'VARCHAR(200)')   # Build z: Mittagstisch-Details
 
     # Push Subscriptions
     try:
@@ -8062,6 +9059,8 @@ def migrate_db():
         app.logger.debug(f'push/live tables: {e}')
     # ── Nutzer-Spalten ───────────────────────────────────────────────────────
     add_column('users', 'birthday',  'DATE')
+    add_column('live_locations', 'speed',   'REAL')   # Build aa: Tempo (m/s) und Richtung (Grad)
+    add_column('live_locations', 'heading', 'REAL')
 
     # ── Multi-Tenancy: Gruppen ────────────────────────────────────────────────
     # groups-Tabelle (Audit 1.4.0: eigene Verbindung – vorher wurde die bereits
@@ -8147,6 +9146,14 @@ def migrate_db():
     add_column('tours', 'approx_km',      'FLOAT')
     add_column('tours', 'external_link',  'VARCHAR(500)')
     add_column('tours', 'weather_json',   'TEXT')          # Build q: Wetter-Cache für den Tourtag
+    add_column('tours', 'gpx_moving_s',   'INTEGER')       # Build w: Fahrzeit aus GPX-Zeitstempeln
+    add_column('tours', 'gpx_avg_kmh',    'FLOAT')         # Build w: Ø-Tempo
+    add_column('tours', 'gpx_preview',    'TEXT')          # Build w: Mini-Streckenvorschau (NULL = noch nicht berechnet)
+    add_column('users', 'calendar_token', 'VARCHAR(40)')   # Build w: Kalender-Abo
+    add_column('users', 'large_text', 'BOOLEAN DEFAULT 0') # Build x: Großschrift-Modus
+    add_column('tours', 'gastro_spot_id', 'INTEGER')       # Build x: geplante Einkehr (Gastro-Eintrag)
+    add_column('tours', 'einkehr_text', 'VARCHAR(200)')    # Build x: geplante Einkehr (Freitext)
+    add_column('tours', 'attendance_reminded_at', 'DATETIME')  # Build x: Abend-Erinnerung „Wer war dabei?“
     add_column('invite_tokens', 'label',  'VARCHAR(100)')
 
     # gastro_photos Tabelle
@@ -8316,6 +9323,9 @@ def _send_morning_reminder_for_tour(tour):
         )
         if tour.meeting_desc:
             tg_msg += f'📍 Treffpunkt: {tour.meeting_desc}\n'
+        _ek = _tour_einkehr_text(tour)                 # Build x
+        if _ek:
+            tg_msg += f'☕ Einkehr: {_ek}\n'
         tg_msg += f'\n👉 {app.config["BASE_URL"]}/touren/{tour.id}'
         send_telegram(tg_msg)
     except Exception as e:
@@ -8326,6 +9336,8 @@ def _send_morning_reminder_for_tour(tour):
         body = f'Heute{" um " + tour.start_time + " Uhr" if tour.start_time else ""}: {tour.title}'
         if tour.meeting_desc:
             body += f' · {tour.meeting_desc}'
+        if _ek:
+            body += f' · Einkehr: {_ek}'
         for uid in attendee_ids:
             u = User.query.get(uid)
             if u:
@@ -8557,60 +9569,17 @@ def admin_export_tours():
 @app.route('/touren/<int:tour_id>/ical')
 @login_required
 def tour_ical(tour_id):
-    """Generate .ics calendar file for a tour."""
+    """Einzelne Tour als .ics (Build w: gleiche Ereignis-Daten wie das Kalender-Abo, stabile UID,
+    korrekt maskierte Sonderzeichen)."""
     tour = _tour_or_404(tour_id)
-
-    # Build iCal manually – no extra lib needed
-    start_time = tour.start_time or '09:00'
-    # Audit 1.4.0: freie Eingaben wie "9 Uhr" nicht mit 500 quittieren
-    m_time = re.match(r'^\s*(\d{1,2})(?::(\d{2}))?', start_time)
-    hh = min(int(m_time.group(1)), 23) if m_time else 9
-    mm = min(int(m_time.group(2) or 0), 59) if m_time else 0
-    dt_start   = f"{tour.tour_date.strftime('%Y%m%d') if tour.tour_date else '20000101'}T{hh:02d}{mm:02d}00"
-    dt_end     = f"{tour.tour_date.strftime('%Y%m%d') if tour.tour_date else '20000101'}T{min(hh+4,23):02d}{mm:02d}00"
-    dt_stamp   = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
-
-    uid = f"tour-{tour.id}-{dt_stamp}@dejungenolen"
-    location = tour.meeting_desc or ''
-    if tour.meeting_lat and tour.meeting_lng:
-        location += f' ({tour.meeting_lat},{tour.meeting_lng})'
-
-    desc_parts = []
-    if tour.difficulty:
-        desc_parts.append(f'Schwierigkeit: {tour.difficulty_label}')
-    if tour.gpx_km:
-        desc_parts.append(f'Strecke: {tour.gpx_km} km')
-    if tour.description:
-        desc_parts.append(tour.description.replace('\n', '\\n'))
-    desc_parts.append(f'Details: {app.config["BASE_URL"]}/touren/{tour.id}')
-    desc = '\\n'.join(desc_parts)
-
-    ics = (
-        "BEGIN:VCALENDAR\r\n"
-        "VERSION:2.0\r\n"
-        "PRODID:-//De jungen Olen//Radgruppe//DE\r\n"
-        "CALSCALE:GREGORIAN\r\n"
-        "METHOD:PUBLISH\r\n"
-        "BEGIN:VEVENT\r\n"
-        f"UID:{uid}\r\n"
-        f"DTSTAMP:{dt_stamp}\r\n"
-        f"DTSTART:{dt_start}\r\n"
-        f"DTEND:{dt_end}\r\n"
-        f"SUMMARY:🚴 {tour.title}\r\n"
-        f"DESCRIPTION:{desc}\r\n"
-        f"LOCATION:{location}\r\n"
-        "STATUS:CONFIRMED\r\n"
-        "END:VEVENT\r\n"
-        "END:VCALENDAR\r\n"
-    )
-
-    from flask import Response
-    filename = f"tour_{tour.id}_{tour.tour_date}.ics"
-    return Response(
-        ics,
-        mimetype='text/calendar',
-        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
-    )
+    stamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+    lines = (['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//De jungen Olen//Radgruppe//DE',
+              'CALSCALE:GREGORIAN', 'METHOD:PUBLISH']
+             + _ics_event_lines(tour, stamp) + ['END:VCALENDAR'])
+    resp = make_response(_ics_join(lines))
+    resp.headers['Content-Type'] = 'text/calendar; charset=utf-8'
+    resp.headers['Content-Disposition'] = f'attachment; filename="tour_{tour.id}_{tour.tour_date}.ics"'
+    return resp
 
 
 # ─── Mitgliederverzeichnis (B-08) ────────────────────────────────────────────

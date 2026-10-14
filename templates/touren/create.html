@@ -232,6 +232,28 @@ ca. {{ prefill.approx_km|int }} km{% endif %}{% if prefill.link %}
 {{ prefill.link }}{% endif %}{% endif %}</textarea>
               </div>
 
+              {# Build x: geplante Einkehr (Gastro-Eintrag und/oder Freitext) #}
+              <div class="mb-3">
+                <label class="form-label fw-semibold">☕ Geplante Einkehr <span class="text-muted fw-normal">(optional)</span></label>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <select name="gastro_spot_id" class="form-select">
+                      <option value="">– aus der Gastro-Liste wählen –</option>
+                      {% for sid, sname, stype in gastro_spot_choices() %}
+                      <option value="{{ sid }}" {% if none == sid %}selected{% endif %}>{{ sname }} ({{ stype }})</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <input type="text" name="einkehr_text" class="form-control" maxlength="200"
+                           placeholder="oder frei, z. B. Picknick am Deich"
+                           value="{{ prefill.einkehr_text if prefill and prefill.einkehr_text else '' }}">
+                  </div>
+                </div>
+                <div class="form-text">Steht dann im Tour-Kopf, in der Tourtag-Erinnerung, im Kalender-Eintrag und in der Druckansicht.
+                  Auf der Tour-Seite lässt sich die Einkehr auch direkt aus der Karte („Als Einkehr festlegen“) setzen.</div>
+              </div>
+
             </div>
           </div>
         </div>

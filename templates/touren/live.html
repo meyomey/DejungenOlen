@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+{% block title %}Live-Karte – {{ tour.title }}{% endblock %}
+
+{% block head %}
+<style>
+  /* Build aa: Live-Karte – schlanke Seite für unterwegs (große Knöpfe, Vollbild, wenig Ballast) */
+  #live-wrap { position: relative; border-radius: 10px; overflow: hidden; background: #e9ecef; }
+  #live-map  { height: calc(100vh - 290px); min-height: 360px; }
+  #live-wrap.live-fs { position: fixed; inset: 0; z-index: 2000; border-radius: 0; }
+  #live-wrap.live-fs #live-map { height: 100%; min-height: 0; }
+  #live-bar  { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; gap: 6px; flex-wrap: wrap;
+               justify-content: center; padding: 8px; background: linear-gradient(to top, rgba(255,255,255,.95), rgba(255,255,255,.6)); }
+  #live-bar .btn { font-size: 1rem; padding: .5rem .9rem; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+  @media (max-width: 575px) { #live-bar .btn { font-size: .9rem; padding: .45rem .6rem; } #live-map { height: calc(100vh - 250px); } }
+  .live-pin { width: 36px; height: 36px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 13px;
+              display: flex; align-items: center; justify-content: center; border: 3px solid #fff;
+              box-shadow: 0 1px 5px rgba(0,0,0,.45); position: relative; letter-spacing: .3px; }
+  .live-pin.me { border-color: #1E88E5; }
+  .live-pin .arrow { position: absolute; top: -17px; left: 50%; margin-left: -7px; width: 14px; text-align: center;
+                     color: #222; font-size: 12px; line-height: 12px; transform-origin: 50% 24px; }
+  .live-bubble { width: 32px; height: 32px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 12px;
+                 display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .leaflet-tooltip.live-tip { background: rgba(20,30,60,.9); color: #fff; border: 0; border-radius: 6px; font-size: .85rem; }
+  .leaflet-tooltip.live-tip::before { border-top-color: rgba(20,30,60,.9); }
+  #live-status.sharing { color: #2E7D4F; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+  <div>
+    <a href="{{ url_for('tour_detail', tour_id=tour.id) }}" class="text-decoration-none small"><i class="bi bi-arrow-left me-1"></i>Zur Tour</a>
+    <h2 class="fw-bold mb-0 h4" style="color:var(--djo-navy)">📍 Live-Karte: {{ tour.title }}</h2>
+    <div class="text-muted small">{% if datum %}{{ datum }}{% else %}Termin offen{% endif %}{% if tour.start_time %} · Start {{ tour.start_time }} Uhr{% endif %}{% if tour.meeting_desc %} · {{ tour.meeting_desc }}{% endif %}</div>
+  </div>
+  <div class="small text-muted text-lg-end" style="max-width:420px">
+    Zuschauen kann jeder aus der Gruppe. Wer <strong>„Standort teilen“</strong> einschaltet, ist für die anderen als Punkt zu sehen –
+    praktisch für Nachzügler, Pannen und alle, die wissen wollen, wo die Gruppe gerade ist.
+  </div>
+</div>
+
+{% if not can_share %}
+<div class="alert alert-info py-2 small mb-2" id="share-hint"><i class="bi bi-info-circle me-1"></i>{{ share_hint }} Zuschauen geht jederzeit.</div>
+{% endif %}
+<div id="live-status" class="small text-muted mb-2">Du schaust nur zu – Standorte werden alle 15 Sekunden aktualisiert.</div>
+
+<div class="row g-3">
+  <div class="col-12 col-lg-8">
+    <div id="live-wrap">
+      <div id="live-map"></div>
+      <div id="live-bar">
+        <button type="button" class="btn btn-success" id="btn-share" onclick="toggleShare()"
+                {% if not can_share %}disabled title="{{ share_hint }}"{% endif %}>📍 Standort teilen</button>
+        <button type="button" class="btn btn-light" id="btn-follow" onclick="toggleFollow()" title="Karte bleibt auf meiner Position zentriert">🎯 Karte folgt mir</button>
+        <button type="button" class="btn btn-light" onclick="showAll()" title="Alle Mitfahrer und die Strecke einpassen">👥 Alle zeigen</button>
+        <button type="button" class="btn btn-light" id="btn-fs" onclick="toggleFs()" title="Vollbild">⛶</button>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-4">
+    <div class="card">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-people me-1"></i>Unterwegs</span>
+        <span class="badge bg-light text-dark" id="live-count">0</span>
+      </div>
+      <div class="list-group list-group-flush" id="live-list">
+        <div class="list-group-item text-muted small" id="live-empty">Noch teilt niemand seinen Standort.</div>
+      </div>
+      <div class="card-footer small text-muted" id="live-gap">–</div>
+    </div>
+    <div class="small text-muted mt-2">
+      Standorte werden alle 15 Sekunden abgerufen und nach {{ stale_s // 60 }} Minuten ohne Signal ausgeblendet.
+      Beim Teilen sendet das Handy höchstens alle 10 Sekunden und der Bildschirm bleibt an, solange die Seite offen ist.
+      Teilen endet beim Schließen der Seite, spätestens nach 8 Stunden.
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TOUR_ID   = {{ tour.id }};
+const TRACK     = {{ track_json|safe }};        // [[lat, lng], …] (≤ 600 Stützpunkte)
+const MEETING   = {{ meeting_json|safe }};
+const EINKEHR   = {{ einkehr_json|safe }};
+const ME        = {{ me_json|safe }};
+const CAN_SHARE = {{ 'true' if can_share else 'false' }};
+const FRESH_S   = {{ fresh_s }};
+const INITIAL   = {{ locations_json|safe }};
+// Zustand (vor allen Funktionen deklariert – onclick-Handler sind global)
+let sharing = false, following = false, watchId = null, lastSent = 0, lastPos = null, shareStart = 0;
+let ownLatLng = null, ownMarker = null, accCircle = null, wakeLock = null, sentCount = 0;
+
+// ── Karte, Strecke, Treffpunkt, Einkehr ──────────────────────────────────────────────────────
+const map = L.map('live-map', {zoomControl: true});
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19}).addTo(map);
+let trackLine = null;
+const CUM = [];                                    // Streckenkilometer je Stützpunkt
+if (TRACK && TRACK.length > 1) {
+  trackLine = L.polyline(TRACK, {color: '#2B3F6B', weight: 5, opacity: .8}).addTo(map);
+  let acc = 0; CUM.push(0);
+  for (let i = 1; i < TRACK.length; i++) { acc += map.distance(TRACK[i - 1], TRACK[i]); CUM.push(acc); }
+  L.circleMarker(TRACK[0], {radius: 7, color: '#fff', weight: 2, fillColor: '#2E7D4F', fillOpacity: 1}).addTo(map).bindTooltip('Start');
+  L.circleMarker(TRACK[TRACK.length - 1], {radius: 7, color: '#fff', weight: 2, fillColor: '#C0392B', fillOpacity: 1}).addTo(map).bindTooltip('Ziel');
+}
+if (MEETING) {
+  L.marker([MEETING.lat, MEETING.lng], {icon: L.divIcon({html: '<div style="font-size:24px;line-height:1">🏁</div>', iconSize: [26, 26], iconAnchor: [4, 24], className: ''}), zIndexOffset: -100})
+    .addTo(map).bindPopup('<b>Treffpunkt</b><br>' + escHtml(MEETING.desc));
+}
+if (EINKEHR) {
+  L.marker([EINKEHR.lat, EINKEHR.lng], {icon: L.divIcon({html: '<div style="font-size:24px;line-height:1">☕</div>', iconSize: [26, 26], iconAnchor: [13, 24], className: ''}), zIndexOffset: -100})
+    .addTo(map).bindPopup('<b>Einkehr: ' + escHtml(EINKEHR.name) + '</b>' + (EINKEHR.hours ? '<br>🕐 ' + escHtml(EINKEHR.hours) : '')
+                          + (EINKEHR.lunch_label ? '<br>' + escHtml(EINKEHR.lunch_label) : '') + '<br><a href="' + EINKEHR.url + '" class="small">Details</a>');
+}
+function initialView() {
+  if (trackLine) map.fitBounds(trackLine.getBounds(), {padding: [30, 30]});
+  else if (MEETING) map.setView([MEETING.lat, MEETING.lng], 13);
+  else map.setView([53.1, 9.1], 10);
+}
+initialView();
+
+// ── Hilfsfunktionen ───────────────────────────────────────────────────────────────────────────
+function fmtAgo(s) { return s < 15 ? 'gerade eben' : s < 90 ? 'vor ' + s + ' s' : 'vor ' + Math.round(s / 60) + ' min'; }
+function fmtKm(m) { return (m / 1000).toFixed(1).replace('.', ','); }
+function colorFor(ago) { return ago < 60 ? '#2E7D4F' : ago < FRESH_S ? '#D98E04' : '#8a8f98'; }
+function projectKm(lat, lng) {                      // nächster Stützpunkt → Streckenkilometer + Abstand zur Strecke
+  if (!CUM.length) return null;
+  let best = Infinity, bi = 0;
+  for (let i = 0; i < TRACK.length; i++) {
+    const d = map.distance([lat, lng], TRACK[i]);
+    if (d < best) { best = d; bi = i; }
+  }
+  return {m: CUM[bi], off: best};
+}
+function pinIcon(loc, isMe) {
+  const arrow = (loc.heading != null && loc.speed != null && loc.speed > 1)
+    ? '<div class="arrow" style="transform:rotate(' + Math.round(loc.heading) + 'deg)">▲</div>' : '';
+  return L.divIcon({
+    html: '<div class="live-pin' + (isMe ? ' me' : '') + '" style="background:' + colorFor(loc.ago) + '">' + escHtml(loc.initials || '?') + arrow + '</div>',
+    iconSize: [36, 36], iconAnchor: [18, 18], tooltipAnchor: [0, -18], popupAnchor: [0, -18], className: ''
+  });
+}
+function setStatus(text, cls) {
+  const el = document.getElementById('live-status');
+  el.textContent = text; el.className = 'small mb-2 ' + (cls === 'danger' ? 'text-danger' : cls === 'warning' ? 'text-warning-emphasis' : cls === 'sharing' ? 'sharing' : 'text-muted');
+}
+
+// ── Standorte anzeigen (Marker + Liste + Spannweite) ──────────────────────────────────────────
+const markers = {};
+let lastLocs = [];
+function render(locs) {
+  lastLocs = locs || [];
+  const seen = new Set();
+  const rows = [];
+  lastLocs.forEach(loc => {
+    seen.add(loc.user_id);
+    const isMe = loc.user_id === ME.id;
+    const proj = projectKm(loc.lat, loc.lng);
+    const kmh = loc.speed != null ? Math.round(loc.speed * 3.6) : null;
+    const tip = escHtml(loc.name) + (isMe ? ' (du)' : '') + ' · ' + fmtAgo(loc.ago);
+    if (markers[loc.user_id]) {
+      markers[loc.user_id].setLatLng([loc.lat, loc.lng]).setIcon(pinIcon(loc, isMe)).setTooltipContent(tip);
+    } else {
+      markers[loc.user_id] = L.marker([loc.lat, loc.lng], {icon: pinIcon(loc, isMe), zIndexOffset: isMe ? 500 : 200})
+        .bindTooltip(tip, {direction: 'top', className: 'live-tip'}).addTo(map);
+    }
+    rows.push({loc, isMe, proj, kmh});
+  });
+  Object.keys(markers).forEach(uid => {
+    if (!seen.has(parseInt(uid, 10))) { map.removeLayer(markers[uid]); delete markers[uid]; }
+  });
+  // Liste: vorderste zuerst (nach Streckenkilometer), sonst nach Name
+  rows.sort((a, b) => (b.proj && a.proj) ? b.proj.m - a.proj.m : a.loc.name.localeCompare(b.loc.name));
+  const list = document.getElementById('live-list');
+  document.getElementById('live-count').textContent = rows.length;
+  if (!rows.length) {
+    list.innerHTML = '<div class="list-group-item text-muted small">Noch teilt niemand seinen Standort.</div>';
+  } else {
+    list.innerHTML = rows.map(r => {
+      const parts = [fmtAgo(r.loc.ago)];
+      if (r.kmh != null && r.loc.ago < FRESH_S) parts.push(r.kmh + ' km/h');
+      if (r.proj) parts.push(r.proj.off > 300 ? fmtKm(r.proj.off) + ' km abseits der Strecke' : 'km ' + fmtKm(r.proj.m));
+      return '<div class="list-group-item d-flex align-items-center gap-2 py-2">' +
+        '<span class="live-bubble" style="background:' + colorFor(r.loc.ago) + '">' + escHtml(r.loc.initials || '?') + '</span>' +
+        '<div class="flex-grow-1"><div class="fw-semibold">' + escHtml(r.loc.name) + (r.isMe ? ' <span class="text-muted fw-normal">(du)</span>' : '') + '</div>' +
+        '<div class="small text-muted">' + parts.join(' · ') + '</div></div>' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="focusUser(' + r.loc.user_id + ')" title="Auf der Karte zeigen">🔍</button></div>';
+    }).join('');
+  }
+  // Spannweite der Gruppe: nur aktuelle Positionen auf der Strecke
+  const onTrack = rows.filter(r => r.proj && r.proj.off <= 300 && r.loc.ago < FRESH_S).map(r => r.proj.m);
+  const gap = document.getElementById('live-gap');
+  if (onTrack.length >= 2) {
+    const mn = Math.min(...onTrack), mx = Math.max(...onTrack);
+    gap.textContent = `Gruppe über ${fmtKm(mx - mn)} km verteilt (km ${fmtKm(mn)} – km ${fmtKm(mx)})`;
+  } else if (rows.length === 1) {
+    gap.textContent = '1 Person unterwegs';
+  } else if (rows.length) {
+    gap.textContent = rows.length + ' unterwegs';
+  } else {
+    gap.textContent = '–';
+  }
+}
+function focusUser(uid) {
+  const m = markers[uid];
+  if (!m) return;
+  following = false; updateFollowBtn();
+  map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
+  m.openTooltip();
+  document.getElementById('live-wrap').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+function showAll() {
+  following = false; updateFollowBtn();
+  const pts = Object.values(markers).map(m => m.getLatLng());
+  if (ownLatLng) pts.push(L.latLng(ownLatLng));
+  if (pts.length) {
+    const b = L.latLngBounds(pts);
+    if (trackLine && pts.length === 1) b.extend(trackLine.getBounds());
+    map.fitBounds(b, {padding: [40, 40], maxZoom: 16});
+  } else {
+    initialView();
+  }
+}
+
+// ── Polling (für alle Zuschauer) ──────────────────────────────────────────────────────────────
+function poll() {
+  if (document.hidden) return;                      // verdeckter Tab: nichts abrufen
+  fetch('/api/location/tour/' + TOUR_ID, {cache: 'no-store'})
+    .then(r => r.json())
+    .then(d => { if (d && d.locations) render(d.locations); })
+    .catch(() => {});
+}
+render(INITIAL);
+setInterval(poll, 15000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) { poll(); if (sharing || following) { ensureWatch(); requestWakeLock(); } }
+});
+
+// ── Eigener Standort: Teilen / Folgen ─────────────────────────────────────────────────────────
+
+function toggleShare() { if (sharing) stopShare(false); else startShare(); }
+function startShare() {
+  if (!CAN_SHARE) return;
+  if (!navigator.geolocation) { setStatus('Dieses Gerät oder dieser Browser kann keinen Standort ermitteln.', 'danger'); return; }
+  sharing = true; shareStart = Date.now(); lastSent = 0; sentCount = 0;
+  updateShareBtn();
+  setStatus('Standort wird ermittelt …', 'sharing');
+  ensureWatch();
+  requestWakeLock();
+}
+function stopShare(viaBeacon) {
+  const was = sharing;
+  sharing = false;
+  updateShareBtn();
+  maybeStopWatch();
+  if (!following) releaseWakeLock();
+  if (was) {
+    const url = '/api/location/stop?tour_id=' + TOUR_ID;
+    if (viaBeacon && navigator.sendBeacon) navigator.sendBeacon(url, '');
+    else fetch(url, {method: 'POST', keepalive: true}).catch(() => {});
+    if (markers[ME.id]) { map.removeLayer(markers[ME.id]); delete markers[ME.id]; }
+    setStatus('Du teilst deinen Standort nicht mehr – du schaust nur zu.');
+  }
+}
+function updateShareBtn() {
+  const b = document.getElementById('btn-share');
+  if (!b) return;
+  b.textContent = sharing ? '⏹ Teilen beenden' : '📍 Standort teilen';
+  b.classList.toggle('btn-success', !sharing);
+  b.classList.toggle('btn-danger', sharing);
+}
+function toggleFollow() {
+  following = !following;
+  updateFollowBtn();
+  if (following) {
+    if (!navigator.geolocation) { following = false; updateFollowBtn(); setStatus('Kein Standort verfügbar.', 'danger'); return; }
+    ensureWatch(); requestWakeLock();
+    if (ownLatLng) map.setView(ownLatLng, Math.max(map.getZoom(), 15));
+  } else {
+    maybeStopWatch();
+    if (!sharing) releaseWakeLock();
+  }
+}
+function updateFollowBtn() {
+  const b = document.getElementById('btn-follow');
+  if (!b) return;
+  b.classList.toggle('btn-primary', following);
+  b.classList.toggle('btn-light', !following);
+}
+map.on('dragstart', () => { if (following) { following = false; updateFollowBtn(); } });
+
+function ensureWatch() {
+  if (watchId != null || !navigator.geolocation) return;
+  watchId = navigator.geolocation.watchPosition(onPos, onGeoErr, {enableHighAccuracy: true, maximumAge: 5000, timeout: 25000});
+}
+function maybeStopWatch() {
+  if (!sharing && !following && watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+}
+function drawOwn(c) {
+  const ll = [c.latitude, c.longitude];
+  if (!ownMarker) {
+    ownMarker = L.circleMarker(ll, {radius: 6, color: '#fff', weight: 2, fillColor: '#1E88E5', fillOpacity: 1}).addTo(map).bindTooltip('Du', {direction: 'top', className: 'live-tip'});
+    accCircle = L.circle(ll, {radius: c.accuracy || 0, color: '#1E88E5', weight: 1, fillOpacity: .08}).addTo(map);
+  } else {
+    ownMarker.setLatLng(ll); accCircle.setLatLng(ll).setRadius(c.accuracy || 0);
+  }
+}
+function onPos(pos) {
+  const c = pos.coords;
+  ownLatLng = [c.latitude, c.longitude];
+  drawOwn(c);
+  if (following) map.panTo(ownLatLng, {animate: true});
+  if (!sharing) return;
+  if (Date.now() - shareStart > 8 * 3600 * 1000) { stopShare(false); setStatus('Teilen nach 8 Stunden automatisch beendet.'); return; }
+  // Drosselung: höchstens alle 10 s, und ohne Bewegung (< 15 m) nur alle 30 s
+  const now = Date.now();
+  const moved = lastPos ? map.distance(lastPos, ownLatLng) : Infinity;
+  if (now - lastSent < 10000 || (moved < 15 && now - lastSent < 30000)) return;
+  lastSent = now; lastPos = ownLatLng;
+  fetch('/api/location/update', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, keepalive: true,
+    body: JSON.stringify({tour_id: TOUR_ID, lat: c.latitude, lng: c.longitude, accuracy: c.accuracy,
+                          speed: (c.speed != null && !isNaN(c.speed)) ? c.speed : null,
+                          heading: (c.heading != null && !isNaN(c.heading)) ? c.heading : null})
+  }).then(async r => {
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 403) { stopShare(false); setStatus(d.error || 'Teilen ist für diese Tour gerade nicht möglich.', 'warning'); return; }
+    if (!r.ok) { setStatus('Server meldet HTTP ' + r.status + ' – wird weiter versucht.', 'warning'); return; }
+    sentCount++;
+    if (d.locations) render(d.locations);
+    const t = new Date(shareStart);
+    setStatus('Du teilst deinen Standort seit ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') +
+              ' Uhr · zuletzt gesendet gerade eben' + (c.accuracy ? ' · Genauigkeit ±' + Math.round(c.accuracy) + ' m' : ''), 'sharing');
+  }).catch(() => setStatus('Keine Verbindung – wird beim nächsten Signal erneut versucht.', 'warning'));
+}
+function onGeoErr(err) {
+  const msg = err.code === 1 ? 'Standortfreigabe verweigert – bitte dem Browser den Zugriff auf den Standort erlauben.'
+            : err.code === 2 ? 'Standort gerade nicht verfügbar (kein GPS-Empfang?).'
+            : 'Standortabfrage dauert zu lange – wird weiter versucht.';
+  setStatus(msg, err.code === 1 ? 'danger' : 'warning');
+  if (err.code === 1) { stopShare(false); following = false; updateFollowBtn(); maybeStopWatch(); }
+}
+window.addEventListener('pagehide', () => { if (sharing) stopShare(true); });
+
+// Bildschirm anlassen (Screen Wake Lock – Android/Chrome, iOS ab 16.4); ohne Unterstützung passiert nichts
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator && !wakeLock && !document.hidden) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    }
+  } catch (e) { /* z. B. Energiesparmodus */ }
+}
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+
+// Vollbild per CSS-Klasse (funktioniert auch auf iPhone/iPad ohne Fullscreen-API)
+function toggleFs() {
+  const wrap = document.getElementById('live-wrap');
+  const on = wrap.classList.toggle('live-fs');
+  document.body.style.overflow = on ? 'hidden' : '';
+  document.getElementById('btn-fs').textContent = on ? '✕ Vollbild aus' : '⛶';
+  setTimeout(() => map.invalidateSize(), 60);
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('live-wrap').classList.contains('live-fs')) toggleFs(); });
+</script>
+{% endblock %}

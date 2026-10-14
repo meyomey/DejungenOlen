@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Karte – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
+{% block title %}Gruppen-Karte – {{ current_group.name if current_group else 'De jungen Olen' }}{% endblock %}
 
 {% block head %}
 <style>
-#main-map { height: calc(100vh - 160px); min-height: 500px; border-radius: 10px; }
+#main-map { height: calc(100vh - 230px); min-height: 460px; border-radius: 10px; }
 .layer-toggle { cursor: pointer; user-select: none; }
 .layer-toggle.off { opacity: .4; }
 .leaflet-tooltip.track-tooltip {
@@ -14,11 +14,17 @@
   padding: 4px 8px;
   font-size: .82rem;
 }
+.map-pin { color: #fff; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center;
+           justify-content: center; font-size: 14px; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+.map-pin.dim { opacity: .75; }
+.filter-btn.active { box-shadow: inset 0 0 0 2px rgba(0,0,0,.15); }
+.leaflet-popup-content { margin: 10px 12px; line-height: 1.35; }
+.leaflet-popup-content .badge { font-weight: 600; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
   <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
     <i class="bi bi-map me-2"></i>Gruppen-Karte
   </h2>
@@ -27,7 +33,7 @@
       ☕ Gastronomie (<span id="cnt-gastro">0</span>)
     </button>
     <button class="btn btn-sm btn-primary layer-toggle" data-layer="pois" onclick="toggleLayer(this)">
-      📍 Orte & POIs (<span id="cnt-pois">0</span>)
+      📍 Orte &amp; POIs (<span id="cnt-pois">0</span>)
     </button>
     <button class="btn btn-sm btn-warning layer-toggle" data-layer="meetings" onclick="toggleLayer(this)">
       🚩 Treffpunkte (<span id="cnt-meetings">0</span>)
@@ -41,45 +47,72 @@
   </div>
 </div>
 
-<!-- Filter strip -->
-<div class="d-flex gap-2 flex-wrap mb-3">
-  <span class="badge bg-success py-2">☀️ Grün = Frühöffner (vor {{ morning_threshold }})</span>
-  <span class="badge py-2" style="background:var(--djo-navy)">🔵 Navy = Normaler Gastro-Eintrag</span>
-  <span class="badge bg-warning text-dark py-2">🟡 Gelb = Treffpunkt</span>
+<!-- Build aa: Filterleiste für die Gastronomie-Ebene -->
+<div class="card mb-2 border-0 shadow-sm" id="gastro-filter">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-center">
+      <div class="col-12 col-sm-4 col-lg-3">
+        <input type="search" id="f-q" class="form-control form-control-sm" placeholder="Gastro suchen: Name, Ort, Notiz…" autocomplete="off">
+      </div>
+      <div class="col-6 col-sm-3 col-lg-2">
+        <select id="f-type" class="form-select form-select-sm">
+          <option value="">Alle Typen</option>
+          {% for val, label in gastro_types %}
+          <option value="{{ val }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-sm-5 col-lg-7 d-flex gap-1 flex-wrap">
+        <button type="button" class="btn btn-sm btn-outline-success filter-btn" id="f-morning" onclick="toggleFilter(this)" title="Öffnet vor {{ morning_threshold }} Uhr">☀️ Frühöffner</button>
+        <button type="button" class="btn btn-sm btn-outline-warning text-dark filter-btn" id="f-lunch" onclick="toggleFilter(this)" title="Mittagstisch oder laut Öffnungszeiten mittags geöffnet">🍽️ Mittagstisch</button>
+        <button type="button" class="btn btn-sm btn-outline-primary filter-btn" id="f-open" onclick="toggleFilter(this)" title="Laut Öffnungszeiten jetzt geöffnet">🟢 jetzt geöffnet</button>
+        <span class="small text-muted align-self-center ms-auto" id="f-info"></span>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="main-map"></div>
 
-<!-- Quick-add shortcut bar -->
-<div class="d-flex gap-2 mt-3 flex-wrap">
+<div class="d-flex gap-2 mt-2 flex-wrap align-items-center">
   <a href="{{ url_for('gastro_new') }}" class="btn btn-sm btn-outline-djo">
     <i class="bi bi-plus me-1"></i>Gastronomie eintragen
   </a>
   <a href="{{ url_for('poi_new') }}" class="btn btn-sm btn-outline-djo">
     <i class="bi bi-plus me-1"></i>Ort merken
   </a>
-  <a href="{{ url_for('gastro_list', morning=1) }}" class="btn btn-sm btn-success">
-    ☀️ Nur Frühöffner zeigen
+  <a href="{{ url_for('gastro_list') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-list-ul me-1"></i>Gastro-Liste
   </a>
+  <span class="small text-muted ms-auto">
+    <span class="badge bg-success">☕</span> Frühöffner &nbsp;
+    <span class="badge" style="background:var(--djo-navy)">☕</span> Gastro &nbsp;
+    <span class="badge" style="background:#B85C00">🚩</span> nächste Treffpunkte &nbsp;
+    <span class="badge bg-secondary">🚩</span> frühere
+  </span>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/osm_gastro.js') }}?v={{ app_build|urlencode }}"></script>
 <script>
-// ── Data ─────────────────────────────────────────────────────────────────────
+// ── Daten ─────────────────────────────────────────────────────────────────────
 const GASTRO   = {{ gastro_json   | safe }};
 const POIS     = {{ pois_json     | safe }};
 const MEETINGS = {{ meetings_json | safe }};
+const HOME     = {{ home_json     | safe }};
+const STORE_KEY = 'djo_karte_v2';
 
-// ── Map init ─────────────────────────────────────────────────────────────────
+function loadState() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}') || {}; } catch (e) { return {}; } }
+function saveState(patch) { try { localStorage.setItem(STORE_KEY, JSON.stringify(Object.assign(loadState(), patch))); } catch (e) {} }
+const STATE = loadState();
+
+// ── Karte ─────────────────────────────────────────────────────────────────────
 const isMobile = window.innerWidth < 992;
-const map = L.map('main-map', {
-  dragging:        !isMobile,
-  tap:             !isMobile,
-  scrollWheelZoom: false,
-}).setView([53.15, 9.20], 10);
+const map = L.map('main-map', { dragging: !isMobile, scrollWheelZoom: false });
+if (HOME) map.setView([HOME.lat, HOME.lng], 11); else map.setView([53.1, 9.1], 10);
 
-if (isMobile) {
+if (isMobile) {                                  // Karte erst nach Antippen bewegbar (sonst hakt das Scrollen)
   const mapEl = document.getElementById('main-map');
   mapEl.style.position = 'relative';
   const overlay = document.createElement('div');
@@ -91,90 +124,130 @@ if (isMobile) {
   lockBtn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:1001;background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:6px;width:32px;height:32px;cursor:pointer;font-size:.9rem;display:none';
   mapEl.appendChild(overlay);
   mapEl.appendChild(lockBtn);
-  function activateMap() {
-    map.dragging.enable(); map.tap && map.tap.enable();
-    overlay.style.display = 'none'; lockBtn.style.display = 'block';
-  }
-  function deactivateMap() {
-    map.dragging.disable(); map.tap && map.tap.disable();
-    overlay.style.display = 'flex'; lockBtn.style.display = 'none';
-  }
-  overlay.addEventListener('click', activateMap);
-  lockBtn.addEventListener('click', deactivateMap);
+  overlay.addEventListener('click', () => { map.dragging.enable(); overlay.style.display = 'none'; lockBtn.style.display = 'block'; });
+  lockBtn.addEventListener('click', () => { map.dragging.disable(); overlay.style.display = 'flex'; lockBtn.style.display = 'none'; });
 }
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'
+  attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19
 }).addTo(map);
 
-// ── Layer groups ─────────────────────────────────────────────────────────────
-const layers = { gastro: L.layerGroup(), pois: L.layerGroup(), meetings: L.layerGroup() };
-Object.values(layers).forEach(l => l.addTo(map));
-
-// ── Gastro markers ────────────────────────────────────────────────────────────
-GASTRO.forEach(g => {
-  const color  = g.morning ? '#2E7D4F' : '#2B3F6B';
-  const icon   = L.divIcon({
-    html: `<div style="background:${color};color:#fff;border-radius:50%;width:30px;height:30px;
-                display:flex;align-items:center;justify-content:center;font-size:14px">☕</div>`,
-    iconSize:[30,30], iconAnchor:[15,15]
-  });
-  const rating = g.rating ? `⭐ ${g.rating}` : '';
-  const hours  = g.opens ? `🕐 ${escHtml(g.opens)}${g.closes ? ' – ' + escHtml(g.closes) : ''} Uhr` : '';
-  const badge  = g.morning ? '<br><span style="color:#2E7D4F;font-weight:bold">☀️ Frühöffner!</span>' : '';
-
-  L.marker([g.lat, g.lng], {icon})
-   .addTo(layers.gastro)
-   .bindPopup(`
-     <b>${escHtml(g.name)}</b><br>
-     <small>${escHtml(g.type)}</small>
-     ${hours ? '<br>' + hours : ''}
-     ${rating ? '<br>' + rating : ''}
-     ${g.notes ? '<br><i>' + escHtml(g.notes.substring(0,80)) + '</i>' : ''}
-     ${badge}
-   `);
+// ── Ebenen (Gastro und POIs gebündelt, wenn MarkerCluster geladen ist) ───────
+function makeGroup() {
+  return (typeof L.markerClusterGroup === 'function')
+    ? L.markerClusterGroup({maxClusterRadius: 45, disableClusteringAtZoom: 14, showCoverageOnHover: false})
+    : L.layerGroup();
+}
+const layers = { gastro: makeGroup(), pois: makeGroup(), meetings: L.layerGroup() };
+Object.keys(layers).forEach(name => {
+  const hidden = STATE.layers && STATE.layers[name] === false;
+  if (!hidden) layers[name].addTo(map);
+  const btn = document.querySelector(`.layer-toggle[data-layer="${name}"]`);
+  if (btn) btn.classList.toggle('off', hidden);
 });
-document.getElementById('cnt-gastro').textContent = GASTRO.length;
+function pin(bg, glyph, dim) {
+  return L.divIcon({html: `<div class="map-pin${dim ? ' dim' : ''}" style="background:${bg}">${glyph}</div>`,
+                    iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -14], className: ''});
+}
 
-// ── POI markers ───────────────────────────────────────────────────────────────
-POIS.forEach(p => {
-  const icon = L.divIcon({
-    html: `<div style="background:var(--djo-navy);color:#fff;border-radius:50%;width:30px;height:30px;
-                display:flex;align-items:center;justify-content:center;font-size:15px">${p.icon}</div>`,
-    iconSize:[30,30], iconAnchor:[15,15]
+// ── Gastronomie ──────────────────────────────────────────────────────────────
+const TYPE_GLYPH = {cafe: '☕', kneipe: '🍺', baeckerei: '🥐', restaurant: '🍽️', imbiss: '🥪'};
+const gastroMarkers = GASTRO.map(g => {
+  const color = g.morning ? '#2E7D4F' : '#2B3F6B';
+  const hours = g.hours ? '🕐 ' + escHtml(g.hours)
+              : (g.opens ? '🕐 ' + escHtml(g.opens) + (g.closes ? ' – ' + escHtml(g.closes) : '') + ' Uhr' : '');
+  const closed = (g.closed || []).length ? '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Ruhetag ' + g.closed.join(', ') + '</span>' : '';
+  const open = g.open_now === 'open'
+    ? '<span class="badge bg-success-subtle text-success border border-success-subtle">🟢 jetzt geöffnet' + (g.open_until ? ' – bis ' + g.open_until : '') + '</span>'
+    : g.open_now === 'closed'
+      ? '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">🔴 jetzt geschlossen' + (g.open_until ? ' – öffnet ' + g.open_until : '') + '</span>' : '';
+  const lunch = lunchBadgeHtml(g, '');
+  const rating = g.rating ? ' · ⭐ ' + g.rating : '';
+  const morning = g.morning ? ' <span class="badge bg-success">☀️ Frühöffner</span>' : '';
+  const nav = `https://www.google.com/maps/dir/?api=1&destination=${g.lat},${g.lng}&travelmode=bicycling`;
+  const m = L.marker([g.lat, g.lng], {icon: pin(color, TYPE_GLYPH[g.spot_type] || '☕'), title: g.name})
+    .bindPopup(`<b>${escHtml(g.name)}</b>${morning}<br><span class="text-muted small">${escHtml(g.type)}${rating}</span>
+      ${g.address ? '<br><span class="small text-muted">' + escHtml(g.address) + '</span>' : ''}
+      ${hours ? '<br><span class="small">' + hours + '</span>' : ''}
+      ${(closed || open || lunch) ? '<br>' + [open, lunch, closed].filter(Boolean).join(' ') : ''}
+      ${g.notes ? '<br><i class="small">' + escHtml(g.notes) + '</i>' : ''}
+      <br><a href="${g.url}" class="small fw-semibold">Details &amp; Bewertungen</a> · <a href="${nav}" target="_blank" rel="noopener" class="small">Route (Fahrrad)</a>`);
+  return {g, m};
+});
+
+function filterState() {
+  return {
+    q: (document.getElementById('f-q').value || '').trim().toLowerCase(),
+    type: document.getElementById('f-type').value,
+    morning: document.getElementById('f-morning').classList.contains('active'),
+    lunch: document.getElementById('f-lunch').classList.contains('active'),
+    open: document.getElementById('f-open').classList.contains('active'),
+  };
+}
+function applyGastroFilter() {
+  const f = filterState();
+  let shown = 0;
+  const keep = [];
+  gastroMarkers.forEach(({g, m}) => {
+    const ok = (!f.q || g.text.includes(f.q)) && (!f.type || g.spot_type === f.type)
+            && (!f.morning || g.morning) && (!f.lunch || lunchMatches(g, '')) && (!f.open || g.open_now === 'open');
+    if (ok) { keep.push(m); shown++; }
   });
-  L.marker([p.lat, p.lng], {icon})
+  layers.gastro.clearLayers();
+  if (layers.gastro.addLayers) layers.gastro.addLayers(keep); else keep.forEach(m => layers.gastro.addLayer(m));
+  document.getElementById('cnt-gastro').textContent = shown;
+  const info = document.getElementById('f-info');
+  const active = f.q || f.type || f.morning || f.lunch || f.open;
+  info.textContent = active ? `${shown} von ${GASTRO.length} Gastro-Einträgen` : '';
+  saveState({filter: {type: f.type, morning: f.morning, lunch: f.lunch, open: f.open}});
+}
+function toggleFilter(btn) { btn.classList.toggle('active'); applyGastroFilter(); }
+['f-q', 'f-type'].forEach(id => document.getElementById(id).addEventListener(id === 'f-q' ? 'input' : 'change', applyGastroFilter));
+if (STATE.filter) {                               // letzte Filterwahl wiederherstellen (nicht die Suche)
+  const sel = document.getElementById('f-type');
+  if (STATE.filter.type && [...sel.options].some(o => o.value === STATE.filter.type)) sel.value = STATE.filter.type;
+  document.getElementById('f-morning').classList.toggle('active', !!STATE.filter.morning);
+  document.getElementById('f-lunch').classList.toggle('active', !!STATE.filter.lunch);
+  document.getElementById('f-open').classList.toggle('active', !!STATE.filter.open);
+}
+applyGastroFilter();
+
+// ── Orte & POIs ──────────────────────────────────────────────────────────────
+POIS.forEach(p => {
+  L.marker([p.lat, p.lng], {icon: pin('var(--djo-navy)', p.icon), title: p.name})
    .addTo(layers.pois)
-   .bindPopup(`<b>${p.icon} ${escHtml(p.name)}</b><br><small>${escHtml(p.label)}</small>${p.desc ? '<br>' + escHtml(p.desc) : ''}`);
+   .bindPopup(`<b>${p.icon} ${escHtml(p.name)}</b><br><span class="small text-muted">${escHtml(p.label)}${p.mine ? ' · von dir' : ''}</span>
+               ${p.desc ? '<br><span class="small">' + escHtml(p.desc) + '</span>' : ''}
+               <br><a href="${p.url}" class="small">Alle Orte dieser Art</a> · <a href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=bicycling" target="_blank" rel="noopener" class="small">Route</a>`);
 });
 document.getElementById('cnt-pois').textContent = POIS.length;
 
-// ── Meeting markers ───────────────────────────────────────────────────────────
+// ── Treffpunkte ──────────────────────────────────────────────────────────────
 MEETINGS.forEach(m => {
-  const color  = m.status === 'planned' ? '#B85C00' : '#777';
-  const icon   = L.divIcon({
-    html: `<div style="background:${color};color:#fff;border-radius:50%;width:30px;height:30px;
-                display:flex;align-items:center;justify-content:center;font-size:15px">🚩</div>`,
-    iconSize:[30,30], iconAnchor:[15,15]
-  });
-  L.marker([m.lat, m.lng], {icon})
+  const color = m.upcoming ? '#B85C00' : '#777';
+  L.marker([m.lat, m.lng], {icon: pin(color, '🚩', !m.upcoming), title: m.title, zIndexOffset: m.upcoming ? 300 : 0})
    .addTo(layers.meetings)
-   .bindPopup(`<b>${escHtml(m.title)}</b><br>📅 ${m.date}${m.desc ? '<br>📍 ' + escHtml(m.desc) : ''}`);
+   .bindPopup(`<b>${escHtml(m.title)}</b><br>📅 ${escHtml(m.date)}${m.time ? ' · ' + escHtml(m.time) + ' Uhr' : ''}
+               ${m.upcoming ? ' <span class="badge bg-warning text-dark">geplant</span>' : ' <span class="badge bg-secondary">gefahren</span>'}
+               ${m.desc ? '<br>📍 ' + escHtml(m.desc) : ''}
+               <br><a href="${m.url}" class="small fw-semibold">Zur Tour</a>`);
 });
 document.getElementById('cnt-meetings').textContent = MEETINGS.length;
 
-// ── Layer toggle ──────────────────────────────────────────────────────────────
-function toggleLayer(btn) {
-  const name = btn.dataset.layer;
-  if (map.hasLayer(layers[name])) {
-    map.removeLayer(layers[name]);
-    btn.classList.add('off');
-  } else {
-    layers[name].addTo(map);
-    btn.classList.remove('off');
-  }
+// Startansicht: Standard-Treffpunkt der Gruppe; ohne Treffpunkt alles einpassen
+if (!HOME) {
+  const pts = [...GASTRO, ...POIS, ...MEETINGS].map(x => [x.lat, x.lng]);
+  if (pts.length) map.fitBounds(L.latLngBounds(pts), {padding: [30, 30], maxZoom: 12});
 }
 
-// ── Heatmap ───────────────────────────────────────────────────────────────────
+// ── Ebenen ein/aus (wird gemerkt) ─────────────────────────────────────────────
+function toggleLayer(btn) {
+  const name = btn.dataset.layer;
+  const st = (loadState().layers) || {};
+  if (map.hasLayer(layers[name])) { map.removeLayer(layers[name]); btn.classList.add('off'); st[name] = false; }
+  else { layers[name].addTo(map); btn.classList.remove('off'); st[name] = true; }
+  saveState({layers: st});
+}
+
 // ── Touren-Track-Overlay ─────────────────────────────────────────────────────
 let trackLayers = [];
 let tracksLoaded = false;
@@ -212,8 +285,8 @@ function toggleHeatmap(btn) {
         line.on('mouseover', function(e) {
           this.setStyle({opacity: 0.9, weight: 4, color: '#1a3a6e'});
           const km = t.km ? ' · ' + t.km + ' km' : '';
-          this.bindTooltip('<strong>' + t.title + '</strong><br><small>' + t.date + km + '</small>',
-            {sticky: true}).openTooltip(e.latlng);
+          this.bindTooltip('<strong>' + escHtml(t.title) + '</strong><br><small>' + escHtml(t.date) + km + '</small>',
+            {sticky: true, className: 'track-tooltip'}).openTooltip(e.latlng);
         });
         line.on('mouseout', function() {
           this.setStyle({opacity: OPACITY, weight: 3, color: COLOR});
@@ -232,8 +305,7 @@ function toggleHeatmap(btn) {
     .catch(e => { btn.innerHTML = '🗺️ Touren-Tracks <small>(Fehler)</small>'; });
 }
 
-
-// ── Locate me ────────────────────────────────────────────────────────────────
+// ── Mein Standort ────────────────────────────────────────────────────────────
 let locMarker = null;
 function locateMe() {
   if (!navigator.geolocation) { alert('Geolocation nicht verfügbar.'); return; }
@@ -244,8 +316,7 @@ function locateMe() {
     locMarker = L.circleMarker(ll, {
       radius: 10, color: '#C0392B', fillColor: '#C0392B', fillOpacity: .6
     }).addTo(map).bindPopup('Du bist hier 🚴').openPopup();
-  });
+  }, () => alert('Standort konnte nicht ermittelt werden – bitte Standortfreigabe im Browser erlauben.'));
 }
 </script>
-
 {% endblock %}

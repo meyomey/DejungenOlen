@@ -17,7 +17,7 @@
 <!-- Filter bar – Build t: Text/Typ/Frühöffner filtern sofort (ohne Neuladen), „Anwenden“ speichert die Schwelle -->
 <form method="get" class="card p-3 mb-4" id="filter-form">
   <div class="row g-2 align-items-end">
-    <div class="col-12 col-sm-4">
+    <div class="col-12 col-sm-3">
       <label class="form-label small fw-semibold mb-1">Suche</label>
       <input type="text" name="q" id="f-q" value="{{ q }}" class="form-control form-control-sm"
              placeholder="Name, Adresse, Notiz…" autocomplete="off">
@@ -41,7 +41,19 @@
         <input type="time" name="morning_until" id="morning_until" class="form-control" value="{{ morning_threshold }}">
       </div>
     </div>
-    <div class="col-12 col-sm-3">
+    <div class="col-8 col-sm-2">
+      <label class="form-label small fw-semibold mb-1" for="f-mittag">🍽️ Mittagstisch</label>
+      <select name="mittag" id="f-mittag" class="form-select form-select-sm"
+              title="Nur Einträge mit Mittagstisch bzw. laut Öffnungszeiten mittags (12–14 Uhr) geöffnet">
+        <option value="">egal</option>
+        <option value="1" {% if mittag == '1' %}selected{% endif %}>ja / mittags offen</option>
+        {% for d in ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] %}
+        <option value="{{ d }}" {% if mittag == d %}selected{% endif %}>mittags offen am {{ d }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-4 col-sm-2">
+      <label class="form-label small mb-1 d-none d-sm-block">&nbsp;</label>
       <button type="submit" class="btn btn-djo btn-sm w-100">Anwenden</button>
     </div>
   </div>
@@ -86,9 +98,11 @@
 <div class="row g-3" id="spot-cards">
   {% for s in spots %}
   {% set ruhetage = s.hours_text|closed_days %}
+  {% set li = lunch_by_id[s.id] %}
   <div class="col-12 col-md-6 col-xl-4 spot-card" data-id="{{ s.id }}" data-type="{{ s.spot_type }}"
        data-morning="{{ 1 if s.is_morning_friendly else 0 }}" data-name="{{ s.name|lower }}"
-       data-text="{{ (s.name ~ ' ' ~ (s.address or '') ~ ' ' ~ (s.notes or '') ~ ' ' ~ s.type_label)|lower }}">
+       data-lunch="{{ li.status or '' }}" data-noon="{{ li.days|join(',') }}"
+       data-text="{{ (s.name ~ ' ' ~ (s.address or '') ~ ' ' ~ (s.notes or '') ~ ' ' ~ s.type_label ~ ' ' ~ li.short ~ ' ' ~ li.text)|lower }}">
     <div class="card h-100 {% if s.is_morning_friendly %}border-success{% endif %}"
          style="border-left:4px solid {% if s.is_morning_friendly %}#2E7D4F{% else %}var(--djo-navy){% endif %}">
       <div class="card-body">
@@ -103,7 +117,13 @@
             {% endif %}
           </span>
         </div>
-        <div class="text-muted small mb-2">{{ s.type_label }}</div>
+        <div class="text-muted small mb-2">{{ s.type_label }}
+          {% if li.status == 'yes' %}<span class="badge bg-warning text-dark ms-1" title="{{ li.text or 'Mittagstisch' }}">🍽️ Mittagstisch</span>
+          {% elif li.status == 'noon' %}<span class="badge bg-success-subtle text-success border border-success-subtle ms-1" title="aus den Öffnungszeiten abgeleitet">{{ li.label }}</span>
+          {% elif li.status == 'noon_closed' %}<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle ms-1" title="laut Öffnungszeiten zwischen 12 und 14 Uhr nicht geöffnet">{{ li.label }}</span>
+          {% elif li.status == 'no' %}<span class="badge bg-light text-muted border ms-1">kein Mittagstisch</span>{% endif %}
+        </div>
+        {% if li.status == 'yes' and li.text %}<div class="small mb-1">🍽️ {{ li.text }}</div>{% endif %}
 
         {% if s.opens_at or s.closes_at %}
         <div class="small mb-1">
@@ -203,6 +223,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/osm_gastro.js') }}?v={{ app_build|urlencode }}"></script>
 <script>
 // Build t: Marker mit Typ-Symbol, Popup mit Öffnungszeiten/Ruhetag und Link, Clustering ab 25 Einträgen,
 // Sofort-Filter (Text/Typ/Frühöffner) für Karten und Karte, Sortierung nach Entfernung (Standort/Treffpunkt).
@@ -232,9 +253,11 @@ if (SPOTS.length && document.getElementById('gastro-map')) {
     const hours = s.hours ? '🕐 ' + escHtml(s.hours) : (s.opens ? '🕐 ab ' + escHtml(s.opens) + ' Uhr' : '');
     const closed = s.closed.length ? `<span class="text-danger">Ruhetag: ${s.closed.join(', ')}</span>` : '';
     const stars = s.rating ? ' · ' + '⭐'.repeat(Math.round(s.rating)) + ' ' + s.rating : '';
+    const lunch = lunchBadgeHtml(s, '');                                       // Build z: Mittagstisch
     markers[s.id] = L.marker([s.lat, s.lng], {icon, title: s.name})
       .bindPopup(`<b>${escHtml(s.name)}</b><br><span class="text-muted small">${escHtml(s.type)}${stars}</span>
                   ${hours ? '<br><span class="small">' + hours + '</span>' : ''}${closed ? '<br><span class="small">' + closed + '</span>' : ''}
+                  ${lunch ? '<br>' + lunch : ''}
                   ${s.address ? '<br><span class="small text-muted">' + escHtml(s.address) + '</span>' : ''}
                   <br><a href="${s.url}" class="small">Details &amp; Bewertungen</a>`);
   });
@@ -252,9 +275,12 @@ function applyFilter() {
   const q = (document.getElementById('f-q').value || '').trim().toLowerCase();
   const typ = document.getElementById('f-type').value;
   const morning = document.getElementById('morning').checked;
+  const mittag = (document.getElementById('f-mittag') || {}).value || '';     // Build z: '' | '1' | 'Mo'…'So'
   let shown = 0; const visible = [];
   document.querySelectorAll('.spot-card').forEach(card => {
-    const ok = (!q || card.dataset.text.includes(q)) && (!typ || card.dataset.type === typ) && (!morning || card.dataset.morning === '1');
+    const lunchOk = !mittag || lunchMatches({lunch_status: card.dataset.lunch, noon_days: card.dataset.noon ? card.dataset.noon.split(',') : []},
+                                            mittag === '1' ? '' : mittag);
+    const ok = (!q || card.dataset.text.includes(q)) && (!typ || card.dataset.type === typ) && (!morning || card.dataset.morning === '1') && lunchOk;
     card.classList.toggle('d-none', !ok);
     if (ok) { shown++; visible.push(+card.dataset.id); }
   });
@@ -271,7 +297,7 @@ function applyFilter() {
     else if (bounds.length === 1) map.setView(bounds[0], 14);
   }
 }
-['f-q', 'f-type', 'morning'].forEach(id => {
+['f-q', 'f-type', 'morning', 'f-mittag'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener(id === 'f-q' ? 'input' : 'change', applyFilter);
 });

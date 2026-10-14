@@ -157,11 +157,13 @@
 </div>
 
 <!-- ── Tourinfo ───────────────────────────────────────────────────────────────── -->
-{% set has_info = tour.meeting_desc or tour.meeting_address or tour.region or tour.surface %}
+{% set ek = einkehr_info(tour) %}
+{% set has_info = tour.meeting_desc or tour.meeting_address or tour.region or tour.surface or ek %}
 {% if has_info %}
 <div class="info-grid">
   {% if tour.meeting_desc %}<div class="info-item"><span class="lbl">📍 Treffpunkt</span>{{ tour.meeting_desc }}</div>{% endif %}
   {% if tour.meeting_address %}<div class="info-item"><span class="lbl">🏠 Adresse</span>{{ tour.meeting_address }}</div>{% endif %}
+  {% if ek %}<div class="info-item"><span class="lbl">☕ Einkehr</span>{{ ek.name }}{% if ek.type_label %} ({{ ek.type_label }}){% endif %}{% if ek.hours %} · {{ ek.hours }}{% endif %}{% if ek.lunch == 'yes' %} · Mittagstisch{% endif %}{% if ek.warn %} · Achtung: Ruhetag?{% elif ek.noon_warn %} · Achtung: mittags geschlossen?{% endif %}{% if ek.spot and ek.text %} – {{ ek.text }}{% endif %}</div>{% endif %}
   {% if tour.region %}<div class="info-item"><span class="lbl">🗺️ Region</span>{{ tour.region }}</div>{% endif %}
   {% if tour.surface %}<div class="info-item"><span class="lbl">🛣️ Untergrund</span>{{ tour.surface }}</div>{% endif %}
 </div>

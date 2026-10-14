@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de"{% if current_user.is_authenticated and current_user.large_text %} class="big-text"{% endif %}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -126,7 +126,7 @@
           </a>
           <ul class="dropdown-menu">
             <li><a class="dropdown-item" href="{{ url_for('global_map') }}">
-              <i class="bi bi-geo-alt me-2"></i>Live-Karte</a></li>
+              <i class="bi bi-geo-alt me-2"></i>Gruppen-Karte</a></li>
             <li><a class="dropdown-item" href="{{ url_for('explore_map') }}">
               <i class="bi bi-trophy me-2"></i>Unsere Landkarte</a></li>
           </ul>
@@ -232,6 +232,10 @@
             <li><a class="dropdown-item" href="#" onclick="toggleDark(event)">
               <i class="bi bi-moon-stars me-2" id="dark-icon-mobile"></i>
               <span id="dark-label-mobile">Dark Mode</span></a></li>
+            <li><form method="post" action="{{ url_for('profil_large_text') }}" class="m-0">
+              <button type="submit" class="dropdown-item">
+                <i class="bi bi-{{ 'zoom-out' if current_user.large_text else 'zoom-in' }} me-2"></i>
+                {{ 'Normale Schrift' if current_user.large_text else 'Große Schrift' }}</button></form></li>
             <li><a class="dropdown-item" href="{{ url_for('hilfe') }}">
               <i class="bi bi-question-circle me-2"></i>Hilfe & Info</a></li>
             {% if telegram_link %}
@@ -307,6 +311,10 @@
           <li><a class="dropdown-item" href="#" onclick="toggleDark(event)">
             <i class="bi bi-moon-stars me-2" id="dark-icon"></i>
             <span id="dark-label">Dark Mode</span></a></li>
+          <li><form method="post" action="{{ url_for('profil_large_text') }}" class="m-0">
+            <button type="submit" class="dropdown-item">
+              <i class="bi bi-{{ 'zoom-out' if current_user.large_text else 'zoom-in' }} me-2"></i>
+              {{ 'Normale Schrift' if current_user.large_text else 'Große Schrift' }}</button></form></li>
           <li><hr class="dropdown-divider"></li>
           <li><a class="dropdown-item" href="{{ url_for('hilfe') }}">
             <i class="bi bi-question-circle me-2"></i>Hilfe & Info</a></li>
@@ -684,6 +692,22 @@ updateDarkUI();
     color: #6c757d;
   }
 }
+
+/* Build x: Großschrift-Modus (pro Nutzer, users.large_text) – alles skaliert über rem,
+   dazu größere Tipp-Flächen, kräftigere Grautöne und weniger Mini-Schrift */
+html.big-text { font-size: 120%; }
+html.big-text body { line-height: 1.55; }
+html.big-text .small, html.big-text small, html.big-text .form-text { font-size: .95em !important; }
+html.big-text .btn-sm, html.big-text .form-control-sm, html.big-text .form-select-sm,
+html.big-text .input-group-sm > .form-control, html.big-text .input-group-sm > .btn { font-size: 1rem; padding: .4rem .75rem; }
+html.big-text .btn, html.big-text .form-control, html.big-text .form-select { min-height: 2.75rem; }
+html.big-text .btn.py-0, html.big-text .btn.btn-sm.py-0 { min-height: 2.2rem; }
+html.big-text .form-check-input { width: 1.35em; height: 1.35em; margin-top: .1em; }
+html.big-text .nav-link, html.big-text .dropdown-item { padding-top: .6rem; padding-bottom: .6rem; }
+html.big-text .badge { font-size: .85em; }
+html.big-text .text-muted { color: #4a5160 !important; }
+html.big-text .table { font-size: 1.05rem; }
+html.big-text [style*="font-size:.7"], html.big-text [style*="font-size: .7"] { font-size: .9rem !important; }
 </style>
 
 </body>

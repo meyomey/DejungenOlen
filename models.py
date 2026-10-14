@@ -45,6 +45,8 @@ class User(UserMixin, db.Model):
     bio          = db.Column(db.String(300), nullable=True)
     avatar       = db.Column(db.String(200), nullable=True)   # filename in uploads/avatars/
     morning_opener_until = db.Column(db.String(5), nullable=True)  # persönliche Frühöffner-Schwelle HH:MM
+    calendar_token = db.Column(db.String(40), nullable=True, index=True)  # Build w: Kalender-Abo (webcal)
+    large_text     = db.Column(db.Boolean, default=False)                  # Build x: Großschrift-Modus
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
     last_login   = db.Column(db.DateTime, nullable=True)
 
@@ -106,6 +108,13 @@ class Tour(db.Model):
     meeting_lng = db.Column(db.Float, nullable=True)
     meeting_desc = db.Column(db.String(200), nullable=True)
     weather_json = db.Column(db.Text, nullable=True)        # Build q: Wetter am Tourtag (Cache, JSON)
+    gpx_moving_s = db.Column(db.Integer, nullable=True)     # Build w: Fahrzeit (s) aus GPX-Zeitstempeln
+    gpx_avg_kmh  = db.Column(db.Float, nullable=True)       # Build w: Ø-Tempo
+    gpx_preview  = db.Column(db.Text, nullable=True)        # Build w: Mini-Streckenvorschau 'B,H|x,y …' (NULL = nicht berechnet)
+    gastro_spot_id = db.Column(db.Integer, db.ForeignKey('gastro_spots.id'), nullable=True)  # Build x: geplante Einkehr
+    einkehr_text   = db.Column(db.String(200), nullable=True)               # Build x: Einkehr als Freitext
+    attendance_reminded_at = db.Column(db.DateTime, nullable=True)          # Build x: Abend-Push „Wer war dabei?“ verschickt
+    einkehr_spot   = db.relationship('GastroSpot', foreign_keys=[gastro_spot_id])
     created_by  = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     group_id    = db.Column(db.Integer, db.ForeignKey('groups.id'), nullable=True)
     created_at  = db.Column(db.DateTime, default=datetime.utcnow)
@@ -198,6 +207,8 @@ class LiveLocation(db.Model):
     lat        = db.Column(db.Float, nullable=False)
     lng        = db.Column(db.Float, nullable=False)
     accuracy   = db.Column(db.Float, nullable=True)
+    speed      = db.Column(db.Float, nullable=True)   # Build aa: m/s
+    heading    = db.Column(db.Float, nullable=True)   # Build aa: Grad
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     tour       = db.relationship('Tour')
     user       = db.relationship('User')
@@ -274,6 +285,8 @@ class GastroSpot(db.Model):
     opens_at    = db.Column(db.String(5), nullable=True)   # "HH:MM"
     closes_at   = db.Column(db.String(5), nullable=True)
     hours_text  = db.Column(db.String(300), nullable=True)  # Build t: Öffnungszeiten als Text (OSM opening_hours oder frei, z. B. Ruhetag)
+    lunch       = db.Column(db.String(10), nullable=True)   # Build z: Mittagstisch 'yes' / 'no' / NULL = keine Angabe
+    lunch_text  = db.Column(db.String(200), nullable=True)  # Build z: z. B. „Mo–Fr 11:30–14:00, wechselnde Wochenkarte“
     phone       = db.Column(db.String(30), nullable=True)
     website     = db.Column(db.String(200), nullable=True)
     notes       = db.Column(db.Text, nullable=True)

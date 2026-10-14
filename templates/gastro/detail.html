@@ -45,6 +45,7 @@
     <div class="card mb-3">
       <div class="card-body">
         <div class="row g-3">
+          {% set li = lunch_info(spot) %}
           {% if spot.opens_at or spot.closes_at or spot.hours_text %}
           {% set ruhetage = spot.hours_text|closed_days %}
           <div class="col-12 col-sm-6">
@@ -61,6 +62,19 @@
             {% if spot.hours_text %}
             <div class="small text-muted mt-1">🕐 {{ spot.hours_text|hours_de }}</div>
             {% endif %}
+          </div>
+          {% endif %}
+          {% if li.status %}
+          <div class="col-12 col-sm-6" id="mittagstisch">
+            <div class="small text-muted fw-semibold">Mittagstisch</div>
+            <div>
+              {% if li.status == 'yes' %}<span class="badge bg-warning text-dark">🍽️ Mittagstisch</span>
+              {% elif li.status == 'noon' %}<span class="badge bg-success-subtle text-success border border-success-subtle" title="aus den Öffnungszeiten abgeleitet">{{ li.label }}</span>
+              {% elif li.status == 'noon_closed' %}<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ li.label }}</span>
+              {% else %}<span class="badge bg-light text-muted border">kein Mittagstisch</span>{% endif %}
+              {% if li.text %}<div class="small mt-1">{{ li.text }}</div>{% endif %}
+              {% if li.status == 'noon' %}<div class="small text-muted mt-1">laut Öffnungszeiten um die Mittagszeit geöffnet – ob es warme Küche gibt, bitte im Eintrag ergänzen.</div>{% endif %}
+            </div>
           </div>
           {% endif %}
           {% if spot.address %}
@@ -240,6 +254,12 @@
         <div class="alert alert-warning mt-3 py-2 small">
           🕐 Öffnet {{ spot.opens_at }} Uhr – für Vormittagstouren evtl. zu spät.
         </div>
+        {% endif %}
+        {% set li2 = lunch_info(spot) %}
+        {% if li2.status == 'yes' %}
+        <div class="alert alert-warning mt-2 py-2 small">🍽️ <strong>Mittagstisch</strong>{% if li2.text %} – {{ li2.text }}{% endif %}</div>
+        {% elif li2.status == 'noon_closed' %}
+        <div class="alert alert-secondary mt-2 py-2 small">🕛 Laut Öffnungszeiten mittags geschlossen – als Mittagsrast ungeeignet.</div>
         {% endif %}
 
         <div class="mt-3 d-grid gap-1">

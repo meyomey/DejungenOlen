@@ -105,6 +105,51 @@
                    id="is_ebike" {% if current_user.is_ebike %}checked{% endif %}>
             <label class="form-check-label" for="is_ebike">⚡ Ich fahre ein E-Bike</label>
           </div>
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" name="large_text"
+                   id="large_text" {% if current_user.large_text %}checked{% endif %}>
+            <label class="form-check-label" for="large_text">🔍 Große Schrift
+              <span class="text-muted small">(größere Schrift und Knöpfe auf allen Seiten – auch im Konto-Menü umschaltbar)</span></label>
+          </div>
+        </div>
+      </div>
+
+      {# Build w: Kalender-Abo (webcal). Liegt im Profil-Formular, daher „Link erneuern“ per formaction #}
+      <div class="card mb-3" id="kalender">
+        <div class="card-header card-header-djo">
+          <i class="bi bi-calendar-plus me-1"></i>Kalender-Abo
+        </div>
+        <div class="card-body">
+          <p class="small text-muted mb-2">
+            Einmal abonnieren – dann erscheinen alle Touren der Gruppe automatisch im Kalender auf dem
+            Handy, inklusive Änderungen und Absagen. Der Link ist persönlich, bitte nicht weitergeben.
+          </p>
+          <div class="d-grid gap-2 d-sm-flex mb-2">
+            <a href="{{ cal_webcal }}" class="btn btn-djo btn-sm">
+              <i class="bi bi-phone me-1"></i>Auf dem Handy abonnieren
+            </a>
+            <button type="button" class="btn btn-outline-djo btn-sm"
+                    onclick="navigator.clipboard.writeText({{ cal_https|tojson|forceescape }}).then(()=>{this.textContent='✓ Link kopiert';setTimeout(()=>this.innerHTML='<i class=\'bi bi-clipboard me-1\'></i>Link kopieren',2500)})">
+              <i class="bi bi-clipboard me-1"></i>Link kopieren
+            </button>
+          </div>
+          <div class="input-group input-group-sm mb-2">
+            <input type="text" class="form-control" readonly value="{{ cal_https }}"
+                   onclick="this.select()" style="font-size:.75rem">
+            <button type="submit" class="btn btn-outline-danger" formaction="{{ url_for('profil_calendar_renew') }}"
+                    formmethod="post" formnovalidate title="Neuen Link erzeugen – der alte wird ungültig"
+                    onclick="return confirm('Neuen Kalender-Link erzeugen? Der bisherige Link funktioniert danach nicht mehr und das Abo muss neu eingerichtet werden.')">
+              <i class="bi bi-arrow-clockwise"></i>
+            </button>
+          </div>
+          <details class="small text-muted">
+            <summary class="cursor-pointer">So geht's auf iPhone, Android und am PC</summary>
+            <ul class="mt-2 mb-1 ps-3">
+              <li><strong>iPhone/iPad:</strong> „Auf dem Handy abonnieren“ tippen → „Abonnieren“ bestätigen. Der Kalender heißt „{{ current_group.name if current_group else 'De jungen Olen' }} – Touren“.</li>
+              <li><strong>Android (Google-Kalender):</strong> Am PC <a href="https://calendar.google.com/calendar/u/0/r/settings/addbyurl" target="_blank" rel="noopener">calendar.google.com → Per URL hinzufügen</a> öffnen und den kopierten Link einfügen – danach erscheint der Kalender auch auf dem Handy (Google aktualisiert etwa alle 12–24 Stunden).</li>
+              <li><strong>Outlook/Thunderbird:</strong> „Kalender abonnieren / aus dem Internet“ und den Link einfügen.</li>
+            </ul>
+          </details>
         </div>
       </div>
 

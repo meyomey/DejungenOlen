@@ -45,6 +45,34 @@
       <span class="badge bg-danger ms-1">Abgesagt</span>
       {% endif %}
     </div>
+    {# Build x: geplante Einkehr #}
+    {% set ek = einkehr_info(tour) %}
+    {% set can_manage = current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
+    {% if ek %}
+    <div class="mt-1 d-flex align-items-center flex-wrap gap-1" id="einkehr-zeile">
+      <span>☕ <strong>Einkehr:</strong>
+        {% if ek.url %}<a href="{{ ek.url }}" class="fw-semibold">{{ ek.name }}</a>{% else %}{{ ek.name }}{% endif %}
+        {% if ek.type_label %}<span class="text-muted">· {{ ek.type_label }}</span>{% endif %}
+        {% if ek.hours %}<span class="text-muted">· 🕐 {{ ek.hours }}</span>{% endif %}
+        {% if ek.spot and ek.text %}<span class="text-muted">· {{ ek.text }}</span>{% endif %}
+      </span>
+      {% if ek.warn %}<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Ruhetag am Tourtag?</span>{% endif %}
+      {% if ek.lunch == 'yes' %}<span class="badge bg-warning text-dark" title="{{ ek.lunch_label }}">🍽️ Mittagstisch</span>
+      {% elif ek.noon_warn %}<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle" title="laut Öffnungszeiten am Tourtag zwischen 12 und 14 Uhr nicht geöffnet">mittags geschlossen am Tourtag?</span>
+      {% elif ek.lunch == 'noon' %}<span class="badge bg-success-subtle text-success border border-success-subtle" title="{{ ek.lunch_label }}">🕛 mittags geöffnet</span>{% endif %}
+      {% if can_manage %}
+      <form method="post" action="{{ url_for('tour_set_einkehr', tour_id=tour.id) }}" class="d-inline m-0"
+            onsubmit="return confirm('Geplante Einkehr entfernen?')">
+        <input type="hidden" name="spot_id" value="">
+        <button type="submit" class="btn btn-sm py-0 px-1 text-muted" title="Einkehr entfernen"><i class="bi bi-x-lg"></i></button>
+      </form>
+      {% endif %}
+    </div>
+    {% elif can_manage and tour.status == 'planned' %}
+    <div class="mt-1 small text-muted" id="einkehr-zeile">☕ Noch keine Einkehr geplant –
+      <a href="{{ url_for('tour_edit', tour_id=tour.id) }}#einkehr">im Formular wählen</a>
+      {% if tour.gpx_file %} oder unten in der Karte „Als Einkehr festlegen“{% endif %}.</div>
+    {% endif %}
   </div>
   {% if current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
   <div class="d-flex gap-2 flex-wrap">
@@ -69,6 +97,15 @@
             data-bs-toggle="modal" data-bs-target="#saveTemplateModal">
       <i class="bi bi-file-earmark-plus me-1"></i>Als Vorlage speichern
     </button>
+    {% endif %}
+    {# Build w: Nochmal fahren – neue geplante Tour aus dieser (abgeschlossene/abgesagte Touren) #}
+    {% if current_user.is_organizer and tour.status in ('completed', 'cancelled') %}
+    <form method="post" action="{{ url_for('tour_repeat', tour_id=tour.id) }}" style="display:inline"
+          onsubmit="return confirm('„' + {{ tour.title|tojson|forceescape }} + '“ nochmal fahren? Es wird eine neue geplante Tour ohne Termin angelegt – Teilnehmer und Fotos bleiben hier.')">
+      <button class="btn btn-sm btn-outline-success">
+        <i class="bi bi-arrow-repeat me-1"></i>Nochmal fahren
+      </button>
+    </form>
     {% endif %}
     {# Löschen: nur Admin oder Ersteller #}
     {% if current_user.is_admin or tour.created_by == current_user.id %}
@@ -134,6 +171,23 @@
     <div class="stat-box px-3 py-2">
       <div class="stat-number" style="font-size:1.4rem">{{ tour.gpx_ascent|int }}</div>
       <div class="stat-label">m Anstieg</div>
+    </div>
+  </div>
+  {% endif %}
+  {# Build w: Fahrzeit und Ø-Tempo, sobald der GPX-Track Zeitstempel hat #}
+  {% if tour.gpx_moving_s %}
+  <div class="col-auto">
+    <div class="stat-box px-3 py-2" title="reine Fahrzeit ohne Pausen (aus den GPX-Zeitstempeln)">
+      <div class="stat-number" style="font-size:1.4rem">{{ tour.gpx_moving_s|hm }}</div>
+      <div class="stat-label">Fahrzeit</div>
+    </div>
+  </div>
+  {% endif %}
+  {% if tour.gpx_avg_kmh %}
+  <div class="col-auto">
+    <div class="stat-box px-3 py-2">
+      <div class="stat-number" style="font-size:1.4rem">{{ tour.gpx_avg_kmh|de1 }}</div>
+      <div class="stat-label">Ø km/h</div>
     </div>
   </div>
   {% endif %}
@@ -225,10 +279,12 @@
                   onclick="toggleFullscreen()" id="fs-btn" title="Vollbild">
             <i class="bi bi-arrows-fullscreen" id="fs-icon"></i>
           </button>
-          <button class="btn btn-sm btn-outline-light py-0 px-2" id="live-btn"
-                  onclick="toggleLiveLocation()" title="Live-Standort teilen">
-            📍
-          </button>
+          {% if show_live %}
+          <a class="btn btn-sm btn-outline-light py-0 px-2" id="live-btn" href="{{ url_for('tour_live', tour_id=tour.id) }}"
+             title="Live-Karte: Wo ist die Gruppe gerade? Standort teilen und Mitfahrer sehen">
+            📍 Live
+          </a>
+          {% endif %}
           {% if tour.status == 'planned' %}
           <button class="btn btn-sm btn-outline-light py-0 px-2"
                   onclick="prefetchTiles()" title="Karte offline speichern">
@@ -278,10 +334,22 @@
 
     {% if gpx_data != 'null' %}
     <!-- Build u: Einkehr entlang der Strecke aus OpenStreetMap -->
+    {% if show_live %}
+    <div class="card mb-3 border-success-subtle" id="live-hint">
+      <div class="card-body py-2 d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="small"><strong>📍 Live-Karte</strong> – am Tourtag sehen, wo die Gruppe gerade ist: Standort teilen oder nur zuschauen (Nachzügler, Pannen, Daheimgebliebene).</div>
+        <a href="{{ url_for('tour_live', tour_id=tour.id) }}" class="btn btn-success btn-sm"><i class="bi bi-broadcast me-1"></i>Live-Karte öffnen</a>
+      </div>
+    </div>
+    {% endif %}
     <div class="card mb-3 d-none" id="osm-gastro-panel">
       <div class="card-header card-header-djo d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span><i class="bi bi-cup-hot me-1"></i>Einkehr entlang der Strecke <span class="fw-normal small">(OpenStreetMap)</span></span>
-        <span class="d-flex align-items-center gap-2">
+        <span class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="form-check form-check-inline small fw-normal mb-0 me-1">
+            <input class="form-check-input" type="checkbox" id="osm-gastro-lunch" onchange="rerenderOsmGastro()">
+            <label class="form-check-label" for="osm-gastro-lunch">🍽️ nur mittags</label>
+          </span>
           <label class="small fw-normal mb-0" for="osm-gastro-radius">Abstand</label>
           <select id="osm-gastro-radius" class="form-select form-select-sm py-0" style="width:auto" onchange="searchOsmGastro()">
             <option value="150">150 m</option>
@@ -469,13 +537,34 @@
         {% endif %}
       </div>
 
+      {# Build x: Selbstbestätigung „Ich war dabei“ – am Tourtag und bis 3 Tage danach #}
+      {% set tour_past = tour.tour_date and not tour.is_date_open and tour.tour_date <= today %}
+      {% set self_window = tour_past and tour.status in ('planned', 'completed') and (today - tour.tour_date).days <= 3 %}
+      {% set my_part = (attending + maybe + declined) | selectattr('user_id', 'equalto', current_user.id) | list | first %}
+      {% if self_window %}
+      <div class="card-footer py-2" id="ich-war-dabei">
+        {% if my_part and my_part.confirmed_present %}
+        <span class="small text-success fw-semibold"><i class="bi bi-check-circle-fill me-1"></i>Du warst dabei – danke!</span>
+        {% else %}
+        <form method="post" action="{{ url_for('tour_self_confirm', tour_id=tour.id) }}" class="d-flex align-items-center gap-2 flex-wrap">
+          <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-hand-thumbs-up me-1"></i>Ich war dabei</button>
+          <span class="small text-muted">zählt für die Rangliste</span>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+
       <!-- Confirm attendance after tour -->
-      {% if current_user.is_organizer and tour.status == 'completed' %}
-      <div class="card-footer">
-        <details>
+      {% set confirmed_any = attending | selectattr('confirmed_present') | list | length %}
+      {% if current_user.is_organizer and (tour.status == 'completed' or (tour.status == 'planned' and tour_past)) %}
+      <div class="card-footer" id="anwesenheit">
+        <details {% if tour_past and not confirmed_any and attending %}open{% endif %}>
           <summary class="small fw-semibold cursor-pointer">
             <i class="bi bi-person-check me-1"></i>Anwesenheit bestätigen
+            {% if confirmed_any %}<span class="badge bg-success ms-1">{{ confirmed_any }} ✓</span>
+            {% elif attending %}<span class="badge bg-warning text-dark ms-1">offen</span>{% endif %}
           </summary>
+          {% if not attending %}<p class="small text-muted mt-2 mb-0">Niemand ist angemeldet – Teilnehmer oben über „Hinzufügen“ (Haken „War dabei“) eintragen.</p>{% endif %}
           <form method="post" action="{{ url_for('tour_confirm_participants', tour_id=tour.id) }}"
                 class="mt-2">
             {% for p in attending %}
@@ -1102,6 +1191,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/osm_gastro.js') }}?v={{ app_build|urlencode }}"></script>
 <script>
 // ── Reply toggle ─────────────────────────────────────────────────────────────
 function showReply(id) {
@@ -1906,6 +1996,12 @@ const MEETING_LAT = {{ tour.meeting_lat or 'null' }};
 const MEETING_LNG = {{ tour.meeting_lng or 'null' }};
 const MEETING_DESC = {{ (tour.meeting_desc or "")|tojson }};
 const GASTRO_NEAR = {{ gastro_near|tojson }};   // Build q: Einkehr-Orte ≤ 150 m neben dem Track
+// Build x: geplante Einkehr (eigener Marker) + darf der Nutzer sie setzen? (eigener Block → Variablen neu setzen)
+{% set ek = einkehr_info(tour) %}
+{% set can_manage = current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
+const EINKEHR = {{ ({'id': ek.spot.id, 'name': ek.name, 'lat': ek.lat, 'lng': ek.lng, 'type': ek.spot.spot_type, 'url': ek.url, 'hours': ek.hours} if (ek and ek.spot) else none)|tojson }};
+const CAN_SET_EINKEHR = {{ 'true' if can_manage else 'false' }};
+const EINKEHR_URL = {{ url_for('tour_set_einkehr', tour_id=tour.id)|tojson }};
 const PHOTOS = [
   {% for p in photos %}{% if p.has_gps and p.lat and p.lng %}
   { id: {{ p.id }},
@@ -1934,7 +2030,6 @@ const isMobile = window.innerWidth < 992;
 const map = L.map('tour-map', {
   zoomControl: true,
   dragging:         !isMobile,
-  tap:              !isMobile,
   scrollWheelZoom:  false,
 }).setView(center, zoom);
 
@@ -2103,10 +2198,54 @@ GASTRO_NEAR.forEach(sp => {
                 <span class="text-muted small">${escHtml(sp.type_label)} · km ${String(sp.km).replace('.', ',')} · ${sp.dist_m} m neben der Strecke</span><br>
                 ${sp.hours ? '<span class="small">🕐 ' + escHtml(sp.hours) + '</span><br>' : (sp.opens_at ? '<span class="small">🕐 ab ' + escHtml(sp.opens_at) + ' Uhr</span><br>' : '')}
                 ${(sp.closed_days || []).length ? '<span class="small text-danger">Ruhetag: ' + sp.closed_days.join(', ') + '</span><br>' : ''}
-                <a href="${sp.url}" class="small">Details &amp; Bewertungen</a>`)
+                ${sp.lunch_status ? lunchBadgeHtml(sp, '') + '<br>' : ''}
+                <a href="${sp.url}" class="small">Details &amp; Bewertungen</a>${einkehrPopupBtn(sp.id)}`)
     .addTo(gastroLayer);
 });
 if (GASTRO_NEAR.length) gastroLayer.addTo(map);
+
+// ── Build x: geplante Einkehr – immer sichtbarer Marker + „Als Einkehr festlegen“ ──
+function einkehrPopupBtn(spotId) {
+  if (!CAN_SET_EINKEHR) return '';
+  if (EINKEHR && EINKEHR.id === spotId) return '<br><span class="small text-success">☕ geplante Einkehr</span>';
+  return `<br><button type="button" class="btn btn-sm btn-djo py-0 mt-1" onclick="setEinkehr(${spotId}, this)">☕ Als Einkehr festlegen</button>`;
+}
+function setEinkehr(spotId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  fetch(EINKEHR_URL, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify({spot_id: spotId})})
+    .then(async resp => {
+      const d = await resp.json().catch(() => ({}));
+      if (!resp.ok || !d.ok) throw new Error(d.error || ('HTTP ' + resp.status));
+      location.reload();
+    })
+    .catch(err => { if (btn) { btn.disabled = false; btn.textContent = '☕ Als Einkehr festlegen'; } alert('Konnte nicht gespeichert werden: ' + err.message); });
+}
+function setEinkehrFromOsm(i, btn) {
+  const r = (window.__osmGastroResults || [])[i];
+  if (!r) return;
+  if (r.known_id) { setEinkehr(r.known_id, btn); return; }
+  btn.disabled = true; btn.textContent = '…';
+  fetch('/api/gastro/quick-add', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: r.name, type: r.type, lat: r.lat, lng: r.lng, address: r.address, hours_text: r.opening_hours,
+                          phone: r.phone, website: r.website, osm_id: r.osm_id,
+                          lunch: r.lunch || '', lunch_text: r.lunch_text || ''})     // Build z
+  }).then(async resp => {
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok || !d.ok || !d.id) throw new Error(d.error || ('HTTP ' + resp.status));
+    setEinkehr(d.id, btn);
+  }).catch(err => { btn.disabled = false; btn.textContent = '☕ Einkehr'; alert('Konnte nicht gespeichert werden: ' + err.message); });
+}
+if (EINKEHR && EINKEHR.lat != null && EINKEHR.lng != null) {
+  const ekIcon = L.divIcon({
+    html: `<div style="width:34px;height:34px;border-radius:50%;background:#B85C00;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1">${GASTRO_ICONS[EINKEHR.type] || '🍴'}</div>`,
+    iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -18], className: ''
+  });
+  L.marker([EINKEHR.lat, EINKEHR.lng], {icon: ekIcon, title: 'Einkehr: ' + EINKEHR.name, zIndexOffset: 300})
+    .bindPopup(`<b>☕ Geplante Einkehr</b><br>${escHtml(EINKEHR.name)}${EINKEHR.hours ? '<br><span class="small">🕐 ' + escHtml(EINKEHR.hours) + '</span>' : ''}<br><a href="${EINKEHR.url}" class="small">Details &amp; Bewertungen</a>`)
+    .addTo(map);
+}
 function toggleGastroLayer() {
   const on = map.hasLayer(gastroLayer);
   if (on) map.removeLayer(gastroLayer); else gastroLayer.addTo(map);
@@ -2181,11 +2320,11 @@ function osmGastroDirect(query, radius) {               // Direktabfrage – Ele
         const kind = t.amenity || t.shop || '';
         const street = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ');
         const city = [t['addr:postcode'], t['addr:city']].filter(Boolean).join(' ');
-        return {osm_id: (el.type || 'node') + '/' + el.id, name: t.name || kind || 'Unbekannt', type: kind, lat, lng,
+        return osmLunchEnrich({osm_id: (el.type || 'node') + '/' + el.id, name: t.name || kind || 'Unbekannt', type: kind, lat, lng,
                 app_type: OSM_GASTRO_APPTYPE[kind] || 'other', type_label: OSM_GASTRO_LABEL[kind] || kind,
                 opening_hours: t.opening_hours || '', hours: osmHoursDe(t.opening_hours), closed_days: osmClosedDays(t.opening_hours),
                 phone: t.phone || t['contact:phone'] || '', website: t.website || t['contact:website'] || '',
-                address: [street, city].filter(Boolean).join(', ')};
+                address: [street, city].filter(Boolean).join(', ')}, t);          // Build z: Mittagstisch-Felder
       }).filter(Boolean);
       return {results: osmGastroAlongTrack(items, radius + 30), source: 'overpass-api.de (direkt)', radius};
     });
@@ -2210,11 +2349,21 @@ function searchOsmGastro() {
     });
 }
 
+function rerenderOsmGastro() {                              // Build z: Filter „nur mittags“ ohne neue Abfrage
+  const body = document.getElementById('osm-gastro-body');
+  if (window.__osmGastroData && body) renderOsmGastro(window.__osmGastroData, body);
+}
+
 function renderOsmGastro(d, body) {
   osmGastroLayer.clearLayers();
-  const res = d.results || [];
+  window.__osmGastroData = d;
+  const lunchOnly = !!(document.getElementById('osm-gastro-lunch') || {}).checked;
+  const all = d.results || [];
+  const res = lunchOnly ? all.filter(r => lunchMatches(r, '')) : all;
   if (!res.length) {
-    body.innerHTML = `<p class="text-muted small mb-0">Im Abstand von ${d.radius} m zur Strecke ist in OpenStreetMap keine Gastronomie eingetragen – Abstand vergrößern.</p>`;
+    body.innerHTML = all.length
+      ? `<p class="text-muted small mb-0">Keiner der ${all.length} Treffer bis ${d.radius} m hat laut OpenStreetMap einen Mittagstisch oder ist mittags geöffnet – Häkchen „nur mittags“ abwählen oder Abstand vergrößern.</p>`
+      : `<p class="text-muted small mb-0">Im Abstand von ${d.radius} m zur Strecke ist in OpenStreetMap keine Gastronomie eingetragen – Abstand vergrößern.</p>`;
     return;
   }
   res.forEach((r, i) => {
@@ -2224,9 +2373,10 @@ function renderOsmGastro(d, body) {
     });
     const hours = r.hours ? '<br><span class="small">🕐 ' + escHtml(r.hours) + '</span>' : '';
     const closed = (r.closed_days || []).length ? '<br><span class="small text-danger">Ruhetag: ' + r.closed_days.join(', ') + '</span>' : '';
+    const lunch = r.lunch_status ? '<br>' + lunchBadgeHtml(r, '') : '';           // Build z
     const known = r.known_url ? `<br><a href="${r.known_url}" class="small">✓ in der Gastro-Liste – Details</a>` : '';
     osmGastroMarkers[i] = L.marker([r.lat, r.lng], {icon, title: r.name, zIndexOffset: -150})
-      .bindPopup(`<b>${escHtml(r.name)}</b><br><span class="text-muted small">${escHtml(r.type_label)} · km ${String(r.km).replace('.', ',')} · ${r.dist_m} m neben der Strecke</span>${hours}${closed}${known}`)
+      .bindPopup(`<b>${escHtml(r.name)}</b><br><span class="text-muted small">${escHtml(r.type_label)} · km ${String(r.km).replace('.', ',')} · ${r.dist_m} m neben der Strecke</span>${hours}${closed}${lunch}${known}`)
       .addTo(osmGastroLayer);
   });
   const src = d.source && d.source !== 'cache' ? ` · Quelle: ${escHtml(d.source)}` : '';
@@ -2237,13 +2387,16 @@ function renderOsmGastro(d, body) {
         <div class="flex-grow-1 small">
           <strong style="cursor:pointer" onclick="focusOsmGastro(${i})">${escHtml(r.name)}</strong>
           <span class="text-muted">· ${escHtml(r.type_label)} · km ${String(r.km).replace('.', ',')} · ${r.dist_m} m abseits</span>
+          ${lunchBadgeHtml(r)}${r.cuisine ? ' <span class="text-muted">· ' + escHtml(r.cuisine) + '</span>' : ''}
           ${r.hours ? '<br>🕐 ' + escHtml(r.hours) : ''}
+          ${r.kitchen_hours ? ' <span class="text-muted">· Küche ' + escHtml(osmHoursDe(r.kitchen_hours)) + '</span>' : ''}
           ${(r.closed_days || []).length ? ' <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Ruhetag ' + r.closed_days.join(', ') + '</span>' : ''}
           ${r.address ? '<br><span class="text-muted">' + escHtml(r.address) + '</span>' : ''}
         </div>
         <div class="text-nowrap osm-gastro-action">
           ${r.known_url ? `<a href="${r.known_url}" class="btn btn-sm btn-outline-success py-0">✓ in Liste</a>`
                         : `<button type="button" class="btn btn-sm btn-djo py-0" onclick="quickAddOsmGastro(${i}, this)">Übernehmen</button>`}
+          ${CAN_SET_EINKEHR ? `<button type="button" class="btn btn-sm btn-outline-djo py-0 ms-1" title="Als geplante Einkehr dieser Tour festlegen" onclick="setEinkehrFromOsm(${i}, this)">☕ Einkehr</button>` : ''}
         </div>
       </div>`).join('') + '</div>';
   window.__osmGastroResults = res;
@@ -2266,7 +2419,8 @@ function quickAddOsmGastro(i, btn) {
   fetch('/api/gastro/quick-add', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({name: r.name, type: r.type, lat: r.lat, lng: r.lng, address: r.address, hours_text: r.opening_hours,
-                          phone: r.phone, website: r.website, osm_id: r.osm_id})
+                          phone: r.phone, website: r.website, osm_id: r.osm_id,
+                          lunch: r.lunch || '', lunch_text: r.lunch_text || ''})     // Build z
   }).then(async resp => {
     const d = await resp.json().catch(() => ({}));
     if (!resp.ok || !d.ok) throw new Error(d.error || ('HTTP ' + resp.status));
@@ -3003,90 +3157,7 @@ if (grid) {
 {% endif %}
 <script>
 
-// ── Live-Standort ─────────────────────────────────────────────────────────────
-const TOUR_ID = {{ tour.id }};
-let _liveActive   = false;
-let _liveWatchId  = null;
-let _liveInterval = null;
-let _liveMarkers  = {};
-
-function toggleLiveLocation() {
-  if (_liveActive) {
-    stopLiveLocation();
-  } else {
-    startLiveLocation();
-  }
-}
-
-function startLiveLocation() {
-  if (!navigator.geolocation) { alert('GPS nicht verfügbar.'); return; }
-  const btn = document.getElementById('live-btn');
-  if (btn) { btn.classList.add('btn-success'); btn.classList.remove('btn-outline-success'); }
-  _liveActive = true;
-
-  _liveWatchId = navigator.geolocation.watchPosition(pos => {
-    fetch('/api/location/update', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        tour_id:  TOUR_ID,
-        lat:      pos.coords.latitude,
-        lng:      pos.coords.longitude,
-        accuracy: pos.coords.accuracy
-      })
-    }).catch(() => {});
-  }, null, {enableHighAccuracy: true, maximumAge: 10000});
-
-  // Andere Standorte alle 15s abrufen
-  _pollLiveLocations();
-  _liveInterval = setInterval(_pollLiveLocations, 15000);
-}
-
-function stopLiveLocation() {
-  _liveActive = false;
-  if (_liveWatchId) navigator.geolocation.clearWatch(_liveWatchId);
-  if (_liveInterval) clearInterval(_liveInterval);
-  fetch('/api/location/stop', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({tour_id: TOUR_ID})
-  }).catch(() => {});
-  const btn = document.getElementById('live-btn');
-  if (btn) { btn.classList.remove('btn-success'); btn.classList.add('btn-outline-success'); }
-  Object.values(_liveMarkers).forEach(m => map.removeLayer(m));
-  _liveMarkers = {};
-}
-
-function _pollLiveLocations() {
-  fetch('/api/location/tour/' + TOUR_ID)
-    .then(r => r.json())
-    .then(data => {
-      if (!data.locations) return;
-      const seen = new Set();
-      data.locations.forEach(loc => {
-        seen.add(loc.user_id);
-        const freshness = loc.ago < 30 ? '#00c851' : loc.ago < 120 ? '#ffbb33' : '#ff4444';
-        const icon = L.divIcon({
-          html: '<div style="background:' + freshness + ';width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>',
-          iconSize: [14,14], iconAnchor: [7,7], className: ''
-        });
-        const popup = '<b>' + escHtml(loc.name) + '</b><br><small>vor ' + loc.ago + 's</small>';
-        if (_liveMarkers[loc.user_id]) {
-          _liveMarkers[loc.user_id].setLatLng([loc.lat, loc.lng])
-                                   .setPopupContent(popup);
-        } else {
-          _liveMarkers[loc.user_id] = L.marker([loc.lat, loc.lng], {icon})
-            .bindPopup(popup).addTo(map);
-        }
-      });
-      // Entferne abgelaufene Marker
-      Object.keys(_liveMarkers).forEach(uid => {
-        if (!seen.has(parseInt(uid))) {
-          map.removeLayer(_liveMarkers[uid]);
-          delete _liveMarkers[uid];
-        }
-      });
-    }).catch(() => {});
-}
+// Build aa: Live-Standort ist auf die eigene Seite /touren/<id>/live umgezogen (schlank, große Knöpfe, Vollbild).
 
 // ── Offline Map Tiles voraus-cachen ──────────────────────────────────────────
 function prefetchTiles() {

@@ -1,0 +1,12 @@
+{# Build w: Mini-Streckenvorschau als Inline-SVG aus tour.gpx_preview ('B,H|x,y x,y …'), keine Kachel-Anfragen #}
+{% macro track_svg(tour, w=84, h=56, cls='') -%}
+{% if tour.gpx_preview %}{% set parts = tour.gpx_preview.split('|') %}{% set wh = parts[0].split(',') %}{% set first = parts[1].split(' ')[0].split(',') %}
+<svg class="track-mini {{ cls }}" width="{{ w }}" height="{{ h }}"
+     viewBox="-70 -70 {{ wh[0]|int + 140 }} {{ wh[1]|int + 140 }}" preserveAspectRatio="xMidYMid meet"
+     aria-hidden="true" style="display:block;border-radius:6px;background:#f3f5f9">
+  <polyline points="{{ parts[1] }}" fill="none" stroke="#2B3F6B" stroke-width="2.2"
+            stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  <circle cx="{{ first[0] }}" cy="{{ first[1] }}" r="48" fill="#27ae60"/>
+</svg>
+{% endif %}
+{%- endmacro %}
