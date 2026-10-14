@@ -211,6 +211,15 @@
         </div>
       </div>
       <div class="card-body p-0 position-relative" id="map-wrap" style="overflow:hidden">
+        <style>
+          /* Foto-Pins: nur das Badge ist klickbar, die transparente Fläche (Verbindungslinie) lässt die Karte durch */
+          .leaflet-marker-icon.photo-pin { pointer-events: none !important; }
+          .photo-pin .pp-hit { pointer-events: auto; cursor: pointer; transition: box-shadow .15s, border-color .15s; }
+          .photo-pin.pp-hot .pp-hit, .photo-pin .pp-hit:hover {
+            border-color: #C0392B !important;
+            box-shadow: 0 0 0 3px rgba(192,57,43,.4), 0 2px 6px rgba(0,0,0,.35) !important;
+          }
+        </style>
         <div id="tour-map" style="height:460px;display:block;border-radius:0;max-width:100%"></div>
         <!-- Elevation overlay (shown on map when toggled) -->
         <div id="elev-overlay" style="display:none;position:absolute;bottom:0;left:0;right:0;
@@ -606,7 +615,8 @@
                      onclick="lbOpenFromEl(this)">
                 {% if p.has_gps %}
                 <span class="badge bg-success position-absolute top-0 end-0 m-1"
-                      title="GPS: {{ p.lat }}, {{ p.lng }}">
+                      style="cursor:pointer" onclick="jumpToMarker({{ p.id }})"
+                      title="Auf der Karte zeigen (GPS: {{ p.lat }}, {{ p.lng }})">
                   <i class="bi bi-geo-alt-fill"></i>
                 </span>
                 {% else %}
@@ -1934,17 +1944,27 @@ if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length > 0) {
   }).addTo(map);
   map.fitBounds(poly.getBounds(), {padding:[20,20]});
 
-  // Start / end markers
-  const startIcon = L.divIcon({
-    html: '<div style="background:#2E7D4F;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold">S</div>',
-    iconSize:[26,26], iconAnchor:[13,13]
-  });
-  const endIcon = L.divIcon({
-    html: '<div style="background:#C0392B;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold">Z</div>',
-    iconSize:[26,26], iconAnchor:[13,13]
-  });
-  L.marker(latlngs[0], {icon: startIcon}).addTo(map).bindPopup('<b>Start</b>');
-  L.marker(latlngs[latlngs.length-1], {icon: endIcon}).addTo(map).bindPopup('<b>Ziel</b>');
+  // Start / end markers (Rundkurs: Start und Ziel liegen zusammen → ein gemeinsamer Marker)
+  const seStyle = 'color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);';
+  const startLL = latlngs[0], endLL = latlngs[latlngs.length - 1];
+  if (map.distance(startLL, endLL) < 150) {
+    const seIcon = L.divIcon({
+      html: '<div style="' + seStyle + 'background:linear-gradient(135deg,#2E7D4F 50%,#C0392B 50%);width:32px;height:32px;font-size:11px">S/Z</div>',
+      iconSize:[32,32], iconAnchor:[16,16], className:''
+    });
+    L.marker(startLL, {icon: seIcon}).addTo(map).bindPopup('<b>Start &amp; Ziel</b>');
+  } else {
+    const startIcon = L.divIcon({
+      html: '<div style="' + seStyle + 'background:#2E7D4F;width:26px;height:26px;font-size:13px">S</div>',
+      iconSize:[26,26], iconAnchor:[13,13], className:''
+    });
+    const endIcon = L.divIcon({
+      html: '<div style="' + seStyle + 'background:#C0392B;width:26px;height:26px;font-size:13px">Z</div>',
+      iconSize:[26,26], iconAnchor:[13,13], className:''
+    });
+    L.marker(startLL, {icon: startIcon}).addTo(map).bindPopup('<b>Start</b>');
+    L.marker(endLL, {icon: endIcon}).addTo(map).bindPopup('<b>Ziel</b>');
+  }
 }
 
 // Meeting point marker
@@ -1958,8 +1978,116 @@ if (MEETING_LAT) {
    .bindPopup('<b>Treffpunkt</b><br>' + escHtml({{ (tour.meeting_desc or "")|tojson }}));
 }
 
-// Photo markers – with MarkerCluster + hover sync
-// Graceful fallback: use a LayerGroup if MarkerClusterGroup not available
+// ── Foto-Marker: neben dem Track platziert (wie im Video), MarkerCluster + Hover-Sync ──
+// Jeder Foto-Marker (einzeln oder Cluster) ist ein Thumbnail-Badge mit kurzer Verbindungs-
+// linie zum Aufnahmeort. Die Richtung wird pro Zoomstufe so gewählt, dass möglichst wenig
+// Track, Start/Ziel/Treffpunkt und andere Badges verdeckt werden (placePhotoPins).
+const PIN_W = 42, PIN_H = 36, PIN_ACTIVE_W = 56, PIN_ACTIVE_H = 48;
+const PIN_AVOID = [];                       // feste Marker, die frei bleiben sollen
+if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length > 0) {
+  const g0 = GPX_DATA.points[0], g1 = GPX_DATA.points[GPX_DATA.points.length - 1];
+  PIN_AVOID.push([g0.lat, g0.lng], [g1.lat, g1.lng]);
+}
+if (MEETING_LAT) PIN_AVOID.push([MEETING_LAT, MEETING_LNG]);
+
+let _trackPx = null, _trackPxZoom = null, _placeTimer = null, _placeWait = 0;
+function trackPointsPx(z) {                 // Track in Pixelkoordinaten der Zoomstufe z (gecacht)
+  if (_trackPx && _trackPxZoom === z) return _trackPx;
+  const pts = (GPX_DATA && GPX_DATA.points) || [];
+  const st = Math.max(1, Math.floor(pts.length / 1500));
+  const px = [];
+  for (let i = 0; i < pts.length; i += st) px.push(map.project([pts[i].lat, pts[i].lng], z));
+  if (pts.length > 1 && (pts.length - 1) % st !== 0) px.push(map.project([pts[pts.length - 1].lat, pts[pts.length - 1].lng], z));
+  _trackPx = px; _trackPxZoom = z;
+  return px;
+}
+
+function clipLen(a, b, r) {                 // Länge des Segments a–b innerhalb des Rechtecks r (Liang–Barsky)
+  const dx = b.x - a.x, dy = b.y - a.y;
+  let t0 = 0, t1 = 1;
+  const p = [-dx, dx, -dy, dy], q = [a.x - r.x0, r.x1 - a.x, a.y - r.y0, r.y1 - a.y];
+  for (let i = 0; i < 4; i++) {
+    if (p[i] === 0) { if (q[i] < 0) return 0; continue; }
+    const t = q[i] / p[i];
+    if (p[i] < 0) { if (t > t1) return 0; if (t > t0) t0 = t; }
+    else          { if (t < t0) return 0; if (t < t1) t1 = t; }
+  }
+  return (t1 - t0) * Math.hypot(dx, dy);
+}
+
+function bestPinOffset(anchor, bw, bh, track, fixed, placed, view) {
+  const near = [];                          // Track-Segmente im Umkreis von 120 px reichen für die Bewertung
+  for (let i = 1; i < track.length; i++) {
+    const a = track[i - 1], b = track[i];
+    if (Math.max(a.x, b.x) < anchor.x - 120 || Math.min(a.x, b.x) > anchor.x + 120 ||
+        Math.max(a.y, b.y) < anchor.y - 120 || Math.min(a.y, b.y) > anchor.y + 120) continue;
+    near.push([a, b]);
+  }
+  let tdir = null, nearest = Infinity;      // Richtung des Tracks am Aufnahmeort → Badge bevorzugt quer dazu
+  near.forEach(([a, b]) => {
+    const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((anchor.x - a.x) * dx + (anchor.y - a.y) * dy) / l2));
+    const d = Math.hypot(anchor.x - (a.x + t * dx), anchor.y - (a.y + t * dy));
+    if (d < nearest) { nearest = d; const l = Math.sqrt(l2); tdir = [dx / l, dy / l]; }
+  });
+  let best = null;
+  for (let k = 0; k < 8; k++) {
+    const ang = k * Math.PI / 4, ux = Math.cos(ang), uy = Math.sin(ang);
+    [40, 62].forEach((dist, di) => {
+      const cx = anchor.x + ux * dist, cy = anchor.y + uy * dist;
+      const r = { x0: cx - bw / 2, y0: cy - bh / 2, x1: cx + bw / 2, y1: cy + bh / 2 };
+      let sc = 0;
+      near.forEach(([a, b]) => { sc += clipLen(a, b, r); });                // verdeckte Track-Länge in px
+      fixed.forEach(f => { if (f.x > r.x0 - 16 && f.x < r.x1 + 16 && f.y > r.y0 - 16 && f.y < r.y1 + 16) sc += 60; });
+      placed.forEach(o => {                                                 // Überlappung mit anderen Badges
+        const ox = Math.min(r.x1, o.x1) - Math.max(r.x0, o.x0), oy = Math.min(r.y1, o.y1) - Math.max(r.y0, o.y0);
+        if (ox > 0 && oy > 0) sc += ox * oy * 0.08;
+      });
+      if (view && (r.x0 < view.min.x || r.y0 < view.min.y || r.x1 > view.max.x || r.y1 > view.max.y)) sc += 30;  // am Kartenrand abgeschnitten
+      sc += di * 8;                                                         // nah vor fern
+      if (tdir) sc += 5 * Math.abs(ux * tdir[0] + uy * tdir[1]);            // quer zum Track
+      sc += (uy > 0 ? 1 : 0) + (ux < 0 ? 0.5 : 0);                          // sonst: lieber oben / rechts
+      if (!best || sc < best.sc) best = { sc, dx: ux * dist, dy: uy * dist };
+    });
+  }
+  return best || { dx: 0, dy: -40 };
+}
+
+function makePinIcon(src, count, off, active, title) {
+  const bw = active ? PIN_ACTIVE_W : PIN_W, bh = active ? PIN_ACTIVE_H : PIN_H;
+  const col = active ? '#C0392B' : '#2B3F6B';
+  const bx0 = off.dx - bw / 2, by0 = off.dy - bh / 2;            // Badge links oben, relativ zum Ankerpunkt
+  const pad = 10;
+  const x0 = Math.min(0, bx0) - pad, y0 = Math.min(0, by0) - pad;
+  const W = Math.ceil(Math.max(0, bx0 + bw) + pad - x0), H = Math.ceil(Math.max(0, by0 + bh) + pad - y0);
+  const ax = -x0, ay = -y0;                                        // Ankerpunkt (Aufnahmeort) im Icon
+  const lead = Math.hypot(off.dx, off.dy) > 2
+    ? `<svg width="${W}" height="${H}" style="position:absolute;left:0;top:0;overflow:visible">
+         <line x1="${ax}" y1="${ay}" x2="${ax + off.dx}" y2="${ay + off.dy}" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+         <line x1="${ax}" y1="${ay}" x2="${ax + off.dx}" y2="${ay + off.dy}" stroke="${col}" stroke-width="2" stroke-linecap="round"/>
+         <circle cx="${ax}" cy="${ay}" r="4" fill="#fff" stroke="${col}" stroke-width="2"/>
+       </svg>` : '';
+  const bubble = count > 1
+    ? `<div style="position:absolute;right:-9px;top:-9px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;
+                   background:#C0392B;color:#fff;font-size:11px;font-weight:700;line-height:16px;text-align:center;
+                   border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)">${count}</div>` : '';
+  const html = `<div style="position:relative;width:${W}px;height:${H}px">${lead}
+      <div class="pp-hit" title="${escHtml(title || '')}"
+           style="position:absolute;left:${ax + bx0}px;top:${ay + by0}px;width:${bw}px;height:${bh}px;
+                  background:#fff;border:${active ? 3 : 2}px solid ${col};border-radius:${active ? 6 : 4}px;
+                  box-shadow:0 2px 6px rgba(0,0,0,.35)${active ? ',0 0 0 3px rgba(192,57,43,.4)' : ''}">
+        <img src="${src}" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:2px">${bubble}
+      </div></div>`;
+  return L.divIcon({ html, className: 'photo-pin', iconSize: [W, H], iconAnchor: [ax, ay],
+                     popupAnchor: [off.dx, by0 - 4] });
+}
+
+function clusterThumb(cluster) {            // Vorschaubild eines Clusters: erstes Foto in Galerie-Reihenfolge
+  let best = null;
+  cluster.getAllChildMarkers().forEach(m => { if (m._photo && (!best || m._photo.idx < best.idx)) best = m._photo; });
+  return best ? best.src : '';
+}
+
 let photoCluster;
 if (typeof L.markerClusterGroup === 'function') {
   photoCluster = L.markerClusterGroup({
@@ -1968,16 +2096,9 @@ if (typeof L.markerClusterGroup === 'function') {
     showCoverageOnHover: false,
     zoomToBoundsOnClick: true,
     iconCreateFunction: function(cluster) {
-      const count = cluster.getChildCount();
-      return L.divIcon({
-        html: `<div style="background:rgba(43,63,107,.9);color:#fff;border-radius:6px;
-                           min-width:36px;height:36px;display:flex;align-items:center;
-                           justify-content:center;font-size:11px;font-weight:700;padding:0 6px;
-                           border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">
-                 📷${count}
-               </div>`,
-        iconSize: null, iconAnchor: [18, 18], className: ''
-      });
+      schedulePlacePins();                  // vorläufig zentriert – die versetzte Platzierung folgt gleich
+      const n = cluster.getChildCount();
+      return makePinIcon(clusterThumb(cluster), n, {dx: 0, dy: 0}, false, n + ' Fotos – antippen zum Vergrößern');
     }
   });
 } else {
@@ -1987,21 +2108,7 @@ if (typeof L.markerClusterGroup === 'function') {
 map.addLayer(photoCluster);
 
 const photoMarkers = {};
-PHOTOS.forEach(p => {
-  const normalIcon = L.divIcon({
-    html: `<div style="background:#fff;border:2px solid #2B3F6B;border-radius:4px;width:42px;height:36px;overflow:hidden;transition:transform .15s">
-             <img src="${p.src}" style="width:100%;height:100%;object-fit:cover">
-           </div>`,
-    iconSize:[42,36], iconAnchor:[21,18], className:''
-  });
-  const activeIcon = L.divIcon({
-    html: `<div style="background:#fff;border:3px solid #C0392B;border-radius:6px;width:56px;height:48px;overflow:hidden;
-                       box-shadow:0 0 0 3px rgba(192,57,43,.4);transform:scale(1.1)">
-             <img src="${p.src}" style="width:100%;height:100%;object-fit:cover">
-           </div>`,
-    iconSize:[56,48], iconAnchor:[28,24], className:''
-  });
-
+PHOTOS.forEach((p, idx) => {
   const capHtml = p.cap
     ? `<div style="font-size:.82rem;font-weight:600;color:#222;margin:4px 0 2px">${escHtml(p.cap)}</div>`
     : '';
@@ -2022,29 +2129,112 @@ PHOTOS.forEach(p => {
     </div>
   `);
 
-  const marker = L.marker([p.lat, p.lng], {icon: normalIcon})
+  const title = (p.cap ? p.cap + ' · ' : '') + p.date;
+  const marker = L.marker([p.lat, p.lng], {icon: makePinIcon(p.src, 1, {dx: 0, dy: 0}, false, title)})
     .bindPopup(popup);
+  marker._photo = { idx, id: p.id, src: p.src, title };
   photoCluster.addLayer(marker);
 
-  photoMarkers[p.id] = { marker, normalIcon, activeIcon };
+  photoMarkers[p.id] = { marker, src: p.src, title, off: {dx: 0, dy: 0}, hot: false };
 });
 
-// Highlight marker when hovering photo thumbnail
+function _visibleFor(marker) {              // sichtbarer Vertreter: der Marker selbst oder sein Cluster
+  return (typeof photoCluster.getVisibleParent === 'function') ? photoCluster.getVisibleParent(marker) : marker;
+}
+
+function schedulePlacePins() {
+  clearTimeout(_placeTimer);
+  _placeTimer = setTimeout(placePhotoPins, 60);
+}
+
+function placePhotoPins() {
+  if (!Object.keys(photoMarkers).length) return;
+  if (photoCluster._inZoomAnimation && _placeWait++ < 20) { schedulePlacePins(); return; }   // Cluster-Animation abwarten (max. ~1,2 s)
+  _placeWait = 0;
+  const z = map.getZoom();
+  const track = trackPointsPx(z);
+  const fixed = PIN_AVOID.map(ll => map.project(ll, z));
+  const view = map.getPixelBounds();
+  const seen = new Set(), items = [];
+  Object.values(photoMarkers).forEach(pm => {
+    const vis = _visibleFor(pm.marker);
+    if (vis && !seen.has(vis)) { seen.add(vis); items.push(vis); }
+  });
+  items.sort((a, b) => b.getLatLng().lat - a.getLatLng().lat);           // von Nord nach Süd (= Zeichenreihenfolge)
+  const placed = [];
+  items.forEach(item => {
+    const isCluster = typeof item.getChildCount === 'function';
+    const anchor = map.project(item.getLatLng(), z);
+    const off = (!isCluster && item._preSpiderfyLatlng)                   // aufgefächert: das Bein zeigt schon zum Ort
+      ? { dx: 0, dy: 0 }
+      : bestPinOffset(anchor, PIN_W, PIN_H, track, fixed, placed, view);
+    placed.push({ x0: anchor.x + off.dx - PIN_W / 2, y0: anchor.y + off.dy - PIN_H / 2,
+                  x1: anchor.x + off.dx + PIN_W / 2, y1: anchor.y + off.dy + PIN_H / 2 });
+    if (isCluster) {
+      const n = item.getChildCount();
+      const key = `${Math.round(off.dx)},${Math.round(off.dy)},${n}`;
+      if (item._pinKey !== key || item.options.icon === item) {           // options.icon === item: Cluster hat sein Icon zurückgesetzt
+        item._pinKey = key;
+        item.setIcon(makePinIcon(clusterThumb(item), n, off, false, n + ' Fotos – antippen zum Vergrößern'));
+      }
+      const hot = item.getAllChildMarkers().some(m => photoMarkers[m._photo.id] && photoMarkers[m._photo.id].hot);
+      if (item._icon) item._icon.classList.toggle('pp-hot', hot);
+    } else {
+      const pm = photoMarkers[item._photo.id];
+      pm.off = off;
+      const active = pm.hot || item.isPopupOpen();
+      const key = `${Math.round(off.dx)},${Math.round(off.dy)},${active ? 1 : 0}`;
+      if (item._pinKey !== key) {
+        item._pinKey = key;
+        item.setIcon(makePinIcon(pm.src, 1, off, active, pm.title));
+        if (item.isPopupOpen()) item.getPopup().update();
+      }
+    }
+  });
+}
+photoCluster.on('animationend spiderfied unspiderfied', schedulePlacePins);
+map.on('zoomend moveend', schedulePlacePins);
+schedulePlacePins();
+
+// Highlight marker when hovering photo thumbnail (steckt das Foto in einem Cluster, wird der Cluster markiert)
 function highlightMarker(photoId) {
   const pm = photoMarkers[photoId];
   if (!pm) return;
-  pm.marker.setIcon(pm.activeIcon);
-  map.panTo(pm.marker.getLatLng(), {animate: true, duration: 0.4});
+  pm.hot = true;
+  const vis = _visibleFor(pm.marker);
+  if (vis === pm.marker) {
+    pm.marker._pinKey = null;
+    pm.marker.setIcon(makePinIcon(pm.src, 1, pm.off, true, pm.title));
+  } else if (vis && vis._icon) {
+    vis._icon.classList.add('pp-hot');
+  }
+  map.panTo((vis || pm.marker).getLatLng(), {animate: true, duration: 0.4});
 }
 function unhighlightMarker(photoId) {
   const pm = photoMarkers[photoId];
-  if (pm && !pm.marker.isPopupOpen()) pm.marker.setIcon(pm.normalIcon);
+  if (!pm) return;
+  pm.hot = false;
+  if (_visibleFor(pm.marker) === pm.marker && !pm.marker.isPopupOpen()) {
+    pm.marker._pinKey = null;
+    pm.marker.setIcon(makePinIcon(pm.src, 1, pm.off, false, pm.title));
+  }
+  document.querySelectorAll('#tour-map .pp-hot').forEach(el => el.classList.remove('pp-hot'));
 }
 function jumpToMarker(photoId) {
   const pm = photoMarkers[photoId];
   if (!pm) return;
-  map.setView(pm.marker.getLatLng(), Math.max(map.getZoom(), 15), {animate:true});
-  pm.marker.openPopup();
+  const wrap = document.getElementById('map-wrap');
+  if (wrap && wrap.scrollIntoView) wrap.scrollIntoView({behavior: 'smooth', block: 'center'});
+  const open = () => pm.marker.openPopup();
+  if (typeof photoCluster.zoomToShowLayer !== 'function') {
+    map.setView(pm.marker.getLatLng(), Math.max(map.getZoom(), 15), {animate: true});
+    open();
+  } else if (map.getZoom() >= 15) {
+    photoCluster.zoomToShowLayer(pm.marker, open);                        // Cluster ggf. auflösen, dann Popup
+  } else {
+    map.once('moveend', () => photoCluster.zoomToShowLayer(pm.marker, open));
+    map.setView(pm.marker.getLatLng(), 15, {animate: true});
+  }
 }
 
 // ── Weather widget ───────────────────────────────────────────────────────────

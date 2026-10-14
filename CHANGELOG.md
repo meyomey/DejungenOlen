@@ -2,7 +2,24 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-13 (Build o) – Audit 2
+## 1.4.0 – 2026-10-13 (Build p) – Audit 2
+
+### Tour-Karte: Foto-Marker neben dem Track (Build p)
+
+- **Tour-Detail, Karte:** Foto-Marker (einzeln und Cluster) sitzen nicht mehr auf dem Track,
+  sondern daneben – als Thumbnail-Badge mit kurzer Verbindungslinie und Punkt am Aufnahmeort
+  (gleiches Prinzip wie auf der Karten-Folie im Video). Die Richtung wird je Zoomstufe so
+  gewählt, dass möglichst wenig Track, Start/Ziel/Treffpunkt, andere Badges und Kartenrand
+  verdeckt werden; nach Zoomen/Verschieben wird neu platziert.
+- Cluster zeigen jetzt das erste Foto als Thumbnail mit roter Zähl-Blase statt „📷 N“.
+- Rundkurs (Start und Ziel < 150 m auseinander): ein gemeinsamer „S/Z“-Marker statt zwei
+  übereinanderliegender; Start-/Ziel-Marker mit weißem Rand.
+- Galerie ↔ Karte: Hover auf ein Foto hebt auch dessen Cluster hervor; Klick auf das grüne
+  GPS-Badge eines Fotos scrollt zur Karte, zoomt bis das Foto einzeln sichtbar ist und öffnet
+  das Popup (bisher ohne Funktion, wenn das Foto in einem Cluster steckte).
+- Betroffene Dateien: `templates/touren/detail.html` (neu: `trackPointsPx`, `clipLen`,
+  `bestPinOffset`, `makePinIcon`, `clusterThumb`, `placePhotoPins`; geändert: Start/Ziel-Marker,
+  `highlightMarker`, `unhighlightMarker`, `jumpToMarker`), `app.py` (nur Build-Kennung).
 
 ### Mini-Karte pro Foto (Build o)
 
