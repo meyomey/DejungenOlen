@@ -215,6 +215,12 @@
             ☕
           </button>
           {% endif %}
+          {% if gpx_data != 'null' %}
+          <button class="btn btn-sm btn-outline-light py-0 px-2" id="btn-osm-gastro"
+                  onclick="toggleOsmGastro()" title="Einkehr entlang der Strecke in OpenStreetMap suchen">
+            🔍☕
+          </button>
+          {% endif %}
           <button class="btn btn-sm btn-outline-light py-0 px-2"
                   onclick="toggleFullscreen()" id="fs-btn" title="Vollbild">
             <i class="bi bi-arrows-fullscreen" id="fs-icon"></i>
@@ -269,6 +275,28 @@
       </div>
       {% endif %}
     </div>
+
+    {% if gpx_data != 'null' %}
+    <!-- Build u: Einkehr entlang der Strecke aus OpenStreetMap -->
+    <div class="card mb-3 d-none" id="osm-gastro-panel">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="bi bi-cup-hot me-1"></i>Einkehr entlang der Strecke <span class="fw-normal small">(OpenStreetMap)</span></span>
+        <span class="d-flex align-items-center gap-2">
+          <label class="small fw-normal mb-0" for="osm-gastro-radius">Abstand</label>
+          <select id="osm-gastro-radius" class="form-select form-select-sm py-0" style="width:auto" onchange="searchOsmGastro()">
+            <option value="150">150 m</option>
+            <option value="250" selected>250 m</option>
+            <option value="500">500 m</option>
+            <option value="1000">1 km</option>
+          </select>
+          <button type="button" class="btn btn-sm btn-outline-light py-0 px-2" onclick="toggleOsmGastro()" title="Schließen">✕</button>
+        </span>
+      </div>
+      <div class="card-body py-2" id="osm-gastro-body">
+        <div class="text-muted small">Suche startet…</div>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- GPX upload with drag & drop -->
     {% if current_user.is_organizer and not tour.gpx_file %}
@@ -2063,6 +2091,168 @@ function toggleGastroLayer() {
   const b = document.getElementById('btn-gastro');
   if (b) b.classList.toggle('active', !on);
   schedulePlacePins();          // sichtbare Einkehr-Marker zählen zu den freizuhaltenden Punkten
+}
+
+// ── Build u: Einkehr entlang der Strecke aus OpenStreetMap (Overpass-Polyline-Suche) ──
+// Server-Proxy liefert Treffer mit km/Abstand/Öffnungszeiten; scheitert er (Rate-Limit der Hosting-IP),
+// fragt der Browser overpass-api.de direkt und rechnet km/Abstand selbst (GPX_DATA liegt vor).
+const OSM_GASTRO_TOUR_ID = {{ tour.id }};
+const osmGastroLayer = L.layerGroup();
+const osmGastroMarkers = {};
+let osmGastroLoaded = false;
+
+function toggleOsmGastro() {
+  const panel = document.getElementById('osm-gastro-panel');
+  if (!panel) return;
+  const open = panel.classList.toggle('d-none');          // true = jetzt geschlossen
+  const b = document.getElementById('btn-osm-gastro');
+  if (b) b.classList.toggle('active', !open);
+  if (open) { map.removeLayer(osmGastroLayer); return; }
+  osmGastroLayer.addTo(map);
+  panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  if (!osmGastroLoaded) searchOsmGastro();
+}
+
+function osmGastroAlongTrack(items, maxM) {               // Fallback-Rechnung im Browser (wie _along_track)
+  const pts = GPX_DATA.points; const step = Math.max(1, Math.floor(pts.length / 3000));
+  const tp = pts.filter((_, i) => i % step === 0);
+  const mLat = 111320, mLng = 111320 * Math.max(0.2, Math.cos(tp[0].lat * Math.PI / 180));
+  const cum = [0];
+  for (let i = 1; i < tp.length; i++) cum.push(cum[i - 1] + Math.hypot((tp[i].lat - tp[i - 1].lat) * mLat, (tp[i].lng - tp[i - 1].lng) * mLng));
+  const out = [];
+  items.forEach(it => {
+    let bd = 1e12, bi = 0;
+    tp.forEach((p, i) => { const d = Math.hypot((p.lat - it.lat) * mLat, (p.lng - it.lng) * mLng); if (d < bd) { bd = d; bi = i; } });
+    if (bd <= maxM) out.push(Object.assign({}, it, {dist_m: Math.round(bd), km: Math.round(cum[bi] / 100) / 10, frac: bi / Math.max(1, tp.length - 1)}));
+  });
+  return out.sort((a, b) => a.km - b.km || a.dist_m - b.dist_m);
+}
+
+const OSM_GASTRO_LABEL = {cafe: 'Café', bar: 'Bar', pub: 'Kneipe', restaurant: 'Restaurant', biergarten: 'Biergarten',
+                          fast_food: 'Imbiss', bakery: 'Bäckerei', pastry: 'Konditorei', ice_cream: 'Eisdiele'};
+const OSM_GASTRO_APPTYPE = {cafe: 'cafe', ice_cream: 'cafe', bar: 'kneipe', pub: 'kneipe', biergarten: 'kneipe',
+                            restaurant: 'restaurant', fast_food: 'imbiss', bakery: 'baeckerei', pastry: 'baeckerei'};
+
+const OSM_DAY_DE = {Mo: 'Mo', Tu: 'Di', We: 'Mi', Th: 'Do', Fr: 'Fr', Sa: 'Sa', Su: 'So', PH: 'Feiertag'};
+function osmHoursDe(t) {                                  // einfache Fassung von hours_de() für den Browser-Fallback
+  return (t || '').replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su|PH)\b/g, d => OSM_DAY_DE[d]).replace(/(\d{2}:\d{2})-(\d{2}:\d{2})/g, '$1–$2')
+    .replace(/\b(off|closed)\b/g, 'geschlossen').replace(/\s*;\s*/g, ' · ');
+}
+function osmClosedDays(t) {                               // „Mo off“, „Mo,Tu off“ → ['Mo', 'Di'] (Browser-Fallback)
+  const out = [];
+  (t || '').split(/[;|]/).forEach(rule => {
+    const m = rule.trim().match(/^((?:Mo|Tu|We|Th|Fr|Sa|Su)(?:\s*,\s*(?:Mo|Tu|We|Th|Fr|Sa|Su))*)\s*(?:,\s*PH\s*)?(?:off|closed)\b/);
+    if (m) m[1].split(/\s*,\s*/).forEach(d => { if (OSM_DAY_DE[d] && !out.includes(OSM_DAY_DE[d])) out.push(OSM_DAY_DE[d]); });
+  });
+  return out;
+}
+
+function osmGastroDirect(query, radius) {               // Direktabfrage – Elemente wie der Server aufbereiten
+  return fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'data=' + encodeURIComponent(query)
+  }).then(r => { if (!r.ok) throw new Error('overpass-api.de antwortet mit HTTP ' + r.status); return r.json(); })
+    .then(d => {
+      const items = (d.elements || []).map(el => {
+        const t = el.tags || {};
+        const lat = el.lat != null ? el.lat : (el.center || {}).lat, lng = el.lon != null ? el.lon : (el.center || {}).lon;
+        if (!lat || !lng) return null;
+        const kind = t.amenity || t.shop || '';
+        const street = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ');
+        const city = [t['addr:postcode'], t['addr:city']].filter(Boolean).join(' ');
+        return {osm_id: (el.type || 'node') + '/' + el.id, name: t.name || kind || 'Unbekannt', type: kind, lat, lng,
+                app_type: OSM_GASTRO_APPTYPE[kind] || 'other', type_label: OSM_GASTRO_LABEL[kind] || kind,
+                opening_hours: t.opening_hours || '', hours: osmHoursDe(t.opening_hours), closed_days: osmClosedDays(t.opening_hours),
+                phone: t.phone || t['contact:phone'] || '', website: t.website || t['contact:website'] || '',
+                address: [street, city].filter(Boolean).join(', ')};
+      }).filter(Boolean);
+      return {results: osmGastroAlongTrack(items, radius + 30), source: 'overpass-api.de (direkt)', radius};
+    });
+}
+
+function searchOsmGastro() {
+  const body = document.getElementById('osm-gastro-body');
+  const radius = parseInt(document.getElementById('osm-gastro-radius').value, 10) || 250;
+  body.innerHTML = '<div class="text-muted small py-1"><span class="spinner-border spinner-border-sm me-1"></span>Frage OpenStreetMap entlang der Strecke…</div>';
+  fetch(`/api/touren/${OSM_GASTRO_TOUR_ID}/osm-gastro?radius=${radius}`)
+    .then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.results) return d;
+      if (!d.query) throw new Error(d.error || ('Server antwortet mit HTTP ' + r.status));
+      body.innerHTML = '<div class="text-muted small py-1"><span class="spinner-border spinner-border-sm me-1"></span>Server-Suche fehlgeschlagen – frage overpass-api.de direkt…</div>';
+      return osmGastroDirect(d.query, radius).catch(e2 => { throw new Error((d.error || '') + ' · Direktabfrage: ' + e2.message); });
+    })
+    .then(d => { osmGastroLoaded = true; renderOsmGastro(d, body); })
+    .catch(err => {
+      body.innerHTML = `<p class="text-danger small mb-1">Suche fehlgeschlagen: ${escHtml(err.message)}</p>
+                        <p class="text-muted small mb-0">Overpass-Server sind zeitweise überlastet – in einer Minute erneut versuchen.</p>`;
+    });
+}
+
+function renderOsmGastro(d, body) {
+  osmGastroLayer.clearLayers();
+  const res = d.results || [];
+  if (!res.length) {
+    body.innerHTML = `<p class="text-muted small mb-0">Im Abstand von ${d.radius} m zur Strecke ist in OpenStreetMap keine Gastronomie eingetragen – Abstand vergrößern.</p>`;
+    return;
+  }
+  res.forEach((r, i) => {
+    const icon = L.divIcon({
+      html: `<div style="width:26px;height:26px;border-radius:50%;background:#FFF3E0;border:2px solid #E67E22;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1">${GASTRO_ICONS[r.app_type] || '🍴'}</div>`,
+      iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -14], className: ''
+    });
+    const hours = r.hours ? '<br><span class="small">🕐 ' + escHtml(r.hours) + '</span>' : '';
+    const closed = (r.closed_days || []).length ? '<br><span class="small text-danger">Ruhetag: ' + r.closed_days.join(', ') + '</span>' : '';
+    const known = r.known_url ? `<br><a href="${r.known_url}" class="small">✓ in der Gastro-Liste – Details</a>` : '';
+    osmGastroMarkers[i] = L.marker([r.lat, r.lng], {icon, title: r.name, zIndexOffset: -150})
+      .bindPopup(`<b>${escHtml(r.name)}</b><br><span class="text-muted small">${escHtml(r.type_label)} · km ${String(r.km).replace('.', ',')} · ${r.dist_m} m neben der Strecke</span>${hours}${closed}${known}`)
+      .addTo(osmGastroLayer);
+  });
+  const src = d.source && d.source !== 'cache' ? ` · Quelle: ${escHtml(d.source)}` : '';
+  body.innerHTML = `<div class="small text-muted mb-2">${res.length} Treffer bis ${d.radius} m neben der Strecke, nach Streckenkilometer${src}. Orange Marker auf der Karte – „Übernehmen“ legt den Ort in der Gastro-Liste an.</div>` +
+    '<div class="list-group list-group-flush" id="osm-gastro-list">' + res.map((r, i) => `
+      <div class="list-group-item px-0 py-2 d-flex align-items-start gap-2" data-idx="${i}">
+        <span style="font-size:1.3rem;line-height:1.2;cursor:pointer" onclick="focusOsmGastro(${i})" title="Auf der Karte zeigen">${GASTRO_ICONS[r.app_type] || '🍴'}</span>
+        <div class="flex-grow-1 small">
+          <strong style="cursor:pointer" onclick="focusOsmGastro(${i})">${escHtml(r.name)}</strong>
+          <span class="text-muted">· ${escHtml(r.type_label)} · km ${String(r.km).replace('.', ',')} · ${r.dist_m} m abseits</span>
+          ${r.hours ? '<br>🕐 ' + escHtml(r.hours) : ''}
+          ${(r.closed_days || []).length ? ' <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Ruhetag ' + r.closed_days.join(', ') + '</span>' : ''}
+          ${r.address ? '<br><span class="text-muted">' + escHtml(r.address) + '</span>' : ''}
+        </div>
+        <div class="text-nowrap osm-gastro-action">
+          ${r.known_url ? `<a href="${r.known_url}" class="btn btn-sm btn-outline-success py-0">✓ in Liste</a>`
+                        : `<button type="button" class="btn btn-sm btn-djo py-0" onclick="quickAddOsmGastro(${i}, this)">Übernehmen</button>`}
+        </div>
+      </div>`).join('') + '</div>';
+  window.__osmGastroResults = res;
+  if (res.length && !map.hasLayer(osmGastroLayer)) osmGastroLayer.addTo(map);
+}
+
+function focusOsmGastro(i) {
+  const m = osmGastroMarkers[i];
+  if (!m) return;
+  if (!map.hasLayer(osmGastroLayer)) osmGastroLayer.addTo(map);
+  document.getElementById('tour-map').scrollIntoView({behavior: 'smooth', block: 'center'});
+  map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
+  m.openPopup();
+}
+
+function quickAddOsmGastro(i, btn) {
+  const r = (window.__osmGastroResults || [])[i];
+  if (!r) return;
+  btn.disabled = true; btn.textContent = '…';
+  fetch('/api/gastro/quick-add', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: r.name, type: r.type, lat: r.lat, lng: r.lng, address: r.address, hours_text: r.opening_hours,
+                          phone: r.phone, website: r.website, osm_id: r.osm_id})
+  }).then(async resp => {
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok || !d.ok) throw new Error(d.error || ('HTTP ' + resp.status));
+    const wrap = btn.closest('.osm-gastro-action');
+    wrap.innerHTML = `<a href="${d.url}" class="btn btn-sm btn-outline-success py-0">${d.existing ? '✓ war schon drin' : '✓ gespeichert'}</a>`;
+    r.known_url = d.url;
+    if (osmGastroMarkers[i]) osmGastroMarkers[i].bindPopup(osmGastroMarkers[i].getPopup().getContent() + `<br><a href="${d.url}" class="small">✓ in der Gastro-Liste – Details</a>`);
+  }).catch(err => { btn.disabled = false; btn.textContent = 'Übernehmen'; alert('Konnte nicht gespeichert werden: ' + err.message); });
 }
 
 // ── Foto-Marker: neben dem Track platziert (wie im Video), MarkerCluster + Hover-Sync ──

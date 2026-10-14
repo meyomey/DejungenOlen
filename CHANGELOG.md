@@ -2,7 +2,26 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-10-14 (Build t) – Audit 2
+## 1.4.0 – 2026-10-14 (Build u) – Audit 2
+
+### Einkehr entlang der Strecke aus OpenStreetMap (Build u)
+
+- **Tour-Detailseite, Karten-Leiste, Button 🔍☕** (bei Touren mit GPX): sucht in OpenStreetMap alle
+  Cafés, Kneipen, Restaurants, Imbisse, Bäckereien und Eisdielen in wählbarem Abstand (150 m / 250 m /
+  500 m / 1 km) links und rechts der Strecke. Ergebnis als Liste nach Streckenkilometer („km 12,3 ·
+  80 m abseits“) mit Öffnungszeiten, Ruhetag-Badge und Adresse, dazu orange Marker auf der Karte
+  (Klick in der Liste zentriert die Karte). Orte, die schon in der Gastro-Liste stehen, sind als
+  „✓ in Liste“ verlinkt; alle anderen lassen sich mit **„Übernehmen“** per Klick anlegen (Typ,
+  Adresse, Öffnungszeiten, Telefon, Website, OSM-Verknüpfung werden übernommen; Duplikate werden
+  erkannt und stattdessen der vorhandene Eintrag verlinkt).
+- Technik: `GET /api/touren/<id>/osm-gastro?radius=` (nur eigene Gruppe) vereinfacht den Track per
+  Douglas-Peucker auf ≤ 120 Stützpunkte und fragt Overpass mit `around:<r>,lat1,lon1,…` ab
+  (identifizierender User-Agent, Ausweich-Server, 30-Minuten-Cache je Tour und Radius); scheitert
+  der Server-Proxy, fragt der Browser overpass-api.de direkt und berechnet km/Abstand selbst.
+  `POST /api/gastro/quick-add` legt den Eintrag an (Validierung wie im Formular).
+- Betroffene Dateien: `app.py` (`_gastro_match_known`, `_simplify_track`, `_along_track`,
+  `api_tour_osm_gastro`, `api_gastro_quick_add`, Build-Kennung), `templates/touren/detail.html`
+  (Button, Panel, JS-Block „Build u“).
 
 ### Gastro-Bereich: Öffnungszeiten/Ruhetage, Duplikate, Liste (Build t)
 

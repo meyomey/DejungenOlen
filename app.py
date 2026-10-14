@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-14 t'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-14 u'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -4860,28 +4860,225 @@ def _gastro_form_vals(spot=None, form=None):
     return vals
 
 
-def _gastro_find_duplicate(name, lat, lng, osm_id=None, exclude_id=None):
-    """Build t: Gibt (Eintrag, Grund) zurück, wenn es den Ort schon gibt – gleiche OSM-Verknüpfung,
-    gleicher Name im Umkreis von 100 m oder ein Eintrag näher als 25 m; sonst (None, None)."""
-    q = GastroSpot.query
-    if exclude_id:
-        q = q.filter(GastroSpot.id != exclude_id)
+def _gastro_match_known(cands, name, lat, lng, osm_id=None):
+    """Build t/u: Passenden vorhandenen Eintrag aus cands finden – gleiche OSM-Verknüpfung, Punkt
+    näher als 25 m oder gleicher Name im Umkreis von 100 m. Rückgabe (Eintrag, Grund) oder (None, None)."""
     if osm_id:
-        d = q.filter(GastroSpot.osm_id == osm_id).first()
-        if d:
-            return d, 'gleicher OpenStreetMap-Eintrag'
+        for c in cands:
+            if c.osm_id and c.osm_id == osm_id:
+                return c, 'gleicher OpenStreetMap-Eintrag'
     if lat is None or lng is None:
         return None, None
-    cands = q.filter(GastroSpot.lat.between(lat - 0.002, lat + 0.002),
-                     GastroSpot.lng.between(lng - 0.004, lng + 0.004)).all()
     norm = re.sub(r'\W+', '', (name or '').lower())
+    best = None
     for c in cands:
         dist = _geo_dist_m(lat, lng, c.lat, c.lng)
         if dist <= 25:
             return c, f'liegt nur {int(dist)} m entfernt'
         if norm and dist <= 100 and re.sub(r'\W+', '', (c.name or '').lower()) == norm:
-            return c, f'gleicher Name, {int(dist)} m entfernt'
+            if best is None or dist < best[1]:
+                best = (c, dist)
+    if best:
+        return best[0], f'gleicher Name, {int(best[1])} m entfernt'
     return None, None
+
+
+def _gastro_find_duplicate(name, lat, lng, osm_id=None, exclude_id=None):
+    """Build t: Gibt (Eintrag, Grund) zurück, wenn es den Ort schon gibt; sonst (None, None)."""
+    q = GastroSpot.query
+    if exclude_id:
+        q = q.filter(GastroSpot.id != exclude_id)
+    flt = []
+    if osm_id:
+        flt.append(GastroSpot.osm_id == osm_id)
+    if lat is not None and lng is not None:
+        flt.append(db.and_(GastroSpot.lat.between(lat - 0.002, lat + 0.002),
+                           GastroSpot.lng.between(lng - 0.004, lng + 0.004)))
+    if not flt:
+        return None, None
+    return _gastro_match_known(q.filter(db.or_(*flt)).all(), name, lat, lng, osm_id)
+
+
+OSM_KIND_TO_TYPE = {'cafe': 'cafe', 'ice_cream': 'cafe', 'bar': 'kneipe', 'pub': 'kneipe', 'biergarten': 'kneipe',
+                    'restaurant': 'restaurant', 'fast_food': 'imbiss', 'bakery': 'baeckerei', 'pastry': 'baeckerei'}
+OSM_KIND_LABEL = {'cafe': 'Café', 'bar': 'Bar', 'pub': 'Kneipe', 'restaurant': 'Restaurant', 'biergarten': 'Biergarten',
+                  'fast_food': 'Imbiss', 'bakery': 'Bäckerei', 'pastry': 'Konditorei', 'ice_cream': 'Eisdiele'}
+
+
+def _simplify_track(points, max_pts=120):
+    """Build u: Track auf höchstens max_pts Stützpunkte reduzieren (Douglas-Peucker, Toleranz wird
+    verdoppelt, bis es passt) – für die Overpass-Polyline „around:r,lat1,lon1,lat2,lon2,…“."""
+    import math
+    pts = [(float(p['lat']), float(p['lng'])) for p in points if p.get('lat') is not None and p.get('lng') is not None]
+    if len(pts) <= max_pts:
+        return pts
+    if len(pts) > 6000:                                   # Vorab ausdünnen, hält die Rechenzeit klein
+        step = len(pts) // 6000 + 1
+        pts = pts[::step] + [pts[-1]]
+    mid = sum(p[0] for p in pts) / len(pts)
+    m_lat, m_lng = 111320.0, 111320.0 * max(0.2, math.cos(math.radians(mid)))
+
+    def rdp(seq, tol):
+        keep = [False] * len(seq)
+        keep[0] = keep[-1] = True
+        stack = [(0, len(seq) - 1)]
+        while stack:
+            a, b = stack.pop()
+            if b <= a + 1:
+                continue
+            ax, ay = seq[a][0] * m_lat, seq[a][1] * m_lng
+            bx, by = seq[b][0] * m_lat, seq[b][1] * m_lng
+            dx, dy = bx - ax, by - ay
+            seg = dx * dx + dy * dy
+            best_d, best_i = -1.0, a
+            for i in range(a + 1, b):
+                px, py = seq[i][0] * m_lat - ax, seq[i][1] * m_lng - ay
+                t = max(0.0, min(1.0, (px * dx + py * dy) / seg)) if seg else 0.0
+                d = math.hypot(px - t * dx, py - t * dy)
+                if d > best_d:
+                    best_d, best_i = d, i
+            if best_d > tol:
+                keep[best_i] = True
+                stack.append((a, best_i))
+                stack.append((best_i, b))
+        return [p for p, k in zip(seq, keep) if k]
+
+    tol = 15.0
+    out = rdp(pts, tol)
+    while len(out) > max_pts and tol < 5000:
+        tol *= 2
+        out = rdp(pts, tol)
+    if len(out) > max_pts:                                # Notnagel: gleichmäßig ausdünnen
+        step = len(out) // max_pts + 1
+        out = out[::step] + [out[-1]]
+    return out
+
+
+def _along_track(points, items, max_m):
+    """Build u: Für dicts mit lat/lng Abstand zum Track (dist_m), Streckenkilometer (km) und Anteil
+    (frac) berechnen; nur Treffer ≤ max_m bleiben, sortiert nach km."""
+    import math
+    step = max(1, len(points) // 3000)
+    pts = points[::step]
+    if len(pts) < 2:
+        return []
+    mid = sum(p['lat'] for p in pts) / len(pts)
+    m_lat, m_lng = 111320.0, 111320.0 * max(0.2, math.cos(math.radians(mid)))
+    cum = [0.0]
+    for a, b in zip(pts, pts[1:]):
+        cum.append(cum[-1] + math.hypot((b['lat'] - a['lat']) * m_lat, (b['lng'] - a['lng']) * m_lng))
+    out = []
+    for it in items:
+        best_d, best_i = 1e12, 0
+        for i, pt in enumerate(pts):
+            d = math.hypot((pt['lat'] - it['lat']) * m_lat, (pt['lng'] - it['lng']) * m_lng)
+            if d < best_d:
+                best_d, best_i = d, i
+        if best_d <= max_m:
+            it = dict(it)
+            it.update({'dist_m': int(round(best_d)), 'km': round(cum[best_i] / 1000, 1),
+                       'frac': best_i / max(1, len(pts) - 1)})
+            out.append(it)
+    out.sort(key=lambda x: (x['km'], x['dist_m']))
+    return out
+
+
+@app.route('/api/touren/<int:tour_id>/osm-gastro')
+@login_required
+def api_tour_osm_gastro(tour_id):
+    """Build u: Gastronomie entlang der GPX-Strecke aus OpenStreetMap (Overpass-Polyline-Suche),
+    mit Streckenkilometer, Abstand, Öffnungszeiten/Ruhetag und Hinweis, ob der Ort schon in der
+    Gastro-Liste steht. Ergebnis je Tour/Radius 30 Minuten gecacht."""
+    tour = _tour_or_404(tour_id)
+    if not tour.gpx_file:
+        return jsonify({'error': 'Diese Tour hat keine GPX-Strecke.'}), 400
+    path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
+    if not os.path.exists(path):
+        return jsonify({'error': 'GPX-Datei nicht gefunden.'}), 404
+    radius = max(50, min(1000, _parse_int(request.args.get('radius')) or 250))
+    try:
+        points = (parse_gpx(path) or {}).get('points') or []
+    except Exception as e:
+        return jsonify({'error': f'GPX nicht lesbar: {e}'}), 400
+    if len(points) < 2:
+        return jsonify({'error': 'Die GPX-Strecke enthält zu wenige Punkte.'}), 400
+    simp = _simplify_track(points, 120)
+    coords = ','.join(f'{la:.5f},{lo:.5f}' for la, lo in simp)
+    ar = f'around:{radius},{coords}'
+    query = (f'[out:json][timeout:25];\n(\n  node[{OVERPASS_AMENITY}]({ar});\n  way[{OVERPASS_AMENITY}]({ar});\n'
+             f'  node[{OVERPASS_SHOP}]({ar});\n  way[{OVERPASS_SHOP}]({ar});\n);\nout center 120;\n')
+    key = ('track', tour.id, int(os.path.getmtime(path)), radius)
+    elements, source, error = _overpass_fetch(query, key, ttl=1800, budget_s=45)
+    if elements is None:
+        return jsonify({'error': f'Overpass nicht erreichbar: {error}', 'query': query}), 502
+    results = _along_track(points, _overpass_elements_to_results(elements), radius + 30)
+    # Schon vorhandene Einträge markieren – alle Kandidaten im Streckenkasten mit einer Abfrage holen
+    known = []
+    if results:
+        lats = [r['lat'] for r in results]; lngs = [r['lng'] for r in results]
+        osm_ids = [r['osm_id'] for r in results if r.get('osm_id')]
+        known = GastroSpot.query.filter(db.or_(
+            GastroSpot.osm_id.in_(osm_ids) if osm_ids else db.false(),
+            db.and_(GastroSpot.lat.between(min(lats) - 0.002, max(lats) + 0.002),
+                    GastroSpot.lng.between(min(lngs) - 0.004, max(lngs) + 0.004)))).all()
+    for r in results:
+        r['app_type'] = OSM_KIND_TO_TYPE.get(r['type'], 'other')
+        r['type_label'] = OSM_KIND_LABEL.get(r['type'], r['type'] or 'Einkehr')
+        r['hours'] = hours_de(r['opening_hours'])
+        r['closed_days'] = closed_days(r['opening_hours'])
+        dup, _reason = _gastro_match_known(known, r['name'], r['lat'], r['lng'], r['osm_id'])
+        if dup:
+            r['known_id'] = dup.id
+            r['known_name'] = dup.name
+            r['known_url'] = url_for('gastro_detail', spot_id=dup.id)
+    return jsonify({'results': results, 'source': source, 'radius': radius, 'track_points': len(simp),
+                    'cached': source == 'cache'})
+
+
+@app.route('/api/gastro/quick-add', methods=['POST'])
+@login_required
+def api_gastro_quick_add():
+    """Build u: OSM-Treffer (Streckensuche) mit einem Klick in die Gastro-Liste übernehmen.
+    Existiert der Ort schon (osm_id / < 25 m / gleicher Name < 100 m), wird der vorhandene Eintrag
+    zurückgegeben statt ein Duplikat anzulegen."""
+    f = request.get_json(silent=True) or {}
+    name = str(f.get('name') or '').strip()[:120]
+    def _num(v):                                           # JSON liefert Zahlen, Formulare Strings
+        try:
+            return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else _parse_float(str(v or ''))
+        except (TypeError, ValueError):
+            return None
+    lat, lng = _num(f.get('lat')), _num(f.get('lng'))
+    if not name or lat is None or lng is None or not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return jsonify({'error': 'Name und Koordinaten fehlen.'}), 400
+    osm_id = str(f.get('osm_id') or '').strip()[:30] or None
+    dup, reason = _gastro_find_duplicate(name, lat, lng, osm_id)
+    if dup:
+        return jsonify({'ok': True, 'existing': True, 'id': dup.id, 'name': dup.name, 'reason': reason,
+                        'url': url_for('gastro_detail', spot_id=dup.id)})
+    kind = str(f.get('type') or '')
+    spot_type = OSM_KIND_TO_TYPE.get(kind) or (kind if kind in dict(GASTRO_TYPES) else 'other')
+    hours = str(f.get('hours_text') or f.get('opening_hours') or '').strip()[:300] or None
+    opens, closes = str(f.get('opens_at') or '').strip(), str(f.get('closes_at') or '').strip()
+    if hours and not (opens and closes):
+        m = re.search(r'(\d{2}:\d{2})-(\d{2}:\d{2})', hours)
+        if m:
+            opens, closes = opens or m.group(1), closes or m.group(2)
+    spot = GastroSpot(
+        name=name, spot_type=spot_type, lat=lat, lng=lng,
+        address=str(f.get('address') or '').strip()[:200] or None,
+        opens_at=opens if re.match(r'^\d{2}:\d{2}$', opens) else None,
+        closes_at=closes if re.match(r'^\d{2}:\d{2}$', closes) else None,
+        hours_text=hours,
+        phone=str(f.get('phone') or '').strip()[:30] or None,
+        website=_clean_url(str(f.get('website') or '')),
+        notes=str(f.get('notes') or '').strip()[:500] or None,
+        osm_id=osm_id, added_by=current_user.id,
+    )
+    db.session.add(spot)
+    db.session.commit()
+    return jsonify({'ok': True, 'existing': False, 'id': spot.id, 'name': spot.name,
+                    'url': url_for('gastro_detail', spot_id=spot.id)})
 
 
 def _gastro_can_edit(spot):
