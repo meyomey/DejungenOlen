@@ -2,6 +2,230 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-14 (Build u) – Audit 2
+
+### Einkehr entlang der Strecke aus OpenStreetMap (Build u)
+
+- **Tour-Detailseite, Karten-Leiste, Button 🔍☕** (bei Touren mit GPX): sucht in OpenStreetMap alle
+  Cafés, Kneipen, Restaurants, Imbisse, Bäckereien und Eisdielen in wählbarem Abstand (150 m / 250 m /
+  500 m / 1 km) links und rechts der Strecke. Ergebnis als Liste nach Streckenkilometer („km 12,3 ·
+  80 m abseits“) mit Öffnungszeiten, Ruhetag-Badge und Adresse, dazu orange Marker auf der Karte
+  (Klick in der Liste zentriert die Karte). Orte, die schon in der Gastro-Liste stehen, sind als
+  „✓ in Liste“ verlinkt; alle anderen lassen sich mit **„Übernehmen“** per Klick anlegen (Typ,
+  Adresse, Öffnungszeiten, Telefon, Website, OSM-Verknüpfung werden übernommen; Duplikate werden
+  erkannt und stattdessen der vorhandene Eintrag verlinkt).
+- Technik: `GET /api/touren/<id>/osm-gastro?radius=` (nur eigene Gruppe) vereinfacht den Track per
+  Douglas-Peucker auf ≤ 120 Stützpunkte und fragt Overpass mit `around:<r>,lat1,lon1,…` ab
+  (identifizierender User-Agent, Ausweich-Server, 30-Minuten-Cache je Tour und Radius); scheitert
+  der Server-Proxy, fragt der Browser overpass-api.de direkt und berechnet km/Abstand selbst.
+  `POST /api/gastro/quick-add` legt den Eintrag an (Validierung wie im Formular).
+- Betroffene Dateien: `app.py` (`_gastro_match_known`, `_simplify_track`, `_along_track`,
+  `api_tour_osm_gastro`, `api_gastro_quick_add`, Build-Kennung), `templates/touren/detail.html`
+  (Button, Panel, JS-Block „Build u“).
+
+### Gastro-Bereich: Öffnungszeiten/Ruhetage, Duplikate, Liste (Build t)
+
+- **Öffnungszeiten als Text + Ruhetage:** neue Spalte `gastro_spots.hours_text` (automatische
+  Migration). Freitext („Mo Ruhetag, Di–So 9–18 Uhr“) oder OSM-Format; OSM-Format wird lesbar
+  angezeigt („Mo–Fr 08:00–18:00 · So geschlossen“, Filter `hours_de`) und Ruhetage werden erkannt
+  (Filter `closed_days`, auch „montags geschlossen“, „Ruhetag: Mo + Di“) und als rotes Badge in
+  Liste, Detailseite und den Einkehr-Popups der Tour-Karte gezeigt. OSM-Übernahme und OSM-Abgleich
+  speichern jetzt den kompletten opening_hours-Text statt nur der ersten Uhrzeit.
+- **Doppelte Einträge:** Beim Anlegen wird geprüft, ob derselbe Ort schon existiert (gleiche
+  OSM-Verknüpfung, gleicher Name im Umkreis von 100 m oder ein Eintrag näher als 25 m) → Warnung mit
+  Link zum bestehenden Eintrag; „Trotzdem anlegen“ als bewusste Ausnahme.
+- **Formular:** Bei Fehlermeldungen (fehlende Koordinaten, Duplikat) bleiben alle Eingaben erhalten
+  (vorher leeres Formular).
+- **Liste:** Marker mit Typ-Symbol (☕🥐🍺🍽️🥪), Popup mit Öffnungszeiten/Ruhetag/Bewertung und Link,
+  Clustering ab 25 Einträgen, Treffpunkt-Fahne; Sofort-Filter (Text, Typ, Frühöffner) für Karten und
+  Marker ohne Neuladen; Frühöffner-Schwelle direkt in der Filterleiste; Sortierung „Nähe zu mir“
+  (Standort) und „Nähe zum Treffpunkt“ mit Entfernungs-Badges; „Auf der Karte zeigen“ je Eintrag.
+- Betroffene Dateien: `app.py` (`hours_de`, `closed_days`, `_gastro_form_vals`,
+  `_gastro_find_duplicate`, `gastro_new`/`gastro_edit`/`gastro_list`/`gastro_import`,
+  `gastro_near_track`, `migrate_db`, Build-Kennung), `models.py` (`hours_text`),
+  `templates/gastro/form.html`, `templates/gastro/detail.html`, `templates/gastro/list.html`,
+  `templates/touren/detail.html` (Einkehr-Popup).
+
+### Gastro-Bereich: Fehler und tote Funktionen (Build s)
+
+- **Bearbeiten repariert:** Die Route gab es, aber keinen Link, und das Formular blieb beim
+  Bearbeiten leer. Jetzt: Bearbeiten-Button in der Detailseite (Ersteller, Organisatoren, Admins),
+  Formular vollständig vorbelegt, Karte startet beim Eintrag, Marker ziehbar; die OSM-/Namenssuche
+  ergänzt im Bearbeiten-Modus nur leere Felder.
+- **Fotos eingebunden:** Upload (mit Bildunterschrift), Galerie und Löschen in der Detailseite;
+  Löschen eines Eintrags mit Fotos führte zu einem 500er (NOT NULL) – Fotos und Dateien werden jetzt
+  mit entfernt (zusätzlich Cascade im Model).
+- **OSM-Abgleich statt Google Places:** Der Places-Abgleich brauchte einen kostenpflichtigen Key und war
+  nie in der Oberfläche. Neu: „Daten aus OSM holen“ auf der Detailseite – sucht über die gespeicherte
+  osm_id, sonst im Umkreis von 80 m, zeigt Unterschiede (alt → neu) und übernimmt nur nach Klick
+  (`/api/gastro/<id>/osm-lookup`, `/gastro/<id>/import` mit Validierung). Places-Route und
+  Admin-Feld „Google Places API-Key“ entfernt.
+- **Namenssuche (Nominatim):** Treffer im Kartenausschnitt zuerst (viewbox) und nach Entfernung
+  sortiert statt weltweit; Trefferliste HTML-sicher (Namen mit Apostroph brachen den Klick);
+  übernimmt jetzt auch Schließzeit, Telefon, Website und die OSM-Verknüpfung.
+- **Liste:** 221 → 16 Datenbank-Abfragen bei 30 Einträgen (Bewertungsschnitt in einer Abfrage,
+  Frühöffner-Schwelle einmal je Request über `models.morning_threshold()` – berücksichtigt jetzt
+  auch die persönliche Schwelle); Suche findet zusätzlich Adresse und Notizen.
+- osm_id wird ab jetzt im OSM-Format `node/123` gespeichert und in der Detailseite verlinkt.
+- Betroffene Dateien: `app.py` (Gastro-Abschnitt, Overpass-Helfer `_overpass_fetch`, Admin-Keys,
+  Build-Kennung), `models.py` (`morning_threshold`, `avg_rating`-Cache, Cascade),
+  `templates/gastro/form.html`, `templates/gastro/detail.html`, `templates/admin/settings.html`.
+
+### Gastro-Suche „OSM-Gebiet“ repariert (Build r)
+
+- **Ursache:** overpass-api.de lehnt seit April 2026 Anfragen ohne eindeutig identifizierenden
+  User-Agent mit „406 Not Acceptable“ ab; der Proxy `/api/overpass-gastro` schickte den Standard-
+  User-Agent von python-requests, der Ausweich-Server kumi.systems antwortet nicht mehr zuverlässig,
+  und das Formular zeigte den Server-Fehler als „Keine Treffer“ an.
+- **Server:** eigener User-Agent `DeJungenOlen/<Version> (+<Host>; …)` + Referer, vier Ausweich-
+  Server (overpass-api.de, private.coffee, kumi.systems, maps.mail.ru) mit 12 s Einzel-Timeout und
+  40 s Gesamtbudget, 10-Minuten-Cache je Kartenausschnitt, sprechende Fehlertexte (406/429/504);
+  Bäckereien, Konditoreien und Eisdielen werden jetzt mitgesucht (`shop=bakery|pastry|ice_cream`
+  – „bakery“ war fälschlich als amenity abgefragt); Treffer enthalten Adresse und Kontakt.
+- **Browser:** Fehler werden angezeigt statt verschluckt; scheitert der Server-Proxy (z. B. Rate-Limit
+  der Hosting-IP), fragt der Browser overpass-api.de direkt (eigene IP, Referer); „Kartenausschnitt
+  zu groß“ wird als Hinweis zum Heranzoomen gemeldet. Übernahme füllt zusätzlich Adresse,
+  Schließzeit, Telefon und Website; Trefferliste HTML-sicher aufgebaut.
+- Betroffene Dateien: `app.py` (`OVERPASS_ENDPOINTS`, `_osm_user_agent`, `_overpass_gastro_query`,
+  `_overpass_elements_to_results`, `api_overpass_gastro`, Build-Kennung), `templates/gastro/form.html`
+  (`overpassQuery`, `overpassDirect`, `searchOverpass`, `renderOverpassResults`, `fillForm`).
+
+### Tour-Karte & Detailseite: fünf Ergänzungen (Build q)
+
+- **Einkehr an der Strecke:** Gastro-Einträge höchstens 150 m neben dem Track (gleicher Helfer
+  wie die Video-Folie) erscheinen als kleine Marker (☕ 🥐 🍺 🍽️ 🥪) auf der Tour-Karte, mit Popup
+  (Art, Streckenkilometer, Abstand, Link zu Details & Bewertungen). Per ☕-Knopf in der
+  Kartenleiste ausblendbar; sichtbare Einkehr-Marker werden von den Foto-Badges freigehalten.
+- **Wetter-Rückblick:** Bei vergangenen Touren zeigt eine neue Kachel in der Statistik-Leiste
+  das Wetter am Tourtag (Symbol, Höchst-/Tiefsttemperatur, Regenmenge bzw. „trocken“, Wind;
+  Tooltip mit Klartext und Sonnenstunden). Asynchron geladen über die neue Route
+  `/touren/<id>/wetter-tag`; ohne Treffpunkt dient der GPX-Start als Ort.
+- **Wetter-Cache:** Das Tageswetter vergangener Touren wird einmalig in `tours.weather_json`
+  gespeichert (neue Spalte, Migration automatisch beim ersten Aufruf) – Video-Seite, Server-
+  Rendering und Rückblick brauchen danach keinen Open-Meteo-Aufruf mehr. `_tour_day_weather`
+  liefert zusätzlich `label`, `rain_mm`, `wind_kmh`, `wind_dir`, `sun_h`.
+- **Fahrtrichtung:** Kleine Richtungspfeile entlang des Tracks (etwa alle 5 km, 3–12 Stück,
+  eigene Karten-Ebene unter den Markern, nicht klickbar) – bei Schleifen sieht man, wie herum
+  gefahren wurde.
+- **Fotos ein/aus:** 📷-Knopf in der Kartenleiste blendet alle Foto-Marker aus und wieder ein.
+- **Treffpunkt am Start:** Liegt der Treffpunkt < 150 m vom Start, bekommt der Start-Marker
+  (bzw. „S/Z“) eine 📍-Plakette und das Popup „Start & Treffpunkt“ – statt einer Nadel, die den
+  Start-Marker verdeckt. Treffpunkt-Nadel sonst wie gehabt, jetzt mit weißem Rand.
+- Betroffene Dateien: `app.py` (`_tour_day_weather`, neue Route `tour_weather_day`,
+  `tour_detail` → `gastro_near`, `migrate_db`, Build-Kennung), `models.py` (`Tour.weather_json`),
+  `templates/touren/detail.html` (Toolbar, Wetter-Kachel, `addDirectionArrows`, Einkehr-Ebene,
+  `togglePhotoLayer`, `toggleGastroLayer`, Treffpunkt-Logik, Rückblick-Skript).
+
+### Tour-Karte: Foto-Marker neben dem Track (Build p)
+
+- **Tour-Detail, Karte:** Foto-Marker (einzeln und Cluster) sitzen nicht mehr auf dem Track,
+  sondern daneben – als Thumbnail-Badge mit kurzer Verbindungslinie und Punkt am Aufnahmeort
+  (gleiches Prinzip wie auf der Karten-Folie im Video). Die Richtung wird je Zoomstufe so
+  gewählt, dass möglichst wenig Track, Start/Ziel/Treffpunkt, andere Badges und Kartenrand
+  verdeckt werden; nach Zoomen/Verschieben wird neu platziert.
+- Cluster zeigen jetzt das erste Foto als Thumbnail mit roter Zähl-Blase statt „📷 N“.
+- Rundkurs (Start und Ziel < 150 m auseinander): ein gemeinsamer „S/Z“-Marker statt zwei
+  übereinanderliegender; Start-/Ziel-Marker mit weißem Rand.
+- Galerie ↔ Karte: Hover auf ein Foto hebt auch dessen Cluster hervor; Klick auf das grüne
+  GPS-Badge eines Fotos scrollt zur Karte, zoomt bis das Foto einzeln sichtbar ist und öffnet
+  das Popup (bisher ohne Funktion, wenn das Foto in einem Cluster steckte).
+- Betroffene Dateien: `templates/touren/detail.html` (neu: `trackPointsPx`, `clipLen`,
+  `bestPinOffset`, `makePinIcon`, `clusterThumb`, `placePhotoPins`; geändert: Start/Ziel-Marker,
+  `highlightMarker`, `unhighlightMarker`, `jumpToMarker`), `app.py` (nur Build-Kennung).
+
+### Mini-Karte pro Foto (Build o)
+
+- **Video (MP4 + Browser-Vorschau):** Fotos mit GPS-Position bekommen eine kleine
+  Karten-Einblendung (unten rechts, über der Unterschrift-Leiste, falls vorhanden):
+  Track-Umriss in Weiß, der bis zum Aufnahmeort gefahrene Teil in Orange, Marker am
+  Aufnahmeort und der Kilometerstand („km 15,2“).
+- Es werden nur Fotos berücksichtigt, deren Position plausibel zum Track passt
+  (gleicher Filter wie bei der Karten-Folie) – Fotos ohne GPS oder mit Ausreißer-Koordinaten
+  erhalten keine Mini-Karte, Touren ohne GPX-Datei bleiben unverändert.
+- Betroffene Dateien: `app.py` (`_photo_on_mini_map`, `_draw_mini_map`, `make_photo_overlay`,
+  Datenblock `_mini_track`), `templates/touren/video.html` (`miniTrack`, `drawMiniMap`,
+  `drawPhotoFrame`).
+
+### Server-MP4: animiertes Höhenprofil (Build n)
+- Neue Folie „Höhenprofil“ (3,5 s) im MP4 – an derselben Stelle wie in der Browser-Vorschau (nach den Fotos, vor dem Outro) und über dasselbe Häkchen „Höhenprofil zeigen“ steuerbar (Formularfeld `show_profile`, Standard an). Die Kurve baut sich von links nach rechts auf (gefüllte Fläche mit Verlauf + Linie), mit Höhen-Raster, km-Achse aus den echten Streckenkilometern, laufendem Höhenwert an der Spitze und Markierung des höchsten Punkts („↑ 92 m“). Höhen werden leicht geglättet (Mittel über 5 Punkte); Tracks ohne Höhendaten (flacher als 1 m) bekommen keine Folie. `build_profile_frames()` in `tour_video_render`.
+
+### Video: Logo freigestellt, Titelfolie mit Wetter/Teilnehmern, km in der Kartenkopfzeile (Build m)
+- **Gruppenlogo ohne schwarzen Kasten:** Logos ohne echten Alphakanal (JPEG bzw. vor Build f verkleinerte PNGs) werden beim Rendern automatisch freigestellt – `_logo_auto_alpha()` macht den einfarbigen Hintergrund von den Ecken aus per Flood-Fill transparent (schwarz, weiß oder jede andere Eckfarbe); innenliegende Flächen in derselben Farbe bleiben erhalten. Logos mit Transparenz bleiben unverändert. Sauberste Kanten gibt weiterhin ein neu hochgeladenes PNG mit Transparenz (bleibt seit Build f erhalten).
+- **Titelfolie** zeigt wie die Browser-Vorschau zusätzlich Wetter (gezeichnetes Symbol + Tageshöchsttemperatur) und Teilnehmerzahl („5 dabei“).
+- **Kartenkopfzeile** zeigt wie die Vorschau „68 % der Strecke · 13.8 / 20.0 km“.
+
+### Kartenfolie: Foto-Kacheln größer (Build l)
+- Foto-Kacheln auf der Kartenfolie von 7 % auf 8,4 % der kurzen Bildkante vergrößert: Browser-Vorschau 50 → 60 px, Server-MP4 (1080er Formate) 76 → 90 px. Abstand zur Verbindungslinie und Bündel-Radius wachsen automatisch mit.
+
+### Kartenfolie: Track sichtbar, Foto-Marker neben dem Track (Build k)
+- **Problem:** Die Foto-Kacheln lagen direkt auf dem Track und stapelten sich an gleichen Aufnahmeorten – der Track war kaum zu erkennen; außerdem wurde der Kartenausschnitt oft zu weit herausgezoomt (Track winzig).
+- **Foto-Marker** (Browser-Vorschau `video.html` und Server-MP4 `build_track_frames()`): kleiner (max. 76 px), Fotos mit nahe beieinander-liegenden Positionen werden zu einer Kachel mit „+N“-Plakette gebündelt, und jede Kachel wird an der von 8 Positionen rund um den Aufnahmeort platziert, die am wenigsten Track verdeckt (und keine andere Kachel überlappt). Eine Verbindungslinie zeigt vom Foto auf den Aufnahmepunkt (kleiner blauer Punkt).
+- **Kartenausschnitt:** Der Track darf die Fläche unter der Kopfzeile füllen (vorher nur 82 % von „Höhe − 240“). Es wird die größte Zoomstufe gewählt, bei der er passt; füllt er die Fläche damit unter 66 %, wird eine Stufe feiner geladen und das Kachelbild auf 70–100 % skaliert – der Track nutzt so immer rund 70–92 % der Fläche. Kachelbereich wird eng berechnet (kaum mehr Kachel-Downloads als vorher).
+- **GPS-Ausreißer:** Fotos, deren Koordinaten weit abseits des Tracks liegen (falsche EXIF-Position), blähen den Ausschnitt nicht mehr auf und bekommen keinen Marker.
+- Fallback-Projektion der Vorschau (ohne Kacheln) berücksichtigt jetzt die Längengrad-Verkürzung (keine verzerrten Tracks mehr).
+- Getestet: Node-Test der Bündelung/Platzierung (0 Trackpunkte unter den Kacheln, alle im Bild), MP4 Hoch- und Querformat mit Einzelbildern.
+
+### Video: Einkehr nahe der Route, Fahrzeit & Schnitt, gezeichnete Wettersymbole (Build j)
+- **Fahrzeit & Ø Tempo aus GPX-Zeitstempeln:** `parse_gpx()` liefert zusätzlich `moving_s` (reine Fahrzeit, Pausen = Abschnitte langsamer als 1 km/h), `total_s` (gesamt), `avg_kmh`, `max_kmh`, `start_time`/`end_time` (Ortszeit Europe/Berlin). Statistik-Folie (Server-MP4 **und** Browser-Vorschau) zeigt zwei neue Kacheln „Fahrzeit · x:xx h gesamt“ und „Ø Tempo · max. xx km/h“ – nur wenn der Track Zeitstempel hat. Bei mehr als 4 Kacheln im Querformat/Quadrat drei Spalten; zu breite Werte werden automatisch kleiner gesetzt.
+- **Einkehr nahe der Route:** neuer Helfer `gastro_near_track()` (Gastro-Einträge höchstens `GASTRO_NEAR_M` = 150 m neben dem Track, mit Streckenkilometer und Abstand). Im MP4: eigene Folie „Einkehr unterwegs“ (max. 6 Zeilen + „… und N weitere“, gestaffelt eingeblendet) nach der Kartenfolie, und auf der Karte violette Marker mit Namensschild, sobald der Track dort vorbeikommt (Schilder bis 6 Treffer). Neue Option „🍴 Einkehr nahe der Route (nur MP4)“ in den Video-Einstellungen (Formularfeld `show_gastro`, Standard an).
+- **Wetter-Kachel ohne Emoji:** Das Symbol wird jetzt mit Pillow gezeichnet (Sonne, teils bewölkt, Wolke, Nebel, Regen, Schnee, Gewitter) – auf dem Server gibt es keinen Emoji-Font. Wetterabruf in `_tour_day_weather()` zusammengeführt (Videoseite + MP4); liegt die Tour länger als ~3 Monate zurück, wird das Open-Meteo-Archiv (`archive-api`) befragt, das die Prognose-API dann nicht mehr abdeckt. Voraussetzung bleibt: festes Datum + Treffpunkt-Koordinaten.
+- Getestet mit synthetischem GPX (Zeitstempel, 15-min-Pause), 7 Gastro-Einträgen und allen drei Formatfamilien; Einzelbilder geprüft.
+
+### Server-MP4: Übergänge, Bildunterschriften, Logo, Profilbilder (Build i)
+- **Weiche Übergänge:** Jedes Segment (Folien und Fotos) blendet kurz ein (0,25 s) und aus (0,35 s) statt hart zu schneiden. Der Ken-Burns-Zoom läuft jetzt um die Bildmitte (vorher zog er Richtung linke obere Ecke).
+- **Bildunterschrift & Uhrzeit auf den Fotos:** Unten links eine halbtransparente Leiste mit Aufnahmezeit (`taken_at`, „10:42 Uhr“) und Bildunterschrift (`caption`, max. 2 Zeilen, Rest „…“), Breite passt sich dem Text an. Fotos ohne beides bleiben unverändert. Technisch als transparentes PNG, das ffmpeg NACH dem Zoom auflegt (`overlay`) – bleibt dadurch scharf und ortsfest.
+- **Gruppenlogo:** Als Wasserzeichen oben rechts auf Fotos und Statistik-Folie, unten links auf der Karte; auf Titel- und Outro-Folie größer mittig über dem Text. Transparente PNG-Logos werden korrekt überblendet (siehe Build f). Ohne Logo ändert sich nichts.
+- **Teilnehmer mit Profilbildern:** Auf der Statistik-Folie erscheinen statt der Namenszeile runde Profilbilder mit Vornamen (ohne Bild: Initialen auf farbigem Kreis), max. 8, Rest als „+N“ – blenden wie bisher ab 55 % ein.
+- Fallback-Pfad ohne ffmpeg-Zoom (`make_frame`) legt das Overlay per Pillow auf. Getestet mit der Projekt-ffmpeg in Hoch- und Querformat (Einzelbilder bei Titel, Statistik, Foto, Übergang, Outro geprüft; Übergangsbild ist dunkel).
+
+### Server-MP4: Statistik-Folie wieder animiert (Build h)
+- Die Zahlen auf der Folie „Die Tour in Zahlen“ zählen im Server-MP4 wieder hoch – gleiche Choreografie wie in der Browser-Vorschau (`drawStatsFrame`): Kacheln blenden gestaffelt ein, Strecke/Höhenmeter/Teilnehmer/Temperatur laufen in den ersten 60 % der 4 s mit Ease-out auf den Zielwert, danach erscheinen die Teilnehmernamen (max. 8, Rest als „+N“, auf Breite gekürzt). Technisch: 54 Einzelbilder (15/s) + Haltebild → ein Video-Segment über `frames_to_segment()`; schlägt das fehl, kommt wie bisher die statische Folie. Getestet mit der Projekt-ffmpeg (7.0.2) in der Sandbox: Bilder bei 3,2/3,7/4,4/6,5 s zeigen 10,9 → 31,5 → 43,9 → 47,3 km.
+
+### Pillow-Pfade nachgezogen (Build f/g)
+- Hintergrund: Das Pillow in `venv/Lib/site-packages` war ein auf dem Server installierter Build für Python 3.9 (der Ordnername mit großem L stammt aus dem alten `passenger_wsgi.py`, nicht von einer Windows-venv). Es funktionierte unter 3.9 und fiel erst mit dem Python-Update auf 3.11 aus (`cannot import name '_imaging'`); seit Build e liegt dort ein 3.11-Build, Server-MP4s haben wieder Titel-/Statistik-Folie, Kartenanimation und Blur-Hintergrund. Zwei Punkte im Pillow-Pfad korrigiert:
+  - `_resize_photo_if_needed` speicherte mit Pillow **alles als JPEG** – transparente PNG-Gruppenlogos hätten einen schwarzen Hintergrund bekommen, WebP wäre zu JPEG geworden. Jetzt bleibt PNG PNG (inkl. Transparenz), WebP bleibt WebP; nur JPEG wird als JPEG gespeichert, und Transparenz wird dabei auf Weiß gelegt statt auf Schwarz.
+  - Avatar-Upload verkleinerte mit Pillow **ohne EXIF-Drehung** – Handy-Fotos als Profilbild wären gekippt erschienen. Jetzt `exif_transpose` vor dem Thumbnail; Paletten-/Alpha-Bilder werden für JPEG nach RGB gewandelt.
+- Geprüft: keine in Pillow ≥ 10 entfernten APIs im Code (`textsize`, `getsize`, `ANTIALIAS`); Video-Rendering nutzt `textbbox`/`LANCZOS`.
+
+### Pakete reparieren ohne SSH (Build e)
+- Admin → Pakete installieren kann jetzt auch **Pillow** und **piexif** installieren bzw. reparieren (beide stehen in `requirements.txt`). Jedes Paket hat ein Auswahl-Häkchen (fehlende/defekte sind vorangehakt) und den Status „installiert / fehlt / defekt“ mit Version und Pfad; Pillow wird funktional geprüft (C-Erweiterung `_imaging`), weil ein am Windows-PC erstelltes oder für Python 3.9 gebautes Pillow zwar vorhanden aussieht, aber nicht arbeitet. Neue Diagnosezeile: ist `pip` für den laufenden Interpreter verfügbar. Installation mit `pip --target --upgrade`, Fallbacks `--user` / `--break-system-packages`, bei fehlendem pip einmalig `ensurepip`; Fehlerprotokoll wird je Paket angezeigt.
+- Hintergrund: Das Pillow in `venv/Lib/site-packages` war für Python 3.9 gebaut und lud nach dem Update auf 3.11 nicht mehr (`cannot import name '_imaging'`); Bildverarbeitung lief seitdem über ImageMagick, Server-MP4s ohne Folien.
+
+### Auslieferung & Aufräumen (Build c/d)
+- Neues Skript `make_deploy_zip.py`: erzeugt nach jeder Änderung zwei Pakete in `deploy/` – `…_komplett.zip` (gesamtes Projekt ohne `.env`, Datenbank, Uploads, Backups, venv, ffmpeg) und `…_aenderungen.zip` (nur geänderte Dateien seit der letzten Auslieferung). Jede ZIP enthält eine `_DEPLOY_HINWEISE.txt` mit Dateiliste, ggf. zu löschenden Dateien und den Schritten nach dem Upload.
+- Streuner aus dem Projektstamm entfernt: `create.html` (veraltete Kopie von `templates/touren/create.html`, nirgends verwendet) und `htaccess` ohne Punkt (identische Kopie von `.htaccess`). Beide können auch auf dem Server gelöscht werden.
+- Projektstamm aufgeräumt (Build d): Anleitungen und Audit-Bericht liegen jetzt in `docs/` (`INSTALLATION_PLESK_FTP.md`, `BACKUP_WIEDERHERSTELLEN.md`, `NEUE_GRUPPE.md`, `GITHUB_DESKTOP_SETUP.md`, `AUDIT_BERICHT.md`); `README.md` und `CHANGELOG.md` bleiben im Stamm. Die fünf ungenutzten Teil-Templates in `templates/touren/partials/` wurden entfernt (seit der Zusammenführung in `touren/detail.html` nirgends mehr eingebunden). README: Projektbaum aktualisiert, Abschnitt „Auslieferung per FTP“.
+
+### Server-Python 3.9 → 3.11
+- `passenger_wsgi.py` ermittelt die Python-Version selbst (kein fest verdrahtetes `python3.9` mehr); der 3.9-Altbestand steht nur noch als letzter Fallback im Suchpfad, frisch installierte Pakete gewinnen. Auto-Install nutzt `pip --target --upgrade` (ersetzt für 3.9 gebaute Reste, umgeht die Debian-12-Sperre „externally-managed-environment“).
+- Admin → Pakete installieren zeigt jetzt die laufende Python-Version und den Import-Status von Pillow, piexif, gpxpy, cryptography, pywebpush sowie den ImageMagick-Pfad – Server-Zustand ohne SSH prüfbar. Ziel-Pfad überspringt site-packages fremder Python-Versionen.
+- INSTALLATION_PLESK_FTP.md: Abschnitt „Python-Update des Servers“.
+
+### Sicherheit
+- **Stored XSS auf der Karte und in Popups:** Namen/Notizen von Gastro-Spots, Orten, Tourtiteln, Treffpunkten, Bildunterschriften und Live-Standort-Namen wurden ungeschützt in `<script>`-Daten bzw. Leaflet-Popups eingesetzt. JSON wird jetzt `</script>`-sicher eingebettet (`_json_for_script`), Popups escapen Nutzerdaten über die neue globale JS-Funktion `escHtml()` (base.html). Inline-`confirm()`-Handler in Admin/Detail nutzen `|tojson|forceescape`.
+- **Path Traversal beim Tour-Anlegen:** Das versteckte Feld `proposal_gpx_file` erlaubte Organisatoren, beliebige Server-Dateien (z. B. `.env`) als „GPX“ zu kopieren und herunterzuladen. Jetzt nur noch `.gpx`-Dateinamen aus dem GPX-Ordner.
+- **Private Uploads ohne Login:** `/static/uploads/photos|videos|gpx|avatars|group_music/…` war ohne Anmeldung abrufbar (umging `serve_photo`/`serve_video`). Neuer `before_request`-Schutz; Gruppen-Logos und Ankündigungsbilder bleiben öffentlich.
+- **Open Redirect:** `?next=` beim Login akzeptiert nur noch relative Pfade.
+- **Passwort-Reset-Links** laufen jetzt wirklich nach 1 Stunde ab (vorher unbegrenzt gültig).
+- **Mandantentrennung nachgezogen:** Vorlagen löschen/verwenden, Teilnehmer hinzufügen/entfernen, Foto-Beschriftung/GPS/Löschen/Re-Extract, Video löschen, Live-Standorte (`/api/location/tour/<id>`), Admin „Nutzer entfernen“ und die Foto-Challenge zeigen/ändern nur noch Daten der eigenen Gruppe.
+- Gruppenwechsel per Session (`active_group_id`) wirkt nur noch für Admins.
+- Externe Links (Komoot, Webseite) werden auf `http(s)` geprüft (`javascript:`-Links werden verworfen, fehlendes Schema wird ergänzt).
+
+### Behoben
+- **Setup-Wizard ohne `SETUP_KEY` lief auf 405:** `/setup` erlaubte nur GET, das Formular sendet aber per POST dorthin. Zusätzlich leitet `/login` jetzt zum Wizard um, solange kein Admin existiert (wie dokumentiert).
+- **Admin „Nutzer entfernen“ lieferte 500** (IntegrityError), sobald der Nutzer je an einer Tour teilgenommen hatte. Das Konto wird jetzt – wie beim DSGVO-Selbstlöschen – anonymisiert und gesperrt (`_anonymize_user`); Historie bleibt konsistent, anonymisierte Konten werden im Dashboard ausgeblendet.
+- **Video-Faststart lief nie:** `subprocess` war nicht importiert (NameError wurde still geschluckt). Jetzt Modul-Import; fehlgeschlagene Temp-Dateien werden entfernt.
+- **Tour löschen** hinterließ verwaiste Videos, Kommentare, Zeitabstimmungen, Bewertungen und Live-Standorte (`_delete_tour_dependents`, auch beim endgültigen Gruppen-Löschen).
+- **500 bei ungültigen Eingaben:** Tour anlegen/bearbeiten (Datum, km, Treffpunkt), Archiv-Nachtrag (Datum, km mit Komma), Gastro/Ort anlegen (leere Koordinaten), Gastro-Bewertung (Score außerhalb 1–5), Kommentar-Antwort (`parent_id`), iCal-Export (Startzeit wie „9 Uhr“), Live-Standort-Update (Strings statt Zahlen). Leerer Tourtitel beim Bearbeiten wird abgewiesen.
+- `migrate_db()`: Gruppen-Block benutzte eine bereits geschlossene DB-Verbindung und lief nie durch (Start-Migration deckte es ab).
+- `backup.sh`: Fallback-Rotation `MAX_BACKUPS=14` löschte die Wochen-/Monats-Generationen der App-Rotation wieder (jetzt 40); Erfolgsprüfung testete den Exit-Code von `rm` statt `tar`.
+- Toter Code (unerreichbarer alter `parse_gpx`-Rest) entfernt.
+
+### Geänderte Dateien
+`app.py`, `passenger_wsgi.py`, `backup.sh`, `templates/base.html`, `templates/karte.html`, `templates/admin/install_packages.html`, `templates/gastro/list.html`, `templates/orte/list.html`, `templates/touren/detail.html`, `templates/admin/dashboard.html`, `templates/admin/announcements.html`, `templates/admin/notifications.html`, `templates/admin/gruppen.html`, `INSTALLATION_PLESK_FTP.md`, `README.md`, `AUDIT_BERICHT.md`, `CHANGELOG.md`, `make_deploy_zip.py` (neu), `deploy/` (neu), `docs/` (verschoben); entfernt: `create.html`, `htaccess`, `templates/touren/partials/*`
+
+---
+
 ## 1.3.0 – 2026-10-07 (Build h)
 
 ### Neu

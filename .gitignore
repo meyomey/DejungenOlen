@@ -1,5 +1,6 @@
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -37,3 +38,4 @@ config_local.py
 # OS
 .DS_Store
 Thumbs.db
+

@@ -105,6 +105,7 @@ class Tour(db.Model):
     meeting_lat = db.Column(db.Float, nullable=True)
     meeting_lng = db.Column(db.Float, nullable=True)
     meeting_desc = db.Column(db.String(200), nullable=True)
+    weather_json = db.Column(db.Text, nullable=True)        # Build q: Wetter am Tourtag (Cache, JSON)
     created_by  = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     group_id    = db.Column(db.Integer, db.ForeignKey('groups.id'), nullable=True)
     created_at  = db.Column(db.DateTime, default=datetime.utcnow)
@@ -239,6 +240,28 @@ class TourPhoto(db.Model):
         return self.lat is not None and self.lng is not None
 
 
+def morning_threshold():
+    """Build s: Frühöffner-Schwelle („öffnet bis HH:MM“) einmal je Request ermitteln – persönliche
+    Einstellung des Nutzers vor der Site-Konfiguration – statt sie für jeden Eintrag mehrfach aus
+    der Datenbank zu lesen (Gastro-Liste: 221 Abfragen bei 30 Einträgen)."""
+    from flask import g, has_request_context
+    in_request = has_request_context()
+    if in_request and getattr(g, '_morning_threshold', None):
+        return g._morning_threshold
+    thr = None
+    if in_request:
+        try:
+            from flask_login import current_user
+            if current_user.is_authenticated:
+                thr = current_user.morning_opener_until or None
+        except Exception:
+            thr = None
+    thr = thr or SiteConfig.get('morning_opener_until', '09:30') or '09:30'
+    if in_request:
+        g._morning_threshold = thr
+    return thr
+
+
 class GastroSpot(db.Model):
     """Gastronomie-Eintrag – Café, Kneipe, Bäckerei etc."""
     __tablename__ = 'gastro_spots'
@@ -250,6 +273,7 @@ class GastroSpot(db.Model):
     lng         = db.Column(db.Float, nullable=False)
     opens_at    = db.Column(db.String(5), nullable=True)   # "HH:MM"
     closes_at   = db.Column(db.String(5), nullable=True)
+    hours_text  = db.Column(db.String(300), nullable=True)  # Build t: Öffnungszeiten als Text (OSM opening_hours oder frei, z. B. Ruhetag)
     phone       = db.Column(db.String(30), nullable=True)
     website     = db.Column(db.String(200), nullable=True)
     notes       = db.Column(db.Text, nullable=True)
@@ -278,8 +302,7 @@ class GastroSpot(db.Model):
         if not self.opens_at:
             return None
         try:
-            from models import SiteConfig
-            threshold = SiteConfig.get('morning_opener_until', '09:30')
+            threshold = morning_threshold()              # Build s: einmal je Request statt je Eintrag
             h_t, m_t = map(int, threshold.split(':'))
             h, m = map(int, self.opens_at.split(':'))
             return (h * 60 + m) <= (h_t * 60 + m_t)
@@ -288,6 +311,8 @@ class GastroSpot(db.Model):
 
     @property
     def avg_rating(self):
+        if '_avg_rating' in self.__dict__:               # Build s: von gastro_list in einer Abfrage vorbefüllt
+            return self.__dict__['_avg_rating']
         reviews = self.reviews.all()
         if not reviews:
             return None
@@ -320,7 +345,7 @@ class GastroPhoto(db.Model):
     filename   = db.Column(db.String(200), nullable=False)
     caption    = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    spot = db.relationship('GastroSpot', backref=db.backref('photos', lazy='dynamic'))
+    spot = db.relationship('GastroSpot', backref=db.backref('photos', lazy='dynamic', cascade='all, delete-orphan'))   # Build s
     user = db.relationship('User')
 
 

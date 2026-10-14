@@ -73,7 +73,7 @@
     {# Löschen: nur Admin oder Ersteller #}
     {% if current_user.is_admin or tour.created_by == current_user.id %}
     <form method="post" action="{{ url_for('tour_delete', tour_id=tour.id) }}"
-          onsubmit="return confirm('Tour „{{ tour.title }}" wirklich löschen? Alle Fotos werden auch gelöscht.')"
+          onsubmit="return confirm('Tour „' + {{ tour.title|tojson|forceescape }} + '“ wirklich löschen? Alle Fotos werden auch gelöscht.')"
           style="display:inline">
       <button class="btn btn-sm btn-outline-danger">
         <i class="bi bi-trash3 me-1"></i>Löschen
@@ -143,6 +143,15 @@
       <div class="stat-label">Dabei</div>
     </div>
   </div>
+  {% if tour.tour_date and not tour.is_date_open and tour.tour_date < today and (tour.meeting_lat or gpx_data != 'null') %}
+  {# Build q: Wetter-Rückblick – asynchron geladen, Kachel erscheint erst mit Daten #}
+  <div class="col-auto" id="weather-past-tile" style="display:none">
+    <div class="stat-box px-3 py-2" id="weather-past-box">
+      <div class="stat-number" style="font-size:1.4rem" id="weather-past-number">–</div>
+      <div class="stat-label" id="weather-past-label">Wetter am Tourtag</div>
+    </div>
+  </div>
+  {% endif %}
   {% if tour.external_link %}
   <div class="col-auto d-flex align-items-center">
     <a href="{{ tour.external_link }}" target="_blank" class="btn btn-outline-djo btn-sm">
@@ -194,6 +203,24 @@
           </button>
           {% endif %}
 
+          {% if photos|selectattr('has_gps')|list|length > 0 %}
+          <button class="btn btn-sm btn-outline-light py-0 px-2 active" id="btn-photos"
+                  onclick="togglePhotoLayer()" title="Fotos ein/aus">
+            📷
+          </button>
+          {% endif %}
+          {% if gastro_near %}
+          <button class="btn btn-sm btn-outline-light py-0 px-2 active" id="btn-gastro"
+                  onclick="toggleGastroLayer()" title="Einkehr an der Strecke ein/aus ({{ gastro_near|length }})">
+            ☕
+          </button>
+          {% endif %}
+          {% if gpx_data != 'null' %}
+          <button class="btn btn-sm btn-outline-light py-0 px-2" id="btn-osm-gastro"
+                  onclick="toggleOsmGastro()" title="Einkehr entlang der Strecke in OpenStreetMap suchen">
+            🔍☕
+          </button>
+          {% endif %}
           <button class="btn btn-sm btn-outline-light py-0 px-2"
                   onclick="toggleFullscreen()" id="fs-btn" title="Vollbild">
             <i class="bi bi-arrows-fullscreen" id="fs-icon"></i>
@@ -211,6 +238,15 @@
         </div>
       </div>
       <div class="card-body p-0 position-relative" id="map-wrap" style="overflow:hidden">
+        <style>
+          /* Foto-Pins: nur das Badge ist klickbar, die transparente Fläche (Verbindungslinie) lässt die Karte durch */
+          .leaflet-marker-icon.photo-pin { pointer-events: none !important; }
+          .photo-pin .pp-hit { pointer-events: auto; cursor: pointer; transition: box-shadow .15s, border-color .15s; }
+          .photo-pin.pp-hot .pp-hit, .photo-pin .pp-hit:hover {
+            border-color: #C0392B !important;
+            box-shadow: 0 0 0 3px rgba(192,57,43,.4), 0 2px 6px rgba(0,0,0,.35) !important;
+          }
+        </style>
         <div id="tour-map" style="height:460px;display:block;border-radius:0;max-width:100%"></div>
         <!-- Elevation overlay (shown on map when toggled) -->
         <div id="elev-overlay" style="display:none;position:absolute;bottom:0;left:0;right:0;
@@ -239,6 +275,28 @@
       </div>
       {% endif %}
     </div>
+
+    {% if gpx_data != 'null' %}
+    <!-- Build u: Einkehr entlang der Strecke aus OpenStreetMap -->
+    <div class="card mb-3 d-none" id="osm-gastro-panel">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="bi bi-cup-hot me-1"></i>Einkehr entlang der Strecke <span class="fw-normal small">(OpenStreetMap)</span></span>
+        <span class="d-flex align-items-center gap-2">
+          <label class="small fw-normal mb-0" for="osm-gastro-radius">Abstand</label>
+          <select id="osm-gastro-radius" class="form-select form-select-sm py-0" style="width:auto" onchange="searchOsmGastro()">
+            <option value="150">150 m</option>
+            <option value="250" selected>250 m</option>
+            <option value="500">500 m</option>
+            <option value="1000">1 km</option>
+          </select>
+          <button type="button" class="btn btn-sm btn-outline-light py-0 px-2" onclick="toggleOsmGastro()" title="Schließen">✕</button>
+        </span>
+      </div>
+      <div class="card-body py-2" id="osm-gastro-body">
+        <div class="text-muted small">Suche startet…</div>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- GPX upload with drag & drop -->
     {% if current_user.is_organizer and not tour.gpx_file %}
@@ -606,7 +664,8 @@
                      onclick="lbOpenFromEl(this)">
                 {% if p.has_gps %}
                 <span class="badge bg-success position-absolute top-0 end-0 m-1"
-                      title="GPS: {{ p.lat }}, {{ p.lng }}">
+                      style="cursor:pointer" onclick="jumpToMarker({{ p.id }})"
+                      title="Auf der Karte zeigen (GPS: {{ p.lat }}, {{ p.lng }})">
                   <i class="bi bi-geo-alt-fill"></i>
                 </span>
                 {% else %}
@@ -1823,6 +1882,8 @@ function showToast(msg, type) {
 const GPX_DATA = {{ gpx_data | safe }};
 const MEETING_LAT = {{ tour.meeting_lat or 'null' }};
 const MEETING_LNG = {{ tour.meeting_lng or 'null' }};
+const MEETING_DESC = {{ (tour.meeting_desc or "")|tojson }};
+const GASTRO_NEAR = {{ gastro_near|tojson }};   // Build q: Einkehr-Orte ≤ 150 m neben dem Track
 const PHOTOS = [
   {% for p in photos %}{% if p.has_gps and p.lat and p.lng %}
   { id: {{ p.id }},
@@ -1921,6 +1982,7 @@ function switchLayer(name, btn) {
 }
 
 // GPX track
+let meetAtStart = false;      // Build q: Treffpunkt liegt am Start → gemeinsamer Marker statt zwei übereinander
 if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length > 0) {
   const latlngs = GPX_DATA.points.map(p => [p.lat, p.lng]);
 
@@ -1934,32 +1996,375 @@ if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length > 0) {
   }).addTo(map);
   map.fitBounds(poly.getBounds(), {padding:[20,20]});
 
-  // Start / end markers
-  const startIcon = L.divIcon({
-    html: '<div style="background:#2E7D4F;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold">S</div>',
-    iconSize:[26,26], iconAnchor:[13,13]
-  });
-  const endIcon = L.divIcon({
-    html: '<div style="background:#C0392B;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold">Z</div>',
-    iconSize:[26,26], iconAnchor:[13,13]
-  });
-  L.marker(latlngs[0], {icon: startIcon}).addTo(map).bindPopup('<b>Start</b>');
-  L.marker(latlngs[latlngs.length-1], {icon: endIcon}).addTo(map).bindPopup('<b>Ziel</b>');
+  // Build q: Fahrtrichtung – kleine Pfeile entlang des Tracks (eigene Ebene unter den Markern, nicht klickbar)
+  (function addDirectionArrows() {
+    const pts = GPX_DATA.points;
+    const cos = Math.cos(pts[0].lat * Math.PI / 180);
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++)
+      cum.push(cum[i - 1] + Math.hypot((pts[i].lat - pts[i - 1].lat) * 111320, (pts[i].lng - pts[i - 1].lng) * 111320 * cos));
+    const total = cum[cum.length - 1];
+    if (total < 1500 || pts.length < 10) return;                 // zu kurz für Pfeile
+    const pane = map.createPane('trackArrows');
+    pane.style.zIndex = 450; pane.style.pointerEvents = 'none';
+    const n = Math.max(3, Math.min(12, Math.round(total / 5000)));  // etwa alle 5 km, mindestens 3, höchstens 12
+    let j = 1;
+    for (let k = 1; k <= n; k++) {
+      const target = total * k / (n + 1);
+      while (j < pts.length - 1 && cum[j] < target) j++;
+      const a = pts[Math.max(0, j - 3)], b = pts[Math.min(pts.length - 1, j + 3)];   // Richtung über ein paar Punkte mitteln
+      const pa = map.project([a.lat, a.lng], 15), pb = map.project([b.lat, b.lng], 15);
+      if (pa.equals(pb)) continue;
+      const deg = Math.atan2(pb.x - pa.x, -(pb.y - pa.y)) * 180 / Math.PI;           // 0° = Norden, im Uhrzeigersinn
+      const icon = L.divIcon({
+        html: `<svg width="18" height="18" viewBox="0 0 18 18" style="display:block;transform:rotate(${deg.toFixed(0)}deg)">
+                 <path d="M4 12 L9 5 L14 12" fill="none" stroke="#2B3F6B" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+                 <path d="M4 12 L9 5 L14 12" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+               </svg>`,
+        iconSize: [18, 18], iconAnchor: [9, 9], className: ''
+      });
+      L.marker([pts[j].lat, pts[j].lng], {icon, pane: 'trackArrows', interactive: false, keyboard: false}).addTo(map);
+    }
+  })();
+
+  // Start / end markers (Rundkurs: Start und Ziel liegen zusammen → ein gemeinsamer Marker)
+  const seStyle = 'color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);';
+  const startLL = latlngs[0], endLL = latlngs[latlngs.length - 1];
+  // Build q: Treffpunkt am Start → 📍-Plakette am Start-Marker statt eigener Nadel darüber
+  meetAtStart = !!(MEETING_LAT && map.distance([MEETING_LAT, MEETING_LNG], startLL) < 150);
+  const meetBadge = meetAtStart
+    ? '<div style="position:absolute;right:-9px;top:-9px;width:20px;height:20px;border-radius:50%;background:#B85C00;border:2px solid #fff;font-size:11px;line-height:16px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.35)">📍</div>'
+    : '';
+  const meetPopup = meetAtStart ? ' &amp; Treffpunkt</b>' + (MEETING_DESC ? '<br>' + escHtml(MEETING_DESC) : '') : '</b>';
+  const wrapBadge = (inner, size) => '<div style="position:relative;width:' + size + 'px;height:' + size + 'px">' + inner + meetBadge + '</div>';
+  if (map.distance(startLL, endLL) < 150) {
+    const seIcon = L.divIcon({
+      html: wrapBadge('<div style="' + seStyle + 'background:linear-gradient(135deg,#2E7D4F 50%,#C0392B 50%);width:32px;height:32px;font-size:11px">S/Z</div>', 32),
+      iconSize:[32,32], iconAnchor:[16,16], className:''
+    });
+    L.marker(startLL, {icon: seIcon}).addTo(map).bindPopup('<b>Start &amp; Ziel' + meetPopup);
+  } else {
+    const startIcon = L.divIcon({
+      html: wrapBadge('<div style="' + seStyle + 'background:#2E7D4F;width:26px;height:26px;font-size:13px">S</div>', 26),
+      iconSize:[26,26], iconAnchor:[13,13], className:''
+    });
+    const endIcon = L.divIcon({
+      html: '<div style="' + seStyle + 'background:#C0392B;width:26px;height:26px;font-size:13px">Z</div>',
+      iconSize:[26,26], iconAnchor:[13,13], className:''
+    });
+    L.marker(startLL, {icon: startIcon}).addTo(map).bindPopup('<b>Start' + meetPopup);
+    L.marker(endLL, {icon: endIcon}).addTo(map).bindPopup('<b>Ziel</b>');
+  }
 }
 
-// Meeting point marker
-if (MEETING_LAT) {
+// Meeting point marker (entfällt, wenn der Treffpunkt am Start liegt – siehe meetAtStart)
+if (MEETING_LAT && !meetAtStart) {
   const meetIcon = L.divIcon({
-    html: '<div style="background:#B85C00;color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:16px;">📍</div>',
-    iconSize:[30,30], iconAnchor:[15,15]
+    html: '<div style="background:#B85C00;color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">📍</div>',
+    iconSize:[30,30], iconAnchor:[15,15], className:''
   });
   L.marker([MEETING_LAT, MEETING_LNG], {icon: meetIcon})
    .addTo(map)
-   .bindPopup('<b>Treffpunkt</b><br>{{ tour.meeting_desc or "" }}');
+   .bindPopup('<b>Treffpunkt</b><br>' + escHtml(MEETING_DESC));
 }
 
-// Photo markers – with MarkerCluster + hover sync
-// Graceful fallback: use a LayerGroup if MarkerClusterGroup not available
+// ── Build q: Einkehr-Orte an der Strecke (≤ 150 m neben dem Track), zuschaltbare Ebene ──
+const GASTRO_ICONS = {cafe: '☕', baeckerei: '🥐', kneipe: '🍺', restaurant: '🍽️', imbiss: '🥪', other: '🍴'};
+const gastroLayer = L.layerGroup();
+GASTRO_NEAR.forEach(sp => {
+  const icon = L.divIcon({
+    html: `<div style="width:26px;height:26px;border-radius:50%;background:#fff;border:2px solid #B85C00;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1">${GASTRO_ICONS[sp.spot_type] || '🍴'}</div>`,
+    iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -14], className: ''
+  });
+  L.marker([sp.lat, sp.lng], {icon, title: sp.name, zIndexOffset: -200})
+    .bindPopup(`<b>${escHtml(sp.name)}</b><br>
+                <span class="text-muted small">${escHtml(sp.type_label)} · km ${String(sp.km).replace('.', ',')} · ${sp.dist_m} m neben der Strecke</span><br>
+                ${sp.hours ? '<span class="small">🕐 ' + escHtml(sp.hours) + '</span><br>' : (sp.opens_at ? '<span class="small">🕐 ab ' + escHtml(sp.opens_at) + ' Uhr</span><br>' : '')}
+                ${(sp.closed_days || []).length ? '<span class="small text-danger">Ruhetag: ' + sp.closed_days.join(', ') + '</span><br>' : ''}
+                <a href="${sp.url}" class="small">Details &amp; Bewertungen</a>`)
+    .addTo(gastroLayer);
+});
+if (GASTRO_NEAR.length) gastroLayer.addTo(map);
+function toggleGastroLayer() {
+  const on = map.hasLayer(gastroLayer);
+  if (on) map.removeLayer(gastroLayer); else gastroLayer.addTo(map);
+  const b = document.getElementById('btn-gastro');
+  if (b) b.classList.toggle('active', !on);
+  schedulePlacePins();          // sichtbare Einkehr-Marker zählen zu den freizuhaltenden Punkten
+}
+
+// ── Build u: Einkehr entlang der Strecke aus OpenStreetMap (Overpass-Polyline-Suche) ──
+// Server-Proxy liefert Treffer mit km/Abstand/Öffnungszeiten; scheitert er (Rate-Limit der Hosting-IP),
+// fragt der Browser overpass-api.de direkt und rechnet km/Abstand selbst (GPX_DATA liegt vor).
+const OSM_GASTRO_TOUR_ID = {{ tour.id }};
+const osmGastroLayer = L.layerGroup();
+const osmGastroMarkers = {};
+let osmGastroLoaded = false;
+
+function toggleOsmGastro() {
+  const panel = document.getElementById('osm-gastro-panel');
+  if (!panel) return;
+  const open = panel.classList.toggle('d-none');          // true = jetzt geschlossen
+  const b = document.getElementById('btn-osm-gastro');
+  if (b) b.classList.toggle('active', !open);
+  if (open) { map.removeLayer(osmGastroLayer); return; }
+  osmGastroLayer.addTo(map);
+  panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  if (!osmGastroLoaded) searchOsmGastro();
+}
+
+function osmGastroAlongTrack(items, maxM) {               // Fallback-Rechnung im Browser (wie _along_track)
+  const pts = GPX_DATA.points; const step = Math.max(1, Math.floor(pts.length / 3000));
+  const tp = pts.filter((_, i) => i % step === 0);
+  const mLat = 111320, mLng = 111320 * Math.max(0.2, Math.cos(tp[0].lat * Math.PI / 180));
+  const cum = [0];
+  for (let i = 1; i < tp.length; i++) cum.push(cum[i - 1] + Math.hypot((tp[i].lat - tp[i - 1].lat) * mLat, (tp[i].lng - tp[i - 1].lng) * mLng));
+  const out = [];
+  items.forEach(it => {
+    let bd = 1e12, bi = 0;
+    tp.forEach((p, i) => { const d = Math.hypot((p.lat - it.lat) * mLat, (p.lng - it.lng) * mLng); if (d < bd) { bd = d; bi = i; } });
+    if (bd <= maxM) out.push(Object.assign({}, it, {dist_m: Math.round(bd), km: Math.round(cum[bi] / 100) / 10, frac: bi / Math.max(1, tp.length - 1)}));
+  });
+  return out.sort((a, b) => a.km - b.km || a.dist_m - b.dist_m);
+}
+
+const OSM_GASTRO_LABEL = {cafe: 'Café', bar: 'Bar', pub: 'Kneipe', restaurant: 'Restaurant', biergarten: 'Biergarten',
+                          fast_food: 'Imbiss', bakery: 'Bäckerei', pastry: 'Konditorei', ice_cream: 'Eisdiele'};
+const OSM_GASTRO_APPTYPE = {cafe: 'cafe', ice_cream: 'cafe', bar: 'kneipe', pub: 'kneipe', biergarten: 'kneipe',
+                            restaurant: 'restaurant', fast_food: 'imbiss', bakery: 'baeckerei', pastry: 'baeckerei'};
+
+const OSM_DAY_DE = {Mo: 'Mo', Tu: 'Di', We: 'Mi', Th: 'Do', Fr: 'Fr', Sa: 'Sa', Su: 'So', PH: 'Feiertag'};
+function osmHoursDe(t) {                                  // einfache Fassung von hours_de() für den Browser-Fallback
+  return (t || '').replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su|PH)\b/g, d => OSM_DAY_DE[d]).replace(/(\d{2}:\d{2})-(\d{2}:\d{2})/g, '$1–$2')
+    .replace(/\b(off|closed)\b/g, 'geschlossen').replace(/\s*;\s*/g, ' · ');
+}
+function osmClosedDays(t) {                               // „Mo off“, „Mo,Tu off“ → ['Mo', 'Di'] (Browser-Fallback)
+  const out = [];
+  (t || '').split(/[;|]/).forEach(rule => {
+    const m = rule.trim().match(/^((?:Mo|Tu|We|Th|Fr|Sa|Su)(?:\s*,\s*(?:Mo|Tu|We|Th|Fr|Sa|Su))*)\s*(?:,\s*PH\s*)?(?:off|closed)\b/);
+    if (m) m[1].split(/\s*,\s*/).forEach(d => { if (OSM_DAY_DE[d] && !out.includes(OSM_DAY_DE[d])) out.push(OSM_DAY_DE[d]); });
+  });
+  return out;
+}
+
+function osmGastroDirect(query, radius) {               // Direktabfrage – Elemente wie der Server aufbereiten
+  return fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'data=' + encodeURIComponent(query)
+  }).then(r => { if (!r.ok) throw new Error('overpass-api.de antwortet mit HTTP ' + r.status); return r.json(); })
+    .then(d => {
+      const items = (d.elements || []).map(el => {
+        const t = el.tags || {};
+        const lat = el.lat != null ? el.lat : (el.center || {}).lat, lng = el.lon != null ? el.lon : (el.center || {}).lon;
+        if (!lat || !lng) return null;
+        const kind = t.amenity || t.shop || '';
+        const street = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ');
+        const city = [t['addr:postcode'], t['addr:city']].filter(Boolean).join(' ');
+        return {osm_id: (el.type || 'node') + '/' + el.id, name: t.name || kind || 'Unbekannt', type: kind, lat, lng,
+                app_type: OSM_GASTRO_APPTYPE[kind] || 'other', type_label: OSM_GASTRO_LABEL[kind] || kind,
+                opening_hours: t.opening_hours || '', hours: osmHoursDe(t.opening_hours), closed_days: osmClosedDays(t.opening_hours),
+                phone: t.phone || t['contact:phone'] || '', website: t.website || t['contact:website'] || '',
+                address: [street, city].filter(Boolean).join(', ')};
+      }).filter(Boolean);
+      return {results: osmGastroAlongTrack(items, radius + 30), source: 'overpass-api.de (direkt)', radius};
+    });
+}
+
+function searchOsmGastro() {
+  const body = document.getElementById('osm-gastro-body');
+  const radius = parseInt(document.getElementById('osm-gastro-radius').value, 10) || 250;
+  body.innerHTML = '<div class="text-muted small py-1"><span class="spinner-border spinner-border-sm me-1"></span>Frage OpenStreetMap entlang der Strecke…</div>';
+  fetch(`/api/touren/${OSM_GASTRO_TOUR_ID}/osm-gastro?radius=${radius}`)
+    .then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.results) return d;
+      if (!d.query) throw new Error(d.error || ('Server antwortet mit HTTP ' + r.status));
+      body.innerHTML = '<div class="text-muted small py-1"><span class="spinner-border spinner-border-sm me-1"></span>Server-Suche fehlgeschlagen – frage overpass-api.de direkt…</div>';
+      return osmGastroDirect(d.query, radius).catch(e2 => { throw new Error((d.error || '') + ' · Direktabfrage: ' + e2.message); });
+    })
+    .then(d => { osmGastroLoaded = true; renderOsmGastro(d, body); })
+    .catch(err => {
+      body.innerHTML = `<p class="text-danger small mb-1">Suche fehlgeschlagen: ${escHtml(err.message)}</p>
+                        <p class="text-muted small mb-0">Overpass-Server sind zeitweise überlastet – in einer Minute erneut versuchen.</p>`;
+    });
+}
+
+function renderOsmGastro(d, body) {
+  osmGastroLayer.clearLayers();
+  const res = d.results || [];
+  if (!res.length) {
+    body.innerHTML = `<p class="text-muted small mb-0">Im Abstand von ${d.radius} m zur Strecke ist in OpenStreetMap keine Gastronomie eingetragen – Abstand vergrößern.</p>`;
+    return;
+  }
+  res.forEach((r, i) => {
+    const icon = L.divIcon({
+      html: `<div style="width:26px;height:26px;border-radius:50%;background:#FFF3E0;border:2px solid #E67E22;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1">${GASTRO_ICONS[r.app_type] || '🍴'}</div>`,
+      iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -14], className: ''
+    });
+    const hours = r.hours ? '<br><span class="small">🕐 ' + escHtml(r.hours) + '</span>' : '';
+    const closed = (r.closed_days || []).length ? '<br><span class="small text-danger">Ruhetag: ' + r.closed_days.join(', ') + '</span>' : '';
+    const known = r.known_url ? `<br><a href="${r.known_url}" class="small">✓ in der Gastro-Liste – Details</a>` : '';
+    osmGastroMarkers[i] = L.marker([r.lat, r.lng], {icon, title: r.name, zIndexOffset: -150})
+      .bindPopup(`<b>${escHtml(r.name)}</b><br><span class="text-muted small">${escHtml(r.type_label)} · km ${String(r.km).replace('.', ',')} · ${r.dist_m} m neben der Strecke</span>${hours}${closed}${known}`)
+      .addTo(osmGastroLayer);
+  });
+  const src = d.source && d.source !== 'cache' ? ` · Quelle: ${escHtml(d.source)}` : '';
+  body.innerHTML = `<div class="small text-muted mb-2">${res.length} Treffer bis ${d.radius} m neben der Strecke, nach Streckenkilometer${src}. Orange Marker auf der Karte – „Übernehmen“ legt den Ort in der Gastro-Liste an.</div>` +
+    '<div class="list-group list-group-flush" id="osm-gastro-list">' + res.map((r, i) => `
+      <div class="list-group-item px-0 py-2 d-flex align-items-start gap-2" data-idx="${i}">
+        <span style="font-size:1.3rem;line-height:1.2;cursor:pointer" onclick="focusOsmGastro(${i})" title="Auf der Karte zeigen">${GASTRO_ICONS[r.app_type] || '🍴'}</span>
+        <div class="flex-grow-1 small">
+          <strong style="cursor:pointer" onclick="focusOsmGastro(${i})">${escHtml(r.name)}</strong>
+          <span class="text-muted">· ${escHtml(r.type_label)} · km ${String(r.km).replace('.', ',')} · ${r.dist_m} m abseits</span>
+          ${r.hours ? '<br>🕐 ' + escHtml(r.hours) : ''}
+          ${(r.closed_days || []).length ? ' <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Ruhetag ' + r.closed_days.join(', ') + '</span>' : ''}
+          ${r.address ? '<br><span class="text-muted">' + escHtml(r.address) + '</span>' : ''}
+        </div>
+        <div class="text-nowrap osm-gastro-action">
+          ${r.known_url ? `<a href="${r.known_url}" class="btn btn-sm btn-outline-success py-0">✓ in Liste</a>`
+                        : `<button type="button" class="btn btn-sm btn-djo py-0" onclick="quickAddOsmGastro(${i}, this)">Übernehmen</button>`}
+        </div>
+      </div>`).join('') + '</div>';
+  window.__osmGastroResults = res;
+  if (res.length && !map.hasLayer(osmGastroLayer)) osmGastroLayer.addTo(map);
+}
+
+function focusOsmGastro(i) {
+  const m = osmGastroMarkers[i];
+  if (!m) return;
+  if (!map.hasLayer(osmGastroLayer)) osmGastroLayer.addTo(map);
+  document.getElementById('tour-map').scrollIntoView({behavior: 'smooth', block: 'center'});
+  map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
+  m.openPopup();
+}
+
+function quickAddOsmGastro(i, btn) {
+  const r = (window.__osmGastroResults || [])[i];
+  if (!r) return;
+  btn.disabled = true; btn.textContent = '…';
+  fetch('/api/gastro/quick-add', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: r.name, type: r.type, lat: r.lat, lng: r.lng, address: r.address, hours_text: r.opening_hours,
+                          phone: r.phone, website: r.website, osm_id: r.osm_id})
+  }).then(async resp => {
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok || !d.ok) throw new Error(d.error || ('HTTP ' + resp.status));
+    const wrap = btn.closest('.osm-gastro-action');
+    wrap.innerHTML = `<a href="${d.url}" class="btn btn-sm btn-outline-success py-0">${d.existing ? '✓ war schon drin' : '✓ gespeichert'}</a>`;
+    r.known_url = d.url;
+    if (osmGastroMarkers[i]) osmGastroMarkers[i].bindPopup(osmGastroMarkers[i].getPopup().getContent() + `<br><a href="${d.url}" class="small">✓ in der Gastro-Liste – Details</a>`);
+  }).catch(err => { btn.disabled = false; btn.textContent = 'Übernehmen'; alert('Konnte nicht gespeichert werden: ' + err.message); });
+}
+
+// ── Foto-Marker: neben dem Track platziert (wie im Video), MarkerCluster + Hover-Sync ──
+// Jeder Foto-Marker (einzeln oder Cluster) ist ein Thumbnail-Badge mit kurzer Verbindungs-
+// linie zum Aufnahmeort. Die Richtung wird pro Zoomstufe so gewählt, dass möglichst wenig
+// Track, Start/Ziel/Treffpunkt und andere Badges verdeckt werden (placePhotoPins).
+const PIN_W = 42, PIN_H = 36, PIN_ACTIVE_W = 56, PIN_ACTIVE_H = 48;
+const PIN_AVOID = [];                       // feste Marker, die frei bleiben sollen
+if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length > 0) {
+  const g0 = GPX_DATA.points[0], g1 = GPX_DATA.points[GPX_DATA.points.length - 1];
+  PIN_AVOID.push([g0.lat, g0.lng], [g1.lat, g1.lng]);
+}
+if (MEETING_LAT) PIN_AVOID.push([MEETING_LAT, MEETING_LNG]);
+
+let _trackPx = null, _trackPxZoom = null, _placeTimer = null, _placeWait = 0;
+function trackPointsPx(z) {                 // Track in Pixelkoordinaten der Zoomstufe z (gecacht)
+  if (_trackPx && _trackPxZoom === z) return _trackPx;
+  const pts = (GPX_DATA && GPX_DATA.points) || [];
+  const st = Math.max(1, Math.floor(pts.length / 1500));
+  const px = [];
+  for (let i = 0; i < pts.length; i += st) px.push(map.project([pts[i].lat, pts[i].lng], z));
+  if (pts.length > 1 && (pts.length - 1) % st !== 0) px.push(map.project([pts[pts.length - 1].lat, pts[pts.length - 1].lng], z));
+  _trackPx = px; _trackPxZoom = z;
+  return px;
+}
+
+function clipLen(a, b, r) {                 // Länge des Segments a–b innerhalb des Rechtecks r (Liang–Barsky)
+  const dx = b.x - a.x, dy = b.y - a.y;
+  let t0 = 0, t1 = 1;
+  const p = [-dx, dx, -dy, dy], q = [a.x - r.x0, r.x1 - a.x, a.y - r.y0, r.y1 - a.y];
+  for (let i = 0; i < 4; i++) {
+    if (p[i] === 0) { if (q[i] < 0) return 0; continue; }
+    const t = q[i] / p[i];
+    if (p[i] < 0) { if (t > t1) return 0; if (t > t0) t0 = t; }
+    else          { if (t < t0) return 0; if (t < t1) t1 = t; }
+  }
+  return (t1 - t0) * Math.hypot(dx, dy);
+}
+
+function bestPinOffset(anchor, bw, bh, track, fixed, placed, view) {
+  const near = [];                          // Track-Segmente im Umkreis von 120 px reichen für die Bewertung
+  for (let i = 1; i < track.length; i++) {
+    const a = track[i - 1], b = track[i];
+    if (Math.max(a.x, b.x) < anchor.x - 120 || Math.min(a.x, b.x) > anchor.x + 120 ||
+        Math.max(a.y, b.y) < anchor.y - 120 || Math.min(a.y, b.y) > anchor.y + 120) continue;
+    near.push([a, b]);
+  }
+  let tdir = null, nearest = Infinity;      // Richtung des Tracks am Aufnahmeort → Badge bevorzugt quer dazu
+  near.forEach(([a, b]) => {
+    const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((anchor.x - a.x) * dx + (anchor.y - a.y) * dy) / l2));
+    const d = Math.hypot(anchor.x - (a.x + t * dx), anchor.y - (a.y + t * dy));
+    if (d < nearest) { nearest = d; const l = Math.sqrt(l2); tdir = [dx / l, dy / l]; }
+  });
+  let best = null;
+  for (let k = 0; k < 8; k++) {
+    const ang = k * Math.PI / 4, ux = Math.cos(ang), uy = Math.sin(ang);
+    [40, 62].forEach((dist, di) => {
+      const cx = anchor.x + ux * dist, cy = anchor.y + uy * dist;
+      const r = { x0: cx - bw / 2, y0: cy - bh / 2, x1: cx + bw / 2, y1: cy + bh / 2 };
+      let sc = 0;
+      near.forEach(([a, b]) => { sc += clipLen(a, b, r); });                // verdeckte Track-Länge in px
+      fixed.forEach(f => { if (f.x > r.x0 - 16 && f.x < r.x1 + 16 && f.y > r.y0 - 16 && f.y < r.y1 + 16) sc += 60; });
+      placed.forEach(o => {                                                 // Überlappung mit anderen Badges
+        const ox = Math.min(r.x1, o.x1) - Math.max(r.x0, o.x0), oy = Math.min(r.y1, o.y1) - Math.max(r.y0, o.y0);
+        if (ox > 0 && oy > 0) sc += ox * oy * 0.08;
+      });
+      if (view && (r.x0 < view.min.x || r.y0 < view.min.y || r.x1 > view.max.x || r.y1 > view.max.y)) sc += 30;  // am Kartenrand abgeschnitten
+      sc += di * 8;                                                         // nah vor fern
+      if (tdir) sc += 5 * Math.abs(ux * tdir[0] + uy * tdir[1]);            // quer zum Track
+      sc += (uy > 0 ? 1 : 0) + (ux < 0 ? 0.5 : 0);                          // sonst: lieber oben / rechts
+      if (!best || sc < best.sc) best = { sc, dx: ux * dist, dy: uy * dist };
+    });
+  }
+  return best || { dx: 0, dy: -40 };
+}
+
+function makePinIcon(src, count, off, active, title) {
+  const bw = active ? PIN_ACTIVE_W : PIN_W, bh = active ? PIN_ACTIVE_H : PIN_H;
+  const col = active ? '#C0392B' : '#2B3F6B';
+  const bx0 = off.dx - bw / 2, by0 = off.dy - bh / 2;            // Badge links oben, relativ zum Ankerpunkt
+  const pad = 10;
+  const x0 = Math.min(0, bx0) - pad, y0 = Math.min(0, by0) - pad;
+  const W = Math.ceil(Math.max(0, bx0 + bw) + pad - x0), H = Math.ceil(Math.max(0, by0 + bh) + pad - y0);
+  const ax = -x0, ay = -y0;                                        // Ankerpunkt (Aufnahmeort) im Icon
+  const lead = Math.hypot(off.dx, off.dy) > 2
+    ? `<svg width="${W}" height="${H}" style="position:absolute;left:0;top:0;overflow:visible">
+         <line x1="${ax}" y1="${ay}" x2="${ax + off.dx}" y2="${ay + off.dy}" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+         <line x1="${ax}" y1="${ay}" x2="${ax + off.dx}" y2="${ay + off.dy}" stroke="${col}" stroke-width="2" stroke-linecap="round"/>
+         <circle cx="${ax}" cy="${ay}" r="4" fill="#fff" stroke="${col}" stroke-width="2"/>
+       </svg>` : '';
+  const bubble = count > 1
+    ? `<div style="position:absolute;right:-9px;top:-9px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;
+                   background:#C0392B;color:#fff;font-size:11px;font-weight:700;line-height:16px;text-align:center;
+                   border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)">${count}</div>` : '';
+  const html = `<div style="position:relative;width:${W}px;height:${H}px">${lead}
+      <div class="pp-hit" title="${escHtml(title || '')}"
+           style="position:absolute;left:${ax + bx0}px;top:${ay + by0}px;width:${bw}px;height:${bh}px;
+                  background:#fff;border:${active ? 3 : 2}px solid ${col};border-radius:${active ? 6 : 4}px;
+                  box-shadow:0 2px 6px rgba(0,0,0,.35)${active ? ',0 0 0 3px rgba(192,57,43,.4)' : ''}">
+        <img src="${src}" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:2px">${bubble}
+      </div></div>`;
+  return L.divIcon({ html, className: 'photo-pin', iconSize: [W, H], iconAnchor: [ax, ay],
+                     popupAnchor: [off.dx, by0 - 4] });
+}
+
+function clusterThumb(cluster) {            // Vorschaubild eines Clusters: erstes Foto in Galerie-Reihenfolge
+  let best = null;
+  cluster.getAllChildMarkers().forEach(m => { if (m._photo && (!best || m._photo.idx < best.idx)) best = m._photo; });
+  return best ? best.src : '';
+}
+
 let photoCluster;
 if (typeof L.markerClusterGroup === 'function') {
   photoCluster = L.markerClusterGroup({
@@ -1968,16 +2373,9 @@ if (typeof L.markerClusterGroup === 'function') {
     showCoverageOnHover: false,
     zoomToBoundsOnClick: true,
     iconCreateFunction: function(cluster) {
-      const count = cluster.getChildCount();
-      return L.divIcon({
-        html: `<div style="background:rgba(43,63,107,.9);color:#fff;border-radius:6px;
-                           min-width:36px;height:36px;display:flex;align-items:center;
-                           justify-content:center;font-size:11px;font-weight:700;padding:0 6px;
-                           border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)">
-                 📷${count}
-               </div>`,
-        iconSize: null, iconAnchor: [18, 18], className: ''
-      });
+      schedulePlacePins();                  // vorläufig zentriert – die versetzte Platzierung folgt gleich
+      const n = cluster.getChildCount();
+      return makePinIcon(clusterThumb(cluster), n, {dx: 0, dy: 0}, false, n + ' Fotos – antippen zum Vergrößern');
     }
   });
 } else {
@@ -1987,25 +2385,12 @@ if (typeof L.markerClusterGroup === 'function') {
 map.addLayer(photoCluster);
 
 const photoMarkers = {};
-PHOTOS.forEach(p => {
-  const normalIcon = L.divIcon({
-    html: `<div style="background:#fff;border:2px solid #2B3F6B;border-radius:4px;width:42px;height:36px;overflow:hidden;transition:transform .15s">
-             <img src="${p.src}" style="width:100%;height:100%;object-fit:cover">
-           </div>`,
-    iconSize:[42,36], iconAnchor:[21,18], className:''
-  });
-  const activeIcon = L.divIcon({
-    html: `<div style="background:#fff;border:3px solid #C0392B;border-radius:6px;width:56px;height:48px;overflow:hidden;
-                       box-shadow:0 0 0 3px rgba(192,57,43,.4);transform:scale(1.1)">
-             <img src="${p.src}" style="width:100%;height:100%;object-fit:cover">
-           </div>`,
-    iconSize:[56,48], iconAnchor:[28,24], className:''
-  });
-
+PHOTOS.forEach((p, idx) => {
   const capHtml = p.cap
-    ? `<div style="font-size:.82rem;font-weight:600;color:#222;margin:4px 0 2px">${p.cap}</div>`
+    ? `<div style="font-size:.82rem;font-weight:600;color:#222;margin:4px 0 2px">${escHtml(p.cap)}</div>`
     : '';
-  const escapedCap = p.cap ? p.cap.replace(/'/g, "&#39;") : '';
+  // für den onclick-Handler: HTML-escapen, Apostroph zusätzlich JS-escapen
+  const escapedCap = p.cap ? escHtml(p.cap.replace(/\\/g, '\\\\')).replace(/&#39;/g, "\\'") : '';
   const popup = L.popup({maxWidth:240, className:'photo-popup'}).setContent(`
     <div style="text-align:center">
       <img src="${p.src}"
@@ -2016,35 +2401,151 @@ PHOTOS.forEach(p => {
       ${capHtml}
       <div style="font-size:.68rem;color:#aaa;margin-top:2px">🔍 Tippen zum Vergrößern</div>
       <div style="font-size:.72rem;color:#888;margin-top:3px">
-        ${p.is_taken ? '📸' : '📤'} ${p.date} &middot; ${p.user}
+        ${p.is_taken ? '📸' : '📤'} ${p.date} &middot; ${escHtml(p.user)}
       </div>
     </div>
   `);
 
-  const marker = L.marker([p.lat, p.lng], {icon: normalIcon})
+  const title = (p.cap ? p.cap + ' · ' : '') + p.date;
+  const marker = L.marker([p.lat, p.lng], {icon: makePinIcon(p.src, 1, {dx: 0, dy: 0}, false, title)})
     .bindPopup(popup);
+  marker._photo = { idx, id: p.id, src: p.src, title };
   photoCluster.addLayer(marker);
 
-  photoMarkers[p.id] = { marker, normalIcon, activeIcon };
+  photoMarkers[p.id] = { marker, src: p.src, title, off: {dx: 0, dy: 0}, hot: false };
 });
 
-// Highlight marker when hovering photo thumbnail
+function _visibleFor(marker) {              // sichtbarer Vertreter: der Marker selbst oder sein Cluster
+  return (typeof photoCluster.getVisibleParent === 'function') ? photoCluster.getVisibleParent(marker) : marker;
+}
+
+function schedulePlacePins() {
+  clearTimeout(_placeTimer);
+  _placeTimer = setTimeout(placePhotoPins, 60);
+}
+
+function placePhotoPins() {
+  if (!Object.keys(photoMarkers).length) return;
+  if (photoCluster._inZoomAnimation && _placeWait++ < 20) { schedulePlacePins(); return; }   // Cluster-Animation abwarten (max. ~1,2 s)
+  _placeWait = 0;
+  const z = map.getZoom();
+  const track = trackPointsPx(z);
+  const avoid = PIN_AVOID.slice();
+  if (map.hasLayer(gastroLayer)) GASTRO_NEAR.forEach(sp => avoid.push([sp.lat, sp.lng]));
+  const fixed = avoid.map(ll => map.project(ll, z));
+  const view = map.getPixelBounds();
+  const seen = new Set(), items = [];
+  Object.values(photoMarkers).forEach(pm => {
+    const vis = _visibleFor(pm.marker);
+    if (vis && !seen.has(vis)) { seen.add(vis); items.push(vis); }
+  });
+  items.sort((a, b) => b.getLatLng().lat - a.getLatLng().lat);           // von Nord nach Süd (= Zeichenreihenfolge)
+  const placed = [];
+  items.forEach(item => {
+    const isCluster = typeof item.getChildCount === 'function';
+    const anchor = map.project(item.getLatLng(), z);
+    const off = (!isCluster && item._preSpiderfyLatlng)                   // aufgefächert: das Bein zeigt schon zum Ort
+      ? { dx: 0, dy: 0 }
+      : bestPinOffset(anchor, PIN_W, PIN_H, track, fixed, placed, view);
+    placed.push({ x0: anchor.x + off.dx - PIN_W / 2, y0: anchor.y + off.dy - PIN_H / 2,
+                  x1: anchor.x + off.dx + PIN_W / 2, y1: anchor.y + off.dy + PIN_H / 2 });
+    if (isCluster) {
+      const n = item.getChildCount();
+      const key = `${Math.round(off.dx)},${Math.round(off.dy)},${n}`;
+      if (item._pinKey !== key || item.options.icon === item) {           // options.icon === item: Cluster hat sein Icon zurückgesetzt
+        item._pinKey = key;
+        item.setIcon(makePinIcon(clusterThumb(item), n, off, false, n + ' Fotos – antippen zum Vergrößern'));
+      }
+      const hot = item.getAllChildMarkers().some(m => photoMarkers[m._photo.id] && photoMarkers[m._photo.id].hot);
+      if (item._icon) item._icon.classList.toggle('pp-hot', hot);
+    } else {
+      const pm = photoMarkers[item._photo.id];
+      pm.off = off;
+      const active = pm.hot || item.isPopupOpen();
+      const key = `${Math.round(off.dx)},${Math.round(off.dy)},${active ? 1 : 0}`;
+      if (item._pinKey !== key) {
+        item._pinKey = key;
+        item.setIcon(makePinIcon(pm.src, 1, off, active, pm.title));
+        if (item.isPopupOpen()) item.getPopup().update();
+      }
+    }
+  });
+}
+photoCluster.on('animationend spiderfied unspiderfied', schedulePlacePins);
+map.on('zoomend moveend', schedulePlacePins);
+schedulePlacePins();
+
+function togglePhotoLayer() {               // Build q: Foto-Marker ein-/ausblenden (Toolbar 📷)
+  const on = map.hasLayer(photoCluster);
+  if (on) map.removeLayer(photoCluster); else { map.addLayer(photoCluster); schedulePlacePins(); }
+  const b = document.getElementById('btn-photos');
+  if (b) b.classList.toggle('active', !on);
+}
+
+// Highlight marker when hovering photo thumbnail (steckt das Foto in einem Cluster, wird der Cluster markiert)
 function highlightMarker(photoId) {
   const pm = photoMarkers[photoId];
   if (!pm) return;
-  pm.marker.setIcon(pm.activeIcon);
-  map.panTo(pm.marker.getLatLng(), {animate: true, duration: 0.4});
+  pm.hot = true;
+  const vis = _visibleFor(pm.marker);
+  if (vis === pm.marker) {
+    pm.marker._pinKey = null;
+    pm.marker.setIcon(makePinIcon(pm.src, 1, pm.off, true, pm.title));
+  } else if (vis && vis._icon) {
+    vis._icon.classList.add('pp-hot');
+  }
+  map.panTo((vis || pm.marker).getLatLng(), {animate: true, duration: 0.4});
 }
 function unhighlightMarker(photoId) {
   const pm = photoMarkers[photoId];
-  if (pm && !pm.marker.isPopupOpen()) pm.marker.setIcon(pm.normalIcon);
+  if (!pm) return;
+  pm.hot = false;
+  if (_visibleFor(pm.marker) === pm.marker && !pm.marker.isPopupOpen()) {
+    pm.marker._pinKey = null;
+    pm.marker.setIcon(makePinIcon(pm.src, 1, pm.off, false, pm.title));
+  }
+  document.querySelectorAll('#tour-map .pp-hot').forEach(el => el.classList.remove('pp-hot'));
 }
 function jumpToMarker(photoId) {
   const pm = photoMarkers[photoId];
   if (!pm) return;
-  map.setView(pm.marker.getLatLng(), Math.max(map.getZoom(), 15), {animate:true});
-  pm.marker.openPopup();
+  const wrap = document.getElementById('map-wrap');
+  if (wrap && wrap.scrollIntoView) wrap.scrollIntoView({behavior: 'smooth', block: 'center'});
+  const open = () => pm.marker.openPopup();
+  if (typeof photoCluster.zoomToShowLayer !== 'function') {
+    map.setView(pm.marker.getLatLng(), Math.max(map.getZoom(), 15), {animate: true});
+    open();
+  } else if (map.getZoom() >= 15) {
+    photoCluster.zoomToShowLayer(pm.marker, open);                        // Cluster ggf. auflösen, dann Popup
+  } else {
+    map.once('moveend', () => photoCluster.zoomToShowLayer(pm.marker, open));
+    map.setView(pm.marker.getLatLng(), 15, {animate: true});
+  }
 }
+
+// ── Build q: Wetter-Rückblick für vergangene Touren (Stat-Kachel, asynchron geladen) ──
+(function() {
+  const tile = document.getElementById('weather-past-tile');
+  if (!tile) return;
+  let q = '';
+  if (!MEETING_LAT && GPX_DATA && GPX_DATA.points && GPX_DATA.points[0])
+    q = `?lat=${GPX_DATA.points[0].lat}&lng=${GPX_DATA.points[0].lng}`;   // Ersatz-Ort: GPX-Start
+  fetch(`{{ url_for('tour_weather_day', tour_id=tour.id) }}` + q)
+    .then(r => r.json())
+    .then(d => {
+      if (!d || d.error || d.temp_max === undefined) return;
+      const de = v => String(v).replace('.', ',');
+      const parts = [`${d.temp_min}–${d.temp_max} °C`];
+      if (d.rain_mm !== null && d.rain_mm !== undefined) parts.push(d.rain_mm > 0 ? `${de(d.rain_mm)} mm Regen` : 'trocken');
+      if (d.wind_kmh) parts.push(`💨 ${d.wind_dir ? d.wind_dir + ' ' : ''}${d.wind_kmh} km/h`);
+      document.getElementById('weather-past-number').textContent = `${d.icon} ${d.temp_max}°`;
+      document.getElementById('weather-past-label').textContent = parts.join(' · ');
+      document.getElementById('weather-past-box').title = 'Wetter am Tourtag: ' + (d.label || '')
+        + (d.sun_h ? ` · ${de(d.sun_h)} h Sonne` : '') + ' (Open-Meteo)';
+      tile.style.display = '';
+    })
+    .catch(() => {});
+})();
 
 // ── Weather widget ───────────────────────────────────────────────────────────
 (function() {
@@ -2546,7 +3047,7 @@ function _pollLiveLocations() {
           html: '<div style="background:' + freshness + ';width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>',
           iconSize: [14,14], iconAnchor: [7,7], className: ''
         });
-        const popup = '<b>' + loc.name + '</b><br><small>vor ' + loc.ago + 's</small>';
+        const popup = '<b>' + escHtml(loc.name) + '</b><br><small>vor ' + loc.ago + 's</small>';
         if (_liveMarkers[loc.user_id]) {
           _liveMarkers[loc.user_id].setLatLng([loc.lat, loc.lng])
                                    .setPopupContent(popup);

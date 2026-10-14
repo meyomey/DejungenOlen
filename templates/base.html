@@ -391,6 +391,13 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js', {scope: '/'}).catch(() => {});
 }
 
+// HTML-Escaper für Nutzerdaten in JS-generiertem HTML (Karten-Popups etc.) – Audit 1.4.0
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // Dark mode toggle
 function toggleDark(e) {
   e.preventDefault();

@@ -63,7 +63,7 @@
             </button>
           </form>
           <form method="post" action="{{ url_for('announcement_delete', ann_id=a.id) }}"
-                onsubmit="return confirm('„{{ a.title }}\" wirklich löschen?')">
+                onsubmit="return confirm('„' + {{ a.title|tojson|forceescape }} + '“ wirklich löschen?')">
             <button type="submit" class="btn btn-sm btn-outline-danger" title="Löschen">
               <i class="bi bi-trash3"></i>
             </button>

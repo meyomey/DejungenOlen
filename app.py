@@ -3,6 +3,7 @@ import re
 import io
 import secrets
 import json
+import subprocess
 from datetime import datetime, date, timedelta
 from functools import wraps
 
@@ -39,6 +40,24 @@ def _tour_or_404(tour_id):
     return t
 
 
+def _own_group_or_404(obj):
+    """Objekt mit group_id (Vorlage, Nutzer …): Nicht-Admins nur in der eigenen Gruppe."""
+    if obj is None:
+        abort(404)
+    if (current_user.is_authenticated and not current_user.is_admin
+            and getattr(obj, 'group_id', None) and current_user.group_id
+            and obj.group_id != current_user.group_id):
+        abort(404)
+    return obj
+
+
+def _photo_tour_or_404(photo):
+    """Zur Foto-Tour gehörenden Gruppen-Check ausführen (Mandanten-Trennung)."""
+    if photo is None or photo.tour_id is None:
+        abort(404)
+    return _tour_or_404(photo.tour_id)
+
+
 def _rate_limit(key: str, max_calls: int = 5, window: int = 60) -> bool:
     now = _time.time()
     calls = [t for t in _rl_store[key] if now - t < window]
@@ -63,8 +82,8 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
-APP_VERSION = '1.3.0'
-APP_BUILD   = '2026-10-07 h'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_VERSION = '1.4.0'
+APP_BUILD   = '2026-10-14 u'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -73,6 +92,19 @@ def _security_headers(resp):
     resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
     resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     return resp
+
+
+# Audit 1.4.0: Private Uploads (Fotos, Videos, GPX, Avatare, Musik) liegen unter
+# /static/uploads/… und wären sonst ohne Login für jeden abrufbar, der die URL kennt.
+# Gruppen-Logos und Ankündigungsbilder bleiben öffentlich (Login-/Registrierungsseite).
+_PRIVATE_UPLOAD_PREFIXES = tuple(
+    f'/static/uploads/{d}/' for d in ('photos', 'videos', 'gpx', 'avatars', 'group_music'))
+
+
+@app.before_request
+def _protect_private_uploads():
+    if request.path.startswith(_PRIVATE_UPLOAD_PREFIXES) and not current_user.is_authenticated:
+        abort(404)
 
 
 @app.context_processor
@@ -157,6 +189,68 @@ def organizer_required(f):
             abort(403)
         return f(*args, **kwargs)
     return decorated
+
+
+# ─── Eingabe-Helfer (Audit 1.4.0) ────────────────────────────────────────────
+
+def _safe_redirect_target(target):
+    """Nur relative Pfade als Login-Weiterleitung zulassen (kein Open Redirect)."""
+    if not target:
+        return None
+    target = target.strip()
+    if target.startswith('/') and not target.startswith('//') and not target.startswith('/\\'):
+        return target
+    return None
+
+
+def _clean_url(value):
+    """Externe Links (Komoot, Webseite): nur http(s). Ohne Schema wird https:// ergänzt,
+    andere Schemata (javascript:, data:, …) werden verworfen."""
+    value = (value or '').strip()
+    if not value:
+        return None
+    if re.match(r'^[a-zA-Z][a-zA-Z0-9+.\-]*:', value):
+        return value if value.lower().startswith(('http://', 'https://')) else None
+    return 'https://' + value
+
+
+def _parse_float(value, default=None):
+    """Formularwert → float; leere/ungültige Eingaben ergeben default statt 500."""
+    value = (value or '').strip().replace(',', '.')
+    if not value:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
+def _parse_int(value, default=None):
+    value = (value or '').strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def _parse_date(value, default=None):
+    """Formularwert 'YYYY-MM-DD' → date; ungültig → default statt 500."""
+    value = (value or '').strip()
+    if not value:
+        return default
+    try:
+        return datetime.strptime(value, '%Y-%m-%d').date()
+    except ValueError:
+        return default
+
+
+def _json_for_script(obj):
+    """JSON zum Einbetten in <script>-Blöcke: <, > und & werden als \\uXXXX
+    maskiert, damit ein '</script>' in Nutzerdaten den Block nicht beenden kann."""
+    return (json.dumps(obj)
+            .replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026'))
 
 
 def _tile_xy(lat, lng, zoom):
@@ -574,31 +668,6 @@ def extract_datetime_from_exif(filepath):
     return None
 
 
-    """Return dict with track points, km, ascent; or None on error."""
-    try:
-        import gpxpy
-        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-            gpx = gpxpy.parse(f)
-
-        points = []
-        for track in gpx.tracks:
-            for seg in track.segments:
-                for pt in seg.points:
-                    points.append({
-                        'lat': round(pt.latitude, 6),
-                        'lng': round(pt.longitude, 6),
-                        'ele': round(pt.elevation or 0, 1)
-                    })
-
-        km     = round((gpx.length_3d() or gpx.length_2d() or 0) / 1000, 1)
-        ascent = round(gpx.get_uphill_downhill().uphill or 0, 0)
-
-        return {'points': points, 'km': km, 'ascent': int(ascent)}
-    except Exception as e:
-        app.logger.error(f'GPX parse error: {e}')
-        return None
-
-
 # ─── Context processor ────────────────────────────────────────────────────────
 @app.context_processor
 def inject_group_context():
@@ -650,6 +719,14 @@ app.jinja_env.globals['hasattr']   = hasattr
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
+    # Audit 1.4.0: Frische Installation (noch kein Admin) → direkt zum Setup-Wizard,
+    # wie in der Installationsanleitung beschrieben („erscheint automatisch“)
+    if request.method == 'GET':
+        try:
+            if User.query.filter_by(role='admin').first() is None:
+                return redirect(url_for('setup_wizard'))
+        except Exception:
+            pass
     # Öffentliche Ankündigungen – ohne group_id = gruppenübergreifend, da vor dem
     # Login noch kein Gruppen-Kontext feststeht
     login_announcements = get_visible_announcements(group_id=None, context='logged_out')
@@ -675,7 +752,7 @@ def login():
                 db.session.commit()
             except Exception:
                 pass
-            return redirect(request.args.get('next') or url_for('index'))
+            return redirect(_safe_redirect_target(request.args.get('next')) or url_for('index'))
         flash('E-Mail oder Passwort falsch.', 'danger')
     return render_template('auth/login.html', announcements=login_announcements,
                            contact_email=login_contact_email)
@@ -768,6 +845,11 @@ def forgot_password():
 @app.route('/passwort-reset/<token>', methods=['GET', 'POST'])
 def reset_password(token):
     pr = PasswordReset.query.filter_by(token=token, used=False).first_or_404()
+    # Audit 1.4.0: Link ist (wie in der Mail versprochen) nur 1 Stunde gültig
+    if pr.user is None or not pr.created_at or \
+            pr.created_at < datetime.utcnow() - timedelta(hours=1):
+        flash('Dieser Link ist abgelaufen. Bitte fordere einen neuen Reset-Link an.', 'warning')
+        return redirect(url_for('forgot_password'))
     if request.method == 'POST':
         pw  = request.form.get('password', '')
         pw2 = request.form.get('password2', '')
@@ -1196,7 +1278,7 @@ def tour_save_as_template(tour_id):
 @organizer_required
 def tour_template_delete(template_id):
     """Löscht eine Tour-Vorlage."""
-    tmpl = TourTemplate.query.get_or_404(template_id)
+    tmpl = _own_group_or_404(TourTemplate.query.get_or_404(template_id))
     if tmpl.gpx_file:
         try:
             os.remove(os.path.join(app.config['UPLOAD_FOLDER_GPX'], tmpl.gpx_file))
@@ -1214,7 +1296,7 @@ def tour_template_delete(template_id):
 @organizer_required
 def tour_create_from_template(template_id):
     """Erstellt sofort eine neue Tour (ohne Termin) aus einer Vorlage."""
-    tmpl = TourTemplate.query.get_or_404(template_id)
+    tmpl = _own_group_or_404(TourTemplate.query.get_or_404(template_id))
 
     new_gpx_file = None
     if tmpl.gpx_file:
@@ -1275,18 +1357,25 @@ def tour_create():
         approx_km     = request.form.get('approx_km', '').strip()
         external_link = request.form.get('external_link', '').strip()
 
+        # Audit 1.4.0: ungültiges Datum → Hinweis statt 500
+        parsed_date = _parse_date(tour_date)
+        if tour_date and parsed_date is None:
+            flash('Ungültiges Datum. Bitte im Format JJJJ-MM-TT auswählen.', 'danger')
+            return render_template('touren/create.html',
+                                   difficulties=Config.DIFFICULTY_CHOICES)
+
         from flask import g as _g_create
         _grp_create = getattr(_g_create, 'group', None)
         tour = Tour(
             title         = title,
             description   = desc,
-            tour_date     = datetime.strptime(tour_date, '%Y-%m-%d').date() if tour_date else date(9999, 12, 31),
+            tour_date     = parsed_date if parsed_date else date(9999, 12, 31),
             start_time    = start_time or None,
             difficulty    = difficulty,
-            approx_km     = float(approx_km) if approx_km else None,
-            external_link = external_link or None,
-            meeting_lat   = float(meet_lat) if meet_lat else None,
-            meeting_lng   = float(meet_lng) if meet_lng else None,
+            approx_km     = _parse_float(approx_km),
+            external_link = _clean_url(external_link),
+            meeting_lat   = _parse_float(meet_lat),
+            meeting_lng   = _parse_float(meet_lng),
             meeting_desc  = meet_desc or None,
             created_by    = current_user.id,
             group_id      = _grp_create.id if _grp_create else None,
@@ -1326,8 +1415,10 @@ def tour_create():
                 tour.gpx_km     = parsed.get('km')
                 tour.gpx_ascent = parsed.get('ascent')
         elif proposal_gpx:
+            # Audit 1.4.0: nur Dateinamen aus dem GPX-Ordner zulassen (kein Path Traversal)
+            proposal_gpx = os.path.basename(proposal_gpx)
             src = os.path.join(app.config['UPLOAD_FOLDER_GPX'], proposal_gpx)
-            if os.path.exists(src):
+            if proposal_gpx.lower().endswith('.gpx') and os.path.isfile(src):
                 import shutil
                 new_fname = f'tour_{tour.id}_{secrets.token_hex(4)}.gpx'
                 dst = os.path.join(app.config['UPLOAD_FOLDER_GPX'], new_fname)
@@ -1436,10 +1527,253 @@ def parse_gpx(filepath):
         km     = round((gpx.length_3d() or gpx.length_2d() or 0) / 1000, 1)
         ascent = round(gpx.get_uphill_downhill().uphill or 0, 0)
 
-        return {'points': points, 'km': km, 'ascent': int(ascent)}
+        # Build j: Zeitstempel auswerten (sofern der Track welche hat) → Fahrzeit,
+        # Gesamtzeit inkl. Pausen, Schnitt, Spitze, Start/Ende als Ortszeit.
+        # Tracks ohne Zeiten liefern None – die Video-Folien lassen die Kacheln dann weg.
+        ride = {'moving_s': None, 'total_s': None, 'avg_kmh': None, 'max_kmh': None,
+                'start_time': None, 'end_time': None}
+        try:
+            md = gpx.get_moving_data()           # Pausen = Abschnitte langsamer als 1 km/h
+            if md and md.moving_time and md.moving_time >= 60:
+                ride['moving_s'] = int(md.moving_time)
+                ride['total_s']  = int(gpx.get_duration() or 0) or None
+                ride['avg_kmh']  = round(km / (md.moving_time / 3600), 1) if km else None
+                if md.max_speed:
+                    ride['max_kmh'] = round(md.max_speed * 3.6, 1)
+                tb = gpx.get_time_bounds()
+                if tb and tb.start_time and tb.end_time:
+                    try:
+                        from datetime import timezone as _utc
+                        from zoneinfo import ZoneInfo
+                        _tz = ZoneInfo('Europe/Berlin')
+
+                        def _local(t):
+                            if t.tzinfo is None:
+                                t = t.replace(tzinfo=_utc.utc)
+                            return t.astimezone(_tz).strftime('%H:%M')
+                        ride['start_time'], ride['end_time'] = _local(tb.start_time), _local(tb.end_time)
+                    except Exception:
+                        pass
+        except Exception as e:
+            app.logger.warning(f'GPX moving data: {e}')
+
+        return {'points': points, 'km': km, 'ascent': int(ascent), **ride}
     except Exception as e:
         app.logger.error(f'GPX parse error: {e}')
         return None
+
+
+GASTRO_NEAR_M = 150   # Build j: Einkehr gilt als "an der Route", wenn sie höchstens so viele Meter neben dem Track liegt
+
+
+def gastro_near_track(points, max_m=GASTRO_NEAR_M, limit=12):
+    """Build j: Gastro-Einträge, die höchstens max_m Meter neben dem Track liegen.
+    Liefert nach Streckenkilometer sortierte dicts: name, spot_type, type_label, lat, lng,
+    dist_m (Abstand zum Track), km (Streckenkilometer), frac (Anteil der Strecke 0..1, ab
+    dem der Punkt erreicht ist – für die Karten-Animation). Fehler → []."""
+    import math
+    if not points or len(points) < 2:
+        return []
+    try:
+        step = max(1, len(points) // 4000)        # Rechenzeit begrenzen, Auflösung bleibt fein genug
+        pts = points[::step]
+        if step > 1 and (len(points) - 1) % step:
+            pts.append(points[-1])
+        lats = [pt['lat'] for pt in pts]; lngs = [pt['lng'] for pt in pts]
+        mid_lat = (min(lats) + max(lats)) / 2
+        m_lat = 111320.0                                        # Meter je Grad Breite
+        m_lng = 111320.0 * max(0.2, math.cos(math.radians(mid_lat)))  # Meter je Grad Länge
+        d_lat, d_lng = max_m / m_lat, max_m / m_lng
+        cands = GastroSpot.query.filter(
+            GastroSpot.lat >= min(lats) - d_lat, GastroSpot.lat <= max(lats) + d_lat,
+            GastroSpot.lng >= min(lngs) - d_lng, GastroSpot.lng <= max(lngs) + d_lng,
+        ).all()
+        if not cands:
+            return []
+        cum = [0.0]                                             # Kilometerstand je Trackpunkt
+        for a, b in zip(pts, pts[1:]):
+            cum.append(cum[-1] + math.hypot((b['lat'] - a['lat']) * m_lat, (b['lng'] - a['lng']) * m_lng))
+        labels = {'cafe': 'Café', 'kneipe': 'Kneipe/Gasthaus', 'baeckerei': 'Bäckerei',
+                  'restaurant': 'Restaurant', 'imbiss': 'Imbiss', 'other': 'Einkehr'}
+        found = []
+        for sp in cands:
+            best_d, best_i = 1e12, 0
+            for i, pt in enumerate(pts):
+                d = math.hypot((pt['lat'] - sp.lat) * m_lat, (pt['lng'] - sp.lng) * m_lng)
+                if d < best_d:
+                    best_d, best_i = d, i
+            if best_d <= max_m:
+                found.append({'id': sp.id, 'name': sp.name, 'spot_type': sp.spot_type,
+                              'type_label': labels.get(sp.spot_type, 'Einkehr'),
+                              'lat': sp.lat, 'lng': sp.lng, 'dist_m': int(round(best_d)),
+                              'km': round(cum[best_i] / 1000, 1),
+                              'frac': best_i / max(1, len(pts) - 1),
+                              'opens_at': sp.opens_at or '', 'hours': hours_de(getattr(sp, 'hours_text', None)),
+                              'closed_days': closed_days(getattr(sp, 'hours_text', None))})   # Build t
+        found.sort(key=lambda x: (x['km'], x['name']))
+        return found[:limit]
+    except Exception as e:
+        app.logger.warning(f'gastro_near_track: {e}')
+        return []
+
+
+def _logo_auto_alpha(img, max_px=400):
+    """Build m: Logos ohne echte Transparenz (JPEG oder PNG ohne Alphakanal, z. B. rundes Logo
+    auf schwarzem/weißem Grund) bekommen eine: Der einfarbige Hintergrund wird von den vier Ecken
+    aus per Flood-Fill (mit Toleranz für JPEG-Artefakte) freigestellt – innenliegende Flächen in
+    derselben Farbe bleiben erhalten. Logos mit vorhandener Transparenz oder ohne einheitliche
+    Eckfarbe werden unverändert (als RGBA) zurückgegeben."""
+    try:
+        from PIL import Image as _I, ImageDraw as _D, ImageChops as _C, ImageFilter as _F
+        rgba = img.convert('RGBA')
+        if max(rgba.size) > max_px:
+            rgba.thumbnail((max_px, max_px), _I.LANCZOS)
+        if rgba.getchannel('A').getextrema()[0] < 250:
+            return rgba                                   # hat schon Transparenz
+        rgb = rgba.convert('RGB')
+        w, h = rgb.size
+        corners = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]
+        ref = rgb.getpixel(corners[0])
+        if any(sum(abs(rgb.getpixel(c)[i] - ref[i]) for i in range(3)) > 60 for c in corners):
+            return rgba                                   # kein einheitlicher Hintergrund
+        sentinel = (255, 0, 255) if sum(abs(ref[i] - (255, 0, 255)[i]) for i in range(3)) > 150 else (0, 255, 0)
+        tmp = rgb.copy()
+        for c in corners:
+            _D.floodfill(tmp, c, sentinel, thresh=70)
+        bg_mask = _C.difference(tmp, _I.new('RGB', tmp.size, sentinel)).convert('L').point(lambda v: 255 if v == 0 else 0)
+        alpha = _C.invert(bg_mask).filter(_F.GaussianBlur(0.6))   # Kante leicht weich
+        if alpha.getextrema()[0] == 255:
+            return rgba                                   # nichts freigestellt
+        rgba.putalpha(alpha)
+        return rgba
+    except Exception as e:
+        app.logger.warning(f'_logo_auto_alpha: {e}')
+        try:
+            return img.convert('RGBA')
+        except Exception:
+            return None
+
+
+def _tour_day_weather(tour, lat=None, lng=None):
+    """Tageswetter am Treffpunkt für den Tourtag (Open-Meteo) → dict oder None.
+    Voraussetzungen: festes Datum, Ortskoordinaten (Treffpunkt oder lat/lng als Ersatz, z. B.
+    GPX-Start) und der Server muss api.open-meteo.com erreichen. Build j: Für Touren, die länger
+    als ~3 Monate zurückliegen, antwortet nur noch das Archiv (archive-api) – daher zwei Versuche
+    in passender Reihenfolge. 'kind' = Symbolart für die gezeichneten Wettersymbole der Server-
+    Folie, 'icon' = Emoji für die Browser-Vorschau.
+    Build q: zusätzlich label (Klartext), rain_mm, wind_kmh, wind_dir, sun_h; das Ergebnis wird
+    für vergangene Tage in tours.weather_json gecacht (Wetter von gestern ändert sich nicht mehr)
+    – Video-Seite, Rendering und Wetter-Rückblick brauchen dann keinen API-Aufruf mehr."""
+    if not (tour.tour_date and not tour.is_date_open):
+        return None
+    if tour.meeting_lat and tour.meeting_lng:
+        lat, lng = tour.meeting_lat, tour.meeting_lng
+    if not (lat and lng):
+        return None
+    try:
+        age_days = (date.today() - tour.tour_date).days
+    except Exception:
+        age_days = 0
+    cache_key = f'{tour.tour_date.isoformat()}|{round(float(lat), 3)}|{round(float(lng), 3)}'
+    try:
+        cached = json.loads(getattr(tour, 'weather_json', None) or '{}')
+        if cached.get('key') == cache_key and (cached.get('data') or {}).get('temp_max') is not None:
+            return cached['data']
+    except Exception:
+        pass
+    urls = ['https://api.open-meteo.com/v1/forecast', 'https://archive-api.open-meteo.com/v1/archive']
+    if age_days > 80:
+        urls.reverse()
+    icon_map = {0: '☀️', 1: '🌤️', 2: '🌤️', 3: '☁️', 45: '🌫️', 48: '🌫️',
+                51: '🌦️', 53: '🌦️', 55: '🌦️', 61: '🌧️', 63: '🌧️', 65: '🌧️',
+                71: '🌨️', 73: '🌨️', 75: '🌨️', 80: '🌦️', 81: '🌧️', 82: '⛈️',
+                95: '⛈️', 96: '⛈️', 99: '⛈️'}
+
+    def _label(c):
+        if c is None:  return ''
+        if c == 0:     return 'Sonnig'
+        if c <= 2:     return 'Überwiegend sonnig'
+        if c == 3:     return 'Bewölkt'
+        if c <= 49:    return 'Nebel / Dunst'
+        if c <= 57:    return 'Nieselregen'
+        if c <= 67:    return 'Regen'
+        if c <= 77:    return 'Schnee'
+        if c <= 82:    return 'Regenschauer'
+        if c <= 86:    return 'Schneeschauer'
+        return 'Gewitter'
+
+    daily_full = ('weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,'
+                  'windspeed_10m_max,winddirection_10m_dominant,sunshine_duration')
+    daily_basic = 'weathercode,temperature_2m_max,temperature_2m_min'
+    result = None
+    for url in urls:
+        for daily in (daily_full, daily_basic):      # erst mit Zusatzwerten, zur Not nur das Nötigste
+            try:
+                resp = http_requests.get(url, params={
+                    'latitude': lat, 'longitude': lng, 'daily': daily,
+                    'timezone': 'Europe/Berlin',
+                    'start_date': tour.tour_date.isoformat(), 'end_date': tour.tour_date.isoformat()},
+                    timeout=5)
+                d = resp.json().get('daily', {}) or {}
+
+                def _first(key):
+                    v = d.get(key) or [None]
+                    return v[0] if v else None
+                tmax = _first('temperature_2m_max')
+                if tmax is None:
+                    continue
+                tmin = _first('temperature_2m_min')
+                wc = _first('weathercode')
+                if wc == 0:                            kind = 'sun'
+                elif wc in (1, 2):                     kind = 'partly'
+                elif wc == 3:                          kind = 'cloud'
+                elif wc in (45, 48):                   kind = 'fog'
+                elif wc in (71, 73, 75, 77, 85, 86):   kind = 'snow'
+                elif wc in (95, 96, 99):               kind = 'storm'
+                elif wc is not None and wc >= 51:      kind = 'rain'
+                else:                                  kind = 'thermo'
+                rain = _first('precipitation_sum'); wind = _first('windspeed_10m_max')
+                wdeg = _first('winddirection_10m_dominant'); sun = _first('sunshine_duration')
+                result = {'temp_max': round(tmax), 'temp_min': round(tmin if tmin is not None else tmax),
+                          'icon': icon_map.get(wc, '🌡️'), 'kind': kind, 'code': wc, 'label': _label(wc),
+                          'rain_mm': round(float(rain), 1) if rain is not None else None,
+                          'wind_kmh': int(round(float(wind))) if wind is not None else None,
+                          'wind_dir': (['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'][int(round(float(wdeg) / 45)) % 8]
+                                       if wdeg is not None else None),
+                          'sun_h': round(float(sun) / 3600, 1) if sun is not None else None}
+                break
+            except Exception:
+                continue
+        if result:
+            break
+    if result is None:
+        return None
+    if age_days >= 1 and hasattr(tour, 'weather_json'):      # Vergangenheit: dauerhaft merken
+        try:
+            tour.weather_json = json.dumps({'key': cache_key, 'data': result})
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f'_tour_day_weather cache: {e}')
+    return result
+
+
+@app.route('/touren/<int:tour_id>/wetter-tag')
+@login_required
+def tour_weather_day(tour_id):
+    """Build q: Wetter am Tourtag als JSON (Rückblick-Kachel auf der Detailseite, asynchron
+    geladen, damit die Seite nicht auf Open-Meteo wartet). Ohne Treffpunkt gibt der Browser
+    den GPX-Start als Ersatz-Ort mit (?lat=&lng=)."""
+    tour = _tour_or_404(tour_id)
+    try:
+        lat = float(request.args.get('lat') or 0) or None
+        lng = float(request.args.get('lng') or 0) or None
+    except ValueError:
+        lat = lng = None
+    w = _tour_day_weather(tour, lat, lng)
+    if not w:
+        return jsonify({'error': 'Keine Wetterdaten für diesen Tag.'})
+    return jsonify(w)
 
 
 @app.route('/touren/<int:tour_id>')
@@ -1482,6 +1816,16 @@ def tour_detail(tour_id):
     participant_ids = {p.user_id for p in attending + maybe + declined}
 
     videos = TourVideo.query.filter_by(tour_id=tour_id).order_by(TourVideo.created_at).all()
+
+    # Build q: Einkehr-Orte höchstens GASTRO_NEAR_M m neben dem Track (zuschaltbare Karten-Ebene);
+    # gleicher Helfer wie die Video-Folie, Track dafür auf ≤ 1500 Punkte ausgedünnt
+    gastro_near = []
+    if gpx_data and gpx_data.get('points'):
+        _pts = gpx_data['points']
+        gastro_near = gastro_near_track(_pts[::max(1, len(_pts) // 1500)], limit=20)
+        for _spot in gastro_near:
+            _spot['url'] = url_for('gastro_detail', spot_id=_spot['id'])
+
     return render_template('touren/detail.html',
                            tour=tour,
                            my_rsvp=my_rsvp,
@@ -1489,6 +1833,7 @@ def tour_detail(tour_id):
                            maybe=maybe,
                            declined=declined,
                            gpx_data=json.dumps(gpx_data) if gpx_data else 'null',
+                           gastro_near=gastro_near,
                            photos=photos,
                            videos=videos,
                            comments=comments,
@@ -1566,30 +1911,46 @@ def _resize_photo_if_needed(path, max_px=1600, quality=85):
     # ── Method 1: Pillow (bevorzugt: verlustarm, EXIF-aware) ──────────────────
     if _pillow_ok():
         try:
-            from PIL import Image as PILImage, ExifTags, ImageOps
+            from PIL import Image as PILImage, ImageOps
             img = PILImage.open(path)
 
             # EXIF-Rotation korrigieren (transpose respektiert Orientation-Tag)
             img = ImageOps.exif_transpose(img)
 
-            w, h = img.size
-            if max(w, h) <= max_px:
-                # Trotzdem speichern um EXIF-Rotation zu fixieren
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                img.save(path, format='JPEG', quality=quality,
-                         optimize=True, progressive=True)
-                return False
+            # Build f: Dateiformat beibehalten – PNG (z. B. transparente Gruppen-Logos)
+            # bleibt PNG, WebP bleibt WebP; alles andere wird als JPEG gespeichert.
+            ext = os.path.splitext(path)[1].lower()
+            if ext == '.png':
+                fmt, save_kw = 'PNG', {'optimize': True}
+                if img.mode not in ('RGB', 'RGBA', 'L', 'LA', 'P'):
+                    img = img.convert('RGBA')
+            elif ext == '.webp':
+                fmt, save_kw = 'WEBP', {'quality': quality}
+            else:
+                fmt, save_kw = 'JPEG', {'quality': quality, 'optimize': True, 'progressive': True}
 
-            ratio = max_px / max(w, h)
-            new_w, new_h = int(w * ratio), int(h * ratio)
-            img = img.resize((new_w, new_h), PILImage.LANCZOS)
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            img.save(path, format='JPEG', quality=quality,
-                     optimize=True, progressive=True)
-            app.logger.info(f'Pillow resized: {w}x{h} → {new_w}x{new_h}')
-            return True
+            w, h = img.size
+            did_resize = max(w, h) > max_px
+            if did_resize:
+                ratio = max_px / max(w, h)
+                new_w, new_h = int(w * ratio), int(h * ratio)
+                img = img.resize((new_w, new_h), PILImage.LANCZOS)
+
+            if fmt == 'JPEG' and img.mode != 'RGB':
+                if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                    # Transparenz auf Weiß legen (convert('RGB') allein ergäbe Schwarz)
+                    rgba = img.convert('RGBA')
+                    bg = PILImage.new('RGB', rgba.size, (255, 255, 255))
+                    bg.paste(rgba, mask=rgba.split()[-1])
+                    img = bg
+                else:
+                    img = img.convert('RGB')
+
+            # Auch ohne Verkleinern speichern, um die EXIF-Rotation zu fixieren
+            img.save(path, format=fmt, **save_kw)
+            if did_resize:
+                app.logger.info(f'Pillow resized: {w}x{h} → {new_w}x{new_h}')
+            return did_resize
         except Exception as e:
             app.logger.warning(f'Pillow resize failed: {e} – versuche ImageMagick')
 
@@ -1620,6 +1981,7 @@ def _resize_photo_if_needed(path, max_px=1600, quality=85):
 def photo_set_caption(photo_id):
     """Foto-Beschriftung setzen."""
     photo = TourPhoto.query.get_or_404(photo_id)
+    _photo_tour_or_404(photo)   # Audit 1.4.0: nur Fotos der eigenen Gruppe
     if not (current_user.is_admin or current_user.is_organizer or
             photo.user_id == current_user.id or
             photo.tour.created_by == current_user.id):
@@ -1795,7 +2157,7 @@ def tour_add_participant(tour_id):
     if not user_id:
         flash('Bitte einen Nutzer auswählen.', 'warning')
         return redirect(url_for('tour_detail', tour_id=tour_id))
-    user = User.query.get_or_404(user_id)
+    user = _own_group_or_404(User.query.get_or_404(user_id))   # Audit 1.4.0
     existing = TourParticipant.query.filter_by(tour_id=tour_id, user_id=user_id).first()
     if existing:
         existing.status = 'attending'
@@ -1817,6 +2179,7 @@ def tour_add_participant(tour_id):
 @login_required
 @organizer_required
 def tour_remove_participant(tour_id, user_id):
+    _tour_or_404(tour_id)   # Audit 1.4.0: nur Touren der eigenen Gruppe
     rsvp = TourParticipant.query.filter_by(tour_id=tour_id, user_id=user_id).first_or_404()
     user = User.query.get(user_id)
     db.session.delete(rsvp)
@@ -1861,21 +2224,23 @@ def tour_edit(tour_id):
             tour.created_by == current_user.id):
         abort(403)
     if request.method == 'POST':
-        tour.title        = request.form.get('title', '').strip()
+        # Audit 1.4.0: leerer Titel / ungültiges Datum → Hinweis statt leerer Tour bzw. 500
+        new_title     = request.form.get('title', '').strip()
+        tour_date_str = request.form.get('tour_date', '').strip()
+        parsed_date   = _parse_date(tour_date_str)
+        if not new_title or (tour_date_str and parsed_date is None):
+            flash('Bitte Titel und ein gültiges Datum angeben.', 'danger')
+            return redirect(url_for('tour_edit', tour_id=tour.id))
+        tour.title        = new_title
         tour.description  = request.form.get('description', '').strip() or None
-        tour_date_str     = request.form.get('tour_date', '').strip()
-        tour.tour_date    = (datetime.strptime(tour_date_str, '%Y-%m-%d').date()
-                             if tour_date_str else date(9999, 12, 31))
+        tour.tour_date    = parsed_date if parsed_date else date(9999, 12, 31)
         tour.start_time   = request.form.get('start_time', '').strip() or None
         tour.difficulty   = request.form.get('difficulty', 'mittel')
-        tour.approx_km    = float(request.form['approx_km']) if request.form.get('approx_km') else None
-        tour.external_link = request.form.get('external_link', '').strip() or None
+        tour.approx_km    = _parse_float(request.form.get('approx_km'))
+        tour.external_link = _clean_url(request.form.get('external_link'))
         tour.meeting_desc = request.form.get('meeting_desc', '').strip() or None
-        try:
-            tour.meeting_lat = float(request.form['meeting_lat']) if request.form.get('meeting_lat') else None
-            tour.meeting_lng = float(request.form['meeting_lng']) if request.form.get('meeting_lng') else None
-        except ValueError:
-            pass
+        tour.meeting_lat  = _parse_float(request.form.get('meeting_lat'))
+        tour.meeting_lng  = _parse_float(request.form.get('meeting_lng'))
         if current_user.is_admin:
             tour.status = request.form.get('status', tour.status)
         db.session.commit()
@@ -1912,10 +2277,22 @@ def tour_delete(tour_id):
         except Exception:
             pass
     title = tour.title
+    _delete_tour_dependents(tour_id)   # Audit 1.4.0: keine verwaisten Datensätze
     db.session.delete(tour)
     db.session.commit()
     flash(f'Tour „{title}" wurde gelöscht.', 'success')
     return redirect(url_for('tour_list'))
+
+
+def _delete_tour_dependents(tour_id):
+    """Löscht Datensätze ohne DB-Cascade, die sonst als Waisen zurückbleiben
+    (Videos, Kommentare, Zeitabstimmung, Bewertungen, Live-Standorte).
+    Teilnehmer und Fotos räumt SQLAlchemy über die Relationship-Cascade ab."""
+    for model in (TourVideo, TourComment, TimeVote, RouteRating, LiveLocation):
+        try:
+            model.query.filter_by(tour_id=tour_id).delete(synchronize_session=False)
+        except Exception as e:
+            app.logger.warning(f'tour_delete cleanup {model.__name__}: {e}')
 
 
 @app.route('/admin/tour/<int:tour_id>/bearbeiten', methods=['GET', 'POST'])
@@ -1990,34 +2367,7 @@ def tour_video(tour_id):
                        TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
                        .join(User).order_by(User.name).limit(12).all()]
 
-    weather = None
-    if tour.tour_date and not tour.is_date_open and tour.meeting_lat and tour.meeting_lng:
-        try:
-            resp = http_requests.get(
-                'https://api.open-meteo.com/v1/forecast',
-                params={
-                    'latitude': tour.meeting_lat, 'longitude': tour.meeting_lng,
-                    'daily': 'weathercode,temperature_2m_max,temperature_2m_min',
-                    'timezone': 'Europe/Berlin',
-                    'start_date': tour.tour_date.isoformat(),
-                    'end_date': tour.tour_date.isoformat(),
-                },
-                timeout=5
-            )
-            d = resp.json().get('daily', {})
-            if d.get('temperature_2m_max'):
-                wc = (d.get('weathercode') or [None])[0]
-                icon_map = {0:'☀️',1:'🌤️',2:'🌤️',3:'☁️',45:'🌫️',48:'🌫️',
-                            51:'🌦️',53:'🌦️',55:'🌦️',61:'🌧️',63:'🌧️',65:'🌧️',
-                            71:'🌨️',73:'🌨️',75:'🌨️',80:'🌦️',81:'🌧️',82:'⛈️',
-                            95:'⛈️',96:'⛈️',99:'⛈️'}
-                weather = {
-                    'temp_max': round(d['temperature_2m_max'][0]),
-                    'temp_min': round(d['temperature_2m_min'][0]),
-                    'icon': icon_map.get(wc, '🌡️'),
-                }
-        except Exception:
-            pass
+    weather = _tour_day_weather(tour)   # Build j: gemeinsamer Helfer (Prognose + Archiv)
 
     from flask import g as _g
     default_music_url = None
@@ -2194,12 +2544,25 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'build_photo_canvas error: {e}', exc_info=True)
                 return None
 
-        def make_frame(src_path, dst_path):
+        def make_frame(src_path, dst_path, overlay_png=None):
             """Erstellt ein einzelnes fertig skaliertes W×H JPEG (Fallback ohne Ken-Burns-Effekt)."""
             canvas = build_photo_canvas(src_path)
             if canvas is None:
                 import shutil as _sh; _sh.copy2(src_path, dst_path); return
+            if overlay_png and os.path.exists(overlay_png):
+                try:
+                    ov = _PIL.open(overlay_png).convert('RGBA')
+                    canvas = _PIL.alpha_composite(canvas.convert('RGBA'), ov).convert('RGB')
+                except Exception:
+                    pass
             canvas.save(dst_path, 'JPEG', quality=92)
+
+        FADE_IN, FADE_OUT = 0.25, 0.35   # Build i: weiche Übergänge (kurzer Dip nach Schwarz)
+
+        def _fade_vf(duration):
+            """ffmpeg-Filter: Ein-/Ausblenden eines Segments der Länge duration."""
+            return (f'fade=t=in:st=0:d={FADE_IN},'
+                    f'fade=t=out:st={max(0.0, round(duration - FADE_OUT, 3))}:d={FADE_OUT}')
 
         def image_to_segment(img_path, out_path, duration):
             """Wandelt ein einzelnes Standbild in ein kurzes, stilles Video-Segment um.
@@ -2214,7 +2577,7 @@ def tour_video_render(tour_id):
                     ffmpeg_bin, '-y', '-loop', '1', '-i', img_path,
                     '-t', str(duration),
                     '-r', str(fps),
-                    '-vf', f'scale={W}:{H}',
+                    '-vf', f'scale={W}:{H},{_fade_vf(duration)}',
                     '-frames:v', str(n_frames),
                     '-pix_fmt', 'yuv420p',
                     out_path
@@ -2241,10 +2604,11 @@ def tour_video_render(tour_id):
                     last_path = frame_duration_pairs[-1][0]
                     icf.write(f"file '{last_path}'\n")
 
+                total_dur = sum(d for _, d in frame_duration_pairs)
                 cmd = [
                     ffmpeg_bin, '-y', '-f', 'concat', '-safe', '0', '-i', inner_concat,
                     '-r', str(fps),
-                    '-vf', f'scale={W}:{H}',
+                    '-vf', f'scale={W}:{H},{_fade_vf(total_dur)}',
                     '-pix_fmt', 'yuv420p',
                     out_path
                 ]
@@ -2258,10 +2622,13 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'frames_to_segment error: {e}', exc_info=True)
                 return False
 
-        def make_photo_zoom_segment(src_path, out_path, total_dur, zoom_in=True):
+        def make_photo_zoom_segment(src_path, out_path, total_dur, zoom_in=True, overlay_png=None):
             """Ken-Burns-Effekt: FLUESSIGER Zoom uebers Foto via FFmpeg zoompan-Filter
             (echte Pro-Frame-Berechnung durch FFmpeg selbst, kein sichtbares Ruckeln
-            wie bei wenigen Einzelbildern). Gibt True bei Erfolg zurueck."""
+            wie bei wenigen Einzelbildern). Gibt True bei Erfolg zurueck.
+            Build i: Zoom um die Bildmitte (vorher Richtung linke obere Ecke), Ein-/Aus-
+            blenden, und optional ein transparentes PNG (Logo, Bildunterschrift), das NACH
+            dem Zoom aufgelegt wird – bleibt dadurch scharf und ortsfest."""
             canvas = build_photo_canvas(src_path)
             if canvas is None or not ffmpeg_bin:
                 return False
@@ -2275,14 +2642,27 @@ def tour_video_render(tour_id):
                 else:
                     z_expr = f"1.09-0.09*on/{n_frames-1}"
 
-                cmd = [
-                    ffmpeg_bin, '-y', '-loop', '1', '-i', base_jpg,
-                    '-vf', (f"scale={W*2}:{H*2},"
-                           f"zoompan=z='{z_expr}':d={n_frames}:s={W}x{H}:fps={fps}"),
-                    '-frames:v', str(n_frames),
-                    '-pix_fmt', 'yuv420p',
-                    out_path
-                ]
+                vf = (f"scale={W*2}:{H*2},"
+                      f"zoompan=z='{z_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+                      f":d={n_frames}:s={W}x{H}:fps={fps},"
+                      f"{_fade_vf(total_dur)}")
+                if overlay_png:
+                    cmd = [
+                        ffmpeg_bin, '-y', '-loop', '1', '-i', base_jpg, '-i', overlay_png,
+                        '-filter_complex', f"[0:v]{vf}[v0];[v0][1:v]overlay=0:0:format=auto[v]",
+                        '-map', '[v]',
+                        '-frames:v', str(n_frames),
+                        '-pix_fmt', 'yuv420p',
+                        out_path
+                    ]
+                else:
+                    cmd = [
+                        ffmpeg_bin, '-y', '-loop', '1', '-i', base_jpg,
+                        '-vf', vf,
+                        '-frames:v', str(n_frames),
+                        '-pix_fmt', 'yuv420p',
+                        out_path
+                    ]
                 result = subprocess.run(cmd, capture_output=True, timeout=60)
                 try:
                     os.remove(base_jpg)
@@ -2322,6 +2702,215 @@ def tour_video_render(tour_id):
             tw = bbox[2] - bbox[0]
             draw.text((cx - tw/2, y), text, font=font, fill=fill,
                       stroke_width=stroke_width, stroke_fill=stroke_fill)
+
+        # ── Build i: Gruppenlogo, Bildunterschriften, Profilbilder ─────────────
+        def _logo_scaled(max_h):
+            """Gruppenlogo (RGBA) auf Höhe max_h skaliert, höchstens 28 % der Breite."""
+            if logo_rgba is None:
+                return None
+            r = min(max_h / logo_rgba.height, (W * 0.28) / logo_rgba.width)
+            size = (max(1, int(logo_rgba.width * r)), max(1, int(logo_rgba.height * r)))
+            return logo_rgba.resize(size, _PIL.LANCZOS)
+
+        def paste_watermark(canvas, corner='tr', opacity=0.85, max_h=None):
+            """Logo als Wasserzeichen in eine Ecke (innerhalb der Safe-Area). canvas RGB oder RGBA."""
+            lg = _logo_scaled(max_h or int(H * 0.055))
+            if lg is None:
+                return canvas
+            if opacity < 1:
+                lg.putalpha(lg.getchannel('A').point(lambda v: int(v * opacity)))
+            m = SAFE + 16
+            pos = {'tr': (W - m - lg.width, m), 'tl': (m, m),
+                   'br': (W - m - lg.width, H - m - lg.height), 'bl': (m, H - m - lg.height)}[corner]
+            if canvas.mode == 'RGBA':
+                canvas.alpha_composite(lg, pos)
+            else:
+                canvas.paste(lg, pos, lg)
+            return canvas
+
+        def _wrap_text(draw, text, font, max_w, max_lines):
+            """Text auf max_lines Zeilen umbrechen; Überhang wird mit „…“ gekürzt."""
+            words, lines, cur = text.split(), [], ''
+            for w_ in words:
+                trial = (cur + ' ' + w_).strip()
+                if draw.textlength(trial, font=font) <= max_w or not cur:
+                    cur = trial
+                else:
+                    lines.append(cur); cur = w_
+            if cur:
+                lines.append(cur)
+            if len(lines) > max_lines:
+                lines = lines[:max_lines]
+                last = lines[-1] + '…'
+                while draw.textlength(last, font=font) > max_w and len(last) > 2:
+                    last = last[:-2] + '…'
+                lines[-1] = last
+            return lines
+
+        def _photo_on_mini_map(photo):
+            """Build o: Foto hat plausible GPS-Daten (nahe der Track-Box) → Mini-Karte möglich."""
+            mt = _mini_track
+            if not mt or not (photo.lat and photo.lng):
+                return False
+            pad_lat = max(0.02, (mt['max_lat'] - mt['min_lat']) * 0.25)
+            pad_lng = max(0.03, (mt['max_lng'] - mt['min_lng']) * 0.25)
+            return (mt['min_lat'] - pad_lat <= photo.lat <= mt['max_lat'] + pad_lat and
+                    mt['min_lng'] - pad_lng <= photo.lng <= mt['max_lng'] + pad_lng)
+
+        def _draw_mini_map(layer, photo, bar_top=None):
+            """Build o: Mini-Karte unten rechts auf dem Foto – Track-Umriss, bis zum Aufnahmeort
+            orange, Marker am Aufnahmeort, km-Stand. Sitzt über der Unterschrift-Leiste (bar_top),
+            falls es eine gibt. Rein gezeichnet (keine Kacheln) – schnell und klein gut lesbar."""
+            mt = _mini_track
+            side = int(min(W, H) * 0.22)
+            m = SAFE + 24
+            x0 = W - m - side
+            y1 = (bar_top - 16) if bar_top else (H - m)
+            y0 = y1 - side
+            draw = _ID_MOD.Draw(layer)
+            draw.rounded_rectangle([x0, y0, x0 + side, y1], radius=18, fill=(0, 0, 0, 140),
+                                   outline=(255, 255, 255, 210), width=2)
+            pad, label_h = 20, 24
+            iw, ih = side - 2 * pad, side - 2 * pad - label_h
+            lat_r = (mt['max_lat'] - mt['min_lat']) or 1e-4
+            lng_r = ((mt['max_lng'] - mt['min_lng']) or 1e-4) * mt['cos']
+            sc = min(iw / lng_r, ih / lat_r)
+            cx, cy = x0 + side / 2, y0 + pad + ih / 2
+            mid_lat = (mt['max_lat'] + mt['min_lat']) / 2
+            mid_lng = (mt['max_lng'] + mt['min_lng']) / 2
+
+            def P(lat, lng):
+                return (cx + (lng - mid_lng) * mt['cos'] * sc, cy - (lat - mid_lat) * sc)
+
+            pts = mt['pts']
+            xy = [P(q['lat'], q['lng']) for q in pts]
+            best_i = min(range(len(pts)),
+                         key=lambda i: (pts[i]['lat'] - photo.lat) ** 2 + ((pts[i]['lng'] - photo.lng) * mt['cos']) ** 2)
+            if len(xy) > 1:
+                draw.line(xy, fill=(255, 255, 255, 190), width=3, joint='curve')
+            if best_i >= 1:
+                draw.line(xy[:best_i + 1], fill=(240, 133, 30, 255), width=4, joint='curve')
+            px, py = P(photo.lat, photo.lng)
+            px = min(max(px, x0 + 10), x0 + side - 10)      # Foto leicht abseits → im Kasten halten
+            py = min(max(py, y0 + 10), y1 - 10)
+            draw.ellipse([px - 8, py - 8, px + 8, py + 8], fill=(240, 133, 30, 255), outline=(255, 255, 255, 255), width=3)
+            lbl = f"km {mt['cum_km'][best_i]:.1f}".replace('.', ',')
+            f = _pil_font(18)
+            draw.text((cx - draw.textlength(lbl, font=f) / 2, y1 - pad - label_h + 6), lbl, font=f, fill=(255, 255, 255, 255))
+
+        def make_photo_overlay(photo, dst_png):
+            """Transparentes W×H-PNG für ein Foto: Wasserzeichen oben rechts, unten eine
+            dezente Leiste mit Uhrzeit (taken_at) und Bildunterschrift (caption), Build o:
+            Mini-Karte unten rechts (Fotos mit GPS). Liefert True, wenn es etwas aufzulegen gibt."""
+            caption = (photo.caption or '').strip()
+            when = photo.taken_at.strftime('%H:%M Uhr') if photo.taken_at else ''
+            has_map = _photo_on_mini_map(photo)
+            if not (caption or when or logo_rgba is not None or has_map):
+                return False
+            try:
+                layer = _PIL.new('RGBA', (W, H), (0, 0, 0, 0))
+                draw = _ID_MOD.Draw(layer)
+                bar_top = None
+                if caption or when:
+                    cap_font  = _pil_font(min(34, int(W / 30)))
+                    time_font = _pil_font(22, bold=False)
+                    pad, m = 26, SAFE + 24
+                    max_w = W - 2 * m - 2 * pad
+                    lines = _wrap_text(draw, caption, cap_font, max_w, 2) if caption else []
+                    line_h = int(cap_font.size * 1.3)
+                    bar_h = 2 * pad + (30 if when else 0) + len(lines) * line_h - (6 if (when and lines) else 0)
+                    # Leiste nur so breit wie der Text (mind. 1/3 der Breite), links ausgerichtet
+                    text_w = max([draw.textlength(l_, font=cap_font) for l_ in lines] +
+                                 ([draw.textlength(when, font=time_font)] if when else [0]))
+                    bar_w = int(min(W - 2 * m, max(W / 3, text_w + 2 * pad)))
+                    y0 = H - m - bar_h
+                    bar_top = y0
+                    draw.rounded_rectangle([m, y0, m + bar_w, y0 + bar_h], radius=18, fill=(0, 0, 0, 150))
+                    ty = y0 + pad - 4
+                    if when:
+                        draw.text((m + pad, ty), when, font=time_font, fill=(255, 210, 110, 255))
+                        ty += 30 - (6 if lines else 0)
+                    for l_ in lines:
+                        draw.text((m + pad, ty), l_, font=cap_font, fill=(255, 255, 255, 255))
+                        ty += line_h
+                if has_map:
+                    _draw_mini_map(layer, photo, bar_top)
+                paste_watermark(layer, 'tr')
+                layer.save(dst_png, 'PNG')
+                return True
+            except Exception as e:
+                app.logger.warning(f'make_photo_overlay error: {e}', exc_info=True)
+                return False
+
+        def _avatar_row_layer(users_info):
+            """RGBA-Streifen (Breite W) mit runden Profilbildern – ohne Bild Initialen auf
+            farbigem Kreis – und Namen darunter; max. 8, Rest als „+N“."""
+            if not users_info:
+                return None
+            try:
+                from PIL import ImageOps as _IOPS
+                shown = list(users_info[:8])
+                extra = len(users_info) - len(shown)
+                n = len(shown) + (1 if extra > 0 else 0)
+                gap_f = 0.3
+                size = min(int(H * 0.06), int((W - 2 * SAFE - 40) / (n + (n - 1) * gap_f)))
+                gap = int(size * gap_f)
+                name_font = _pil_font(max(15, int(size * 0.2)), bold=False)
+                layer_h = size + 14 + int(size * 0.2) + 12
+                layer = _PIL.new('RGBA', (W, layer_h), (0, 0, 0, 0))
+                draw = _ID_MOD.Draw(layer)
+                SS = 4   # Supersampling für glatte Kreisränder
+                big = (size * SS, size * SS)
+                ring = _PIL.new('RGBA', big, (0, 0, 0, 0))
+                _ID_MOD.Draw(ring).ellipse((0, 0, big[0] - 1, big[1] - 1), outline=(255, 255, 255, 255), width=3 * SS)
+                ring = ring.resize((size, size), _PIL.LANCZOS)
+                mask = _PIL.new('L', big, 0)
+                _ID_MOD.Draw(mask).ellipse((0, 0, big[0] - 1, big[1] - 1), fill=255)
+                palette = [(198, 40, 40), (46, 125, 50), (21, 101, 192), (240, 133, 30),
+                           (106, 27, 154), (0, 131, 143), (173, 20, 87), (84, 110, 122)]
+                total_w = n * size + (n - 1) * gap
+                x = (W - total_w) // 2
+
+                def circle_with_text(text, color):
+                    c = _PIL.new('RGBA', big, (0, 0, 0, 0))
+                    _ID_MOD.Draw(c).ellipse((0, 0, big[0] - 1, big[1] - 1), fill=color + (255,))
+                    c = c.resize((size, size), _PIL.LANCZOS)
+                    f = _pil_font(int(size * 0.4))
+                    d2 = _ID_MOD.Draw(c)
+                    bb = d2.textbbox((0, 0), text, font=f)
+                    d2.text(((size - (bb[2] - bb[0])) / 2 - bb[0], (size - (bb[3] - bb[1])) / 2 - bb[1]),
+                            text, font=f, fill=(255, 255, 255, 255))
+                    return c
+
+                for idx, (name, avatar_fn) in enumerate(shown):
+                    circ = None
+                    if avatar_fn:
+                        ap = os.path.join(app.config['UPLOAD_FOLDER_AVATARS'], avatar_fn)
+                        if os.path.exists(ap):
+                            try:
+                                im = _IOPS.fit(_PIL.open(ap).convert('RGB'), big, _PIL.LANCZOS).convert('RGBA')
+                                im.putalpha(mask)
+                                circ = im.resize((size, size), _PIL.LANCZOS)
+                            except Exception:
+                                circ = None
+                    if circ is None:
+                        initials = ''.join(part[0] for part in name.split()[:2]).upper() or '?'
+                        circ = circle_with_text(initials, palette[sum(map(ord, name)) % len(palette)])
+                    layer.alpha_composite(circ, (x, 0))
+                    layer.alpha_composite(ring, (x, 0))
+                    label = name.split()[0] if name else ''
+                    while draw.textlength(label, font=name_font) > size + gap - 6 and len(label) > 2:
+                        label = label[:-2] + '…'
+                    tw = draw.textlength(label, font=name_font)
+                    draw.text((x + size / 2 - tw / 2, size + 12), label, font=name_font, fill=(230, 230, 230, 255))
+                    x += size + gap
+                if extra > 0:
+                    layer.alpha_composite(circle_with_text(f'+{extra}', (58, 74, 108)), (x, 0))
+                    layer.alpha_composite(ring, (x, 0))
+                return layer
+            except Exception as e:
+                app.logger.warning(f'_avatar_row_layer error: {e}', exc_info=True)
+                return None
 
         def _cover_photo_bg(canvas_size):
             """Nimmt das erste verfügbare Foto als unscharfen Vollbild-Hintergrund für Titel/Outro."""
@@ -2371,6 +2960,9 @@ def tour_video_render(tour_id):
                     t_size -= 4
                 line_h = int(t_size * 1.25)
                 block_top = cy - 10 - (len(lines) - 1) * line_h // 2
+                lg = _logo_scaled(int(H * 0.12))          # Build i: Gruppenlogo über dem Titel
+                if lg is not None and block_top - lg.height - 36 > SAFE + 10:
+                    canvas.paste(lg, (cx - lg.width // 2, block_top - lg.height - 36), lg)
                 for li, l_ in enumerate(lines):
                     _centered_text(draw, cx, block_top + li * line_h, l_, title_font, (255,255,255),
                                   stroke_width=2, stroke_fill=(0,0,0))
@@ -2382,49 +2974,404 @@ def tour_video_render(tour_id):
                 if tour.gpx_km:
                     extra = f'{tour.gpx_km} km' + (f'  ·  {int(tour.gpx_ascent)} Hm' if tour.gpx_ascent else '')
                     _centered_text(draw, cx, cy+below+55, extra, _pil_font(24, bold=False), (210,210,210))
+                # Build m: Wetter (gezeichnetes Symbol + Temperatur) und Teilnehmerzahl wie in der Vorschau
+                bits_font = _pil_font(22, bold=False)
+                bits = []
+                if _weather:
+                    bits.append(f"{_weather['temp_max']}°C")
+                if _attending_count:
+                    bits.append(f'{_attending_count} dabei')
+                if bits:
+                    txt = '   ·   '.join(bits)
+                    ty = cy + below + (95 if tour.gpx_km else 55)
+                    tw = draw.textlength(txt, font=bits_font)
+                    icon_s = 30 if _weather else 0
+                    gx = cx - (tw + (icon_s + 10 if icon_s else 0)) / 2
+                    if _weather:
+                        _draw_weather_icon(draw, gx + icon_s / 2, ty + 12, icon_s, _weather.get('kind') or 'thermo', (0, 0, 0), 1.0)
+                        gx += icon_s + 10
+                    draw.text((gx, ty), txt, font=bits_font, fill=(210, 210, 210), stroke_width=1, stroke_fill=(0, 0, 0))
                 canvas.save(dst_path, 'JPEG', quality=92)
                 return True
             except Exception as e:
                 app.logger.warning(f'make_title_frame error: {e}', exc_info=True)
                 return False
 
-        def make_stats_frame(dst_path, attending_count, weather):
+        def _draw_weather_icon(draw, cx, cy, s, kind, col, a=1.0):
+            """Build j: kleines Wettersymbol – gezeichnet statt Emoji, damit es auf dem Server
+            auch ohne Emoji-Font erscheint. (cx, cy) Mitte, s Kantenlänge, col Kachelfarbe,
+            a Deckkraft 0..1 (für das gestaffelte Einblenden)."""
+            import math
+
+            def mix(c):
+                return tuple(int(round(col[i] + (c[i] - col[i]) * a)) for i in range(3))
+            white, sun, blue = mix((255, 255, 255)), mix((255, 205, 80)), mix((150, 205, 255))
+            lw = max(2, int(s * 0.07))
+
+            def _sun(x, y, r, rays=8):
+                for k in range(rays):
+                    ang = 2 * math.pi * k / rays + math.pi / rays
+                    draw.line([(x + math.cos(ang) * r * 1.35, y + math.sin(ang) * r * 1.35),
+                               (x + math.cos(ang) * r * 1.85, y + math.sin(ang) * r * 1.85)], fill=sun, width=lw)
+                draw.ellipse([x - r, y - r, x + r, y + r], fill=sun)
+
+            def _cloud(x, y, w):   # Wolke der Breite w; (x, y) = Mitte der Unterkante
+                h = w * 0.62
+                draw.ellipse([x - w * 0.50, y - h * 0.62, x - w * 0.50 + h * 0.70, y + h * 0.08], fill=white)
+                draw.ellipse([x - w * 0.26, y - h * 1.00, x - w * 0.26 + h * 0.98, y - h * 0.02], fill=white)
+                draw.ellipse([x + w * 0.50 - h * 0.62, y - h * 0.55, x + w * 0.50, y + h * 0.07], fill=white)
+                draw.rounded_rectangle([x - w * 0.50 + h * 0.12, y - h * 0.40, x + w * 0.50 - h * 0.08, y],
+                                       radius=int(h * 0.18), fill=white)
+
+            if kind == 'sun':
+                _sun(cx, cy, s * 0.26)
+            elif kind == 'partly':
+                _sun(cx + s * 0.17, cy - s * 0.17, s * 0.17)
+                _cloud(cx - s * 0.06, cy + s * 0.34, s * 0.78)
+            elif kind in ('cloud', 'fog', 'rain', 'snow', 'storm'):
+                base = cy + (s * 0.22 if kind == 'cloud' else s * 0.02)
+                _cloud(cx, base, s * 0.9)
+                if kind == 'fog':
+                    for k in range(2):
+                        yy = base + s * 0.13 + k * s * 0.15
+                        draw.line([(cx - s * 0.34, yy), (cx + s * 0.34, yy)], fill=white, width=lw)
+                elif kind == 'rain':
+                    for k in range(3):
+                        x = cx - s * 0.24 + k * s * 0.24
+                        draw.line([(x + s * 0.03, base + s * 0.1), (x - s * 0.06, base + s * 0.38)], fill=blue, width=lw)
+                elif kind == 'snow':
+                    r = max(2, int(s * 0.055))
+                    for k in range(3):
+                        x = cx - s * 0.24 + k * s * 0.24
+                        yy = base + s * 0.24 + (s * 0.08 if k == 1 else 0)
+                        draw.ellipse([x - r, yy - r, x + r, yy + r], fill=white)
+                elif kind == 'storm':
+                    draw.polygon([(cx + s * 0.08, base + s * 0.02), (cx - s * 0.12, base + s * 0.24),
+                                  (cx + s * 0.00, base + s * 0.24), (cx - s * 0.08, base + s * 0.46),
+                                  (cx + s * 0.16, base + s * 0.18), (cx + s * 0.03, base + s * 0.18)], fill=sun)
+            else:   # 'thermo' / unbekannter Code: schlichtes Thermometer
+                draw.rounded_rectangle([cx - s * 0.08, cy - s * 0.34, cx + s * 0.08, cy + s * 0.12],
+                                       radius=int(s * 0.08), fill=white)
+                draw.ellipse([cx - s * 0.17, cy + s * 0.02, cx + s * 0.17, cy + s * 0.36], fill=mix((255, 110, 90)))
+
+        def _fmt_hm(seconds):
+            """Sekunden → 'h:mm h' (z. B. 2:45 h)."""
+            m = int(round(seconds / 60))
+            return f'{m // 60}:{m % 60:02d} h'
+
+        def _draw_stats_canvas(progress, attending_count, weather, avatar_layer):
+            """Statistik-Folie für einen Animationsfortschritt 0..1 – gleiche Choreografie
+            wie drawStatsFrame() in touren/video.html: Kacheln blenden gestaffelt ein,
+            die Zahlen zählen in den ersten 60 % hoch (ease-out), die Teilnehmer (runde
+            Profilbilder + Namen, Build i) erscheinen ab 55 %. progress=1.0 = fertige Folie.
+            Build j: Kacheln Fahrzeit + Ø Tempo aus den GPX-Zeitstempeln (_ride), Wetter mit
+            gezeichnetem Symbol statt Emoji, im Querformat ab 5 Kacheln drei Spalten."""
+            _ID = _ID_MOD
+            BG, TILE = (30, 45, 80), (58, 74, 108)
+
+            def lerp(c1, c2, a):   # Farbe c1→c2 mit Anteil a (ersetzt globalAlpha auf einfarbigem Grund)
+                return tuple(int(round(c1[i] + (c2[i] - c1[i]) * a)) for i in range(3))
+
+            canvas = _PIL.new('RGB', (W, H), BG)
+            draw = _ID.Draw(canvas)
+            cx = W//2
+            _centered_text(draw, cx, int(H*0.10), 'Die Tour in Zahlen',
+                          _pil_font(min(42, int(W/22))), (255,255,255))
+
+            count_p = min(1.0, progress / 0.6)
+            eased = 1 - (1 - count_p) ** 3           # easeOutCubic
+            stats = []   # (Wert, Beschriftung, Zusatz zur Beschriftung – nur wenn er passt, Wettersymbol)
+            if tour.gpx_km:     stats.append((f'{tour.gpx_km * eased:.1f} km', 'Strecke', '', None))
+            if tour.gpx_ascent: stats.append((f'{int(round(tour.gpx_ascent * eased))} m', 'Höhenmeter', '', None))
+            stats.append((str(int(round(attending_count * eased))), 'Dabei gewesen', '', None))
+            if weather:         stats.append((f"{int(round(weather['temp_max'] * eased))}°C", 'Wetter', '',
+                                              weather.get('kind') or 'thermo'))
+            if _ride.get('moving_s'):   # Build j: nur wenn der GPX-Track Zeitstempel hat
+                extra = ''
+                if _ride.get('total_s') and _ride['total_s'] - _ride['moving_s'] >= 300:
+                    extra = f" · {_fmt_hm(_ride['total_s'])} gesamt"
+                stats.append((_fmt_hm(_ride['moving_s'] * eased), 'Fahrzeit', extra, None))
+                if _ride.get('avg_kmh'):
+                    extra = f" · max. {_ride['max_kmh']:.0f} km/h" if _ride.get('max_kmh') else ''
+                    stats.append((f"{_ride['avg_kmh'] * eased:.1f} km/h", 'Ø Tempo', extra, None))
+
+            # Raster: 2 Spalten; im Querformat ab 5 Kacheln 3 Spalten, damit die Teilnehmer noch Platz haben
+            cols = 3 if (W >= H and len(stats) > 4) else 2
+            gap = int(W*0.04)
+            tile_w = min(int(W*0.4), int((W*0.86 - (cols-1)*gap) / cols))
+            tile_h = int(H*0.15)
+            start_x = cx - (cols*tile_w + (cols-1)*gap)//2
+            start_y = int(H*0.28)
+            big_font = _pil_font(min(52, int(W/18)))
+            small_font = _pil_font(22, bold=False)
+            for idx, (val, label, extra, wkind) in enumerate(stats):
+                col, row = idx % cols, idx // cols
+                x = start_x + col*(tile_w+gap)
+                y = start_y + row*(tile_h+gap)
+                a = max(0.0, min(1.0, (progress - idx*0.08) * 5))   # gestaffeltes Einblenden
+                if a <= 0:
+                    continue
+                tile_col = lerp(BG, TILE, a)
+                draw.rounded_rectangle([x, y, x+tile_w, y+tile_h], radius=16, fill=tile_col)
+                tcx, ty = x + tile_w//2, y + tile_h//2 - 38
+                vfont = big_font   # Wert muss in die Kachel passen (schmale 3-Spalten-Kacheln im Quadrat)
+                room = tile_w - 28 - ((int(big_font.size * 1.05) + 16) if wkind else 0)
+                while draw.textlength(val, font=vfont) > room and vfont.size > 30:
+                    vfont = _pil_font(vfont.size - 2)
+                if wkind:   # Wettersymbol links neben dem Wert, Gruppe gemeinsam zentriert
+                    icon_s = int(vfont.size * 1.05)
+                    tw = draw.textlength(val, font=vfont)
+                    group_w = icon_s + 16 + tw
+                    _draw_weather_icon(draw, tcx - group_w/2 + icon_s/2, ty + vfont.size*0.42,
+                                       icon_s, wkind, tile_col, a)
+                    tcx = int(tcx + group_w/2 - tw/2)
+                _centered_text(draw, tcx, ty, val, vfont, lerp(tile_col, (255,255,255), a))
+                if extra and draw.textlength(label + extra, font=small_font) <= tile_w - 24:
+                    label += extra
+                _centered_text(draw, x+tile_w//2, y+tile_h//2+16, label, small_font, lerp(tile_col, (210,210,210), a))
+
+            if avatar_layer is not None and progress > 0.55:
+                a = min(1.0, (progress - 0.55) * 3)
+                row = avatar_layer.copy()
+                if a < 1:
+                    row.putalpha(row.getchannel('A').point(lambda v: int(v * a)))
+                rows_bottom = start_y + ((len(stats) + cols - 1) // cols) * (tile_h + gap)
+                row_top = max(rows_bottom + 30, H - SAFE - 70 - row.height)
+                canvas.paste(row, (0, row_top), row)
+            paste_watermark(canvas, 'tr')
+            return canvas
+
+        def build_stats_frames(attending_count, weather, users_info):
+            """Animierte Statistik-Folie (4 s) als Einzelbilder für frames_to_segment():
+            15 Bilder/s bis alles steht (3,6 s), danach ein Haltebild."""
+            if not PIL_OK:
+                return []
+            try:
+                avatar_layer = _avatar_row_layer(users_info)   # einmal bauen, pro Bild nur einblenden
+                total, anim_secs, step_fps = 4.0, 3.6, 15
+                n_anim = int(anim_secs * step_fps)
+                frames = []
+                for i in range(n_anim):
+                    progress = (i / step_fps) / total
+                    fpath = os.path.join(tmpdir, f'stats_{i:03d}.jpg')
+                    _draw_stats_canvas(progress, attending_count, weather, avatar_layer).save(fpath, 'JPEG', quality=88)
+                    frames.append((fpath, round(1 / step_fps, 4)))
+                fpath = os.path.join(tmpdir, 'stats_hold.jpg')
+                _draw_stats_canvas(1.0, attending_count, weather, avatar_layer).save(fpath, 'JPEG', quality=88)
+                frames.append((fpath, round(total - anim_secs, 3)))
+                return frames
+            except Exception as e:
+                app.logger.warning(f'build_stats_frames error: {e}', exc_info=True)
+                return []
+
+        def make_stats_frame(dst_path, attending_count, weather, users_info=None):
+            """Statische Statistik-Folie (Fallback, falls die Animation nicht gebaut werden kann)."""
             if not PIL_OK:
                 return False
             try:
-                _ID = _ID_MOD
-                canvas = _PIL.new('RGB', (W, H), (30, 45, 80))
-                draw = _ID.Draw(canvas)
-                cx = W//2
-                _centered_text(draw, cx, int(H*0.10), 'Die Tour in Zahlen',
-                              _pil_font(min(42, int(W/22))), (255,255,255))
-
-                stats = []
-                if tour.gpx_km:    stats.append((f'{tour.gpx_km} km', 'Strecke'))
-                if tour.gpx_ascent: stats.append((f'{int(tour.gpx_ascent)} m', 'Höhenmeter'))
-                stats.append((str(attending_count), 'Dabei gewesen'))
-                if weather:        stats.append((f"{weather['temp_max']}°C", weather['icon'] + ' Wetter'))
-
-                cols = 2
-                tile_w, tile_h = int(W*0.4), int(H*0.15)
-                gap = int(W*0.04)
-                start_x = cx - (cols*tile_w + (cols-1)*gap)//2
-                start_y = int(H*0.28)
-                big_font = _pil_font(min(52, int(W/18)))
-                small_font = _pil_font(22, bold=False)
-                for idx, (val, label) in enumerate(stats):
-                    col, row = idx % cols, idx // cols
-                    x = start_x + col*(tile_w+gap)
-                    y = start_y + row*(tile_h+gap)
-                    draw.rounded_rectangle([x, y, x+tile_w, y+tile_h], radius=16, fill=(58, 74, 108))
-                    _centered_text(draw, x+tile_w//2, y+tile_h//2-38, val, big_font, (255,255,255))
-                    _centered_text(draw, x+tile_w//2, y+tile_h//2+16, label, small_font, (210,210,210))
-
-                canvas.save(dst_path, 'JPEG', quality=92)
+                _draw_stats_canvas(1.0, attending_count, weather,
+                                   _avatar_row_layer(users_info or [])).save(dst_path, 'JPEG', quality=92)
                 return True
             except Exception as e:
                 app.logger.warning(f'make_stats_frame error: {e}', exc_info=True)
                 return False
+
+        def build_gastro_frames(spots):
+            """Build j: Folie „Einkehr unterwegs“ – Gastro-Einträge höchstens GASTRO_NEAR_M m
+            neben dem Track (gastro_near_track), mit Art, Streckenkilometer und Abstand;
+            Zeilen blenden gestaffelt ein. Liefert [(frame, dauer), …] für
+            frames_to_segment() oder [] (keine Treffer / Fehler)."""
+            if not PIL_OK or not spots:
+                return []
+            try:
+                _ID = _ID_MOD
+                BG, TILE, MARK = (30, 45, 80), (58, 74, 108), (142, 36, 170)
+
+                def lerp(c1, c2, a):
+                    return tuple(int(round(c1[i] + (c2[i] - c1[i]) * a)) for i in range(3))
+
+                rows = spots[:6]
+                more = len(spots) - len(rows)
+                title_font = _pil_font(min(42, int(W/22)))
+                name_font  = _pil_font(min(40, int(W/27)))
+                sub_font   = _pil_font(22, bold=False)
+                row_w, row_h, gap = int(W*0.86), max(96, int(H*0.085)), 18
+                x0, y0 = (W - row_w)//2, int(H*0.22)
+
+                def draw_slide(progress):
+                    canvas = _PIL.new('RGB', (W, H), BG)
+                    draw = _ID.Draw(canvas)
+                    _centered_text(draw, W//2, int(H*0.10), 'Einkehr unterwegs', title_font, (255, 255, 255))
+                    _centered_text(draw, W//2, int(H*0.10) + title_font.size + 14,
+                                   f'Gastronomie direkt an der Strecke (bis {GASTRO_NEAR_M} m)', sub_font, (190, 200, 220))
+                    for i, sp in enumerate(rows):
+                        a = max(0.0, min(1.0, (progress - 0.1 - i*0.1) * 4))
+                        if a <= 0:
+                            continue
+                        y = y0 + i*(row_h + gap)
+                        tile_col = lerp(BG, TILE, a)
+                        draw.rounded_rectangle([x0, y, x0 + row_w, y + row_h], radius=16, fill=tile_col)
+                        mx, my = x0 + 40, y + row_h//2
+                        draw.ellipse([mx-12, my-12, mx+12, my+12], fill=lerp(tile_col, MARK, a),
+                                     outline=lerp(tile_col, (255, 255, 255), a), width=3)
+                        name = sp['name']
+                        if draw.textlength(name, font=name_font) > row_w - 110:
+                            while len(name) > 4 and draw.textlength(name + '…', font=name_font) > row_w - 110:
+                                name = name[:-1].rstrip()
+                            name += '…'
+                        draw.text((x0 + 76, y + row_h//2 - name_font.size - 2), name, font=name_font,
+                                  fill=lerp(tile_col, (255, 255, 255), a))
+                        sub = (f"{sp['type_label']} · km {sp['km']:.1f}".replace('.', ',') +
+                               f" · {sp['dist_m']} m neben der Route")
+                        draw.text((x0 + 76, y + row_h//2 + 6), sub, font=sub_font, fill=lerp(tile_col, (210, 210, 210), a))
+                    if more > 0:
+                        a = max(0.0, min(1.0, (progress - 0.1 - len(rows)*0.1) * 4))
+                        if a > 0:
+                            _centered_text(draw, W//2, y0 + len(rows)*(row_h + gap) + 8, f'… und {more} weitere',
+                                           sub_font, lerp(BG, (210, 210, 210), a))
+                    paste_watermark(canvas, 'tr')
+                    return canvas
+
+                total = min(6.0, 2.5 + 0.5*len(rows))
+                anim_secs, step_fps = min(total - 0.4, 1.2 + 0.4*len(rows)), 15
+                frames = []
+                for i in range(int(anim_secs * step_fps)):
+                    progress = (i / step_fps) / anim_secs
+                    fpath = os.path.join(tmpdir, f'gastro_{i:03d}.jpg')
+                    draw_slide(progress).save(fpath, 'JPEG', quality=88)
+                    frames.append((fpath, round(1 / step_fps, 4)))
+                fpath = os.path.join(tmpdir, 'gastro_hold.jpg')
+                draw_slide(1.0).save(fpath, 'JPEG', quality=88)
+                frames.append((fpath, round(total - anim_secs, 3)))
+                return frames
+            except Exception as e:
+                app.logger.warning(f'build_gastro_frames error: {e}', exc_info=True)
+                return []
+
+        def build_profile_frames(gpx_points):
+            """Build n: animiertes Höhenprofil (3,5 s) wie in der Browser-Vorschau – die Kurve
+            baut sich von links nach rechts auf (gefüllte Fläche + Linie), mit Höhen-Raster,
+            km-Achse, laufendem Höhenwert an der Spitze und Markierung des höchsten Punkts.
+            x-Achse = echte Streckenkilometer. Ohne Höhendaten (flacher als 1 m) → [].
+            Liefert [(frame, dauer), …] für frames_to_segment()."""
+            if not PIL_OK or not gpx_points or len(gpx_points) < 2:
+                return []
+            try:
+                import math
+                _ID = _ID_MOD
+                from PIL import ImageChops as _ICH
+                step = max(1, len(gpx_points) // 300)
+                pts = gpx_points[::step]
+                if step > 1 and (len(gpx_points) - 1) % step:
+                    pts.append(gpx_points[-1])
+                raw = [float(p.get('ele') or 0) for p in pts]
+                k = 2                                                   # Glättung: Mittel über 5 Punkte
+                eles = [sum(raw[max(0, i - k):i + k + 1]) / len(raw[max(0, i - k):i + k + 1]) for i in range(len(raw))]
+                e_min, e_max = min(eles), max(eles)
+                if e_max - e_min < 1 or not any(raw):
+                    return []
+                m_lat = 111320.0
+                m_lng = 111320.0 * max(0.2, math.cos(math.radians(pts[0]['lat'])))
+                dist = [0.0]
+                for a, b in zip(pts, pts[1:]):
+                    dist.append(dist[-1] + math.hypot((b['lat'] - a['lat']) * m_lat, (b['lng'] - a['lng']) * m_lng))
+                total_m = dist[-1] or 1.0
+                i_max = eles.index(e_max)
+
+                BG, LINE, GRID, TXT = (30, 45, 80), (100, 181, 246), (70, 90, 130), (190, 200, 220)
+                left, right = SAFE + 95, W - SAFE - 40
+                top = int(H * 0.28)
+                bottom = int(H * 0.62) if H > W * 1.2 else int(H * 0.80)
+                lo = e_min - (e_max - e_min) * 0.05
+                hi = e_max + (e_max - e_min) * 0.10
+
+                def X(i):
+                    return left + (right - left) * dist[i] / total_m
+
+                def Y(e):
+                    return bottom - (bottom - top) * (e - lo) / (hi - lo)
+
+                # Raster-Schritte so wählen, dass 3–6 Linien bzw. höchstens 8 km-Marken entstehen
+                e_step = next((st for st in (5, 10, 20, 25, 50, 100, 200, 500, 1000) if (hi - lo) / st <= 6), 1000)
+                km_step = next((st for st in (1, 2, 5, 10, 20, 25, 50, 100) if total_m / 1000 / st <= 8), 100)
+                title_font = _pil_font(min(42, int(W / 22)))
+                sub_font = _pil_font(24, bold=False)
+                ax_font = _pil_font(20, bold=False)
+                tip_font = _pil_font(24)
+                curve = [(X(i), Y(eles[i])) for i in range(len(pts))]
+                # Vertikaler Verlauf für die Füllung (oben kräftig, unten schwach), einmal vorbereitet
+                grad = _PIL.linear_gradient('L').rotate(180).resize((W, max(1, bottom - top)))
+                grad = grad.point(lambda v: int(18 + v * 0.45))
+                alpha_full = _PIL.new('L', (W, H), 0)
+                alpha_full.paste(grad, (0, top))
+                date_str = tour.tour_date.strftime('%d.%m.%Y') if (tour.tour_date and not tour.is_date_open) else ''
+                sub_bits = [b for b in (date_str, f'{tour.gpx_km} km' if tour.gpx_km else '',
+                                        f'{int(tour.gpx_ascent)} Hm' if tour.gpx_ascent else '') if b]
+
+                def draw_slide(progress):
+                    canvas = _PIL.new('RGB', (W, H), BG)
+                    draw = _ID.Draw(canvas)
+                    _centered_text(draw, W // 2, int(H * 0.10), 'Höhenprofil', title_font, (255, 255, 255))
+                    if sub_bits:
+                        _centered_text(draw, W // 2, int(H * 0.10) + title_font.size + 14, '  ·  '.join(sub_bits), sub_font, TXT)
+                    # Höhen-Raster (gepunktet) + Beschriftung
+                    e_t = math.ceil(lo / e_step) * e_step
+                    while e_t <= hi:
+                        y = Y(e_t)
+                        for x in range(left, right, 14):
+                            draw.line([(x, y), (min(x + 6, right), y)], fill=GRID, width=2)
+                        lbl = f'{int(e_t)} m'
+                        draw.text((left - 12 - draw.textlength(lbl, font=ax_font), y - ax_font.size * 0.65), lbl, font=ax_font, fill=TXT)
+                        e_t += e_step
+                    # km-Achse
+                    draw.line([(left, bottom), (right, bottom)], fill=GRID, width=2)
+                    km_t = 0
+                    while km_t * 1000 <= total_m + 1:
+                        x = left + (right - left) * (km_t * 1000) / total_m
+                        draw.line([(x, bottom), (x, bottom + 8)], fill=GRID, width=2)
+                        lbl = f'{km_t} km' if km_t else '0'
+                        draw.text((x - draw.textlength(lbl, font=ax_font) / 2, bottom + 12), lbl, font=ax_font, fill=TXT)
+                        km_t += km_step
+                    # Kurve bis zum Fortschritt: Fläche mit Verlauf + Linie
+                    end = max(2, int(round(len(pts) * min(1.0, progress))))
+                    seg = curve[:end]
+                    poly = _PIL.new('L', (W, H), 0)
+                    _ID.Draw(poly).polygon([(seg[0][0], bottom)] + seg + [(seg[-1][0], bottom)], fill=255)
+                    canvas.paste(LINE, (0, 0), _ICH.multiply(poly, alpha_full))
+                    draw.line(seg, fill=LINE, width=5, joint='curve')
+                    # höchster Punkt, sobald erreicht
+                    if i_max < end - 1 or progress >= 1:
+                        mx, my = curve[i_max]
+                        draw.ellipse([mx - 6, my - 6, mx + 6, my + 6], fill=(255, 255, 255))
+                        if progress >= 1 or abs(seg[-1][0] - mx) > 90:
+                            lbl = f'↑ {int(round(e_max))} m'
+                            tw = draw.textlength(lbl, font=ax_font)
+                            draw.text((min(max(left, mx - tw / 2), right - tw), my - 34), lbl, font=ax_font, fill=(255, 255, 255))
+                    # Spitze mit laufendem Höhenwert
+                    if progress < 1:
+                        tx, ty = seg[-1]
+                        draw.ellipse([tx - 9, ty - 9, tx + 9, ty + 9], fill=LINE, outline=(255, 255, 255), width=3)
+                        lbl = f'{int(round(eles[end - 1]))} m'
+                        tw = draw.textlength(lbl, font=tip_font)
+                        lx = tx + 16 if tx + 16 + tw < right else tx - 16 - tw
+                        draw.text((lx, ty - tip_font.size - 6), lbl, font=tip_font, fill=(255, 255, 255),
+                                  stroke_width=2, stroke_fill=BG)
+                    paste_watermark(canvas, 'tr')
+                    return canvas
+
+                total, anim_secs, step_fps = 3.5, 2.6, 15
+                frames = []
+                for i in range(int(anim_secs * step_fps)):
+                    fpath = os.path.join(tmpdir, f'profile_{i:03d}.jpg')
+                    draw_slide((i / step_fps) / anim_secs).save(fpath, 'JPEG', quality=88)
+                    frames.append((fpath, round(1 / step_fps, 4)))
+                fpath = os.path.join(tmpdir, 'profile_hold.jpg')
+                draw_slide(1.0).save(fpath, 'JPEG', quality=88)
+                frames.append((fpath, round(total - anim_secs, 3)))
+                return frames
+            except Exception as e:
+                app.logger.warning(f'build_profile_frames error: {e}', exc_info=True)
+                return []
 
         def make_outro_frame(dst_path, group_name):
             if not PIL_OK:
@@ -2434,6 +3381,9 @@ def tour_video_render(tour_id):
                 canvas = _cover_photo_bg((W, H))
                 draw = _ID.Draw(canvas)
                 cx, cy = W//2, H//2
+                lg = _logo_scaled(int(H * 0.12))          # Build i: Gruppenlogo über dem Dank
+                if lg is not None:
+                    canvas.paste(lg, (cx - lg.width // 2, cy - 60 - lg.height - 36), lg)
                 _centered_text(draw, cx, cy-60, 'Danke fürs Mitfahren!',
                               _pil_font(min(46, int(W/16))), (255,255,255),
                               stroke_width=2, stroke_fill=(0,0,0))
@@ -2461,116 +3411,205 @@ def tour_video_render(tour_id):
             y = (1.0 - math.log(math.tan(lat*math.pi/180.0) + 1.0/math.cos(lat*math.pi/180.0)) / math.pi) / 2.0 * n
             return x, y
 
-        def build_track_frames(gpx_points, photos_with_gps):
-            """Laedt echte OSM-Kacheln + zeichnet den Track schrittweise animiert.
-            Gibt Liste von (frame_path, duration) zurueck, oder [] bei Fehler/keinen Daten."""
+        def build_track_frames(gpx_points, photos_with_gps, near_spots=None):
+            """Lädt echte OSM-Kacheln + zeichnet den Track schrittweise animiert.
+            Gibt Liste von (frame_path, duration) zurück, oder [] bei Fehler/keinen Daten.
+            Build j: near_spots (gastro_near_track) erscheinen als Marker mit Namensschild,
+            sobald der gezeichnete Track an ihnen vorbeikommt.
+            Build k: Der Track füllt die Kartenfläche (größte passende Zoomstufe, bei unter
+            66 % Füllung eine Stufe feiner + Kachelbild auf 70–100 % skaliert). Foto-Marker
+            sind kleiner, werden gebündelt („+N“) und NEBEN dem Track platziert – an der von
+            8 Positionen, die am wenigsten Track verdeckt – mit Verbindungslinie zum
+            Aufnahmeort. GPS-Fotos weit abseits des Tracks (falsche EXIF-Position) werden
+            ignoriert, damit sie den Kartenausschnitt nicht aufblähen."""
             if not PIL_OK or not gpx_points or len(gpx_points) < 2:
                 return []
             try:
+                import math
                 _ID = _ID_MOD
                 step = max(1, len(gpx_points)//300)
                 pts = gpx_points[::step]
-                lats = [p['lat'] for p in pts]; lngs = [p['lng'] for p in pts]
-                for p in photos_with_gps:
-                    lats.append(p['lat']); lngs.append(p['lng'])
+                t_lats = [p['lat'] for p in pts]; t_lngs = [p['lng'] for p in pts]
+                pad_lat = max(0.02, (max(t_lats) - min(t_lats)) * 0.25)
+                pad_lng = max(0.03, (max(t_lngs) - min(t_lngs)) * 0.25)
+                photos_with_gps = [p for p in photos_with_gps
+                                   if min(t_lats) - pad_lat <= p['lat'] <= max(t_lats) + pad_lat
+                                   and min(t_lngs) - pad_lng <= p['lng'] <= max(t_lngs) + pad_lng]
+                lats = t_lats + [p['lat'] for p in photos_with_gps]
+                lngs = t_lngs + [p['lng'] for p in photos_with_gps]
                 min_lat, max_lat = min(lats), max(lats)
                 min_lng, max_lng = min(lngs), max(lngs)
 
+                # Kartenfläche: unter der Kopfzeile (24..88) bis über die ©-Zeile, Rand für Marker
                 TILE = 256
+                map_top, map_bottom = 100, H - 40
+                avail_w, avail_h = W - 140, (map_bottom - map_top) - 80
+                center_y = (map_top + map_bottom) / 2
+
+                def extent(z):
+                    x1, y1 = _lat_lng_to_tile_xy(min_lat, min_lng, z)
+                    x2, y2 = _lat_lng_to_tile_xy(max_lat, max_lng, z)
+                    return abs(x2 - x1) * TILE, abs(y1 - y2) * TILE
+
                 zoom = 16
                 while zoom > 8:
-                    x1, y1 = _lat_lng_to_tile_xy(min_lat, min_lng, zoom)
-                    x2, y2 = _lat_lng_to_tile_xy(max_lat, max_lng, zoom)
-                    px_w = abs(x2-x1)*TILE; px_h = abs(y1-y2)*TILE
-                    if px_w < W*0.82 and px_h < (H-240)*0.82:
+                    ew, eh = extent(zoom)
+                    if ew <= avail_w and eh <= avail_h:
                         break
                     zoom -= 1
+                ew, eh = extent(zoom)
+                fill = max(ew / avail_w, eh / avail_h, 1e-6)
+                f = 1.0                                   # Feinskalierung des Kachelbilds
+                if fill > 1:                              # selbst Zoom 8 zu groß (Extremfall)
+                    f = max(0.5, 0.92 / fill)
+                elif fill < 0.66 and zoom < 17:
+                    zoom += 1
+                    f = min(1.0, 0.92 / (2 * fill))
 
-                center_lat, center_lng = (min_lat+max_lat)/2, (min_lng+max_lng)/2
-                ctx_x, ctx_y = _lat_lng_to_tile_xy(center_lat, center_lng, zoom)
-                tiles_across = W//TILE + 3
-                tiles_down   = H//TILE + 3
-                start_tx = int(ctx_x - tiles_across/2)
-                start_ty = int(ctx_y - tiles_down/2)
+                center_lat, center_lng = (min_lat + max_lat) / 2, (min_lng + max_lng) / 2
+                c_x, c_y = _lat_lng_to_tile_xy(center_lat, center_lng, zoom)
+                src_w, src_h = W / f, H / f                               # Quellbereich in Kachelpixeln
+                src_left, src_top = c_x * TILE - (W / 2) / f, c_y * TILE - center_y / f
+                start_tx, end_tx = int(math.floor(src_left / TILE)), int(math.floor((src_left + src_w) / TILE))
+                start_ty, end_ty = int(math.floor(src_top / TILE)), int(math.floor((src_top + src_h) / TILE))
+                tiles_across, tiles_down = end_tx - start_tx + 1, end_ty - start_ty + 1
 
-                bg = _PIL.new('RGB', (tiles_across*TILE, tiles_down*TILE), (230, 235, 225))
+                bg = _PIL.new('RGB', (tiles_across * TILE, tiles_down * TILE), (230, 235, 225))
                 subdomains = ['a', 'b', 'c']
                 for tx in range(tiles_across):
                     for ty in range(tiles_down):
-                        sub = subdomains[(tx*tiles_down+ty) % 3]
-                        url = f'https://{sub}.tile.openstreetmap.org/{zoom}/{start_tx+tx}/{start_ty+ty}.png'
+                        sub = subdomains[(tx * tiles_down + ty) % 3]
+                        url = f'https://{sub}.tile.openstreetmap.org/{zoom}/{start_tx + tx}/{start_ty + ty}.png'
                         try:
                             r = http_requests.get(url, timeout=4,
                                                   headers={'User-Agent': 'DjO-RadgruppenApp/1.0'})
                             if r.status_code == 200:
                                 tile_img = _PIL.open(io.BytesIO(r.content)).convert('RGB')
-                                bg.paste(tile_img, (tx*TILE, ty*TILE))
+                                bg.paste(tile_img, (tx * TILE, ty * TILE))
                         except Exception:
                             pass
-
-                offset_x = (ctx_x - start_tx) * TILE - W/2
-                offset_y = (ctx_y - start_ty) * TILE - (H-240)/2 - 140
+                sx, sy = src_left - start_tx * TILE, src_top - start_ty * TILE
+                base = bg.crop((int(round(sx)), int(round(sy)), int(round(sx + src_w)), int(round(sy + src_h))))
+                if base.size != (W, H):
+                    base = base.resize((W, H), _PIL.LANCZOS)
 
                 def proj(lat, lng):
                     px, py = _lat_lng_to_tile_xy(lat, lng, zoom)
-                    return ((px-start_tx)*TILE - offset_x, (py-start_ty)*TILE - offset_y)
+                    return ((px - c_x) * TILE * f + W / 2, (py - c_y) * TILE * f + center_y)
 
-                thumb_size = 78
-                photo_thumbs = []
-                for p in photos_with_gps:
-                    src = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], p['filename'])
-                    if not os.path.exists(src):
-                        photo_thumbs.append(None); continue
-                    try:
-                        pimg = _PIL.open(src).convert('RGB')
-                        s = min(pimg.width, pimg.height)
-                        pimg = pimg.crop(((pimg.width-s)//2, (pimg.height-s)//2,
-                                          (pimg.width-s)//2+s, (pimg.height-s)//2+s))
-                        pimg = pimg.resize((thumb_size, thumb_size), _PIL.LANCZOS)
-                        photo_thumbs.append(pimg)
-                    except Exception:
-                        photo_thumbs.append(None)
+                # Foto-Marker: Position, Streckenanteil, Bündelung nahe beieinanderliegender Fotos
+                thumb = max(44, min(90, int(round(min(W, H) * 0.084))))   # 90 px bei 1080er Formaten (Build l)
+                items = []
+                for i, p in enumerate(photos_with_gps):
+                    best_d, best_i = 1e18, 0
+                    for k, pt in enumerate(pts):
+                        d = (pt['lat'] - p['lat']) ** 2 + (pt['lng'] - p['lng']) ** 2
+                        if d < best_d:
+                            best_d, best_i = d, k
+                    x, y = proj(p['lat'], p['lng'])
+                    items.append({'idx': i, 'x': x, 'y': y, 'frac': best_i / len(pts)})
+                clusters = []
+                for it in items:
+                    for c in clusters:
+                        if math.hypot(c['x'] - it['x'], c['y'] - it['y']) < thumb * 0.9:
+                            c['count'] += 1
+                            c['frac'] = min(c['frac'], it['frac'])
+                            break
+                    else:
+                        clusters.append(dict(it, count=1))
+                # Platzierung: von 8 Positionen um den Aufnahmeort die mit der geringsten Überdeckung
+                # (Trackpunkte in der Kachel ×10, Kollision mit anderer Kachel ×1000, außerhalb ×10000)
+                track_xy = [proj(pt['lat'], pt['lng']) for pt in pts]
+                dd = thumb / 2 + 24
+                cands = [(0, -dd), (dd, 0), (-dd, 0), (0, dd),
+                         (0.8 * dd, -0.8 * dd), (-0.8 * dd, -0.8 * dd), (0.8 * dd, 0.8 * dd), (-0.8 * dd, 0.8 * dd)]
+                placed = []
+                for c in clusters:
+                    best = None
+                    for ci, (dx, dy) in enumerate(cands):
+                        tx_, ty_ = c['x'] + dx, c['y'] + dy
+                        l, t, r, b = tx_ - thumb / 2 - 8, ty_ - thumb / 2 - 8, tx_ + thumb / 2 + 8, ty_ + thumb / 2 + 8
+                        cost = ci * 0.5                           # leichte Vorliebe: oben, rechts, links, unten
+                        if l < 6 or r > W - 6 or t < map_top or b > H - 36:
+                            cost += 10000
+                        cost += 10 * sum(1 for (px_, py_) in track_xy if l <= px_ <= r and t <= py_ <= b)
+                        cost += 1000 * sum(1 for pr in placed if not (r < pr[0] or l > pr[2] or b < pr[1] or t > pr[3]))
+                        if best is None or cost < best[0]:
+                            best = (cost, tx_, ty_, (l, t, r, b))
+                    c['tx'], c['ty'] = best[1], best[2]
+                    placed.append(best[3])
+                    src = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], photos_with_gps[c['idx']]['filename'])
+                    c['img'] = None
+                    if os.path.exists(src):
+                        try:
+                            pimg = _PIL.open(src).convert('RGB')
+                            sq = min(pimg.width, pimg.height)
+                            pimg = pimg.crop(((pimg.width - sq) // 2, (pimg.height - sq) // 2,
+                                              (pimg.width - sq) // 2 + sq, (pimg.height - sq) // 2 + sq))
+                            c['img'] = pimg.resize((thumb, thumb), _PIL.LANCZOS)
+                        except Exception:
+                            pass
+                badge_font = _pil_font(13)
 
                 N_STEPS = 16
                 frame_paths = []
-                for step_i in range(1, N_STEPS+1):
+                for step_i in range(1, N_STEPS + 1):
                     progress = step_i / N_STEPS
-                    frame = bg.crop((int(offset_x), int(offset_y), int(offset_x)+W, int(offset_y)+H)).copy()
+                    frame = base.copy()
                     draw = _ID.Draw(frame)
 
                     end_idx = max(1, int(len(pts) * progress))
                     line_pts = [proj(pt['lat'], pt['lng']) for pt in pts[:end_idx]]
                     if len(line_pts) > 1:
-                        draw.line(line_pts, fill=(255,255,255), width=13, joint='curve')
-                        draw.line(line_pts, fill=(240,133,30), width=8, joint='curve')
+                        draw.line(line_pts, fill=(255, 255, 255), width=13, joint='curve')
+                        draw.line(line_pts, fill=(240, 133, 30), width=8, joint='curve')
 
-                    sx, sy = proj(pts[0]['lat'], pts[0]['lng'])
-                    draw.ellipse([sx-13,sy-13,sx+13,sy+13], fill=(46,125,50), outline=(255,255,255), width=4)
+                    sx_, sy_ = proj(pts[0]['lat'], pts[0]['lng'])
+                    draw.ellipse([sx_ - 13, sy_ - 13, sx_ + 13, sy_ + 13], fill=(46, 125, 50), outline=(255, 255, 255), width=4)
                     if progress >= 0.99:
                         ex, ey = proj(pts[-1]['lat'], pts[-1]['lng'])
-                        draw.ellipse([ex-13,ey-13,ex+13,ey+13], fill=(198,40,40), outline=(255,255,255), width=4)
+                        draw.ellipse([ex - 13, ey - 13, ex + 13, ey + 13], fill=(198, 40, 40), outline=(255, 255, 255), width=4)
 
                     reached = end_idx / len(pts)
-                    for p, thumb in zip(photos_with_gps, photo_thumbs):
-                        if thumb is None: continue
-                        best_d, best_frac = 1e9, 0
-                        for i, pt in enumerate(pts):
-                            d = (pt['lat']-p['lat'])**2 + (pt['lng']-p['lng'])**2
-                            if d < best_d:
-                                best_d, best_frac = d, i/len(pts)
-                        if best_frac > reached:
+                    for c in clusters:
+                        if c['frac'] > reached or c['img'] is None:
                             continue
-                        x, y = proj(p['lat'], p['lng'])
-                        fx, fy = int(x-thumb_size/2), int(y-thumb_size)
-                        frame.paste(_PIL.new('RGB', (thumb_size+8, thumb_size+8), (255,255,255)),
-                                    (fx-4, fy-4))
-                        frame.paste(thumb, (fx, fy))
+                        x, y, tx_, ty_ = c['x'], c['y'], c['tx'], c['ty']
+                        draw.line([(x, y), (tx_, ty_)], fill=(255, 255, 255), width=5)
+                        draw.line([(x, y), (tx_, ty_)], fill=(43, 63, 107), width=2)
+                        draw.ellipse([x - 6, y - 6, x + 6, y + 6], fill=(43, 63, 107), outline=(255, 255, 255), width=2)
+                        fx, fy = int(tx_ - thumb / 2), int(ty_ - thumb / 2)
+                        draw.rounded_rectangle([fx - 3, fy - 3, fx + thumb + 3, fy + thumb + 3], radius=7, fill=(255, 255, 255))
+                        frame.paste(c['img'], (fx, fy))
+                        if c['count'] > 1:                     # „+N“-Plakette oben rechts
+                            bx, by = fx + thumb - 2, fy + 2
+                            draw.ellipse([bx - 12, by - 12, bx + 12, by + 12], fill=(240, 133, 30), outline=(255, 255, 255), width=2)
+                            _centered_text(draw, bx, by - 8, f"+{c['count'] - 1}", badge_font, (255, 255, 255))
+
+                    # Build j: Einkehr an der Route – Marker (+ Namensschild bei bis zu 6 Treffern)
+                    spot_font = _pil_font(18)
+                    for sp in (near_spots or [])[:12]:
+                        if sp['frac'] > reached:
+                            continue
+                        x, y = proj(sp['lat'], sp['lng'])
+                        draw.ellipse([x-11, y-11, x+11, y+11], fill=(142, 36, 170), outline=(255, 255, 255), width=3)
+                        if len(near_spots) <= 6:
+                            lbl = sp['name'][:26]
+                            tw = draw.textlength(lbl, font=spot_font)
+                            bx = x + 16 if x + 16 + tw + 16 < W - 8 else x - 16 - tw - 16
+                            by = y - 15
+                            draw.rounded_rectangle([bx, by, bx + tw + 16, by + 30], radius=8,
+                                                   fill=(255, 255, 255), outline=(142, 36, 170), width=2)
+                            draw.text((bx + 8, by + 5), lbl, font=spot_font, fill=(40, 40, 40))
 
                     draw.rounded_rectangle([24,24,W-24,88], radius=10, fill=(20,30,20))
                     draw.text((42,38), tour.title[:34], font=_pil_font(min(26,int(W/24))), fill=(255,255,255))
                     pct_text = f'{int(progress*100)}% der Strecke'
+                    if tour.gpx_km:   # Build m: gefahrene / gesamte km wie in der Vorschau
+                        pct_text += f' · {tour.gpx_km * progress:.1f} / {tour.gpx_km} km'
                     draw.text((42,64), pct_text, font=_pil_font(18, bold=False), fill=(220,220,220))
                     draw.text((W-190, H-34), '\u00A9 OpenStreetMap', font=_pil_font(16, bold=False), fill=(0,0,0))
+                    paste_watermark(frame, 'bl')
 
                     fpath = os.path.join(tmpdir, f'track_{step_i:03d}.jpg')
                     frame.convert('RGB').save(fpath, 'JPEG', quality=88)
@@ -2590,44 +3629,58 @@ def tour_video_render(tour_id):
         _attending_count = TourParticipant.query.filter_by(
             tour_id=tour_id, status='attending'
         ).count()
-        _weather = None
-        if tour.tour_date and not tour.is_date_open and tour.meeting_lat and tour.meeting_lng:
-            try:
-                _resp = http_requests.get(
-                    'https://api.open-meteo.com/v1/forecast',
-                    params={'latitude': tour.meeting_lat, 'longitude': tour.meeting_lng,
-                            'daily': 'weathercode,temperature_2m_max,temperature_2m_min',
-                            'timezone': 'Europe/Berlin',
-                            'start_date': tour.tour_date.isoformat(), 'end_date': tour.tour_date.isoformat()},
-                    timeout=5
-                )
-                _d = _resp.json().get('daily', {})
-                if _d.get('temperature_2m_max'):
-                    _icon_map = {0:'☀️',1:'🌤️',2:'🌤️',3:'☁️',45:'🌫️',48:'🌫️',
-                                 51:'🌦️',53:'🌦️',55:'🌦️',61:'🌧️',63:'🌧️',65:'🌧️',
-                                 71:'🌨️',73:'🌨️',75:'🌨️',80:'🌦️',81:'🌧️',82:'⛈️',
-                                 95:'⛈️',96:'⛈️',99:'⛈️'}
-                    _wc = (_d.get('weathercode') or [None])[0]
-                    _weather = {'temp_max': round(_d['temperature_2m_max'][0]), 'icon': _icon_map.get(_wc, '🌡️')}
-            except Exception:
-                pass
+        _attending_users = [(p.user.display_name, p.user.avatar) for p in
+                            TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
+                            .join(User).order_by(User.name).limit(12).all()]
+        _weather = _tour_day_weather(tour)   # Build j: gemeinsamer Helfer (Prognose + Archiv)
 
         from flask import g as _g_render
         _grp = getattr(_g_render, 'group', None)
         _group_name = _grp.name if _grp else 'De jungen Olen'
+        # Build i: Gruppenlogo einmal laden (Wasserzeichen, Titel, Outro)
+        logo_rgba = None
+        if PIL_OK and _grp and _grp.logo:
+            _logo_path = os.path.join(app.root_path, 'static', 'uploads', 'group_logos', _grp.logo)
+            if os.path.exists(_logo_path):
+                try:
+                    logo_rgba = _logo_auto_alpha(_PIL.open(_logo_path))   # Build m: Hintergrund freistellen
+                except Exception:
+                    logo_rgba = None
 
-        show_track = request.form.get('show_track', '1') == '1'
-        show_stats = request.form.get('show_stats', '1') == '1'
+        show_track  = request.form.get('show_track', '1') == '1'
+        show_stats  = request.form.get('show_stats', '1') == '1'
+        show_gastro = request.form.get('show_gastro', '1') == '1'   # Build j: Einkehr-Folie + Karten-Marker
+        show_profile = request.form.get('show_profile', '1') == '1' # Build n: Höhenprofil-Folie (wie Vorschau)
         _slide_secs = 0.0  # Summe aller Folien-Sekunden (für Audio-Fade-Timing)
 
-        # GPX + GPS-Fotos für die Kartenfolie vorbereiten
-        _gpx_points = []
-        if show_track and tour.gpx_file:
+        # GPX einmal parsen: Punkte für die Karte, Zeitstempel für Fahrzeit/Schnitt (Build j),
+        # Einkehr nahe der Route (Build j)
+        _gpx_points, _ride, _near_spots, _mini_track = [], {}, [], None
+        if tour.gpx_file:
             _gpx_path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
             if os.path.exists(_gpx_path):
                 _parsed = parse_gpx(_gpx_path)
                 if _parsed:
                     _gpx_points = _parsed.get('points', [])
+                    _ride = {k: _parsed.get(k) for k in ('moving_s', 'total_s', 'avg_kmh', 'max_kmh')}
+        if show_gastro and _gpx_points:
+            _near_spots = gastro_near_track(_gpx_points)
+        if len(_gpx_points) >= 2:   # Build o: Track-Umriss + km-Stände für die Mini-Karte auf den Fotos
+            try:
+                import math as _m
+                _st = max(1, len(_gpx_points) // 300)
+                _mp = _gpx_points[::_st]
+                if _st > 1 and (len(_gpx_points) - 1) % _st:
+                    _mp.append(_gpx_points[-1])
+                _lats = [q['lat'] for q in _mp]; _lngs = [q['lng'] for q in _mp]
+                _cos = max(0.2, _m.cos(_m.radians((min(_lats) + max(_lats)) / 2)))
+                _cum = [0.0]
+                for _a, _b in zip(_mp, _mp[1:]):
+                    _cum.append(_cum[-1] + _m.hypot((_b['lat'] - _a['lat']) * 111320.0, (_b['lng'] - _a['lng']) * 111320.0 * _cos))
+                _mini_track = {'pts': _mp, 'cum_km': [c_ / 1000 for c_ in _cum], 'cos': _cos,
+                               'min_lat': min(_lats), 'max_lat': max(_lats), 'min_lng': min(_lngs), 'max_lng': max(_lngs)}
+            except Exception:
+                _mini_track = None
         _photos_with_gps = [{'filename': p.filename, 'lat': p.lat, 'lng': p.lng}
                             for p in photos if p.lat and p.lng]
 
@@ -2641,7 +3694,7 @@ def tour_video_render(tour_id):
 
             # 1b. Kartenfolie: animierter Track, zu EINEM Video-Segment zusammengefasst
             if show_track and _gpx_points:
-                track_frames = build_track_frames(_gpx_points, _photos_with_gps)
+                track_frames = build_track_frames(_gpx_points, _photos_with_gps, _near_spots)
                 if track_frames:
                     track_seg = os.path.join(tmpdir, 'seg_track.mp4')
                     track_dur = sum(d for _, d in track_frames)
@@ -2649,14 +3702,29 @@ def tour_video_render(tour_id):
                         cf.write(f"file '{track_seg}'\n")
                         _slide_secs += track_dur
 
-            # 2. Statistik-Folie (4s) – als Video-Segment
+            # 1c. Einkehr-Folie (Build j): Gastro-Einträge nahe der Route, nur wenn es Treffer gibt
+            if show_gastro and _near_spots:
+                gastro_frames = build_gastro_frames(_near_spots)
+                if gastro_frames:
+                    gastro_seg = os.path.join(tmpdir, 'seg_gastro.mp4')
+                    if frames_to_segment(gastro_frames, gastro_seg):
+                        cf.write(f"file '{gastro_seg}'\n")
+                        _slide_secs += sum(d for _, d in gastro_frames)
+
+            # 2. Statistik-Folie (4 s) – Zahlen zählen animiert hoch wie in der Browser-
+            #    Vorschau (Build h), als EIN Video-Segment; Fallback: statisches Bild
             if show_stats:
-                stats_frame = os.path.join(tmpdir, 'slide_stats.jpg')
-                stats_seg   = os.path.join(tmpdir, 'seg_stats.mp4')
-                if make_stats_frame(stats_frame, _attending_count, _weather) and \
-                   image_to_segment(stats_frame, stats_seg, 4):
+                stats_seg = os.path.join(tmpdir, 'seg_stats.mp4')
+                stats_frames = build_stats_frames(_attending_count, _weather, _attending_users)
+                if stats_frames and frames_to_segment(stats_frames, stats_seg):
                     cf.write(f"file '{stats_seg}'\n")
-                    _slide_secs += 4
+                    _slide_secs += sum(d for _, d in stats_frames)
+                else:
+                    stats_frame = os.path.join(tmpdir, 'slide_stats.jpg')
+                    if make_stats_frame(stats_frame, _attending_count, _weather, _attending_users) and \
+                       image_to_segment(stats_frame, stats_seg, 4):
+                        cf.write(f"file '{stats_seg}'\n")
+                        _slide_secs += 4
 
             # 3. Fotos (mit flüssigem Ken-Burns-Zoom via FFmpeg zoompan-Filter)
             for i, p in enumerate(photos):
@@ -2666,8 +3734,13 @@ def tour_video_render(tour_id):
                 oriented = os.path.join(tmpdir, f'oriented_{i:04d}.jpg')
                 auto_orient(src, oriented)
                 zoom_in = (i % 2 == 0)  # abwechselnd rein-/rauszoomen für Abwechslung
+                # Build i: Overlay mit Logo + Uhrzeit/Bildunterschrift (None, wenn nichts zu zeigen)
+                overlay_png = os.path.join(tmpdir, f'overlay_{i:04d}.png')
+                if not (PIL_OK and make_photo_overlay(p, overlay_png)):
+                    overlay_png = None
                 segment_path = os.path.join(tmpdir, f'photo_{i:04d}.mp4')
-                if make_photo_zoom_segment(oriented, segment_path, photo_dur, zoom_in=zoom_in):
+                if make_photo_zoom_segment(oriented, segment_path, photo_dur, zoom_in=zoom_in,
+                                           overlay_png=overlay_png):
                     cf.write(f"file '{segment_path}'\n")
                     _slide_secs += photo_dur
                     n_valid += 1
@@ -2675,11 +3748,20 @@ def tour_video_render(tour_id):
                     # Fallback: Standbild ohne Zoom, als Video-Segment (nicht als Bild-Zeile!)
                     frame = os.path.join(tmpdir, f'frame_{i:04d}.jpg')
                     fallback_seg = os.path.join(tmpdir, f'photo_fallback_{i:04d}.mp4')
-                    make_frame(oriented, frame)
+                    make_frame(oriented, frame, overlay_png)
                     if image_to_segment(frame, fallback_seg, photo_dur):
                         cf.write(f"file '{fallback_seg}'\n")
                         _slide_secs += photo_dur
                         n_valid += 1
+
+            # 3b. Höhenprofil (Build n) – animiert, nach den Fotos wie in der Browser-Vorschau
+            if show_profile and _gpx_points:
+                prof_frames = build_profile_frames(_gpx_points)
+                if prof_frames:
+                    prof_seg = os.path.join(tmpdir, 'seg_profile.mp4')
+                    if frames_to_segment(prof_frames, prof_seg):
+                        cf.write(f"file '{prof_seg}'\n")
+                        _slide_secs += sum(d for _, d in prof_frames)
 
             # 4. Outro (6s – lang genug um Gruppenname + Domain lesen zu können)
             outro_frame = os.path.join(tmpdir, 'slide_outro.jpg')
@@ -2768,23 +3850,25 @@ def archiv_new():
         if not title:
             flash('Titel ist erforderlich.', 'danger')
             return redirect(url_for('archiv_new'))
+        # Audit 1.4.0: ungültiges/fehlendes Datum → Hinweis statt 500
+        archiv_date = _parse_date(request.form.get('tour_date'))
+        if archiv_date is None:
+            flash('Bitte ein gültiges Datum angeben.', 'danger')
+            return redirect(url_for('archiv_new'))
         from flask import g as _g_archiv
         _grp_archiv = getattr(_g_archiv, 'group', None)
         tour = Tour(
             title        = title,
             description  = request.form.get('description', '').strip() or None,
-            tour_date    = datetime.strptime(request.form['tour_date'], '%Y-%m-%d').date(),
+            tour_date    = archiv_date,
             difficulty   = request.form.get('difficulty', 'mittel'),
             status       = 'completed',
             created_by   = current_user.id,
             meeting_desc = request.form.get('meeting_desc', '').strip() or None,
             group_id     = _grp_archiv.id if _grp_archiv else None,
         )
-        try:
-            tour.gpx_km     = float(request.form['gpx_km'])     if request.form.get('gpx_km')     else None
-            tour.gpx_ascent = float(request.form['gpx_ascent']) if request.form.get('gpx_ascent') else None
-        except ValueError:
-            pass
+        tour.gpx_km     = _parse_float(request.form.get('gpx_km'))      # akzeptiert auch "42,5"
+        tour.gpx_ascent = _parse_float(request.form.get('gpx_ascent'))
         db.session.add(tour)
         db.session.commit()
 
@@ -2899,6 +3983,15 @@ def location_update():
     accuracy = data.get('accuracy')
     if not all([tour_id, lat, lng]):
         return jsonify({'error': 'missing data'}), 400
+    # Audit 1.4.0: Zahlen erzwingen (keine Strings/Objekte in der DB)
+    try:
+        tour_id  = int(tour_id)
+        lat, lng = float(lat), float(lng)
+        accuracy = float(accuracy) if accuracy is not None else None
+    except (TypeError, ValueError):
+        return jsonify({'error': 'invalid data'}), 400
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return jsonify({'error': 'invalid coordinates'}), 400
     _tour_or_404(tour_id)
     from datetime import datetime as _dt
     existing = LiveLocation.query.filter_by(
@@ -2921,6 +4014,7 @@ def location_update():
 @login_required
 def location_get(tour_id):
     """Alle Live-Standorte einer Tour abrufen (Polling)."""
+    _tour_or_404(tour_id)   # Audit 1.4.0: nur Touren der eigenen Gruppe
     from datetime import datetime as _dt, timedelta
     # Nur Standorte die in den letzten 10 Minuten aktualisiert wurden
     cutoff = _dt.utcnow() - timedelta(minutes=10)
@@ -2930,7 +4024,7 @@ def location_get(tour_id):
     ).all()
     return jsonify({'locations': [{
         'user_id':  l.user_id,
-        'name':     l.user.display_name,
+        'name':     l.user.display_name if l.user else 'Unbekannt',
         'lat':      l.lat,
         'lng':      l.lng,
         'accuracy': l.accuracy,
@@ -3358,64 +4452,147 @@ def admin_backup():
 
 
 # ─── Admin routes ─────────────────────────────────────────────────────────────
+# Pakete, die der Admin ohne SSH nachinstallieren/reparieren kann (alle in requirements.txt).
+# (pip-Name, Beschreibung, Modul für die Prüfung)
+_INSTALLABLE_PACKAGES = (
+    ('Pillow',       'Bildverarbeitung: Foto-Resize, Avatare, Video-Titel/Blur-Hintergrund (sonst ImageMagick-Fallback)', 'PIL'),
+    ('piexif',       'EXIF/GPS lesen – zweite Methode nach dem eingebauten Parser (exif_gps.py)', 'piexif'),
+    ('cryptography', 'Push-Benachrichtigungen (VAPID-Schlüssel)', 'cryptography.hazmat.primitives.asymmetric.ec'),
+    ('pywebpush',    'Push-Benachrichtigungen (Web Push)', 'pywebpush'),
+)
+
+
+def _package_status(module):
+    """Importprüfung für die Admin-Seite: {'ok', 'status', 'detail'} mit status
+    installiert | fehlt | defekt. Pillow wird funktional geprüft (C-Erweiterung _imaging),
+    weil ein für eine andere Python-Version gebautes Pillow (z. B. 3.9 nach dem Update auf
+    3.11) zwar importierbar aussieht, aber nicht arbeitet."""
+    import sys, importlib
+    top = module.split('.')[0]
+    try:
+        m = importlib.import_module(module)
+        pkg = sys.modules.get(top, m)
+        ver = getattr(pkg, '__version__', '')
+        loc = os.path.dirname(getattr(pkg, '__file__', '') or '')
+        if top == 'PIL' and not _pillow_ok():
+            return {'ok': False, 'status': 'defekt',
+                    'detail': f'{loc} – C-Erweiterung „_imaging“ lädt nicht (für eine andere Python-Version gebaut)'}
+        return {'ok': True, 'status': 'installiert', 'detail': f'{ver} – {loc}'.strip(' –')}
+    except ModuleNotFoundError as e:
+        if (e.name or '').split('.')[0] == top:
+            return {'ok': False, 'status': 'fehlt', 'detail': ''}
+        return {'ok': False, 'status': 'defekt', 'detail': f'{type(e).__name__}: {str(e)[:160]}'}
+    except Exception as e:   # ImportError einer kaputten C-Erweiterung u. ä.
+        return {'ok': False, 'status': 'defekt', 'detail': f'{type(e).__name__}: {str(e)[:160]}'}
+
+
+def _pip_install(pkg, target):
+    """pip-Installation mit mehreren Strategien (ohne SSH). Liefert (ok, log).
+    1. --target <site-packages der App> (--upgrade ersetzt kaputte Reste; umgeht die
+       Debian-12-Sperre „externally-managed-environment“)
+    2. --user   3. --user --break-system-packages
+    Fehlt pip für diesen Interpreter ganz, wird einmalig ensurepip versucht."""
+    import sys
+    base = [sys.executable, '-m', 'pip', 'install', '--upgrade', '--quiet', pkg]
+    strategies = ([base + ['--target', target]] if target else []) + \
+                 [base + ['--user'], base + ['--user', '--break-system-packages']]
+    log, tried_ensurepip = '', False
+    for cmd in strategies:
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=150)
+        except Exception as e:
+            log += '$ ' + ' '.join(cmd[2:]) + '\n' + str(e)[:300] + '\n'
+            continue
+        if r.returncode == 0:
+            return True, ''
+        err = (r.stderr or r.stdout or '')[-600:]
+        log += '$ ' + ' '.join(cmd[2:]) + '\n' + err + '\n'
+        if 'No module named pip' in err and not tried_ensurepip:
+            tried_ensurepip = True
+            try:
+                e = subprocess.run([sys.executable, '-m', 'ensurepip', '--user', '--upgrade'],
+                                   capture_output=True, text=True, timeout=120)
+                log += '$ ensurepip --user\n' + (e.stderr or e.stdout or '')[-300:] + '\n'
+                if e.returncode == 0:
+                    r2 = subprocess.run(cmd, capture_output=True, text=True, timeout=150)
+                    if r2.returncode == 0:
+                        return True, ''
+                    log += '$ ' + ' '.join(cmd[2:]) + '\n' + (r2.stderr or r2.stdout or '')[-600:] + '\n'
+            except Exception as ex:
+                log += '$ ensurepip\n' + str(ex)[:300] + '\n'
+    return False, log
+
+
 @app.route('/admin/install-packages', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def admin_install_packages():
-    """Fehlende Python-Pakete manuell installieren."""
-    import subprocess, sys, importlib
-    packages = ['pywebpush', 'cryptography']
-    results  = []
-    # Ziel-Pfad: der venv-Ordner der schon in sys.path ist
+    """Python-Pakete ohne SSH prüfen, nachinstallieren oder reparieren."""
+    import sys, importlib
+    # Ziel-Pfad: der venv-Ordner der schon in sys.path ist. Audit 1.4.0: Pfade einer
+    # anderen Python-Version (z. B. ".../python3.9/..." nach dem Update auf 3.11) überspringen.
+    _pyver = 'python{}.{}'.format(sys.version_info.major, sys.version_info.minor)
     venv_target = next(
-        (p for p in sys.path if 'site-packages' in p and os.path.isdir(p)),
+        (p for p in sys.path if 'site-packages' in p and os.path.isdir(p)
+         and (_pyver in p or not re.search(r'python3\.\d+', p))),
         None
     )
 
+    # Umgebungs-Diagnose (ohne SSH prüfbar)
+    import shutil as _sh
+    py_info = {'version': sys.version.split()[0], 'executable': sys.executable}
+    try:
+        r = subprocess.run([sys.executable, '-m', 'pip', '--version'],
+                           capture_output=True, text=True, timeout=30)
+        py_info['pip'] = (r.stdout.strip() if r.returncode == 0
+                          else 'nicht verfügbar – ' + (r.stderr or r.stdout).strip()[-160:])
+    except Exception as e:
+        py_info['pip'] = f'nicht prüfbar – {str(e)[:120]}'
+    g = _package_status('gpxpy')
+    py_info['gpxpy (GPX)'] = ('OK – ' if g['ok'] else g['status'] + ' – ') + g['detail']
+    py_info['ImageMagick (Fallback)'] = _sh.which('convert') or _sh.which('magick') or 'nicht gefunden'
+
+    results = []
     if request.method == 'POST':
-        for pkg in packages:
-            mod = pkg.replace('-', '_')
-            try:
-                __import__(mod)
-                results.append({'pkg': pkg, 'status': 'already installed', 'ok': True})
-                continue
-            except ImportError:
-                pass
-            ok  = False
-            log = ''
-            # Strategie 1: --target in bekannten site-packages Pfad
-            cmds = [[sys.executable, '-m', 'pip', 'install', pkg, '--quiet']]
-            if venv_target:
-                cmds.insert(0, [sys.executable, '-m', 'pip', 'install', pkg,
-                                '--target', venv_target, '--quiet'])
-            for cmd in cmds:
-                try:
-                    r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-                    if r.returncode == 0:
-                        importlib.invalidate_caches()
-                        ok = True
-                        break
-                    log = r.stderr[-400:]
-                except Exception as e:
-                    log = str(e)
-            results.append({
-                'pkg': pkg,
-                'status': 'installed' if ok else 'failed',
-                'ok': ok,
-                'log': '' if ok else log
-            })
-        flash('Installation abgeschlossen.', 'success' if all(r['ok'] for r in results) else 'warning')
+        wanted = set(request.form.getlist('pkg'))
+        if not wanted:
+            flash('Kein Paket ausgewählt.', 'info')
+        installed_any = False
+        for pip_name, desc, module in _INSTALLABLE_PACKAGES:
+            st = _package_status(module)
+            row = {'pkg': pip_name, 'desc': desc, 'module': module, **st, 'log': ''}
+            if pip_name in wanted:
+                ok, log = _pip_install(pip_name, venv_target)
+                if ok:
+                    installed_any = True
+                    # Prüfung mit den neuen Dateien wiederholen: nur Module verwerfen,
+                    # die vorher fehlten/defekt waren (intakte C-Erweiterungen nicht neu laden).
+                    top = module.split('.')[0]
+                    if not st['ok']:
+                        for name in [n for n in sys.modules if n == top or n.startswith(top + '.')]:
+                            del sys.modules[name]
+                    importlib.invalidate_caches()
+                    st2 = _package_status(module)
+                    row.update(st2)
+                    row['status'] = 'installiert' if st2['ok'] else st2['status'] + ' (trotz Installation)'
+                    row['action'] = 'installiert'
+                else:
+                    row['action'] = 'fehlgeschlagen'
+                    row['log'] = log
+            results.append(row)
+        failed = [r for r in results if r.get('action') == 'fehlgeschlagen']
+        if wanted:
+            flash('Installation fehlgeschlagen – Details unten.' if failed else
+                  'Installation abgeschlossen.' + (' Bitte die App einmal neu starten (Plesk → Restart), '
+                                                  'damit alle Prozesse die neuen Pakete nutzen.' if installed_any else ''),
+                  'warning' if failed else 'success')
     else:
-        for pkg in packages:
-            try:
-                mod = __import__(pkg.replace('-', '_'))
-                location = getattr(mod, '__file__', 'unbekannt')
-                results.append({'pkg': pkg, 'status': 'installed', 'ok': True, 'location': location})
-            except ImportError:
-                results.append({'pkg': pkg, 'status': 'missing', 'ok': False, 'location': ''})
+        for pip_name, desc, module in _INSTALLABLE_PACKAGES:
+            results.append({'pkg': pip_name, 'desc': desc, 'module': module, 'log': '',
+                            **_package_status(module)})
 
     return render_template('admin/install_packages.html',
-                           results=results, venv_target=venv_target)
+                           results=results, venv_target=venv_target, py_info=py_info)
 
 
 @app.route('/admin/')
@@ -3423,7 +4600,9 @@ def admin_install_packages():
 @admin_required
 def admin_dashboard():
     from datetime import timedelta
-    users   = _gq(User).order_by(User.created_at).all()
+    # anonymisierte (gelöschte) Konten nicht mehr anzeigen
+    users   = (_gq(User).filter(~User.email.like('%@deleted.local'))
+               .order_by(User.created_at).all())
     invites = _gq(InviteToken).order_by(InviteToken.created_at.desc()).all()
 
     cutoff_active   = date.today() - timedelta(days=30)
@@ -3544,14 +4723,45 @@ def admin_toggle_user(user_id):
 @login_required
 @admin_required
 def admin_delete_user(user_id):
-    user = User.query.get_or_404(user_id)
+    user = _own_group_or_404(User.query.get_or_404(user_id))   # Audit 1.4.0: nur eigene Gruppe
     if user.id == current_user.id:
         flash('Du kannst dich nicht selbst löschen.', 'warning')
         return redirect(url_for('admin_dashboard'))
-    db.session.delete(user)
+    # Audit 1.4.0: Hartes Löschen scheiterte mit IntegrityError (NOT NULL in
+    # tour_participants), sobald der Nutzer je an einer Tour teilgenommen hatte.
+    # Stattdessen – wie beim DSGVO-Selbstlöschen – anonymisieren: Historie
+    # (Teilnahmen, Fotos, Ranglisten der anderen) bleibt konsistent.
+    name = user.name
+    _anonymize_user(user)
     db.session.commit()
-    flash(f'Benutzer {user.name} wurde entfernt.', 'success')
+    flash(f'Benutzer {name} wurde entfernt (Konto anonymisiert und gesperrt).', 'success')
     return redirect(url_for('admin_dashboard'))
+
+
+def _anonymize_user(user):
+    """Persönliche Daten eines Nutzers entfernen, Datensatz für die Historie behalten."""
+    if user.avatar:
+        try:
+            path = os.path.join(app.config['UPLOAD_FOLDER_AVATARS'], user.avatar)
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+    user.name          = f'Gelöschter Nutzer {user.id}'
+    user.nickname      = None
+    user.email         = f'deleted_{user.id}@deleted.local'
+    user.password_hash = secrets.token_hex(32)
+    user.is_active     = False
+    user.role          = 'member'
+    user.avatar        = None
+    user.bio           = None
+    user.birthday      = None
+    # Geräte-/Standortdaten und offene Reset-Links gehören niemandem mehr
+    for model in (PushSubscription, LiveLocation, PasswordReset):
+        try:
+            model.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+        except Exception as e:
+            app.logger.warning(f'anonymize cleanup {model.__name__}: {e}')
 
 
 # ─── Phase 2: Gastronomie ─────────────────────────────────────────────────────
@@ -3565,10 +4775,338 @@ GASTRO_TYPES = [
     ('other',      '📍 Sonstiges'),
 ]
 
+_OH_DAYS_EN = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+_OH_DAYS_DE = {'Mo': 'Mo', 'Tu': 'Di', 'We': 'Mi', 'Th': 'Do', 'Fr': 'Fr', 'Sa': 'Sa', 'Su': 'So',
+               'PH': 'Feiertag', 'SH': 'Schulferien'}
+_DE_DAY_WORDS = {'montag': 'Mo', 'dienstag': 'Di', 'mittwoch': 'Mi', 'donnerstag': 'Do', 'freitag': 'Fr',
+                 'samstag': 'Sa', 'sonnabend': 'Sa', 'sonntag': 'So',
+                 'mo': 'Mo', 'di': 'Di', 'mi': 'Mi', 'do': 'Do', 'fr': 'Fr', 'sa': 'Sa', 'so': 'So'}
+_DE_DAYTOK = r'(?:Montags?|Dienstags?|Mittwochs?|Donnerstags?|Freitags?|Samstags?|Sonnabends?|Sonntags?|Mo|Di|Mi|Do|Fr|Sa|So)\.?'
+_DE_DAYLIST = rf'{_DE_DAYTOK}(?:\s*(?:,|\+|&|/|und|bis|-|–)\s*{_DE_DAYTOK})*'
+
+
+@app.template_filter('hours_de')
+def hours_de(text):
+    """Build t: OSM-opening_hours lesbar machen – „Mo-Fr 08:00-18:00; Sa 08:00-13:00; Su off“ →
+    „Mo–Fr 08:00–18:00 · Sa 08:00–13:00 · So geschlossen“. Deutscher Freitext bleibt unverändert."""
+    if not text:
+        return ''
+    out = str(text)
+    out = re.sub(r'\b(Mo|Tu|We|Th|Fr|Sa|Su|PH|SH)\b', lambda m: _OH_DAYS_DE[m.group(1)], out)
+    out = re.sub(r'(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})', r'\1–\2', out)
+    out = re.sub(r'\b(Mo|Di|Mi|Do|Fr|Sa|So)-(Mo|Di|Mi|Do|Fr|Sa|So)\b', r'\1–\2', out)
+    out = re.sub(r'\b(off|closed)\b', 'geschlossen', out)
+    out = out.replace('24/7', 'rund um die Uhr').replace('||', ' oder ')
+    out = re.sub(r'\s*;\s*', ' · ', out)
+    return out.strip(' ·')
+
+
+def _expand_day_range(a, b):
+    ia, ib = _OH_DAYS_EN.index(a), _OH_DAYS_EN.index(b)
+    return _OH_DAYS_EN[ia:ib + 1] if ia <= ib else _OH_DAYS_EN[ia:] + _OH_DAYS_EN[:ib + 1]
+
+
+@app.template_filter('closed_days')
+def closed_days(text):
+    """Build t: Ruhetage als Liste deutscher Kürzel, best effort – aus OSM („Mo off“, „Mo,Tu off“,
+    „Mo-We off“) oder deutschem Freitext („Montag Ruhetag“, „Ruhetag: Mo + Di“, „Di geschlossen“)."""
+    if not text:
+        return []
+    days = []
+    for rule in re.split(r'[;|]+', str(text)):
+        r = rule.strip()
+        if not r:
+            continue
+        m = re.match(r'^((?:(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?)'
+                     r'(?:\s*,\s*(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?)*)\s*(?:,\s*PH\s*)?(?:off|closed)\b', r)
+        if m:
+            for part in re.split(r'\s*,\s*', m.group(1)):
+                if '-' in part:
+                    a, b = part.split('-', 1)
+                    days += [_OH_DAYS_DE[x] for x in _expand_day_range(a, b)]
+                else:
+                    days.append(_OH_DAYS_DE[part])
+            continue
+        found = re.findall(rf'\b({_DE_DAYLIST})\s*(?:ist\s+|=\s*)?(?:Ruhetag|geschlossen|zu)\b', r, re.I) + \
+                re.findall(rf'Ruhetage?\s*:?\s*({_DE_DAYLIST})(?![a-zäöü])', r, re.I)
+        for lst in found:
+            toks = [t.rstrip('.') for t in re.findall(_DE_DAYTOK, lst, re.I)]
+            codes = [_DE_DAY_WORDS.get(t.lower().rstrip('s') if len(t) > 3 else t.lower()) for t in toks]
+            if len(toks) == 2 and re.search(r'\b(bis)\b|[-–]', lst) and codes[0] in _OH_DAYS_DE.values() and codes[1] in _OH_DAYS_DE.values():
+                inv = {v: k for k, v in _OH_DAYS_DE.items() if k in _OH_DAYS_EN}
+                codes = [_OH_DAYS_DE[x] for x in _expand_day_range(inv[codes[0]], inv[codes[1]])]
+            days += [c for c in codes if c]
+    seen = []
+    for d in days:
+        if d and d not in seen:
+            seen.append(d)
+    return seen
+
+
+def _gastro_form_vals(spot=None, form=None):
+    """Build t: Formularwerte – aus dem Eintrag (Bearbeiten) oder aus der fehlgeschlagenen Eingabe
+    (vorher gingen bei einer Fehlermeldung alle eingegebenen Werte verloren)."""
+    keys = ('name', 'spot_type', 'address', 'opens_at', 'closes_at', 'hours_text', 'phone', 'website',
+            'notes', 'osm_id', 'lat', 'lng')
+    if form is not None:
+        vals = {k: (form.get(k) or '') for k in keys}
+    elif spot is not None:
+        vals = {k: (getattr(spot, k, None) or '') for k in keys}
+        vals['lat'] = f'{spot.lat:.6f}'
+        vals['lng'] = f'{spot.lng:.6f}'
+    else:
+        vals = {k: '' for k in keys}
+        vals['spot_type'] = 'cafe'
+    return vals
+
+
+def _gastro_match_known(cands, name, lat, lng, osm_id=None):
+    """Build t/u: Passenden vorhandenen Eintrag aus cands finden – gleiche OSM-Verknüpfung, Punkt
+    näher als 25 m oder gleicher Name im Umkreis von 100 m. Rückgabe (Eintrag, Grund) oder (None, None)."""
+    if osm_id:
+        for c in cands:
+            if c.osm_id and c.osm_id == osm_id:
+                return c, 'gleicher OpenStreetMap-Eintrag'
+    if lat is None or lng is None:
+        return None, None
+    norm = re.sub(r'\W+', '', (name or '').lower())
+    best = None
+    for c in cands:
+        dist = _geo_dist_m(lat, lng, c.lat, c.lng)
+        if dist <= 25:
+            return c, f'liegt nur {int(dist)} m entfernt'
+        if norm and dist <= 100 and re.sub(r'\W+', '', (c.name or '').lower()) == norm:
+            if best is None or dist < best[1]:
+                best = (c, dist)
+    if best:
+        return best[0], f'gleicher Name, {int(best[1])} m entfernt'
+    return None, None
+
+
+def _gastro_find_duplicate(name, lat, lng, osm_id=None, exclude_id=None):
+    """Build t: Gibt (Eintrag, Grund) zurück, wenn es den Ort schon gibt; sonst (None, None)."""
+    q = GastroSpot.query
+    if exclude_id:
+        q = q.filter(GastroSpot.id != exclude_id)
+    flt = []
+    if osm_id:
+        flt.append(GastroSpot.osm_id == osm_id)
+    if lat is not None and lng is not None:
+        flt.append(db.and_(GastroSpot.lat.between(lat - 0.002, lat + 0.002),
+                           GastroSpot.lng.between(lng - 0.004, lng + 0.004)))
+    if not flt:
+        return None, None
+    return _gastro_match_known(q.filter(db.or_(*flt)).all(), name, lat, lng, osm_id)
+
+
+OSM_KIND_TO_TYPE = {'cafe': 'cafe', 'ice_cream': 'cafe', 'bar': 'kneipe', 'pub': 'kneipe', 'biergarten': 'kneipe',
+                    'restaurant': 'restaurant', 'fast_food': 'imbiss', 'bakery': 'baeckerei', 'pastry': 'baeckerei'}
+OSM_KIND_LABEL = {'cafe': 'Café', 'bar': 'Bar', 'pub': 'Kneipe', 'restaurant': 'Restaurant', 'biergarten': 'Biergarten',
+                  'fast_food': 'Imbiss', 'bakery': 'Bäckerei', 'pastry': 'Konditorei', 'ice_cream': 'Eisdiele'}
+
+
+def _simplify_track(points, max_pts=120):
+    """Build u: Track auf höchstens max_pts Stützpunkte reduzieren (Douglas-Peucker, Toleranz wird
+    verdoppelt, bis es passt) – für die Overpass-Polyline „around:r,lat1,lon1,lat2,lon2,…“."""
+    import math
+    pts = [(float(p['lat']), float(p['lng'])) for p in points if p.get('lat') is not None and p.get('lng') is not None]
+    if len(pts) <= max_pts:
+        return pts
+    if len(pts) > 6000:                                   # Vorab ausdünnen, hält die Rechenzeit klein
+        step = len(pts) // 6000 + 1
+        pts = pts[::step] + [pts[-1]]
+    mid = sum(p[0] for p in pts) / len(pts)
+    m_lat, m_lng = 111320.0, 111320.0 * max(0.2, math.cos(math.radians(mid)))
+
+    def rdp(seq, tol):
+        keep = [False] * len(seq)
+        keep[0] = keep[-1] = True
+        stack = [(0, len(seq) - 1)]
+        while stack:
+            a, b = stack.pop()
+            if b <= a + 1:
+                continue
+            ax, ay = seq[a][0] * m_lat, seq[a][1] * m_lng
+            bx, by = seq[b][0] * m_lat, seq[b][1] * m_lng
+            dx, dy = bx - ax, by - ay
+            seg = dx * dx + dy * dy
+            best_d, best_i = -1.0, a
+            for i in range(a + 1, b):
+                px, py = seq[i][0] * m_lat - ax, seq[i][1] * m_lng - ay
+                t = max(0.0, min(1.0, (px * dx + py * dy) / seg)) if seg else 0.0
+                d = math.hypot(px - t * dx, py - t * dy)
+                if d > best_d:
+                    best_d, best_i = d, i
+            if best_d > tol:
+                keep[best_i] = True
+                stack.append((a, best_i))
+                stack.append((best_i, b))
+        return [p for p, k in zip(seq, keep) if k]
+
+    tol = 15.0
+    out = rdp(pts, tol)
+    while len(out) > max_pts and tol < 5000:
+        tol *= 2
+        out = rdp(pts, tol)
+    if len(out) > max_pts:                                # Notnagel: gleichmäßig ausdünnen
+        step = len(out) // max_pts + 1
+        out = out[::step] + [out[-1]]
+    return out
+
+
+def _along_track(points, items, max_m):
+    """Build u: Für dicts mit lat/lng Abstand zum Track (dist_m), Streckenkilometer (km) und Anteil
+    (frac) berechnen; nur Treffer ≤ max_m bleiben, sortiert nach km."""
+    import math
+    step = max(1, len(points) // 3000)
+    pts = points[::step]
+    if len(pts) < 2:
+        return []
+    mid = sum(p['lat'] for p in pts) / len(pts)
+    m_lat, m_lng = 111320.0, 111320.0 * max(0.2, math.cos(math.radians(mid)))
+    cum = [0.0]
+    for a, b in zip(pts, pts[1:]):
+        cum.append(cum[-1] + math.hypot((b['lat'] - a['lat']) * m_lat, (b['lng'] - a['lng']) * m_lng))
+    out = []
+    for it in items:
+        best_d, best_i = 1e12, 0
+        for i, pt in enumerate(pts):
+            d = math.hypot((pt['lat'] - it['lat']) * m_lat, (pt['lng'] - it['lng']) * m_lng)
+            if d < best_d:
+                best_d, best_i = d, i
+        if best_d <= max_m:
+            it = dict(it)
+            it.update({'dist_m': int(round(best_d)), 'km': round(cum[best_i] / 1000, 1),
+                       'frac': best_i / max(1, len(pts) - 1)})
+            out.append(it)
+    out.sort(key=lambda x: (x['km'], x['dist_m']))
+    return out
+
+
+@app.route('/api/touren/<int:tour_id>/osm-gastro')
+@login_required
+def api_tour_osm_gastro(tour_id):
+    """Build u: Gastronomie entlang der GPX-Strecke aus OpenStreetMap (Overpass-Polyline-Suche),
+    mit Streckenkilometer, Abstand, Öffnungszeiten/Ruhetag und Hinweis, ob der Ort schon in der
+    Gastro-Liste steht. Ergebnis je Tour/Radius 30 Minuten gecacht."""
+    tour = _tour_or_404(tour_id)
+    if not tour.gpx_file:
+        return jsonify({'error': 'Diese Tour hat keine GPX-Strecke.'}), 400
+    path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
+    if not os.path.exists(path):
+        return jsonify({'error': 'GPX-Datei nicht gefunden.'}), 404
+    radius = max(50, min(1000, _parse_int(request.args.get('radius')) or 250))
+    try:
+        points = (parse_gpx(path) or {}).get('points') or []
+    except Exception as e:
+        return jsonify({'error': f'GPX nicht lesbar: {e}'}), 400
+    if len(points) < 2:
+        return jsonify({'error': 'Die GPX-Strecke enthält zu wenige Punkte.'}), 400
+    simp = _simplify_track(points, 120)
+    coords = ','.join(f'{la:.5f},{lo:.5f}' for la, lo in simp)
+    ar = f'around:{radius},{coords}'
+    query = (f'[out:json][timeout:25];\n(\n  node[{OVERPASS_AMENITY}]({ar});\n  way[{OVERPASS_AMENITY}]({ar});\n'
+             f'  node[{OVERPASS_SHOP}]({ar});\n  way[{OVERPASS_SHOP}]({ar});\n);\nout center 120;\n')
+    key = ('track', tour.id, int(os.path.getmtime(path)), radius)
+    elements, source, error = _overpass_fetch(query, key, ttl=1800, budget_s=45)
+    if elements is None:
+        return jsonify({'error': f'Overpass nicht erreichbar: {error}', 'query': query}), 502
+    results = _along_track(points, _overpass_elements_to_results(elements), radius + 30)
+    # Schon vorhandene Einträge markieren – alle Kandidaten im Streckenkasten mit einer Abfrage holen
+    known = []
+    if results:
+        lats = [r['lat'] for r in results]; lngs = [r['lng'] for r in results]
+        osm_ids = [r['osm_id'] for r in results if r.get('osm_id')]
+        known = GastroSpot.query.filter(db.or_(
+            GastroSpot.osm_id.in_(osm_ids) if osm_ids else db.false(),
+            db.and_(GastroSpot.lat.between(min(lats) - 0.002, max(lats) + 0.002),
+                    GastroSpot.lng.between(min(lngs) - 0.004, max(lngs) + 0.004)))).all()
+    for r in results:
+        r['app_type'] = OSM_KIND_TO_TYPE.get(r['type'], 'other')
+        r['type_label'] = OSM_KIND_LABEL.get(r['type'], r['type'] or 'Einkehr')
+        r['hours'] = hours_de(r['opening_hours'])
+        r['closed_days'] = closed_days(r['opening_hours'])
+        dup, _reason = _gastro_match_known(known, r['name'], r['lat'], r['lng'], r['osm_id'])
+        if dup:
+            r['known_id'] = dup.id
+            r['known_name'] = dup.name
+            r['known_url'] = url_for('gastro_detail', spot_id=dup.id)
+    return jsonify({'results': results, 'source': source, 'radius': radius, 'track_points': len(simp),
+                    'cached': source == 'cache'})
+
+
+@app.route('/api/gastro/quick-add', methods=['POST'])
+@login_required
+def api_gastro_quick_add():
+    """Build u: OSM-Treffer (Streckensuche) mit einem Klick in die Gastro-Liste übernehmen.
+    Existiert der Ort schon (osm_id / < 25 m / gleicher Name < 100 m), wird der vorhandene Eintrag
+    zurückgegeben statt ein Duplikat anzulegen."""
+    f = request.get_json(silent=True) or {}
+    name = str(f.get('name') or '').strip()[:120]
+    def _num(v):                                           # JSON liefert Zahlen, Formulare Strings
+        try:
+            return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else _parse_float(str(v or ''))
+        except (TypeError, ValueError):
+            return None
+    lat, lng = _num(f.get('lat')), _num(f.get('lng'))
+    if not name or lat is None or lng is None or not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return jsonify({'error': 'Name und Koordinaten fehlen.'}), 400
+    osm_id = str(f.get('osm_id') or '').strip()[:30] or None
+    dup, reason = _gastro_find_duplicate(name, lat, lng, osm_id)
+    if dup:
+        return jsonify({'ok': True, 'existing': True, 'id': dup.id, 'name': dup.name, 'reason': reason,
+                        'url': url_for('gastro_detail', spot_id=dup.id)})
+    kind = str(f.get('type') or '')
+    spot_type = OSM_KIND_TO_TYPE.get(kind) or (kind if kind in dict(GASTRO_TYPES) else 'other')
+    hours = str(f.get('hours_text') or f.get('opening_hours') or '').strip()[:300] or None
+    opens, closes = str(f.get('opens_at') or '').strip(), str(f.get('closes_at') or '').strip()
+    if hours and not (opens and closes):
+        m = re.search(r'(\d{2}:\d{2})-(\d{2}:\d{2})', hours)
+        if m:
+            opens, closes = opens or m.group(1), closes or m.group(2)
+    spot = GastroSpot(
+        name=name, spot_type=spot_type, lat=lat, lng=lng,
+        address=str(f.get('address') or '').strip()[:200] or None,
+        opens_at=opens if re.match(r'^\d{2}:\d{2}$', opens) else None,
+        closes_at=closes if re.match(r'^\d{2}:\d{2}$', closes) else None,
+        hours_text=hours,
+        phone=str(f.get('phone') or '').strip()[:30] or None,
+        website=_clean_url(str(f.get('website') or '')),
+        notes=str(f.get('notes') or '').strip()[:500] or None,
+        osm_id=osm_id, added_by=current_user.id,
+    )
+    db.session.add(spot)
+    db.session.commit()
+    return jsonify({'ok': True, 'existing': False, 'id': spot.id, 'name': spot.name,
+                    'url': url_for('gastro_detail', spot_id=spot.id)})
+
+
+def _gastro_can_edit(spot):
+    """Build s: Eintrag ändern/löschen dürfen Admins, Organisatoren und wer ihn angelegt hat."""
+    return bool(current_user.is_authenticated and
+                (current_user.is_organizer or spot.added_by == current_user.id))
+
+
+def _geo_dist_m(lat1, lng1, lat2, lng2):
+    """Abstand zweier Koordinaten in Metern (äquirektangular – für wenige Kilometer völlig ausreichend)."""
+    import math
+    m_lng = 111320.0 * max(0.2, math.cos(math.radians((lat1 + lat2) / 2)))
+    return math.hypot((lat1 - lat2) * 111320.0, (lng1 - lng2) * m_lng)
+
+
+def _gastro_delete_photo_file(photo):
+    try:
+        path = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], photo.filename)
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError as e:
+        app.logger.warning(f'Gastro-Foto-Datei nicht gelöscht: {e}')
+
+
 @app.route('/gastro/<int:spot_id>/fotos', methods=['POST'])
 @login_required
 def gastro_upload_photo(spot_id):
-    """Foto zu Gastro-Spot hochladen."""
+    """Foto zu Gastro-Spot hochladen (Build s: erstmals in der Detailseite eingebunden)."""
     spot = GastroSpot.query.get_or_404(spot_id)
     f    = request.files.get('photo')
     if not f or not f.filename:
@@ -3583,31 +5121,28 @@ def gastro_upload_photo(spot_id):
     save_path = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], filename)
     f.save(save_path)
     _resize_photo_if_needed(save_path)
-    caption = request.form.get('caption', '').strip() or None
-    photo = GastroPhoto(spot_id=spot_id, user_id=current_user.id,
+    caption = request.form.get('caption', '').strip()[:200] or None
+    photo = GastroPhoto(spot_id=spot.id, user_id=current_user.id,
                         filename=filename, caption=caption)
     db.session.add(photo)
     db.session.commit()
     flash('Foto hochgeladen.', 'success')
-    return redirect(url_for('gastro_detail', spot_id=spot_id))
+    return redirect(url_for('gastro_detail', spot_id=spot_id) + '#fotos')
 
 
 @app.route('/gastro/fotos/<int:photo_id>/loeschen', methods=['POST'])
 @login_required
 def gastro_delete_photo(photo_id):
-    """Gastro-Foto löschen."""
+    """Gastro-Foto löschen (eigenes Foto, Admin/Organisator oder Ersteller des Eintrags)."""
     photo = GastroPhoto.query.get_or_404(photo_id)
-    if not (current_user.is_admin or current_user.is_organizer or
-            photo.user_id == current_user.id):
+    if not (photo.user_id == current_user.id or _gastro_can_edit(photo.spot)):
         abort(403)
-    path = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], photo.filename)
-    if os.path.exists(path):
-        os.remove(path)
+    _gastro_delete_photo_file(photo)
     spot_id = photo.spot_id
     db.session.delete(photo)
     db.session.commit()
     flash('Foto gelöscht.', 'success')
-    return redirect(url_for('gastro_detail', spot_id=spot_id))
+    return redirect(url_for('gastro_detail', spot_id=spot_id) + '#fotos')
 
 
 @app.route('/gastro')
@@ -3630,7 +5165,9 @@ def gastro_list():
 
     spots = GastroSpot.query
     if q:
-        spots = spots.filter(GastroSpot.name.ilike(f'%{q}%'))
+        like = f'%{q}%'                                   # Build s: auch Adresse und Notizen durchsuchen
+        spots = spots.filter(db.or_(GastroSpot.name.ilike(like), GastroSpot.address.ilike(like),
+                                    GastroSpot.notes.ilike(like)))
     if typ:
         spots = spots.filter_by(spot_type=typ)
     if morning_only:
@@ -3639,34 +5176,74 @@ def gastro_list():
             GastroSpot.opens_at <= morning_threshold
         )
     spots = spots.order_by(GastroSpot.name).all()
-    return render_template('gastro/list.html', spots=spots,
+
+    # Build s: Bewertungsschnitt in EINER Abfrage statt je Karte neu (vorher 221 Abfragen bei 30
+    # Einträgen); die Frühöffner-Schwelle liest das Model jetzt einmal je Request (models.morning_threshold)
+    from sqlalchemy import func as _func
+    avg_rows = (db.session.query(GastroReview.spot_id, _func.avg(GastroReview.score))
+                .filter(GastroReview.score != None).group_by(GastroReview.spot_id).all())
+    avgs = {sid: round(float(a), 1) for sid, a in avg_rows if a is not None}
+    for sp in spots:
+        sp._avg_rating = avgs.get(sp.id)
+    # Build t: Kartendaten (Typ-Symbol, Öffnungszeiten, Ruhetage) und Treffpunkt für „nach Entfernung“
+    spots_js = [{'id': sp.id, 'name': sp.name, 'spot_type': sp.spot_type, 'type': sp.type_label,
+                 'lat': sp.lat, 'lng': sp.lng, 'opens': sp.opens_at or '', 'hours': hours_de(sp.hours_text),
+                 'closed': closed_days(sp.hours_text), 'morning': bool(sp.is_morning_friendly),
+                 'address': sp.address or '', 'rating': sp.avg_rating,
+                 'url': url_for('gastro_detail', spot_id=sp.id)} for sp in spots]
+    meeting = None
+    m_lat, m_lng = _parse_float(cfg('default_meeting_lat')), _parse_float(cfg('default_meeting_lng'))
+    if m_lat is not None and m_lng is not None:
+        meeting = {'lat': m_lat, 'lng': m_lng, 'desc': cfg('default_meeting_desc') or 'Treffpunkt'}
+    return render_template('gastro/list.html', spots=spots, spots_js=spots_js, meeting=meeting,
                            gastro_types=GASTRO_TYPES,
                            morning_only=morning_only, typ=typ, q=q,
                            morning_threshold=morning_threshold)
+
+
+def _gastro_fill_from_form(spot):
+    """Build s: Formularfelder in einen Eintrag übernehmen (neu und bearbeiten identisch)."""
+    spot.name      = request.form.get('name', '').strip()[:120]
+    spot.spot_type = request.form.get('spot_type', 'cafe') or 'cafe'
+    spot.address   = request.form.get('address', '').strip()[:200] or None
+    spot.opens_at  = request.form.get('opens_at', '').strip()[:5] or None
+    spot.closes_at = request.form.get('closes_at', '').strip()[:5] or None
+    spot.hours_text = request.form.get('hours_text', '').strip()[:300] or None   # Build t
+    spot.phone     = request.form.get('phone', '').strip()[:30] or None
+    spot.website   = _clean_url(request.form.get('website'))        # Audit 1.4.0: nur http(s)
+    spot.notes     = request.form.get('notes', '').strip() or None
+    osm_id = request.form.get('osm_id', '').strip()[:30]
+    if osm_id:
+        spot.osm_id = osm_id
+    spot.lat = _parse_float(request.form.get('lat'))
+    spot.lng = _parse_float(request.form.get('lng'))
 
 
 @app.route('/gastro/neu', methods=['GET', 'POST'])
 @login_required
 def gastro_new():
     if request.method == 'POST':
-        spot = GastroSpot(
-            name       = request.form.get('name','').strip(),
-            spot_type  = request.form.get('spot_type','cafe'),
-            address    = request.form.get('address','').strip() or None,
-            lat        = float(request.form.get('lat',0)),
-            lng        = float(request.form.get('lng',0)),
-            opens_at   = request.form.get('opens_at','') or None,
-            closes_at  = request.form.get('closes_at','') or None,
-            phone      = request.form.get('phone','').strip() or None,
-            website    = request.form.get('website','').strip() or None,
-            notes      = request.form.get('notes','').strip() or None,
-            added_by   = current_user.id,
-        )
+        spot = GastroSpot(added_by=current_user.id)
+        _gastro_fill_from_form(spot)
+        # Audit 1.4.0: Name/Koordinaten prüfen statt 500 bei leeren Feldern
+        if not spot.name or spot.lat is None or spot.lng is None:
+            flash('Bitte Name angeben und einen Punkt auf der Karte wählen.', 'danger')
+            return render_template('gastro/form.html', spot=None, gastro_types=GASTRO_TYPES,
+                                   vals=_gastro_form_vals(form=request.form))
+        # Build t: Doppelte Einträge vermeiden (gleiche osm_id, gleicher Name < 100 m, Punkt < 25 m)
+        dup, reason = _gastro_find_duplicate(spot.name, spot.lat, spot.lng, spot.osm_id)
+        if dup and not request.form.get('force'):
+            from markupsafe import Markup, escape
+            flash(Markup(f'„{escape(dup.name)}“ ist schon eingetragen ({escape(reason)}) – '
+                         f'<a href="{url_for("gastro_detail", spot_id=dup.id)}" class="alert-link">zum Eintrag</a>. '
+                         f'Ist es wirklich ein anderer Betrieb, unten „Trotzdem anlegen“ anhaken.'), 'warning')
+            return render_template('gastro/form.html', spot=None, gastro_types=GASTRO_TYPES,
+                                   vals=_gastro_form_vals(form=request.form), dup=dup)
         db.session.add(spot)
         db.session.commit()
         flash(f'"{spot.name}" wurde hinzugefügt!', 'success')
         return redirect(url_for('gastro_detail', spot_id=spot.id))
-    return render_template('gastro/form.html', spot=None, gastro_types=GASTRO_TYPES)
+    return render_template('gastro/form.html', spot=None, gastro_types=GASTRO_TYPES, vals=_gastro_form_vals())
 
 
 @app.route('/gastro/<int:spot_id>')
@@ -3676,30 +5253,32 @@ def gastro_detail(spot_id):
     reviews = GastroReview.query.filter_by(spot_id=spot_id).order_by(GastroReview.created_at.desc()).all()
     my_rev  = GastroReview.query.filter_by(spot_id=spot_id, user_id=current_user.id).first()
     photos  = GastroPhoto.query.filter_by(spot_id=spot_id).order_by(GastroPhoto.created_at).all()
-    places_key = cfg('google_places_api_key') or ''
     return render_template('gastro/detail.html', spot=spot,
                            reviews=reviews, my_rev=my_rev,
-                           photos=photos, places_key=places_key)
+                           photos=photos, can_edit=_gastro_can_edit(spot))
 
 
 @app.route('/gastro/<int:spot_id>/bewerten', methods=['POST'])
 @login_required
 def gastro_review(spot_id):
     GastroSpot.query.get_or_404(spot_id)
-    score = request.form.get('score')
+    # Audit 1.4.0: Score nur 1–5, ungültige Werte ignorieren statt 500
+    score = _parse_int(request.form.get('score'))
+    if score is not None and not 1 <= score <= 5:
+        score = None
     emoji = request.form.get('emoji','').strip()
     note  = request.form.get('note','').strip()
 
     existing = GastroReview.query.filter_by(spot_id=spot_id, user_id=current_user.id).first()
     if existing:
-        existing.score = int(score) if score else None
+        existing.score = score
         existing.emoji = emoji or None
         existing.note  = note or None
     else:
         rev = GastroReview(
             spot_id = spot_id,
             user_id = current_user.id,
-            score   = int(score) if score else None,
+            score   = score,
             emoji   = emoji or None,
             note    = note or None,
         )
@@ -3713,8 +5292,12 @@ def gastro_review(spot_id):
 @login_required
 def gastro_delete(spot_id):
     spot = GastroSpot.query.get_or_404(spot_id)
-    if spot.added_by != current_user.id and not current_user.is_admin:
+    if not _gastro_can_edit(spot):
         abort(403)
+    # Build s: Fotos (Dateien + Datensätze) mit entfernen – vorher IntegrityError/500, sobald ein Foto hing
+    for photo in GastroPhoto.query.filter_by(spot_id=spot_id).all():
+        _gastro_delete_photo_file(photo)
+        db.session.delete(photo)
     db.session.delete(spot)
     db.session.commit()
     flash('Eintrag gelöscht.', 'success')
@@ -3724,107 +5307,67 @@ def gastro_delete(spot_id):
 @app.route('/gastro/<int:spot_id>/bearbeiten', methods=['GET', 'POST'])
 @login_required
 def gastro_edit(spot_id):
+    """Build s: Bearbeiten war unerreichbar (kein Link) und das Formular blieb leer – jetzt vorbelegt."""
     spot = GastroSpot.query.get_or_404(spot_id)
-    if spot.added_by != current_user.id and not current_user.is_admin:
+    if not _gastro_can_edit(spot):
         abort(403)
     if request.method == 'POST':
-        spot.name      = request.form.get('name', '').strip()
-        spot.spot_type = request.form.get('spot_type', 'other')
-        spot.address   = request.form.get('address', '').strip() or None
-        spot.opens_at  = request.form.get('opens_at', '').strip() or None
-        spot.closes_at = request.form.get('closes_at', '').strip() or None
-        spot.phone     = request.form.get('phone', '').strip() or None
-        spot.website   = request.form.get('website', '').strip() or None
-        spot.notes     = request.form.get('notes', '').strip() or None
-        try:
-            spot.lat = float(request.form.get('lat'))
-            spot.lng = float(request.form.get('lng'))
-        except (TypeError, ValueError):
-            flash('Ungültige Koordinaten.', 'danger')
-            return render_template('gastro/form.html', spot=spot, gastro_types=GASTRO_TYPES)
-        if not spot.name:
-            flash('Name ist erforderlich.', 'danger')
-            return render_template('gastro/form.html', spot=spot, gastro_types=GASTRO_TYPES)
+        _gastro_fill_from_form(spot)
+        if spot.lat is None or spot.lng is None or not spot.name:
+            db.session.rollback()
+            flash('Ungültige Koordinaten.' if spot.name else 'Name ist erforderlich.', 'danger')
+            return render_template('gastro/form.html', spot=GastroSpot.query.get(spot_id), gastro_types=GASTRO_TYPES,
+                                   vals=_gastro_form_vals(form=request.form))
         db.session.commit()
         flash('Eintrag aktualisiert.', 'success')
         return redirect(url_for('gastro_detail', spot_id=spot.id))
-    return render_template('gastro/form.html', spot=spot, gastro_types=GASTRO_TYPES)
+    return render_template('gastro/form.html', spot=spot, gastro_types=GASTRO_TYPES, vals=_gastro_form_vals(spot=spot))
 
 
-
-@app.route('/api/gastro/<int:spot_id>/places-lookup')
+@app.route('/api/gastro/<int:spot_id>/osm-lookup')
 @login_required
-def gastro_places_lookup(spot_id):
-    """Search Google Places API for a gastro spot and return structured data."""
+def gastro_osm_lookup(spot_id):
+    """Build s: Ersatz für den Google-Places-Abgleich (brauchte einen kostenpflichtigen API-Key und war
+    nie in der Oberfläche eingebunden). Sucht den Eintrag in OpenStreetMap – über die gespeicherte
+    osm_id, sonst im Umkreis von 80 m – und liefert Kandidaten mit Öffnungszeiten, Adresse, Kontakt."""
     spot = GastroSpot.query.get_or_404(spot_id)
-    api_key = cfg('google_places_api_key', '').strip()
-    if not api_key:
-        return jsonify({'error': 'Kein Google Places API-Key konfiguriert.'}), 400
-    try:
-        q = f"{spot.name} {spot.address or ''}".strip()
-        # Text search to get place_id
-        search_resp = http_requests.get(
-            'https://maps.googleapis.com/maps/api/place/textsearch/json',
-            params={'query': q, 'location': f'{spot.lat},{spot.lng}',
-                    'radius': 500, 'language': 'de', 'key': api_key},
-            timeout=10
-        )
-        search_data = search_resp.json()
-        if not search_data.get('results'):
-            return jsonify({'results': []})
-        # Get details for top 3 results
-        results = []
-        for place in search_data['results'][:3]:
-            pid = place.get('place_id')
-            det = http_requests.get(
-                'https://maps.googleapis.com/maps/api/place/details/json',
-                params={'place_id': pid, 'language': 'de',
-                        'fields': 'name,formatted_address,formatted_phone_number,website,opening_hours,geometry',
-                        'key': api_key},
-                timeout=10
-            ).json().get('result', {})
-            oh = det.get('opening_hours', {})
-            opens_at = closes_at = None
-            if oh.get('periods'):
-                for p in oh['periods']:
-                    if p.get('open', {}).get('day') == 1:  # Monday as reference
-                        opens_at  = p['open'].get('time', '')[:2] + ':' + p['open'].get('time', '')[2:]
-                        closes_at = p.get('close', {}).get('time', '')
-                        if closes_at:
-                            closes_at = closes_at[:2] + ':' + closes_at[2:]
-                        break
-            results.append({
-                'name':     det.get('name', place.get('name', '')),
-                'address':  det.get('formatted_address', ''),
-                'phone':    det.get('formatted_phone_number', ''),
-                'website':  det.get('website', ''),
-                'opens_at':  opens_at or '',
-                'closes_at': closes_at or '',
-                'weekday_text': oh.get('weekday_text', []),
-            })
-        return jsonify({'results': results})
-    except Exception as e:
-        app.logger.error(f'Google Places error: {e}')
-        return jsonify({'error': str(e)}), 502
+    m = re.match(r'^(node|way|relation)/(\d+)$', spot.osm_id or '')
+    elements, source, error, query = None, None, None, None
+    if m:
+        query = f'[out:json][timeout:15];{m.group(1)}({m.group(2)});out center tags;'
+        elements, source, error = _overpass_fetch(query, ('osm', spot.osm_id))
+    if not elements:                                      # keine osm_id oder Objekt in OSM gelöscht
+        query = _overpass_gastro_query_around(spot.lat, spot.lng, 80)
+        elements, source, error = _overpass_fetch(query, ('near', round(spot.lat, 5), round(spot.lng, 5)))
+    if elements is None:
+        return jsonify({'error': f'Overpass nicht erreichbar: {error}', 'query': query}), 502
+    results = _overpass_elements_to_results(elements)
+    for r in results:
+        r['distance_m'] = int(round(_geo_dist_m(spot.lat, spot.lng, r['lat'], r['lng'])))
+    results.sort(key=lambda r: r['distance_m'])
+    return jsonify({'results': results[:5], 'source': source})
 
 
 @app.route('/gastro/<int:spot_id>/import', methods=['POST'])
 @login_required
 def gastro_import(spot_id):
-    """Import selected fields from external lookup into the gastro spot."""
+    """Ausgewählte Felder aus dem OSM-Abgleich (JSON) in den Eintrag übernehmen."""
     spot = GastroSpot.query.get_or_404(spot_id)
-    if spot.added_by != current_user.id and not current_user.is_admin:
+    if not _gastro_can_edit(spot):
         abort(403)
-    fields = request.json or {}
-    if 'name'      in fields and fields['name']:     spot.name     = fields['name']
-    if 'address'   in fields and fields['address']:  spot.address  = fields['address']
-    if 'phone'     in fields and fields['phone']:    spot.phone    = fields['phone']
-    if 'website'   in fields and fields['website']:  spot.website  = fields['website']
-    if 'opens_at'  in fields and fields['opens_at']: spot.opens_at = fields['opens_at']
-    if 'closes_at' in fields and fields['closes_at']:spot.closes_at= fields['closes_at']
+    fields = request.get_json(silent=True) or {}   # Audit 1.4.0: kein 415 bei fehlendem Content-Type
+    if fields.get('name'):      spot.name      = str(fields['name'])[:120]
+    if fields.get('address'):   spot.address   = str(fields['address'])[:200]
+    if fields.get('phone'):     spot.phone     = str(fields['phone'])[:30]
+    if fields.get('website'):   spot.website   = _clean_url(str(fields['website']))
+    if fields.get('osm_id'):    spot.osm_id    = str(fields['osm_id'])[:30]
+    if fields.get('hours_text'): spot.hours_text = str(fields['hours_text'])[:300]   # Build t
+    for key in ('opens_at', 'closes_at'):
+        val = str(fields.get(key) or '').strip()
+        if re.match(r'^\d{2}:\d{2}$', val):
+            setattr(spot, key, val)
     db.session.commit()
     return jsonify({'ok': True})
-
 
 
 @app.route('/touren/<int:tour_id>/videos', methods=['POST'])
@@ -3889,7 +5432,13 @@ def tour_upload_video(tour_id):
                     app.logger.info('Faststart applied')
                 else:
                     app.logger.warning('Faststart failed: ' + _result.stderr.decode()[:200])
+                    # Audit 1.4.0: halbfertige Temp-Datei nicht liegen lassen
+                    try:
+                        os.remove(_faststart_path)
+                    except Exception:
+                        pass
         except Exception as _fe:
+            # Audit 1.4.0: vorher NameError ('subprocess' fehlte) → Faststart lief nie
             app.logger.warning(f'Faststart skipped: {_fe}')
 
         if filesize > max_video:
@@ -3920,7 +5469,7 @@ def tour_upload_video(tour_id):
 def tour_delete_video(video_id):
     """Video löschen."""
     video = TourVideo.query.get_or_404(video_id)
-    tour  = Tour.query.get(video.tour_id)
+    tour  = _tour_or_404(video.tour_id)   # Audit 1.4.0: Gruppen-Check
     if not (current_user.is_admin or current_user.is_organizer
             or video.user_id == current_user.id
             or (tour and tour.created_by == current_user.id)):
@@ -3987,11 +5536,18 @@ def poi_list():
 @login_required
 def poi_new():
     if request.method == 'POST':
+        # Audit 1.4.0: Name/Koordinaten prüfen statt 500 bei leeren Feldern
+        name = request.form.get('name', '').strip()
+        lat  = _parse_float(request.form.get('lat'))
+        lng  = _parse_float(request.form.get('lng'))
+        if not name or lat is None or lng is None:
+            flash('Bitte Name angeben und einen Punkt auf der Karte wählen.', 'danger')
+            return render_template('orte/form.html', poi=None, poi_categories=POI_CATEGORIES)
         poi = POI(
-            name        = request.form.get('name','').strip(),
+            name        = name,
             category    = request.form.get('category','pausenort'),
-            lat         = float(request.form.get('lat', 0)),
-            lng         = float(request.form.get('lng', 0)),
+            lat         = lat,
+            lng         = lng,
             description = request.form.get('description','').strip() or None,
             is_shared   = request.form.get('is_shared','1') == '1',
             added_by    = current_user.id,
@@ -4029,13 +5585,13 @@ def global_map():
         Tour.meeting_lat != None
     ).filter(Tour.tour_date!=None).order_by(Tour.tour_date.desc()).limit(30).all()
 
-    pois_json   = json.dumps([{
+    pois_json   = _json_for_script([{
         'id': p.id, 'name': p.name, 'cat': p.category,
         'icon': p.category_icon, 'label': p.category_label,
         'lat': p.lat, 'lng': p.lng, 'desc': p.description or ''
     } for p in pois])
 
-    gastro_json = json.dumps([{
+    gastro_json = _json_for_script([{
         'id': g.id, 'name': g.name, 'type': g.type_label,
         'lat': g.lat, 'lng': g.lng,
         'opens': g.opens_at or '', 'closes': g.closes_at or '',
@@ -4044,7 +5600,7 @@ def global_map():
         'notes': g.notes or ''
     } for g in gastro])
 
-    meetings_json = json.dumps([{
+    meetings_json = _json_for_script([{
         'id': t.id, 'title': t.title,
         'lat': t.meeting_lat, 'lng': t.meeting_lng,
         'desc': t.meeting_desc or '',
@@ -4226,79 +5782,147 @@ def api_wetter_verlauf():
 
 # ─── Phase 2: Overpass API proxy (Gastro entlang Route) ──────────────────────
 
+OVERPASS_ENDPOINTS = [            # Build r: Reihenfolge nach Verlässlichkeit (Stand 2026); kumi.systems ist oft nicht erreichbar
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+]
+_overpass_cache: dict = {}        # Cache-Schlüssel → (Zeitstempel, Overpass-Elemente); entlastet die Server, weniger Rate-Limits
+OVERPASS_AMENITY = '"amenity"~"^(cafe|bar|pub|restaurant|fast_food|biergarten|ice_cream)$"'
+OVERPASS_SHOP    = '"shop"~"^(bakery|pastry|ice_cream)$"'
+
+
+def _osm_user_agent():
+    """Build r: Eindeutiger User-Agent für OSM-Dienste. overpass-api.de lehnt seit April 2026 Anfragen
+    ohne identifizierenden User-Agent mit „406 Not Acceptable“ ab (python-requests meldet sich nur
+    als „python-requests/x.y“); Browser-Kennungen zu imitieren verbietet die Nutzungsordnung."""
+    try:
+        host = request.host_url.rstrip('/')
+    except Exception:
+        host = 'https://djo.wulmstorf.net'
+    return f'DeJungenOlen/{APP_VERSION} (+{host}; Radgruppen-App, Gastro-Suche)'
+
+
+def _overpass_gastro_query(s, w, n, e):
+    """Overpass-QL für Gastronomie im Kartenausschnitt – Build r: zusätzlich Bäckereien/Konditoreien
+    und Eisdielen (shop=bakery|pastry|ice_cream, amenity=ice_cream); „bakery“ war vorher fälschlich
+    als amenity abgefragt und fand nie etwas."""
+    bbox = f'{s},{w},{n},{e}'
+    return (f'[out:json][timeout:15];\n(\n  node[{OVERPASS_AMENITY}]({bbox});\n  way[{OVERPASS_AMENITY}]({bbox});\n'
+            f'  node[{OVERPASS_SHOP}]({bbox});\n  way[{OVERPASS_SHOP}]({bbox});\n);\nout center 80;\n')
+
+
+def _overpass_gastro_query_around(lat, lng, radius_m, limit=20):
+    """Build s: Gastronomie im Umkreis eines Punktes (für den OSM-Abgleich eines Eintrags)."""
+    ar = f'around:{int(radius_m)},{lat:.6f},{lng:.6f}'
+    return (f'[out:json][timeout:15];\n(\n  node[{OVERPASS_AMENITY}]({ar});\n  way[{OVERPASS_AMENITY}]({ar});\n'
+            f'  node[{OVERPASS_SHOP}]({ar});\n  way[{OVERPASS_SHOP}]({ar});\n);\nout center {int(limit)};\n')
+
+
+def _overpass_elements_to_results(elements):
+    """Overpass-Elemente → kompakte Trefferliste (Name, Art, Position, Öffnungszeiten, Kontakt, Adresse).
+    osm_id im OSM-Format „node/123“ (Build s), damit ein Eintrag später eindeutig wiedergefunden wird."""
+    results = []
+    for el in elements or []:
+        tags = el.get('tags', {}) or {}
+        lat = el.get('lat') or (el.get('center') or {}).get('lat')
+        lng = el.get('lon') or (el.get('center') or {}).get('lon')
+        if not lat or not lng:
+            continue
+        kind = tags.get('amenity') or tags.get('shop') or ''
+        street = ' '.join(x for x in (tags.get('addr:street'), tags.get('addr:housenumber')) if x)
+        city = ' '.join(x for x in (tags.get('addr:postcode'), tags.get('addr:city')) if x)
+        results.append({
+            'osm_id':  f"{el.get('type', 'node')}/{el.get('id', '')}",
+            'name':    tags.get('name') or kind or 'Unbekannt',
+            'type':    kind,
+            'lat':     lat,
+            'lng':     lng,
+            'opening_hours': tags.get('opening_hours', ''),
+            'phone':   tags.get('phone') or tags.get('contact:phone') or '',
+            'website': tags.get('website') or tags.get('contact:website') or '',
+            'address': ', '.join(x for x in (street, city) if x),
+        })
+    return results
+
+
+def _overpass_fetch(query, cache_key=None, ttl=600, budget_s=40):
+    """Build r/s: Overpass-Abfrage mit identifizierendem User-Agent, Ausweich-Servern (12 s je Server,
+    Gesamtbudget budget_s, damit Passenger nicht abbricht) und kleinem In-Memory-Cache.
+    Rückgabe (elements, quelle, fehler) – elements ist None, wenn kein Server geantwortet hat."""
+    now = _time.time()
+    if cache_key is not None:
+        hit = _overpass_cache.get(cache_key)
+        if hit and now - hit[0] < ttl:
+            return hit[1], 'cache', None
+    headers = {'User-Agent': _osm_user_agent(), 'Accept': 'application/json',
+               'Referer': request.host_url if request else ''}
+    status_hint = {406: 'Anfrage abgelehnt (406, User-Agent)', 429: 'zu viele Anfragen (429)',
+                   504: 'Server überlastet (504)', 403: 'Zugriff verweigert (403)',
+                   400: 'Abfrage abgelehnt (400)'}
+    last_error = 'Unbekannter Fehler'
+    deadline = now + budget_s
+    for endpoint in OVERPASS_ENDPOINTS:
+        if _time.time() > deadline:
+            break
+        host = endpoint.split('/')[2]
+        try:
+            resp = http_requests.post(endpoint, data={'data': query}, headers=headers, timeout=12)
+            if resp.status_code != 200:
+                last_error = f'{status_hint.get(resp.status_code, "HTTP " + str(resp.status_code))} bei {host}'
+                app.logger.warning(f'Overpass {endpoint} -> {resp.status_code}: {(resp.text or "")[:200]!r}')
+                if resp.status_code == 400:               # Syntaxfehler – andere Server antworten gleich
+                    break
+                continue
+            try:
+                data = resp.json()
+            except ValueError:
+                last_error = f'kein JSON von {host}'
+                app.logger.error(f'Overpass JSON-Fehler ({endpoint}): {(resp.text or "")[:200]!r}')
+                continue
+            elements = data.get('elements') or []
+            if cache_key is not None:
+                if len(_overpass_cache) > 200:            # Cache klein halten
+                    for old in sorted(_overpass_cache, key=lambda k: _overpass_cache[k][0])[:100]:
+                        _overpass_cache.pop(old, None)
+                _overpass_cache[cache_key] = (_time.time(), elements)
+            return elements, host, None
+        except http_requests.exceptions.Timeout:
+            last_error = f'Zeitüberschreitung bei {host}'
+            app.logger.warning(last_error)
+        except Exception as ex:
+            last_error = f'{host}: {ex.__class__.__name__}'
+            app.logger.error(f'Overpass error ({endpoint}): {ex}')
+    return None, None, last_error
+
+
 @app.route('/api/overpass-gastro')
 @login_required
 def api_overpass_gastro():
-    """Search OSM for amenities in a bounding box."""
+    """Search OSM for amenities in a bounding box (Proxy für die Gastro-Suche „OSM-Gebiet“).
+    Build r: identifizierender User-Agent (sonst 406), Ausweich-Server, Cache, sprechende Fehlertexte;
+    bei Fehlern wird die Abfrage mitgeliefert, damit der Browser sie direkt an overpass-api.de stellen
+    kann (eigene IP, eigener Referer – hilft, wenn die Hosting-IP im Rate-Limit steckt)."""
     try:
         s = float(request.args.get('s'))
         w = float(request.args.get('w'))
         n = float(request.args.get('n'))
         e = float(request.args.get('e'))
     except (TypeError, ValueError):
-        return jsonify({'error': 'invalid bbox'}), 400
+        return jsonify({'error': 'Ungültiger Kartenausschnitt.'}), 400
 
     # Limit bbox size – at zoom 13+ the span stays well below 0.15°
     if (n - s) > 0.5 or (e - w) > 0.5:
-        return jsonify({'error': 'bbox too large'}), 400
+        return jsonify({'error': 'Kartenausschnitt zu groß – bitte näher heranzoomen.', 'zoom_in': True}), 400
 
-    query = f"""
-[out:json][timeout:15];
-(
-  node["amenity"~"cafe|bar|pub|restaurant|fast_food|bakery|biergarten"]
-      ({s},{w},{n},{e});
-  way["amenity"~"cafe|bar|pub|restaurant|fast_food|bakery|biergarten"]
-      ({s},{w},{n},{e});
-);
-out center 60;
-"""
-    OVERPASS_ENDPOINTS = [
-        'https://overpass-api.de/api/interpreter',
-        'https://overpass.kumi.systems/api/interpreter',
-    ]
-    last_error = 'Unbekannter Fehler'
-    for endpoint in OVERPASS_ENDPOINTS:
-        try:
-            resp = http_requests.post(endpoint, data={'data': query}, timeout=20)
-            if resp.status_code != 200:
-                last_error = f'HTTP {resp.status_code}'
-                app.logger.warning(f'Overpass {endpoint} -> {resp.status_code}')
-                continue
-            try:
-                data = resp.json()
-            except ValueError:
-                preview = resp.text[:200] if resp.text else '(leer)'
-                last_error = f'Kein JSON: {preview}'
-                app.logger.error(f'Overpass JSON-Fehler ({endpoint}): {preview}')
-                continue
-            results = []
-            for el in data.get('elements', []):
-                tags = el.get('tags', {})
-                lat  = el.get('lat') or el.get('center', {}).get('lat')
-                lng  = el.get('lon') or el.get('center', {}).get('lon')
-                if not lat or not lng:
-                    continue
-                name = tags.get('name') or tags.get('amenity', 'Unbekannt')
-                results.append({
-                    'osm_id':  str(el.get('id', '')),
-                    'name':    name,
-                    'type':    tags.get('amenity', ''),
-                    'lat':     lat,
-                    'lng':     lng,
-                    'opening_hours': tags.get('opening_hours', ''),
-                    'phone':   tags.get('phone', ''),
-                    'website': tags.get('website', ''),
-                })
-            return jsonify({'results': results})
-        except http_requests.exceptions.Timeout:
-            last_error = f'Timeout bei {endpoint}'
-            app.logger.warning(last_error)
-            continue
-        except Exception as e:
-            last_error = str(e)
-            app.logger.error(f'Overpass error ({endpoint}): {e}')
-            continue
-    return jsonify({'error': f'Overpass nicht erreichbar: {last_error}'}), 502
+    query = _overpass_gastro_query(s, w, n, e)
+    key = ('bbox', round(s, 3), round(w, 3), round(n, 3), round(e, 3))
+    elements, source, error = _overpass_fetch(query, key)
+    if elements is None:
+        return jsonify({'error': f'Overpass nicht erreichbar: {error}', 'query': query}), 502
+    return jsonify({'results': _overpass_elements_to_results(elements), 'source': source,
+                    'cached': source == 'cache'})
 
 
 # ─── Phase 2: Telegram reminder CLI ──────────────────────────────────────────
@@ -4335,7 +5959,12 @@ def send_reminders():
 def tour_comment(tour_id):
     tour = _tour_or_404(tour_id)
     content   = request.form.get('content','').strip()
-    parent_id = request.form.get('parent_id') or None
+    # Audit 1.4.0: parent_id muss eine Zahl sein und zu einem Kommentar dieser Tour gehören
+    parent_id = _parse_int(request.form.get('parent_id'))
+    if parent_id is not None:
+        parent = TourComment.query.get(parent_id)
+        if not parent or parent.tour_id != tour_id:
+            parent_id = None
     if not content:
         flash('Kommentar darf nicht leer sein.', 'warning')
         return redirect(url_for('tour_detail', tour_id=tour_id))
@@ -4344,7 +5973,7 @@ def tour_comment(tour_id):
         tour_id   = tour_id,
         user_id   = current_user.id,
         content   = content,
-        parent_id = int(parent_id) if parent_id else None
+        parent_id = parent_id
     )
     db.session.add(comment)
     db.session.commit()
@@ -5396,7 +7025,7 @@ def _can_edit_photo(photo, tour=None):
 @login_required
 def photo_delete(photo_id):
     photo = TourPhoto.query.get_or_404(photo_id)
-    tour  = Tour.query.get(photo.tour_id)
+    tour  = _photo_tour_or_404(photo)   # Audit 1.4.0: Gruppen-Check
     if not _can_edit_photo(photo, tour):
         abort(403)
     tour_id = photo.tour_id
@@ -5467,7 +7096,7 @@ def photo_reorder(tour_id):
 def photo_set_gps(photo_id):
     """Manually set or correct GPS for a photo."""
     photo = TourPhoto.query.get_or_404(photo_id)
-    tour  = Tour.query.get(photo.tour_id)
+    tour  = _photo_tour_or_404(photo)   # Audit 1.4.0: Gruppen-Check
     if not _can_edit_photo(photo, tour):
         abort(403)
     try:
@@ -5490,7 +7119,7 @@ def photo_set_gps(photo_id):
 def photo_clear_gps(photo_id):
     """Remove GPS coords from a photo."""
     photo = TourPhoto.query.get_or_404(photo_id)
-    tour  = Tour.query.get(photo.tour_id)
+    tour  = _photo_tour_or_404(photo)   # Audit 1.4.0: Gruppen-Check
     if not _can_edit_photo(photo, tour):
         abort(403)
     photo.lat = None
@@ -5524,9 +7153,12 @@ def avatar_upload():
 
     # Resize to max 256×256 to save space
     try:
-        from PIL import Image as PILImage
+        from PIL import Image as PILImage, ImageOps
         img = PILImage.open(f)
+        img = ImageOps.exif_transpose(img)      # Build f: Handy-Fotos richtig drehen (EXIF geht beim Speichern verloren)
         img.thumbnail((256, 256))
+        if ext in ('jpg', 'jpeg') and img.mode not in ('RGB', 'L'):
+            img = img.convert('RGB')
         img.save(path, optimize=True)
     except Exception:
         f.seek(0)
@@ -5565,7 +7197,6 @@ def admin_settings():
             'default_start_time', 'default_meeting_desc',
             'default_meeting_lat', 'default_meeting_lng',
             'morning_opener_until', 'site_name', 'base_url',
-            'google_places_api_key',
         ]
         for key in keys:
             val = request.form.get(key, '').strip()
@@ -5678,6 +7309,7 @@ def admin_reset_pw(user_id):
 def api_reextract_gps(photo_id):
     """Re-run EXIF extraction on a saved photo. Returns JSON."""
     photo = TourPhoto.query.get_or_404(photo_id)
+    _photo_tour_or_404(photo)   # Audit 1.4.0: Gruppen-Check
     if photo.user_id != current_user.id and not current_user.is_admin:
         abort(403)
     path = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], photo.filename)
@@ -6089,6 +7721,7 @@ def group_delete(group_id):
                         os.remove(os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file))
                     except Exception:
                         pass
+                _delete_tour_dependents(tour.id)   # Audit 1.4.0
                 db.session.delete(tour)
             # Alle Mitglieder der Gruppe löschen (außer dem aktuell eingeloggten Super-Admin)
             for user in group.users.all():
@@ -6164,6 +7797,7 @@ def migrate_db():
 
     # users table – new columns added over time
     add_column('users', 'last_login', 'DATETIME')
+    add_column('gastro_spots', 'hours_text', 'VARCHAR(300)')   # Build t: Öffnungszeiten-Text / Ruhetage
 
     # Push Subscriptions
     try:
@@ -6192,26 +7826,28 @@ def migrate_db():
     add_column('users', 'birthday',  'DATE')
 
     # ── Multi-Tenancy: Gruppen ────────────────────────────────────────────────
-    # groups-Tabelle
+    # groups-Tabelle (Audit 1.4.0: eigene Verbindung – vorher wurde die bereits
+    # geschlossene `conn` aus dem with-Block oben benutzt → Block lief nie durch)
     try:
-        conn.execute(text('''CREATE TABLE IF NOT EXISTS groups (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            slug        TEXT UNIQUE NOT NULL,
-            name        TEXT NOT NULL,
-            description TEXT,
-            logo        TEXT,
-            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-            is_active   INTEGER DEFAULT 1
-        )'''))
-        # Bestehende Installation: Standard-Gruppe aus SiteConfig erstellen
-        row = conn.execute(text("SELECT value FROM site_config WHERE key='group_name'")).fetchone()
-        group_name = row[0] if row else 'De jungen Olen'
-        exists = conn.execute(text("SELECT id FROM groups LIMIT 1")).fetchone()
-        if not exists:
-            conn.execute(text(
-                "INSERT INTO groups (slug, name) VALUES (:slug, :name)"
-            ), {'slug': 'default', 'name': group_name})
-        conn.commit()
+        with db.engine.connect() as conn:
+            conn.execute(text('''CREATE TABLE IF NOT EXISTS groups (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug        TEXT UNIQUE NOT NULL,
+                name        TEXT NOT NULL,
+                description TEXT,
+                logo        TEXT,
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_active   INTEGER DEFAULT 1
+            )'''))
+            # Bestehende Installation: Standard-Gruppe aus SiteConfig erstellen
+            row = conn.execute(text("SELECT value FROM site_config WHERE key='group_name'")).fetchone()
+            group_name = row[0] if row else 'De jungen Olen'
+            exists = conn.execute(text("SELECT id FROM groups LIMIT 1")).fetchone()
+            if not exists:
+                conn.execute(text(
+                    "INSERT INTO groups (slug, name) VALUES (:slug, :name)"
+                ), {'slug': 'default', 'name': group_name})
+            conn.commit()
     except Exception as e:
         app.logger.info(f'groups table: {e}')
 
@@ -6272,6 +7908,7 @@ def migrate_db():
     add_column('users', 'morning_opener_until', 'VARCHAR(5)')
     add_column('tours', 'approx_km',      'FLOAT')
     add_column('tours', 'external_link',  'VARCHAR(500)')
+    add_column('tours', 'weather_json',   'TEXT')          # Build q: Wetter-Cache für den Tourtag
     add_column('invite_tokens', 'label',  'VARCHAR(100)')
 
     # gastro_photos Tabelle
@@ -6375,6 +8012,10 @@ def load_group_context():
     if current_user.is_authenticated:
         from flask import session as _sess
         gid = _sess.get('active_group_id') or getattr(current_user, 'group_id', None)
+        # Audit 1.4.0: Gruppenwechsel per Session nur für Admins – andere bleiben in
+        # ihrer eigenen Gruppe, auch wenn die Session einen anderen Wert enthält.
+        if gid and not current_user.is_admin and current_user.group_id:
+            gid = current_user.group_id
         if gid:
             _g.group = Group.query.get(gid)
         if not _g.group and current_user.group_id:
@@ -6574,21 +8215,9 @@ def datenschutz():
 @login_required
 def datenschutz_delete_account():
     """GDPR: user deletes own account and all personal data."""
-    user = current_user
-    # Delete avatar
-    if user.avatar:
-        path = os.path.join(app.config['UPLOAD_FOLDER_AVATARS'], user.avatar)
-        if os.path.exists(path):
-            os.remove(path)
+    user = User.query.get_or_404(current_user.id)
     # Anonymize instead of hard-delete (keep tour participation count intact)
-    user.name         = f'Gelöschter Nutzer {user.id}'
-    user.nickname     = None
-    user.email        = f'deleted_{user.id}@deleted.local'
-    user.password_hash = secrets.token_hex(32)
-    user.is_active    = False
-    user.avatar       = None
-    user.bio          = None
-    user.birthday     = None
+    _anonymize_user(user)
     db.session.commit()
     logout_user()
     flash('Dein Konto und deine persönlichen Daten wurden gelöscht.', 'success')
@@ -6704,7 +8333,10 @@ def tour_ical(tour_id):
 
     # Build iCal manually – no extra lib needed
     start_time = tour.start_time or '09:00'
-    hh, mm     = map(int, start_time.split(':'))
+    # Audit 1.4.0: freie Eingaben wie "9 Uhr" nicht mit 500 quittieren
+    m_time = re.match(r'^\s*(\d{1,2})(?::(\d{2}))?', start_time)
+    hh = min(int(m_time.group(1)), 23) if m_time else 9
+    mm = min(int(m_time.group(2) or 0), 59) if m_time else 0
     dt_start   = f"{tour.tour_date.strftime('%Y%m%d') if tour.tour_date else '20000101'}T{hh:02d}{mm:02d}00"
     dt_end     = f"{tour.tour_date.strftime('%Y%m%d') if tour.tour_date else '20000101'}T{min(hh+4,23):02d}{mm:02d}00"
     dt_stamp   = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
@@ -6783,7 +8415,13 @@ def foto_challenge():
     # Recent photos from this month for the challenge
     from datetime import timedelta
     month_start = date.today().replace(day=1)
-    recent_photos = (TourPhoto.query
+    # Audit 1.4.0: nur Fotos aus Touren der aktiven Gruppe (Mandanten-Trennung)
+    from flask import g as _g
+    _grp = getattr(_g, 'group', None)
+    photo_q = TourPhoto.query.join(Tour, TourPhoto.tour_id == Tour.id)
+    if _grp:
+        photo_q = photo_q.filter(Tour.group_id == _grp.id)
+    recent_photos = (photo_q
                      .filter(TourPhoto.created_at >= month_start)
                      .order_by(TourPhoto.created_at.desc())
                      .limit(24).all())
@@ -7103,7 +8741,7 @@ def server_error(e):
 # SETUP_KEY wird in der .env-Datei gesetzt.
 # Die Route ist dauerhaft deaktiviert sobald ein Admin-Konto existiert.
 
-@app.route('/setup', methods=['GET'])
+@app.route('/setup', methods=['GET', 'POST'])   # Audit 1.4.0: POST fehlte → Formular ohne SETUP_KEY lief auf 405
 @app.route('/setup/<path:key>', methods=['GET', 'POST'])
 def setup_wizard(key=''):
     """Web-basierte Ersteinrichtung ohne Shell-Zugriff."""
