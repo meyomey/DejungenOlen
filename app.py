@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 ai'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 aj'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -1824,6 +1824,47 @@ def _tour_timed_points(tour, user_id=None):
     return _tour_timed_source(tour, user_id)[0]
 
 
+# ── Build aj: Pausen-Erkennung aus den GPX-Zeitstempeln ───────────────────────
+PAUSE_MIN_S     = 180   # kürzer als 3 min stehen = keine Pause
+PAUSE_SPEED_MPS = 1.0   # unter 1 m/s (3,6 km/h) gilt als stehen – wie gpxpy bei der Fahrzeit
+
+def _gpx_pauses(timed_points, min_s=PAUSE_MIN_S, speed_mps=PAUSE_SPEED_MPS):
+    """Pausen aus Zeitstempel-Punkten [(unix_ts, lat, lng), …] ermitteln.
+    Liefert [(start_ts, end_ts, dauer_s), …]. Als Pause zählt Stehen (unter speed_mps)
+    oder eine Lücke (Gerät aus), sobald sie ≥ min_s andauert; Bewegung unterbricht.
+    [] ohne Zeitstempel."""
+    if not timed_points or len(timed_points) < 2:
+        return []
+    pauses = []
+    start = None
+    prev = timed_points[0]
+    for cur in timed_points[1:]:
+        dt_s = cur[0] - prev[0]
+        moving = False
+        if dt_s > 0:
+            dist = _haversine_m(prev[1], prev[2], cur[1], cur[2])
+            moving = dist / dt_s >= speed_mps
+        if moving:
+            if start is not None:
+                dur = int(prev[0] - start)
+                if dur >= min_s:
+                    pauses.append((start, prev[0], dur))
+                start = None
+        elif start is None:
+            start = prev[0]
+        prev = cur
+    if start is not None:
+        dur = int(prev[0] - start)
+        if dur >= min_s:
+            pauses.append((start, prev[0], dur))
+    return pauses
+
+
+def _pauses_summary(pauses):
+    """(Anzahl, Summe Sekunden) aus einem _gpx_pauses-Ergebnis."""
+    return len(pauses), int(sum(p[2] for p in pauses))
+
+
 def _track_position_at(timed_points, when_local, offset_min=0, tolerance_s=PHOTO_TRACK_TOLERANCE_S):
     """Position auf dem Track zur Aufnahmezeit, zwischen den Nachbarpunkten interpoliert.
     when_local = naive Ortszeit Europe/Berlin (so liefert EXIF sie); offset_min gleicht eine
@@ -2091,6 +2132,52 @@ def tour_weather_day(tour_id):
     return jsonify(w)
 
 
+def _tour_read_aloud_text(tour, attending_n):
+    """Build aj: Text für den Vorlesen-Knopf (Web Speech API) – kurze, natürliche Sätze,
+    TTS-freundlich (Komma statt Punkt, keine '3:37 h'-Kürzel)."""
+    parts = [f'Tour {tour.title}.']
+    if tour.status == 'cancelled':
+        parts.append('Achtung: Diese Tour ist abgesagt.')
+        if tour.cancel_reason:
+            parts.append(f'Grund: {tour.cancel_reason}.')
+    elif tour.status == 'completed':
+        parts.append('Die Tour ist bereits gefahren.')
+    if not tour.is_date_open and tour.tour_date:
+        wd = _DE_WEEKDAYS[tour.tour_date.weekday()]
+        datum = tour.tour_date.strftime('%d.%m.%Y')
+        uhr = f' um {tour.start_time} Uhr' if tour.start_time else ''
+        parts.append(f'{wd}, der {datum}{uhr}.')
+    else:
+        parts.append('Der Termin ist noch offen.')
+    parts.append(f'Schwierigkeit: {tour.difficulty_label}.')
+    if tour.meeting_desc:
+        parts.append(f'Treffpunkt: {tour.meeting_desc}.')
+    km = tour.gpx_km or tour.approx_km
+    if km:
+        ca = '' if tour.gpx_km else 'etwa '
+        parts.append(f'{ca}{_de1_filter(km)} Kilometer.')
+    if tour.gpx_ascent:
+        parts.append(f'{int(tour.gpx_ascent)} Höhenmeter.')
+    if tour.gpx_moving_s:
+        h, m = divmod(int(round(tour.gpx_moving_s / 60)), 60)
+        z = f'{h} Stunden {m} Minuten' if h else f'{m} Minuten'
+        parts.append(f'Fahrzeit {z}.')
+    if tour.gpx_avg_kmh:
+        parts.append(f'Durchschnitt {_de1_filter(tour.gpx_avg_kmh)} Stundenkilometer.')
+    if tour.gpx_pauses_n:
+        pm = int(round((tour.gpx_pauses_s or 0) / 60))
+        parts.append(f'{tour.gpx_pauses_n} {"Pause" if tour.gpx_pauses_n == 1 else "Pausen"}, '
+                     f'insgesamt {pm} Minuten.')
+    parts.append(f'{attending_n} Fahrer angemeldet.')
+    try:
+        ek = _einkehr_info(tour)
+        if ek and ek.get('name'):
+            parts.append(f'Einkehr bei {ek["name"]}.')
+    except Exception:
+        pass
+    return ' '.join(parts)
+
+
 @app.route('/touren/<int:tour_id>')
 @login_required
 def tour_detail(tour_id):
@@ -2119,6 +2206,14 @@ def tour_detail(tour_id):
                 except Exception as _ex:
                     db.session.rollback()
                     app.logger.warning(f'GPX-Kennzahlen Tour {tour.id}: {_ex}')
+            if gpx_data and tour.gpx_moving_s and tour.gpx_pauses_n is None:   # Build aj: Pausen einmalig nachtragen
+                try:
+                    n, s = _pauses_summary(_gpx_pauses(_tour_gpx_timed_points(tour)))
+                    tour.gpx_pauses_n, tour.gpx_pauses_s = n, s
+                    db.session.commit()
+                except Exception as _ex:
+                    db.session.rollback()
+                    app.logger.warning(f'GPX-Pausen Tour {tour.id}: {_ex}')
 
     # Photos sorted: sort_order zuerst (Drag & Drop), dann EXIF-Datum
     from sqlalchemy import text as sa_text
@@ -2172,6 +2267,7 @@ def tour_detail(tour_id):
 
     return render_template('touren/detail.html',
                            tour=tour,
+                           read_aloud_json=_json_for_script(_tour_read_aloud_text(tour, len(attending))),   # Build aj
                            my_rsvp=my_rsvp,
                            attending=attending,
                            maybe=maybe,
@@ -7618,10 +7714,16 @@ def _track_preview(points, max_pts=60):
 
 def _tour_apply_gpx_metrics(tour, parsed):
     """Fahrzeit, Ø-Tempo (nur bei Zeitstempeln im GPX) und Streckenvorschau aus einem
-    parse_gpx-Ergebnis übernehmen. gpx_preview != NULL gilt danach als „berechnet“."""
+    parse_gpx-Ergebnis übernehmen. gpx_preview != NULL gilt danach als „berechnet“.
+    Build aj: berechnet auch die Pausen (0 = berechnet, keine vorhanden)."""
     tour.gpx_moving_s = int(parsed['moving_s']) if parsed.get('moving_s') else None
     tour.gpx_avg_kmh  = float(parsed['avg_kmh']) if parsed.get('avg_kmh') else None
     tour.gpx_preview  = _track_preview(parsed.get('points') or [])
+    try:
+        n, s = _pauses_summary(_gpx_pauses(_tour_gpx_timed_points(tour)))
+        tour.gpx_pauses_n, tour.gpx_pauses_s = n, s
+    except Exception as e:
+        app.logger.warning(f'GPX-Pausen Tour {tour.id}: {e}')
 
 
 @app.template_filter('hm')
@@ -10220,6 +10322,8 @@ def migrate_db():
     add_column('tours', 'external_link',  'VARCHAR(500)')
     add_column('tours', 'weather_json',   'TEXT')          # Build q: Wetter-Cache für den Tourtag
     add_column('tours', 'gpx_moving_s',   'INTEGER')       # Build w: Fahrzeit aus GPX-Zeitstempeln
+    add_column('tours', 'gpx_pauses_n',   'INTEGER')       # Build aj: Anzahl Pausen (NULL = nicht berechnet)
+    add_column('tours', 'gpx_pauses_s',   'INTEGER')       # Build aj: Pausen gesamt (Sekunden)
     add_column('tours', 'gpx_avg_kmh',    'FLOAT')         # Build w: Ø-Tempo
     add_column('tours', 'gpx_preview',    'TEXT')          # Build w: Mini-Streckenvorschau (NULL = noch nicht berechnet)
     add_column('users', 'calendar_token', 'VARCHAR(40)')   # Build w: Kalender-Abo

@@ -45,6 +45,13 @@
       <span class="badge bg-danger ms-1">Abgesagt</span>
       {% endif %}
     </div>
+    {# Build aj: Tour vorlesen (Web Speech API) – für alle, nicht nur Tourleitung #}
+    <div class="mt-2" id="vorlesen-zeile">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-read-aloud"
+              onclick="toggleReadAloud()" aria-label="Tourdetails vorlesen">
+        <i class="bi bi-volume-up me-1" id="read-aloud-icon"></i><span id="read-aloud-label">Vorlesen</span>
+      </button>
+    </div>
     {% if tour.status == 'cancelled' %}
     {# Build ab: Absage-Hinweis mit Grund #}
     <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small">
@@ -210,6 +217,14 @@
     <div class="stat-box px-3 py-2">
       <div class="stat-number" style="font-size:1.4rem">{{ tour.gpx_avg_kmh|de1 }}</div>
       <div class="stat-label">Ø km/h</div>
+    </div>
+  </div>
+  {% endif %}
+  {% if tour.gpx_pauses_n %}
+  <div class="col-auto">
+    <div class="stat-box px-3 py-2" title="Pausen laut GPX-Zeitstempeln – Stehen oder Gerät aus, je mindestens 3 Minuten">
+      <div class="stat-number" style="font-size:1.4rem">{{ tour.gpx_pauses_n }}</div>
+      <div class="stat-label">Pausen · {{ ((tour.gpx_pauses_s or 0) / 60)|round|int }} min</div>
     </div>
   </div>
   {% endif %}
@@ -3543,5 +3558,45 @@ function latLngToTile(lat, lng, zoom) {
   return {x, y};
 }
 
+</script>
+
+<script>
+// ── Build aj: Tour vorlesen (Web Speech API, keine Abhängigkeiten) ──────────
+const TOUR_READ_TEXT = {{ read_aloud_json|safe }};
+let _readAloudActive = false;
+
+function _readAloudLabel(speaking) {
+  const label = document.getElementById('read-aloud-label');
+  const icon  = document.getElementById('read-aloud-icon');
+  if (label) label.textContent = speaking ? 'Stoppen' : 'Vorlesen';
+  if (icon)  icon.className  = speaking ? 'bi bi-stop-circle me-1' : 'bi bi-volume-up me-1';
+}
+
+function stopReadAloud() {
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  _readAloudActive = false;
+  _readAloudLabel(false);
+}
+
+function toggleReadAloud() {
+  if (_readAloudActive) { stopReadAloud(); return; }
+  if (!('speechSynthesis' in window)) return;    // Browser kann nicht – still enden
+  const u = new SpeechSynthesisUtterance(TOUR_READ_TEXT);
+  u.lang = 'de-DE';
+  u.rate = 0.95;                                  // etwas ruhiger als Standard
+  u.onend = function () { _readAloudActive = false; _readAloudLabel(false); };
+  u.onerror = u.onend;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+  _readAloudActive = true;
+  _readAloudLabel(true);
+}
+
+if (!('speechSynthesis' in window)) {            // Knopf ohne Unterstützung ausblenden
+  const z = document.getElementById('vorlesen-zeile');
+  if (z) z.style.display = 'none';
+}
+document.addEventListener('visibilitychange', function () { if (document.hidden) stopReadAloud(); });
+window.addEventListener('beforeunload', stopReadAloud);
 </script>
 {% endblock %}

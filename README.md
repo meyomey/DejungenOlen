@@ -24,6 +24,8 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 - Tour-Karten mit Cover-Foto aus Tourfotos + Kartenvorschau
 - Tour absagen (mit Grund) / Absage zurücknehmen – Push an Angemeldete + Telegram; „Änderung mitteilen“
   beim Bearbeiten von Datum, Uhrzeit, Treffpunkt
+- 🔊 **Vorlesen-Knopf** auf der Tourseite: Titel, Termin, Treffpunkt, Kennzahlen und Einkehr vorlesen lassen (Web Speech API, keine Extra-Pakete; Build aj)
+- ⏸️ **Pausen-Erkennung** aus den GPX-Zeitstempeln: Anzahl und Minuten der Pausen als Kachel auf der Tourseite (Stehen/Gerät-aus ab 3 min; beim Upload berechnet, ältere Touren beim ersten Aufruf nachgetragen; Build aj)
 - Automatische Erinnerungen am Vorabend (ab 18 Uhr) und am Tourtag (ab 7 Uhr), Uhrzeiten im Admin einstellbar
 - Fahrgemeinschaften je Tour (Plätze anbieten / Mitfahrt suchen, Push an Suchende)
 - Druckbare Teilnehmerliste mit Telefon und Notfallkontakt (nur Tourleitung/Admin)
@@ -159,7 +161,7 @@ python -m unittest tests.test_routes.RoutesTest.test_all_get_routes_member
 | `tests/test_downloads.py` | GPX-Download, Archiv-ZIP, Tour-Paket (tour.txt), Druckansicht |
 | `tests/test_live.py` | Live-Karte: Zeitfenster, `open_now`, Initialen, Migration, API-Rechte, veraltete Standorte, Seiten; Gruppen-Karte (Filter, Popup-Daten, „offen“) |
 | `tests/test_build_af.py` | Foto unterwegs (Handy-Standort), Live-Aufzeichnung: Punkte filtern, Zusammenfassungen, Spuren-API, GPX übernehmen/herunterladen/löschen, Fotos auf der Live-Aufzeichnung platzieren, Seiten |
-| `tests/test_build_ag.py` | Foto-Upload lädt die Zeitquelle nur einmal (auch wenn leer), Erinnerungs-Cron-Trigger (Token, kein doppelter Selbst-Trigger), 413-Fehlerseite, Größen-Caps für Fotos/Avatare/ZIP-Einträge, Aufräumen des Rate-Limiter-Speichers, Tourseite mobil kompakt (Kacheln/Knöpfe, Großschrift ausgenommen) |
+| `tests/test_build_ag.py` | Foto-Upload lädt die Zeitquelle nur einmal (auch wenn leer), Erinnerungs-Cron-Trigger (Token, kein doppelter Selbst-Trigger), 413-Fehlerseite, Größen-Caps für Fotos/Avatare/ZIP-Einträge, Aufräumen des Rate-Limiter-Speichers, Tourseite mobil kompakt (Kacheln/Knöpfe, Großschrift ausgenommen), Pausen-Erkennung (Helfer + Upload + Kachel), Vorlesen-Knopf (Knopf, Textaufbau) |
 | `tests/test_bereiche.py` | Registrierung per Einladung, Passwort-Reset (inkl. abgelaufen/verbraucht), Kommentare (Antworten, Löschen, Mandanten-Trennung), Zeitabstimmung, Tour-Vorlagen, Ankündigungen (Sichtbarkeit, Umschalten), Video-Upload |
 | `tests/test_helpers.py` | `parse_gpx`, Track-Vereinfachung, SVG-Vorschau, ICS-Maskierung/-Faltung, Formular-Parser, Template-Filter |
 | `tests/test_build_ac.py` | Fotos per Aufnahmezeit auf dem GPX-Track platzieren (Interpolation, Toleranz, Lücken, Zeitkorrektur), Upload-Hinweise, `gps_source`, EXIF-DateTimeOriginal |

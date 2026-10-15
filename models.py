@@ -112,6 +112,8 @@ class Tour(db.Model):
     meeting_desc = db.Column(db.String(200), nullable=True)
     weather_json = db.Column(db.Text, nullable=True)        # Build q: Wetter am Tourtag (Cache, JSON)
     gpx_moving_s = db.Column(db.Integer, nullable=True)     # Build w: Fahrzeit (s) aus GPX-Zeitstempeln
+    gpx_pauses_n = db.Column(db.Integer, nullable=True)     # Build aj: Anzahl Pausen aus den Zeitstempeln (NULL = nicht berechnet)
+    gpx_pauses_s = db.Column(db.Integer, nullable=True)     # Build aj: Pausen gesamt (Sekunden)
     gpx_avg_kmh  = db.Column(db.Float, nullable=True)       # Build w: Ø-Tempo
     gpx_preview  = db.Column(db.Text, nullable=True)        # Build w: Mini-Streckenvorschau 'B,H|x,y …' (NULL = nicht berechnet)
     gastro_spot_id = db.Column(db.Integer, db.ForeignKey('gastro_spots.id'), nullable=True)  # Build x: geplante Einkehr

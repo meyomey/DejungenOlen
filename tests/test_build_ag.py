@@ -13,7 +13,7 @@ import unittest
 import zipfile as _zipfile
 from unittest import mock
 
-from tests.base import AppTestCase, appmod, app, db, M, ROOT
+from tests.base import AppTestCase, appmod, app, db, M, ROOT, make_gpx
 
 try:
     from tests.test_build_ac import make_jpeg, HAVE_IMG
@@ -32,16 +32,19 @@ class TimedSourceCacheTest(AppTestCase):
         photos = [(make_jpeg(taken=dt.datetime(2025, 6, 14, 10, 10)), 'a.jpg'),
                   (make_jpeg(taken=dt.datetime(2025, 6, 14, 10, 20)), 'b.jpg')]
         data = {'photos': [(io.BytesIO(b), n) for b, n in photos]}
-        # Vor dem Fix: je Foto ein kompletter GPX-Parse (+ Abfragen), + 1 für den Hinweis
+        # Vor dem Fix: je Foto ein kompletter GPX-Parse (+ Abfragen). XHR ohne Redirect-Follow,
+        # damit die Detailseite (einmaliger Kennzahlen-Nachtrag) nicht mitzählt.
         with mock.patch.object(appmod, '_tour_gpx_timed_points',
                                wraps=appmod._tour_gpx_timed_points) as spy:
             r = self.client.post(f'/touren/{self.t_plan_id}/fotos', data=data,
-                                 content_type='multipart/form-data', follow_redirects=True)
+                                 content_type='multipart/form-data', follow_redirects=False,
+                                 headers={'X-Requested-With': 'XMLHttpRequest'})
         self.assertEqual(r.status_code, 200)
+        js = r.get_json()
+        self.assertTrue(js['ok'])
+        self.assertEqual(js['count'], 2)
+        self.assertEqual(js['no_gps'], 2)             # Hinweis-Logik unverändert
         self.assertEqual(spy.call_count, 1, 'GPX mit leerem Zeit-Ergebnis soll nur 1× geparst werden')
-        html = r.get_data(as_text=True)
-        self.assertIn('2 Foto(s) hochgeladen', html)
-        self.assertIn('ohne Standort', html)          # Hinweis kam vorher – muss bleiben
 
     @unittest.skipUnless(HAVE_IMG, 'Pillow/piexif nicht installiert')
     def test_photos_still_upload_after_cache_change(self):
@@ -227,7 +230,98 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ai')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 aj')
+
+
+class PauseDetectionTest(AppTestCase):
+    """Build aj: Pausen aus GPX-Zeitstempeln – Stehen/Lücken ab 3 min zählen, Bewegung unterbricht.
+    make_gpx() hat eine 10-Minuten-Pause bei Punkt 60."""
+
+    def test_helper_counts_single_pause(self):
+        import io as _io
+        gpx = make_gpx(with_time=True)
+        path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], 'pausen_test.gpx')
+        with open(path, 'w', encoding='utf-8') as fh:
+            fh.write(gpx)
+        timed = appmod._gpx_timed_points(path)
+        pauses = appmod._gpx_pauses(timed)
+        self.assertEqual(len(pauses), 1)
+        self.assertGreaterEqual(pauses[0][2], 600)          # ~10 min
+        n, s = appmod._pauses_summary(pauses)
+        self.assertEqual((n, s), (1, pauses[0][2]))
+
+    def test_helper_empty_and_untimed(self):
+        self.assertEqual(appmod._gpx_pauses([]), [])
+        self.assertEqual(appmod._gpx_pauses([(100.0, 53.0, 9.0)]), [])
+
+    def test_short_standing_is_no_pause(self):
+        # 5 Punkte: 2 min stehen (unter 3 min) → keine Pause
+        t0 = 1000.0
+        pts = [(t0, 53.0, 9.0)]
+        for i in range(1, 4):
+            pts.append((t0 + i * 40, 53.0, 9.0))            # stehend, je 40 s
+        pts.append((t0 + 160 + 30, 53.001, 9.0))            # Fahrt
+        self.assertEqual(appmod._gpx_pauses(pts), [])
+
+    @unittest.skipUnless(HAVE_IMG, 'Pillow/piexif nicht installiert')
+    def test_upload_sets_pause_columns_and_tile(self):
+        self.login_org()
+        appmod._rl_store.clear()
+        data = {'gpx_file': (io.BytesIO(make_gpx(with_time=True).encode('utf-8')), 'p.gpx')}
+        r = self.client.post(f'/touren/{self.t_plan_id}/gpx', data=data,
+                             content_type='multipart/form-data', follow_redirects=True)
+        self.assertEqual(r.status_code, 200)
+        tour = self.tour(self.t_plan_id)
+        self.assertIsNotNone(tour.gpx_moving_s)
+        self.assertEqual(tour.gpx_pauses_n, 1)              # die 10-min-Pause aus make_gpx
+        self.assertGreaterEqual(tour.gpx_pauses_s, 600)
+        html = self.get_html(f'/touren/{self.t_plan_id}')
+        self.assertIn('Pausen ·', html)
+
+    def test_untimed_gpx_no_pause_tile(self):
+        self.login_org()
+        appmod._rl_store.clear()
+        data = {'gpx_file': (io.BytesIO(make_gpx(with_time=False).encode('utf-8')), 'pl.gpx')}
+        self.client.post(f'/touren/{self.t_open_id}/gpx', data=data,
+                         content_type='multipart/form-data', follow_redirects=True)
+        tour = self.tour(self.t_open_id)
+        self.assertIsNone(tour.gpx_moving_s)
+        self.assertEqual(tour.gpx_pauses_n, 0)              # berechnet, keine Pausen möglich
+        html = self.get_html(f'/touren/{self.t_open_id}')
+        self.assertNotIn('Pausen ·', html)
+
+
+class ReadAloudTest(AppTestCase):
+    """Build aj: Vorlesen-Knopf – Text aus Serverdaten, global erreichbare Funktionen."""
+
+    def test_detail_has_button_and_text(self):
+        self.login_member()                                  # jeder Mitglied, nicht nur Tourleitung
+        html = self.get_html(f'/touren/{self.t_plan_id}')
+        self.assertIn('id="vorlesen-zeile"', html)
+        self.assertIn('toggleReadAloud()', html)
+        self.assertIn('function stopReadAloud()', html)
+        self.assertIn('TOUR_READ_TEXT', html)
+        self.assertIn('Deichtour, mit Komma', html)          # Titel im Vorlesetext (gescapte Seite)
+        self.assertIn('Treffpunkt: Bahnhof, Gleis 1', html)
+
+    def test_read_aloud_text_building(self):
+        tour = self.tour(self.t_plan_id)
+        tour.gpx_km, tour.gpx_ascent, tour.gpx_moving_s, tour.gpx_avg_kmh = 62.1, 306, 13620, 16.8
+        tour.gpx_pauses_n, tour.gpx_pauses_s = 3, 2520
+        text = appmod._tour_read_aloud_text(tour, 3)
+        self.assertIn('Tour Deichtour, mit Komma.', text)
+        self.assertIn('62,1 Kilometer', text)
+        self.assertIn('306 Höhenmeter', text)
+        self.assertIn('3 Stunden 47 Minuten', text)          # 13 620 s
+        self.assertIn('16,8 Stundenkilometer', text)
+        self.assertIn('3 Pausen, insgesamt 42 Minuten', text)
+        self.assertIn('Treffpunkt: Bahnhof, Gleis 1', text)
+        self.assertIn('3 Fahrer angemeldet.', text)
+        # Abgesagte Tour nennt Absage + Grund
+        self.tour(self.t_canc_id).cancel_reason = 'Sturmwarnung'
+        text2 = appmod._tour_read_aloud_text(self.tour(self.t_canc_id), 0)
+        self.assertIn('abgesagt', text2)
+        self.assertIn('Grund: Sturmwarnung', text2)
 
 
 class ServiceWorkerPhotoPolicyTest(AppTestCase):

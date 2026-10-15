@@ -2,6 +2,34 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build aj) – Vorlesen-Knopf und Pausen-Erkennung
+
+Die beiden Wünsche aus dem Audit-4-Gespräch („Ideen für später", Platz 1 und 3):
+
+**🔊 Vorlesen-Knopf (Tourseite, für alle)**
+- Neuer Knopf **„Vorlesen"** unter der Datumszeile liest die Tourdetails per **Web Speech API** vor –
+  ohne neue Pakete, auf Handy und Desktop. Vorgelesen werden: Titel, Wochentag/Datum/Uhrzeit,
+  Schwierigkeit, abgesagt/abgeschlossen (bei Absage mit Grund), Treffpunkt, Kilometer, Höhenmeter,
+  Fahrzeit, Ø-Tempo, Pausen, angemeldete Fahrer und die geplante Einkehr – als kurze, natürliche
+  Sätze („3 Stunden 47 Minuten", Komma statt Punkt). Knopf wechselt bei laufender Vorlesung auf
+  **„Stoppen"**, endet automatisch, stoppt beim Verlassen der Seite/Tab-Wechsel. Browser ohne
+  Sprachausgabe blenden den Knopf aus. Funktion `toggleReadAloud()` global (onclick-Regel).
+
+**⏸️ Pausen-Erkennung (GPX-Zeitstempel)**
+- Neue Helfer `_gpx_pauses()` / `_pauses_summary()`: Als Pause zählt Stehen unter 3,6 km/h oder eine
+  Lücke (Gerät aus), sobald sie **≥ 3 Minuten** andauert; Bewegung unterbricht. Gleiches Schwellen-
+  wert-Prinzip wie die gpxpy-Fahrzeit.
+- Zwei neue Spalten `tours.gpx_pauses_n` / `gpx_pauses_s` (Migration automatisch). Berechnet beim
+  GPX-Upload, beim „Live-Aufzeichnung übernehmen" und beim Admin-Nachrechnen; ältere Touren mit
+  Fahrzeit bekommen die Pausen einmalig beim ersten Aufruf der Tourseite nachgetragen.
+- Neue Kachel **„n · Pausen · x min"** in der Kennzahlen-Zeile der Tourseite (nur bei Zeitstempeln;
+  im mobilen Kompaktmodus und Großschrift-Modus korrekt eingebunden). Der Vorlesetext nennt die
+  Pausen mit („3 Pausen, insgesamt 42 Minuten").
+- 7 neue Tests (187 gesamt).
+
+Geänderte Dateien: `app.py`, `models.py`, `templates/touren/detail.html`, `templates/hilfe.html`,
+`tests/test_build_ag.py`, `README.md`, `CHANGELOG.md`.
+
 ## 1.4.0 – 2026-10-15 (Build ai) – Komplett-Audit 4: sauber, ein Verhärtungspunkt
 
 Viertes Komplett-Audit (Bericht: `docs/AUDIT_BERICHT.md`, Abschnitt oben): statisches Review des
