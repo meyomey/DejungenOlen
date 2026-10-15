@@ -2,6 +2,11 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build al) – Doppelten Video-Knopf entfernt
+
+- Auf fertigen Touren mit Fotos standen zwei Knöpfe mit demselben Ziel („Rückblick & Video“ und „Video“ – beides öffnete die Foto-Video-Seite). Jetzt gibt es nur noch **einen** Knopf: fertige Touren zeigen den gelben „Rückblick & Video“-Knopf, geplante Touren mit Fotos weiterhin den schlichten „Video“-Knopf.
+- 189 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-15 (Build ak) – Tourseite kompakter
 
 Screenshot-Feedback zur Tourseite auf dem Handy umgesetzt:

@@ -143,10 +143,17 @@
       </button>
     </form>
     {% endif %}
+    {# Build al: Rückblick & Video ist EIN Knopf – der alte zweite „Video“-Knopf
+       hatte denselben Zielort und erschien auf fertigen Touren mit Fotos doppelt. #}
     {% if tour.status == 'completed' %}
     <a href="{{ url_for('tour_video', tour_id=tour.id) }}"
-       class="btn btn-sm btn-warning fw-bold">
+       class="btn btn-sm btn-warning fw-bold" title="Rückblick: Foto-Video der Tour">
       <i class="bi bi-film me-1"></i><span class="lbl" data-short="Rückblick">Rückblick & Video</span>
+    </a>
+    {% elif photos %}
+    <a href="{{ url_for('tour_video', tour_id=tour.id) }}"
+       class="btn btn-sm btn-outline-secondary" title="Tour-Video erstellen">
+      <i class="bi bi-film me-1"></i><span class="lbl">Video</span>
     </a>
     {% endif %}
     <a href="{{ url_for('tour_print', tour_id=tour.id) }}" target="_blank"
@@ -157,12 +164,6 @@
        class="btn btn-sm btn-outline-secondary" title="In Kalender importieren">
       <i class="bi bi-calendar-plus me-1"></i><span class="lbl">iCal</span>
     </a>
-    {% if photos %}
-    <a href="{{ url_for('tour_video', tour_id=tour.id) }}"
-       class="btn btn-sm btn-outline-secondary" title="Tour-Video erstellen">
-      <i class="bi bi-film me-1"></i><span class="lbl">Video</span>
-    </a>
-    {% endif %}
     {% if current_user.is_organizer %}
     <form method="post" action="{{ url_for('tour_telegram_share', tour_id=tour.id) }}" class="d-inline">
       <button class="btn btn-sm btn-outline-secondary" title="Im Telegram teilen">

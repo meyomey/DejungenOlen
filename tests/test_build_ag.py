@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ak')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 al')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -371,3 +371,23 @@ class MobileCompactViewTest(AppTestCase):
         # Build ak: 3er-Raster statt gequetschter Reihe – kein Text-Überlauf mehr
         self.assertIn('grid-template-columns: repeat(3, 1fr)', css)
         self.assertIn('grid-column: 1 / -1', css)
+
+
+class VideoButtonTest(AppTestCase):
+    """Build al: „Rückblick & Video“ und „Video“ zeigten auf dieselbe Seite –
+    jetzt gibt es nur noch einen Knopf."""
+
+    def test_completed_with_photos_has_single_video_link(self):
+        self.login_org()
+        appmod._rl_store.clear()
+        data = {'photos': [(io.BytesIO(make_jpeg()), 'rueckblick.jpg')]}
+        self.client.post(f'/touren/{self.t_done_id}/fotos', data=data,
+                         content_type='multipart/form-data', follow_redirects=True)
+        html = self.get_html(f'/touren/{self.t_done_id}')
+        # zählt nur den Knopf (href mit schließendem Anführungszeichen) – nicht
+        # das Upload-Formular /touren/<id>/videos, das denselben Teilstring trägt
+        self.assertEqual(html.count(f'/touren/{self.t_done_id}/video"'), 1,
+                         'Rückblick- und Video-Knopf sind EIN Knopf')
+        self.assertIn('>Rückblick & Video</span>', html)      # gelber Haupt-Knopf bleibt
+        self.assertNotIn('Tour-Video erstellen', html)        # zweiter Knopf ist weg
+        self.assertIn('data-short="Rückblick"', html)         # Handy-Kurzschrift unangetastet
