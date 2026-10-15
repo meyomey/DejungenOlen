@@ -227,7 +227,21 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ah')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ai')
+
+
+class ServiceWorkerPhotoPolicyTest(AppTestCase):
+    """Audit 4 / Build ai: Fotos/Videos dürfen im Service-Worker nicht mehr cache-first
+    serviert werden – sonst bekäme ein ausgeloggter Browser auf einem geteilten Gerät
+    Bilder aus dem Cache. Jetzt network-first, Cache nur als Offline-Fallback."""
+
+    def test_sw_photos_network_first(self):
+        body = self.client.get('/sw.js').get_data(as_text=True)
+        self.assertIn('Fotos/Videos network-first', body)
+        # der alte cache-first-Block für Fotos/Videos muss weg
+        self.assertNotIn('// Fotos/Videos: cache-first', body)
+        # Offline-Fallback existiert weiter
+        self.assertIn('caches.match(req).then(c => c || new Response', body)
 
 
 class MobileCompactViewTest(AppTestCase):

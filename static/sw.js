@@ -75,14 +75,19 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Fotos/Videos: cache-first
+  // Build ai: Fotos/Videos network-first – auf geteilten Geräten darf ein
+  // ausgeloggter Browser Fotos/Videos nicht mehr aus dem Cache servieren
+  // (Server antwortet dann 404 und der 404 gilt). Offline (Radtour ohne Netz)
+  // fällt der Cache weiterhin ein; nie etwas nicht-okayes cachen.
   if (url.pathname.startsWith('/static/uploads/') ||
       url.pathname.startsWith('/fotos/') || url.pathname.startsWith('/videos/')) {
     event.respondWith(
-      caches.match(req).then(c => c || fetch(req).then(resp => {
+      fetch(req).then(resp => {
         if (resp.ok) caches.open(CACHE_VERSION).then(cache => cache.put(req, resp.clone()));
         return resp;
-      }))
+      }).catch(() =>
+        caches.match(req).then(c => c || new Response('', {status: 408}))
+      )
     );
     return;
   }

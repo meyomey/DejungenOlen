@@ -1,3 +1,78 @@
+# Audit-Bericht – De jungen Olen, Audit 4 (Version 1.4.0, Build ai, 15.10.2026)
+
+Viertes Komplett-Audit, Stand Build ah (Tourseite mobil kompakt). Geprüft wurde vor allem der
+Zuwachs seit Audit 3: Fotos per Aufnahmezeit (ac/ae/ad), Foto unterwegs & Live-Aufzeichnung (af),
+Upload-Caps & Cron-Trigger (ag), kompakte Tourseite (ah). Die Berichte zu Audit 1–3 stehen darunter.
+Ergebnis im Satz: **keine Sicherheits- oder Stabilitätslücke gefunden – ein Verhärtungspunkt
+(Service-Worker-Foto-Cache) und erfreulich gute Messwerte.**
+
+## Vorgehen
+- Statisches Review der Zuwachs-Routen (`/api/reminder/trigger`, Live-Aufzeichnung, Foto-Upload,
+  Größen-Caps, 413), aller `|safe`-Stellen, `text(f…)`-SQL, Upload-Routen (Logo/Musik: admin-only,
+  Endungs-Whitelist, servergenerierte Dateinamen), `sw.js`, `passenger_wsgi.py`, `backup.sh`, `.env.example`
+- Dynamisch gegen eine temporäre SQLite-DB (2 Gruppen, 5 Rollen):
+  - **XSS-Sweep** mit scharfen Nutzdaten (`<svg onload>`, `<img onerror>`, `<script>`, `javascript:`)
+    in Tourtitel, Kommentar, Gastro (Name/Adresse/Notizen), POI, Foto-Caption, Video-Titel, Ankündigung,
+    Vorlage, Fahrgemeinschaft, Spitzname (→ Live-Karte), Treffpunkt – gescannt wurden ~40 Seiten je
+    Rolle (Mitglied, Admin, fremde Gruppe) **und** die JSON-APIs: alle Nutzdaten korrekt maskiert
+    (Jinja-Escaping + `_json_for_script` + `escHtml` in den Karten-Popups)
+  - **Mandanten-Zugriffe** der fremden Gruppe: 22 POST- und 14 GET-Proben (Touren bearbeiten/löschen/
+    absagen, GPX, Fotos, Videos, Live-Aufzeichnung übernehmen/löschen/herunterladen, Gastro, POI,
+    Vorlagen, Gruppenwechsel, Tour-Paket, iCal, Druck, Exporte, Heatmap) → durchweg 404/403/405;
+    Gruppenwechsel für Fremde wird abgewiesen (Session bleibt unverändert); „Nochmal fahren“ als
+    GET → 405. **Gastro bleibt bewusst gruppenübergreifend** (Design-Entscheidung Audit 3): Organisatoren
+    fremder Gruppen dürfen geteilte Einträge ändern – dokumentiert und gewollt
+  - **Path Traversal** (`/fotos/img`, `/videos/file`, `../`/URL-kodiert) → blockiert
+  - **POST-Fuzzing**: 104 Formular-Routen × 3 Müll-Varianten (leer, falsche Typen, Grenzwerte,
+    20-kB-Texte) → **0 × 500**
+  - **Sonderfälle**: ungültige Daten/IDs/Jahre/Kalender-Tokens → keine 500er (Wetter-API antwortet
+    sauber 502 + JSON-Fehler bei Netz-/Eingabeproblemen)
+  - **Rate-Limits**: Login greift; beide Cron-Endpunkte (`/api/backup/trigger`, `/api/reminder/trigger`)
+    ohne/falschem Token → 403
+  - **Header/Cookies**: Security-Header gesetzt; `session` und `remember_token` jeweils `HttpOnly` +
+    `SameSite=Lax`
+  - **JS**: `node --check` über alle Inline-Skripte von 10 gerenderten Seiten → sauber
+  - **CVE-Scan** (pip-audit) über den App-Stack: Flask, Werkzeug, requests, Pillow, gpxpy, piexif,
+    itsdangerous, python-dotenv – **keine bekannten Schwachstellen**
+- **SQL-Profiling** je Seite (Mitglied, 2 Gruppen, 2 Touren): `/` 16 · `/touren` 11 · `/archiv` 9 ·
+  `/gastro` 11 · `/karte` 13 · `/mitglieder` 7 · `/rangliste` 6 · `/rueckblick` 8 · Tour-Detail 15 ·
+  `/profil` 8 · Live 8 · Suche 12 – alles unabhängig von der Datenmenge flach, keine N+1-Rückfälle.
+  Seitengrößen 26–50 KB (Tour-Detail 140 KB inkl. ≤ 2 000 Trackpunkte), Ladezeiten lokal ≤ 22 ms.
+
+## Befunde
+
+| Nr. | Schwere | Befund | Status (Build ai) |
+|---|---|---|---|
+| A1 | **Mittel** (Datenschutz) | Service-Worker serviert Fotos/Videos **cache-first**: Wer sich auf einem geteilten Gerät abmeldet, bekam bereits gesehene Fotos weiter aus dem Cache, obwohl der Server inzwischen 404 liefert (Audit 2) | behoben: Foto-/Video-Strategie **network-first** – ausgeloggt gilt der Server-404, offline (Radtour ohne Netz) springt weiterhin der Cache ein; nie wird eine nicht-okay-Antwort gecacht |
+| A2 | Niedrig | `logout` per GET (Seitenlink) – ein eingebettetes Cross-Site-`<img src="/logout">` könnte Nutzer ausloggen (Nuisance, keine Datenwirkung; SameSite=Lax mildert) | bewusst gelassen – alle Abmelde-Links müssten zu Formularen werden; Notiz für ein künftiges Audit |
+| A3 | Niedrig | `request.referrer`-Redirect bei Routen-Bewertung – Referrer ist browsergesetzt, kein offener Redirect praktikabel | bewusst gelassen |
+| A4 | Niedrig | `/api/location/update` ohne Rate-Limit – Aufzeichnung aber auf 1 Punkt/3 s je Person begrenzt, Rohpunkte nach 30 Tagen automatisch weg | bewusst gelassen |
+| C7/C8 | Niedrig | CSRF (SameSite=Lax) und `HTTPS=true`/Secure-Cookie | weiterhin offen wie bisher (Betreiber-Aufgabe) |
+
+## Bestätigt (ohne Handlungsbedarf)
+- Neuer Cron-Endpunkt gleicher Schutz wie Backup-Trigger (HMAC-Vergleich, Token = SECRET_KEY[:20]),
+  Selbst-Trigger wird durch den Cron-Aufruf nicht zusätzlich ausgelöst; Tagesflags verhindern Doppelsendung
+- Foto-Upload: Magic-Byte-Prüfung, Duplikat-Schutz, Größen-Caps **vor** dem RAM-Einlesen (60 MB Foto/ZIP-Eintrag,
+  20 MB Avatar, 500 MB Video), GPS vor Resize, ZIPs werden Eintrag für Eintrag aus dem Upload-Tempfile gelesen
+- Live-Aufzeichnung: Genauigkeits-/Sprung-/Doppelsendungs-Filter, GPX-Download nur eigene bzw. Tourleitung,
+  „übernehmen“ nur Tourleitung, Löschen passend beschränkt, GPX ohne Personenbezug
+- Uploads (Logo/Musik): admin-only, Endungs-Whitelist, servergenerierte Dateinamen, öffentlich bleiben
+  nur Gruppen-Logos/Ankündigungs-Bilder – wie im Audit 2 abgewogen
+
+## Ideen für später (nicht umgesetzt, nach Priorität)
+1. **📖 Vorlesen-Knopf** auf der Tourseite: Titel/Datum/Treffpunkt per Web Speech API vorlesen lassen –
+   null Abhängigkeiten, genau richtig zur Großschrift-Zielgruppe (unterwegs oder für Sehschwache)
+2. 🚻 **WC & Wasser unterwegs**: Trinkwasser-/Öffentliche-WC-Suche entlang des Tracks über die vorhandene
+   Overpass-Anbindung (gleiches Muster wie die Gastro-Streckensuche)
+3. ⏸️ **Pausen-Erkennung** aus den GPX-Zeitstempeln: „3 Pausen, 42 min“ als Kachel im Rückblick/Tour-Detail
+
+## Testabdeckung
+179 Smoke-Tests (`python -m unittest`) – **82 neu seit Audit 3** (28 ac + 17 af + 35 ag + 2 ah
++ 0 ah-Sonstige; Zählung je Build siehe CHANGELOG). Offene Lücken: Ankündigungs-Bild-Upload, Backup-Wiederherstellung per Weboberfläche,
+Kalender-Abo mit echtem Token im Feed-Reader.
+
+---
+
 # Audit-Bericht – De jungen Olen, Audit 3 (Version 1.4.0, Build ab, 14.10.2026)
 
 Drittes Komplett-Audit, Stand Build aa (Live-Karte). Die Berichte zu Audit 2 (1.4.0) und Audit 1 (1.2.0)

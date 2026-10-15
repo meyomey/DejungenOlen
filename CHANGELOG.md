@@ -2,6 +2,26 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build ai) – Komplett-Audit 4: sauber, ein Verhärtungspunkt
+
+Viertes Komplett-Audit (Bericht: `docs/AUDIT_BERICHT.md`, Abschnitt oben): statisches Review des
+Zuwachses seit Audit 3 + dynamischer Lauf (XSS-Sweep über ~40 Seiten × 3 Rollen mit scharfen
+Nutzdaten, 36 Mandanten-Proben, Path Traversal, 104 POST-Routen gefuzzt, Rate-Limits, Header,
+Cookie-Flags, JS-Syntaxcheck, CVE-Scan, SQL-Profiling). **Keine Sicherheits- oder Stabilitätslücke.**
+SQL-Zählungen 6–16 je Seite, Seitengrößen 26–50 KB.
+
+- **Fotos/Videos im Service-Worker jetzt network-first** (Befund A1, Mittel/Datenschutz): Bisher
+  cache-first – ein ausgeloggter Browser auf einem geteilten Gerät bekam bereits gesehene Fotos
+  weiter aus dem Cache, obwohl der Server 404 liefert. Jetzt gilt der Server-404; offline
+  (Radtour ohne Netz) springt weiterhin der Cache ein.
+- Dokumentiert als bewusst gelassen: Logout per GET (Nuisance-CSRF), Referrer-Redirect bei der
+  Routenbewertung, kein Rate-Limit am Live-Standort (dort ohnehin 1 Punkt/3 s begrenzt), Gastro
+  gruppenübergreifend (Design Audit 3).
+- 1 neuer Test (180 gesamt).
+
+Geänderte Dateien: `static/sw.js`, `app.py` (Build-Kennung), `tests/test_build_ag.py`,
+`docs/AUDIT_BERICHT.md`, `CHANGELOG.md`.
+
 ## 1.4.0 – 2026-10-15 (Build ah) – Tourseite auf dem Handy kompakter
 
 Rückmeldung zum Smartphone-Layout der Tour-Detailseite: Kennzahlen-Kärtchen und Aktions-Knöpfe
