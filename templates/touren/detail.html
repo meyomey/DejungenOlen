@@ -82,7 +82,7 @@
     {% endif %}
   </div>
   {% if current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
-  <div class="d-flex gap-2 flex-wrap">
+  <div class="d-flex gap-2 flex-wrap" id="tour-actions">
     {% if current_user.is_organizer and tour.status == 'planned' %}
     <form method="post" action="{{ url_for('tour_complete', tour_id=tour.id) }}"
           onsubmit="return confirm('Tour als abgeschlossen markieren?')">
@@ -170,8 +170,9 @@
 </div>
 
 <!-- ── Stats bar ─────────────────────────────────────────────────────────────── -->
+<!-- Build ah: auf dem Handy alle Kacheln kompakt in einer Zeile (stats-row, CSS) -->
 {% if tour.gpx_km or tour.gpx_ascent or tour.approx_km or tour.external_link %}
-<div class="row g-2 mb-3">
+<div class="d-flex flex-wrap gap-2 mb-3 stats-row">
   {% if tour.gpx_km %}
   <div class="col-auto">
     <div class="stat-box px-3 py-2">

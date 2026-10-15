@@ -432,3 +432,24 @@ footer {
   border-color: #495057;
   color: #e9ecef;
 }
+
+/* ─── Build ah: Tourseite kompakt auf dem Smartphone ───────────────────────────
+   Die Kennzahlen-Kacheln (km, Anstieg, Fahrzeit, Ø km/h, dabei) standen auf
+   schmalen Screens als 2×2 große Kärtchen untereinander, das Wetter als eigene
+   hohe Karte, und jeder Aktions-Knopf brauchte viel Platz – die Karte begann
+   erst etwa auf halber Bildschirmhöhe. Unter 576 px gilt jetzt:
+   alle Kacheln gestaucht in einer Zeile (Wetter als schmale Zeile darunter),
+   Knöpfe etwas kleiner, sodass 2–3 in eine Reihe passen.
+   Bewusst AUSGENOMMEN: der Großschrift-Modus (html.big-text) – wer große Schrift
+   braucht, bekommt weiterhin die großen Kacheln und Knöpfe. Desktop unverändert. */
+@media (max-width: 575.98px) {
+  html:not(.big-text) .stats-row { gap: .35rem !important; margin-bottom: .75rem !important; }
+  html:not(.big-text) .stats-row > .col-auto:not(.d-flex) { flex: 1 1 0; min-width: 0; padding: 0; }
+  html:not(.big-text) .stats-row .stat-box { padding: .4rem .3rem; border-radius: 8px; }
+  html:not(.big-text) .stats-row .stat-number { font-size: 1.05rem !important; }
+  html:not(.big-text) .stats-row .stat-label { font-size: .62rem; letter-spacing: .2px; }
+  html:not(.big-text) #weather-past-tile { flex: 1 1 100%; }   /* Wetter: eigene schmale Zeile */
+  html:not(.big-text) #tour-actions { gap: .35rem !important; }
+  html:not(.big-text) #tour-actions .btn { padding: .22rem .5rem; font-size: .82rem; }
+  html:not(.big-text) #tour-actions .btn i { margin-right: .15rem !important; }
+}

@@ -2,6 +2,26 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build ah) – Tourseite auf dem Handy kompakter
+
+Rückmeldung zum Smartphone-Layout der Tour-Detailseite: Kennzahlen-Kärtchen und Aktions-Knöpfe
+nahmen oberhalb der Karte fast die halbe erste Bildschirmseite ein.
+
+- **Kennzahlen in einer Zeile** – km, Anstieg, Fahrzeit, Ø km/h und „Dabei“ stehen auf
+  Smartphones gestaucht nebeneinander (kleinere Zahlen, dz. Beschriftung) statt als 2×2 große
+  Kärtchen; die Wetter-Kachel (vergangene Touren) wird eine schmale eigene Zeile darunter.
+  Die Karte beginnt dadurch merklich weiter oben.
+- **Knöpfe kompakter** – Bearbeiten, Als Vorlage speichern, Nochmal fahren, Löschen, Rückblick
+  & Video usw. sind auf dem Handy etwas kleiner, sodass 2–3 in eine Reihe passen (vorher oft
+  nur einer je Zeile). Alle Knöpfe bleiben sichtbar – nichts ist in Menüs versteckt.
+- **Nur unter 576 px Bildschirmbreite und nur ohne Großschrift-Modus**: Desktop-Ansicht und der
+  Großschrift-Modus (große Kacheln, große Tipp-Flächen) bleiben unverändert. Das CSS wird über
+  den Build-Parameter neu geladen (`style.css?v=…ah`), der Service-Worker-Cache wechselt automatisch.
+- 2 neue Tests (`tests/test_build_ag.py`), insgesamt 179.
+
+Geänderte Dateien: `app.py` (Build-Kennung), `templates/touren/detail.html`, `static/css/style.css`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.4.0 – 2026-10-15 (Build ag) – Uploads schneller & robuster, Erinnerung pünktlich per Cron
 
 Komplett-Review von Code, Templates und Tests vorab: keine Sicherheits- oder Stabilitätsprobleme.

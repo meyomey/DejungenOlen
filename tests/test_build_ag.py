@@ -8,11 +8,12 @@ Fixtures aus tests/base.py: t_plan hat einen GPX OHNE Zeitstempel (geplante Rout
 Live-Aufzeichnung – genau der Fall, der vorher je Foto neu geparst hat."""
 import datetime as dt
 import io
+import os
 import unittest
 import zipfile as _zipfile
 from unittest import mock
 
-from tests.base import AppTestCase, appmod, app, db, M
+from tests.base import AppTestCase, appmod, app, db, M, ROOT
 
 try:
     from tests.test_build_ac import make_jpeg, HAVE_IMG
@@ -226,4 +227,24 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ag')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ah')
+
+
+class MobileCompactViewTest(AppTestCase):
+    """Build ah: Tourseite auf dem Smartphone – Kennzahlen-Kacheln in einer Zeile statt
+    2×2 große Kärtchen, Knöpfe kompakter (nur CSS unter 576 px + Markup-Anker;
+    Großschrift-Modus und Desktop bleiben unangetastet)."""
+
+    def test_detail_has_compact_anchors(self):
+        self.login_org()
+        html = self.get_html(f'/touren/{self.t_plan_id}')
+        self.assertIn('stats-row', html)            # Kennzahlen-Zeile (flex statt row)
+        self.assertIn('id="tour-actions"', html)    # Knopf-Leiste
+        self.assertIn('weather-past-tile', html)    # Wetter-Kachel (eigene Zeile auf dem Handy)
+
+    def test_stylesheet_has_mobile_rules_excluding_big_text(self):
+        css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
+        self.assertIn('@media (max-width: 575.98px)', css)
+        self.assertIn('.stats-row', css)
+        self.assertIn('#tour-actions', css)
+        self.assertIn('html:not(.big-text) .stats-row .stat-number', css)
