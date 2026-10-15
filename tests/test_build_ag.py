@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 aj')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ak')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -276,7 +276,7 @@ class PauseDetectionTest(AppTestCase):
         self.assertEqual(tour.gpx_pauses_n, 1)              # die 10-min-Pause aus make_gpx
         self.assertGreaterEqual(tour.gpx_pauses_s, 600)
         html = self.get_html(f'/touren/{self.t_plan_id}')
-        self.assertIn('Pausen ·', html)
+        self.assertIn('Pausen laut GPX-Zeitstempeln', html)   # Kachel vorhanden (Titel-Attribut)
 
     def test_untimed_gpx_no_pause_tile(self):
         self.login_org()
@@ -288,7 +288,7 @@ class PauseDetectionTest(AppTestCase):
         self.assertIsNone(tour.gpx_moving_s)
         self.assertEqual(tour.gpx_pauses_n, 0)              # berechnet, keine Pausen möglich
         html = self.get_html(f'/touren/{self.t_open_id}')
-        self.assertNotIn('Pausen ·', html)
+        self.assertNotIn('Pausen laut GPX-Zeitstempeln', html)   # keine Kachel ohne Zeitstempel
 
 
 class ReadAloudTest(AppTestCase):
@@ -297,7 +297,7 @@ class ReadAloudTest(AppTestCase):
     def test_detail_has_button_and_text(self):
         self.login_member()                                  # jeder Mitglied, nicht nur Tourleitung
         html = self.get_html(f'/touren/{self.t_plan_id}')
-        self.assertIn('id="vorlesen-zeile"', html)
+        self.assertIn('id="btn-read-aloud"', html)           # Build ak: in der Aktions-Reihe
         self.assertIn('toggleReadAloud()', html)
         self.assertIn('function stopReadAloud()', html)
         self.assertIn('TOUR_READ_TEXT', html)
@@ -346,9 +346,21 @@ class MobileCompactViewTest(AppTestCase):
     def test_detail_has_compact_anchors(self):
         self.login_org()
         html = self.get_html(f'/touren/{self.t_plan_id}')
-        self.assertIn('stats-row', html)            # Kennzahlen-Zeile (flex statt row)
-        self.assertIn('id="tour-actions"', html)    # Knopf-Leiste
-        self.assertIn('weather-past-tile', html)    # Wetter-Kachel (eigene Zeile auf dem Handy)
+        self.assertIn('stats-row', html)            # Kennzahlen-Raster (Grid auf dem Handy)
+        self.assertIn('id="tour-actions"', html)    # Knopf-Leiste (inkl. Vorlesen, Build ak)
+        self.assertIn('id="btn-read-aloud"', html)  # Vorlesen sitzt in der Aktions-Reihe
+        self.assertIn('weather-past-tile', html)    # Wetter-Kachel (ganze Breite auf dem Handy)
+
+    def test_short_labels_for_mobile(self):
+        self.login_org()
+        html = self.get_html(f'/touren/{self.t_done_id}')   # fertige Tour: alle Knöpfe sichtbar
+        # volle Texte stehen im Markup, data-short trägt die Handy-Kurzfassung
+        self.assertIn('data-short="Vorlage"', html)
+        self.assertIn('data-short="Nochmal"', html)
+        self.assertIn('data-short="Rückblick"', html)
+        self.assertIn('data-short="Drucken"', html)
+        self.assertIn('>Als Vorlage speichern</span>', html)
+        self.assertIn('function applyShortLabels()', html)   # global (onclick-Regel)
 
     def test_stylesheet_has_mobile_rules_excluding_big_text(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -356,3 +368,6 @@ class MobileCompactViewTest(AppTestCase):
         self.assertIn('.stats-row', css)
         self.assertIn('#tour-actions', css)
         self.assertIn('html:not(.big-text) .stats-row .stat-number', css)
+        # Build ak: 3er-Raster statt gequetschter Reihe – kein Text-Überlauf mehr
+        self.assertIn('grid-template-columns: repeat(3, 1fr)', css)
+        self.assertIn('grid-column: 1 / -1', css)

@@ -443,13 +443,18 @@ footer {
    Bewusst AUSGENOMMEN: der Großschrift-Modus (html.big-text) – wer große Schrift
    braucht, bekommt weiterhin die großen Kacheln und Knöpfe. Desktop unverändert. */
 @media (max-width: 575.98px) {
-  html:not(.big-text) .stats-row { gap: .35rem !important; margin-bottom: .75rem !important; }
-  html:not(.big-text) .stats-row > .col-auto:not(.d-flex) { flex: 1 1 0; min-width: 0; padding: 0; }
-  html:not(.big-text) .stats-row .stat-box { padding: .4rem .3rem; border-radius: 8px; }
-  html:not(.big-text) .stats-row .stat-number { font-size: 1.05rem !important; }
-  html:not(.big-text) .stats-row .stat-label { font-size: .62rem; letter-spacing: .2px; }
-  html:not(.big-text) #weather-past-tile { flex: 1 1 100%; }   /* Wetter: eigene schmale Zeile */
-  html:not(.big-text) #tour-actions { gap: .35rem !important; }
-  html:not(.big-text) #tour-actions .btn { padding: .22rem .5rem; font-size: .82rem; }
-  html:not(.big-text) #tour-actions .btn i { margin-right: .15rem !important; }
+  /* Kacheln als sauberes 3er-Raster (statt gequetschter Einzelreihe): gleiche Breite,
+     Beschriftung läuft nicht mehr aus der Kachel; Wetter/„Route ansehen“ ganze Breite. */
+  html:not(.big-text) .stats-row { display: grid; grid-template-columns: repeat(3, 1fr);
+                                   gap: .4rem !important; margin-bottom: .75rem !important; }
+  html:not(.big-text) .stats-row > * { min-width: 0; padding: 0; }
+  html:not(.big-text) #weather-past-tile,
+  html:not(.big-text) .stats-row > .d-flex { grid-column: 1 / -1; }
+  html:not(.big-text) .stats-row .stat-box { padding: .45rem .25rem; border-radius: 8px; height: 100%; }
+  html:not(.big-text) .stats-row .stat-number { font-size: 1.08rem !important; }
+  html:not(.big-text) .stats-row .stat-label { font-size: .62rem; letter-spacing: .2px; line-height: 1.3; }
+  /* Knöpfe: kleiner + auf dem Handy Kurzschrift (data-short, JS in detail.html) */
+  html:not(.big-text) #tour-actions { gap: .3rem !important; }
+  html:not(.big-text) #tour-actions .btn { padding: .2rem .45rem; font-size: .78rem; }
+  html:not(.big-text) #tour-actions .btn i { margin-right: .1rem !important; }
 }

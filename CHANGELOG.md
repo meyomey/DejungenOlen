@@ -2,6 +2,15 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build ak) – Tourseite kompakter
+
+Screenshot-Feedback zur Tourseite auf dem Handy umgesetzt:
+
+- **Aktions-Knöpfe:** Der Vorlesen-Knopf steht jetzt als erster Knopf in der normalen Aktions-Leiste (statt eigener Zeile) und ist für alle da; die Orga-Knöpfe folgen danach.
+- **Handy-Kurzschrift:** Unter 576 px zeigen die Knöpfe Kurzwörter (z. B. „Vorlage", „Nochmal", „Löschen") – alles passt in eine Umbrech-Zeile. Mit Großer Schrift bleiben die vollen Texte aktiv; bei Fensterbreiten-Wechsel schaltet die Beschriftung automatisch um.
+- **Kennzahlen-Kacheln:** Auf dem Handy rast die Kachel-Reihe in einem 3-spaltigen Raster ein (Wetter/Wind-Kacheln breiter), Texte laufen nicht mehr aus der Kachel. Die Pausen-Kachel zeigt platzsparend „X min", den vollen Text beim Tippen (Titel).
+- 188 Tests, py_compile, node --check OK.
+
 ## 1.4.0 – 2026-10-15 (Build aj) – Vorlesen-Knopf und Pausen-Erkennung
 
 Die beiden Wünsche aus dem Audit-4-Gespräch („Ideen für später", Platz 1 und 3):

@@ -45,13 +45,6 @@
       <span class="badge bg-danger ms-1">Abgesagt</span>
       {% endif %}
     </div>
-    {# Build aj: Tour vorlesen (Web Speech API) – für alle, nicht nur Tourleitung #}
-    <div class="mt-2" id="vorlesen-zeile">
-      <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-read-aloud"
-              onclick="toggleReadAloud()" aria-label="Tourdetails vorlesen">
-        <i class="bi bi-volume-up me-1" id="read-aloud-icon"></i><span id="read-aloud-label">Vorlesen</span>
-      </button>
-    </div>
     {% if tour.status == 'cancelled' %}
     {# Build ab: Absage-Hinweis mit Grund #}
     <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small">
@@ -88,13 +81,18 @@
       {% if tour.gpx_file %} oder unten in der Karte „Als Einkehr festlegen“{% endif %}.</div>
     {% endif %}
   </div>
-  {% if current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
+  {# Build aj: Vorlesen für alle · Build ak: ALLE Aktionen in einer kompakten Reihe #}
   <div class="d-flex gap-2 flex-wrap" id="tour-actions">
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-read-aloud"
+            onclick="toggleReadAloud()" aria-label="Tourdetails vorlesen">
+      <i class="bi bi-volume-up me-1" id="read-aloud-icon"></i><span id="read-aloud-label">Vorlesen</span>
+    </button>
+    {% if current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
     {% if current_user.is_organizer and tour.status == 'planned' %}
     <form method="post" action="{{ url_for('tour_complete', tour_id=tour.id) }}"
           onsubmit="return confirm('Tour als abgeschlossen markieren?')">
       <button class="btn btn-sm btn-success">
-        <i class="bi bi-check2-circle me-1"></i>Abschließen
+        <i class="bi bi-check2-circle me-1"></i><span class="lbl">Abschließen</span>
       </button>
     </form>
     {% endif %}
@@ -102,20 +100,20 @@
     {% if current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
     <a href="{{ url_for('tour_edit', tour_id=tour.id) }}"
        class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-pencil me-1"></i>Bearbeiten
+      <i class="bi bi-pencil me-1"></i><span class="lbl">Bearbeiten</span>
     </a>
     {% endif %}
     {# Build ab: Absagen (mit Grund, benachrichtigt Teilnehmer) bzw. Absage zurücknehmen #}
     {% if tour.status == 'planned' %}
     <button type="button" class="btn btn-sm btn-outline-danger"
             data-bs-toggle="modal" data-bs-target="#cancelTourModal">
-      <i class="bi bi-x-octagon me-1"></i>Absagen
+      <i class="bi bi-x-octagon me-1"></i><span class="lbl">Absagen</span>
     </button>
     {% elif tour.status == 'cancelled' %}
     <form method="post" action="{{ url_for('tour_uncancel', tour_id=tour.id) }}" class="d-inline"
           onsubmit="return confirm('Absage zurücknehmen? Die Tour ist dann wieder geplant und die Teilnehmer werden informiert.')">
       <button class="btn btn-sm btn-outline-success">
-        <i class="bi bi-arrow-counterclockwise me-1"></i>Absage zurücknehmen
+        <i class="bi bi-arrow-counterclockwise me-1"></i><span class="lbl" data-short="Zurücknehmen">Absage zurücknehmen</span>
       </button>
     </form>
     {% endif %}
@@ -123,7 +121,7 @@
     {% if current_user.is_admin or current_user.is_organizer %}
     <button type="button" class="btn btn-sm btn-outline-secondary"
             data-bs-toggle="modal" data-bs-target="#saveTemplateModal">
-      <i class="bi bi-file-earmark-plus me-1"></i>Als Vorlage speichern
+      <i class="bi bi-file-earmark-plus me-1"></i><span class="lbl" data-short="Vorlage">Als Vorlage speichern</span>
     </button>
     {% endif %}
     {# Build w: Nochmal fahren – neue geplante Tour aus dieser (abgeschlossene/abgesagte Touren) #}
@@ -131,7 +129,7 @@
     <form method="post" action="{{ url_for('tour_repeat', tour_id=tour.id) }}" style="display:inline"
           onsubmit="return confirm('„' + {{ tour.title|tojson|forceescape }} + '“ nochmal fahren? Es wird eine neue geplante Tour ohne Termin angelegt – Teilnehmer und Fotos bleiben hier.')">
       <button class="btn btn-sm btn-outline-success">
-        <i class="bi bi-arrow-repeat me-1"></i>Nochmal fahren
+        <i class="bi bi-arrow-repeat me-1"></i><span class="lbl" data-short="Nochmal">Nochmal fahren</span>
       </button>
     </form>
     {% endif %}
@@ -141,39 +139,39 @@
           onsubmit="return confirm('Tour „' + {{ tour.title|tojson|forceescape }} + '“ wirklich löschen? Alle Fotos werden auch gelöscht.')"
           style="display:inline">
       <button class="btn btn-sm btn-outline-danger">
-        <i class="bi bi-trash3 me-1"></i>Löschen
+        <i class="bi bi-trash3 me-1"></i><span class="lbl">Löschen</span>
       </button>
     </form>
     {% endif %}
     {% if tour.status == 'completed' %}
     <a href="{{ url_for('tour_video', tour_id=tour.id) }}"
        class="btn btn-sm btn-warning fw-bold">
-      <i class="bi bi-film me-1"></i>Rückblick & Video
+      <i class="bi bi-film me-1"></i><span class="lbl" data-short="Rückblick">Rückblick & Video</span>
     </a>
     {% endif %}
     <a href="{{ url_for('tour_print', tour_id=tour.id) }}" target="_blank"
        class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-printer me-1"></i>Drucken / PDF
+      <i class="bi bi-printer me-1"></i><span class="lbl" data-short="Drucken">Drucken / PDF</span>
     </a>
     <a href="{{ url_for('tour_ical', tour_id=tour.id) }}"
        class="btn btn-sm btn-outline-secondary" title="In Kalender importieren">
-      <i class="bi bi-calendar-plus me-1"></i>iCal
+      <i class="bi bi-calendar-plus me-1"></i><span class="lbl">iCal</span>
     </a>
     {% if photos %}
     <a href="{{ url_for('tour_video', tour_id=tour.id) }}"
        class="btn btn-sm btn-outline-secondary" title="Tour-Video erstellen">
-      <i class="bi bi-film me-1"></i>Video
+      <i class="bi bi-film me-1"></i><span class="lbl">Video</span>
     </a>
     {% endif %}
     {% if current_user.is_organizer %}
     <form method="post" action="{{ url_for('tour_telegram_share', tour_id=tour.id) }}" class="d-inline">
       <button class="btn btn-sm btn-outline-secondary" title="Im Telegram teilen">
-        ✈️ Teilen
+        <span class="lbl">✈️ Teilen</span>
       </button>
     </form>
     {% endif %}
+    {% endif %}
   </div>
-  {% endif %}
 </div>
 
 <!-- ── Stats bar ─────────────────────────────────────────────────────────────── -->
@@ -222,9 +220,9 @@
   {% endif %}
   {% if tour.gpx_pauses_n %}
   <div class="col-auto">
-    <div class="stat-box px-3 py-2" title="Pausen laut GPX-Zeitstempeln – Stehen oder Gerät aus, je mindestens 3 Minuten">
+    <div class="stat-box px-3 py-2" title="Pausen laut GPX-Zeitstempeln – Stehen oder Gerät aus, je mindestens 3 Minuten, zusammen {{ ((tour.gpx_pauses_s or 0) / 60)|round|int }} Minuten">
       <div class="stat-number" style="font-size:1.4rem">{{ tour.gpx_pauses_n }}</div>
-      <div class="stat-label">Pausen · {{ ((tour.gpx_pauses_s or 0) / 60)|round|int }} min</div>
+      <div class="stat-label">{{ ((tour.gpx_pauses_s or 0) / 60)|round|int }} min</div>
     </div>
   </div>
   {% endif %}
@@ -3593,10 +3591,30 @@ function toggleReadAloud() {
 }
 
 if (!('speechSynthesis' in window)) {            // Knopf ohne Unterstützung ausblenden
-  const z = document.getElementById('vorlesen-zeile');
-  if (z) z.style.display = 'none';
+  const b = document.getElementById('btn-read-aloud');
+  if (b) b.style.display = 'none';
 }
 document.addEventListener('visibilitychange', function () { if (document.hidden) stopReadAloud(); });
 window.addEventListener('beforeunload', stopReadAloud);
+
+// ── Build ak: auf dem Handy kurze Knopf-Beschriftungen – die vollen Texte bleiben
+// für Screenreader/titel erhalten und kommen auf Desktop/Großschrift wieder zum Vorschein.
+function applyShortLabels() {
+  const small = window.matchMedia('(max-width: 575.98px)').matches
+                && !document.documentElement.classList.contains('big-text');
+  document.querySelectorAll('#tour-actions .btn .lbl').forEach(function (el) {
+    const short = el.getAttribute('data-short');
+    if (small && short) {
+      if (!el.dataset.orig) el.dataset.orig = el.textContent;
+      el.textContent = short;
+    } else if (el.dataset.orig) {
+      el.textContent = el.dataset.orig;
+      delete el.dataset.orig;
+    }
+  });
+}
+window.applyShortLabels = applyShortLabels;      // global (auch für spätes Umschalten)
+applyShortLabels();
+window.matchMedia('(max-width: 575.98px)').addEventListener('change', applyShortLabels);
 </script>
 {% endblock %}
