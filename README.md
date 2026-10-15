@@ -43,6 +43,7 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 - Einzel- oder ZIP-Upload
 - Automatische GPS-EXIF-Erkennung (inkl. HEIC) → Marker auf Karte
 - Manuelle Positions-Korrektur per Kartenklick
+- Fotos ohne Standort (Galerie-Upload vom Handy) werden anhand der Aufnahmezeit auf der GPX-Aufzeichnung platziert – automatisch beim Hochladen, nachträglich per Knopf mit Zeitkorrektur; geschätzte Positionen sind markiert (Build ac)
 - Lightbox mit Swipe/Keyboard-Navigation
 - Beschriftung direkt in der Lightbox (AJAX, kein Reload)
 - Bulk-Auswahl und Löschung
@@ -143,7 +144,7 @@ keine Netzverbindungen auf (Push, Telegram, E-Mail, Overpass und Wetter sind dur
 
 ```bash
 # im Projektordner, mit aktivierter virtueller Umgebung
-python -m unittest                      # alle Tests (~30 s)
+python -m unittest                      # alle Tests (~35 s)
 python -m unittest -v tests.test_touren # ein Modul, ausführlich
 python -m unittest tests.test_routes.RoutesTest.test_all_get_routes_member
 ```
@@ -156,6 +157,7 @@ python -m unittest tests.test_routes.RoutesTest.test_all_get_routes_member
 | `tests/test_downloads.py` | GPX-Download, Archiv-ZIP, Tour-Paket (tour.txt), Druckansicht |
 | `tests/test_live.py` | Live-Karte: Zeitfenster, `open_now`, Initialen, Migration, API-Rechte, veraltete Standorte, Seiten; Gruppen-Karte (Filter, Popup-Daten, „offen“) |
 | `tests/test_helpers.py` | `parse_gpx`, Track-Vereinfachung, SVG-Vorschau, ICS-Maskierung/-Faltung, Formular-Parser, Template-Filter |
+| `tests/test_build_ac.py` | Fotos per Aufnahmezeit auf dem GPX-Track platzieren (Interpolation, Toleranz, Lücken, Zeitkorrektur), Upload-Hinweise, `gps_source`, EXIF-DateTimeOriginal |
 | `tests/test_build_ab.py` | Erinnerungen mit Uhrzeit-Schranke, Absage/Reaktivierung + Benachrichtigung, „Änderung mitteilen“, Anmelde-Link, Notfallkontakt/Teilnehmerliste, Fahrgemeinschaften, Backup-Modi/Rotation/sicheres Entpacken, GPX-Ausdünnung, Service-Worker-Cache, entfernte Routen |
 
 Vor jeder Auslieferung einmal `python -m unittest` laufen lassen – ein roter Test heißt: nicht hochladen.

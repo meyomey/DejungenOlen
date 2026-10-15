@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-14 ab'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 ae'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -592,23 +592,23 @@ def extract_gps_from_exif(filepath):
             if r.strip().upper() in ('S','W'): dec = -dec
             return round(dec, 6)
 
-        img = Image.open(filepath)
         gps_info = {}
-        try:
-            exif_obj = img.getexif()
-            gps_tag  = next((k for k,v in TAGS.items() if v=='GPSInfo'), None)
-            if gps_tag and gps_tag in exif_obj:
-                gps_info = {GPSTAGS.get(k,k):v for k,v in exif_obj.get_ifd(gps_tag).items()}
-        except Exception:
-            pass
-        if not gps_info:
+        with Image.open(filepath) as img:            # Build ac: Datei wieder schließen (ResourceWarning)
             try:
-                leg = img._getexif() or {}
-                for tid,val in leg.items():
-                    if TAGS.get(tid)=='GPSInfo':
-                        gps_info = {GPSTAGS.get(k,k):v for k,v in val.items()}
+                exif_obj = img.getexif()
+                gps_tag  = next((k for k,v in TAGS.items() if v=='GPSInfo'), None)
+                if gps_tag and gps_tag in exif_obj:
+                    gps_info = {GPSTAGS.get(k,k):v for k,v in exif_obj.get_ifd(gps_tag).items()}
             except Exception:
                 pass
+            if not gps_info:
+                try:
+                    leg = img._getexif() or {}
+                    for tid,val in leg.items():
+                        if TAGS.get(tid)=='GPSInfo':
+                            gps_info = {GPSTAGS.get(k,k):v for k,v in val.items()}
+                except Exception:
+                    pass
         if 'GPSLatitude' in gps_info and 'GPSLongitude' in gps_info:
             lat = _dms(gps_info['GPSLatitude'],  gps_info.get('GPSLatitudeRef','N'))
             lng = _dms(gps_info['GPSLongitude'], gps_info.get('GPSLongitudeRef','E'))
@@ -620,57 +620,107 @@ def extract_gps_from_exif(filepath):
     return None, None
 
 
+def _exif_datetime_from_tiff(exif_data):
+    """Build ac: TIFF-Block (ab der Byte-Order-Marke) → Aufnahmezeit. Reihenfolge:
+    DateTimeOriginal (36867, liegt im Exif-Unter-IFD) → DateTimeDigitized (36868) → DateTime
+    (306 im IFD0 – das ist bei bearbeiteten Fotos das Änderungsdatum, deshalb nur als Notnagel).
+    Vorher wurde nur das IFD0 gelesen, also meist das Änderungsdatum."""
+    import struct
+    bom = exif_data[:2]
+    if bom == b'II':
+        endian = '<'
+    elif bom == b'MM':
+        endian = '>'
+    else:
+        return None
+
+    def _read_ifd(ifd):
+        found, exif_ptr = {}, None
+        num = struct.unpack_from(f'{endian}H', exif_data, ifd)[0]
+        for n in range(min(num, 500)):
+            off = ifd + 2 + n * 12
+            if off + 12 > len(exif_data):
+                break
+            tag, typ, cnt = struct.unpack_from(f'{endian}HHI', exif_data, off)
+            if tag == 34665:                                   # Zeiger auf das Exif-Unter-IFD
+                exif_ptr = struct.unpack_from(f'{endian}I', exif_data, off + 8)[0]
+            elif tag in (36867, 36868, 306) and typ == 2:      # ASCII "YYYY:MM:DD HH:MM:SS"
+                voff = struct.unpack_from(f'{endian}I', exif_data, off + 8)[0] if cnt > 4 else off + 8
+                raw = exif_data[voff:voff + cnt]
+                found[tag] = raw.split(b'\x00', 1)[0].decode('ascii', errors='ignore').strip()
+        return found, exif_ptr
+
+    ifd0 = struct.unpack_from(f'{endian}I', exif_data, 4)[0]
+    found, exif_ptr = _read_ifd(ifd0)
+    if exif_ptr and 8 <= exif_ptr < len(exif_data) - 2:
+        try:
+            sub, _ = _read_ifd(exif_ptr)
+            for tag, val in sub.items():
+                found.setdefault(tag, val)
+        except Exception:
+            pass
+    for tag in (36867, 36868, 306):
+        val = found.get(tag)
+        if val:
+            try:
+                return datetime.strptime(val[:19], '%Y:%m:%d %H:%M:%S')
+            except ValueError:
+                continue
+    return None
+
+
 def extract_datetime_from_exif(filepath):
-    """Return datetime from EXIF DateTimeOriginal, or None."""
-    # Try reading directly from JPEG binary (no deps needed)
+    """Aufnahmezeit aus EXIF (JPEG-APP1 oder der in HEIC eingebettete Exif-Block) als naive
+    Ortszeit, sonst None. Build ac: liest DateTimeOriginal aus dem Exif-Unter-IFD (vorher nur
+    IFD0 = meist Änderungsdatum) und versteht HEIC; Pillow als letzter Versuch."""
     try:
-        from exif_gps import read_gps_from_jpeg  # reuse module infrastructure
+        with open(filepath, 'rb') as f:
+            data = f.read(2 * 1024 * 1024)      # EXIF steht vorn – bei HEIC ggf. hinter den Meta-Boxen
+
+        exif_data = None
+        if data[:2] == b'\xff\xd8':                            # JPEG: APP1-Segment "Exif\0\0" suchen
+            i = 0
+            while i < min(len(data), 65536) - 4:
+                if data[i] == 0xFF and data[i + 1] == 0xE1:
+                    length = (data[i + 2] << 8) | data[i + 3]
+                    seg = data[i + 4:i + 2 + length]
+                    if seg[:4] == b'Exif':
+                        exif_data = seg[6:]
+                        break
+                i += 1
+        elif len(data) >= 12 and data[4:8] in (b'ftyp', b'mif1', b'msf1'):   # HEIC/HEIF
+            idx = 0
+            while True:
+                idx = data.find(b'Exif\x00\x00', idx)
+                if idx < 0:
+                    break
+                chunk = data[idx + 6:idx + 6 + 65536]
+                if chunk[:2] in (b'II', b'MM'):
+                    exif_data = chunk
+                    break
+                idx += 4
+
+        if exif_data:
+            found = _exif_datetime_from_tiff(exif_data)
+            if found:
+                return found
     except Exception:
         pass
 
-    # Pure stdlib approach: read EXIF tags 36867 (DateTimeOriginal) or 306 (DateTime)
+    # Letzter Versuch: Pillow (liest auch exotische Varianten, kann aber kein HEIC)
     try:
-        with open(filepath, 'rb') as f:
-            data = f.read(65536)  # first 64KB is enough for EXIF
-
-        # Find APP1 / EXIF header
-        i = 0
-        exif_data = None
-        while i < len(data) - 4:
-            if data[i] == 0xFF and data[i+1] == 0xE1:
-                length = (data[i+2] << 8) | data[i+3]
-                seg = data[i+4:i+2+length]
-                if seg[:4] == b'Exif':
-                    exif_data = seg[6:]
-                    break
-            i += 1
-        if not exif_data:
-            return None
-
-        import struct
-        bom = exif_data[:2]
-        if bom == b'II': big_endian = False
-        elif bom == b'MM': big_endian = True
-        else: return None
-        endian = '>' if big_endian else '<'
-
-        ifd0 = struct.unpack_from(f'{endian}I', exif_data, 4)[0]
-        num  = struct.unpack_from(f'{endian}H', exif_data, ifd0)[0]
-
-        date_str = None
-        for n in range(num):
-            off   = ifd0 + 2 + n * 12
-            tag   = struct.unpack_from(f'{endian}H', exif_data, off)[0]
-            if tag in (36867, 36868, 306):  # DateTimeOriginal, DateTimeDigitized, DateTime
-                voff = struct.unpack_from(f'{endian}I', exif_data, off+8)[0]
-                end  = exif_data.find(b'\x00', voff)
-                date_str = exif_data[voff:end].decode('ascii', errors='ignore')
-                if tag == 36867:  # prefer DateTimeOriginal, stop searching
-                    break
-
-        if date_str:
-            # Format: "YYYY:MM:DD HH:MM:SS"
-            return datetime.strptime(date_str.strip(), '%Y:%m:%d %H:%M:%S')
+        if _pillow_ok():
+            from PIL import Image as _PILImage
+            with _PILImage.open(filepath) as img:
+                ex = img.getexif()
+                val = None
+                try:
+                    val = ex.get_ifd(0x8769).get(36867)
+                except Exception:
+                    val = None
+                val = val or ex.get(306)
+                if val:
+                    return datetime.strptime(str(val)[:19], '%Y:%m:%d %H:%M:%S')
     except Exception:
         pass
     return None
@@ -1709,6 +1759,100 @@ def gpx_for_page(filepath):
     return {**data, 'points': _thin_points(data['points'])}
 
 
+# ─── Build ac: Fotos ohne Standort per Aufnahmezeit auf dem Track platzieren ──────────────────
+# Handys entfernen beim Hochladen aus der Galerie den Standort, die Aufnahmezeit bleibt aber.
+# Hat der GPX der Tour Zeitstempel (Aufzeichnung, keine geplante Route), wissen wir, wo die
+# Gruppe zu dieser Uhrzeit war – das Foto bekommt diese Position als „geschätzt“ (gps_source='track').
+PHOTO_TRACK_TOLERANCE_S = 15 * 60   # bis 15 min vor Start / nach Ende → erster bzw. letzter Punkt
+PHOTO_TRACK_GAP_S       = 10 * 60   # bei längeren Lücken (Gerät aus) nicht interpolieren
+
+
+def _gpx_timed_points(filepath):
+    """Trackpunkte MIT Zeitstempel als zeitlich sortierte Liste (unix_ts, lat, lng); [] wenn der
+    Track keine Zeiten hat oder nicht lesbar ist. Zeiten ohne Zone gelten als UTC (so schreiben
+    es Garmin, Komoot und Wahoo), Punkte ohne <time> werden übersprungen."""
+    try:
+        import gpxpy
+        from datetime import timezone as _tz
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            gpx = gpxpy.parse(f)
+        out = []
+        for track in gpx.tracks:
+            for seg in track.segments:
+                for pt in seg.points:
+                    if pt.time is None:
+                        continue
+                    t = pt.time if pt.time.tzinfo else pt.time.replace(tzinfo=_tz.utc)
+                    out.append((t.timestamp(), pt.latitude, pt.longitude))
+        out.sort()
+        return out
+    except Exception as e:
+        app.logger.warning(f'GPX Zeitstempel: {e}')
+        return []
+
+
+def _tour_timed_points(tour):
+    """Zeitstempel-Punkte des Tour-GPX oder [] (kein GPX / Datei fehlt / keine Zeiten)."""
+    if not tour.gpx_file:
+        return []
+    path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file)
+    if not os.path.exists(path):
+        return []
+    return _gpx_timed_points(path)
+
+
+def _track_position_at(timed_points, when_local, offset_min=0, tolerance_s=PHOTO_TRACK_TOLERANCE_S):
+    """Position auf dem Track zur Aufnahmezeit, zwischen den Nachbarpunkten interpoliert.
+    when_local = naive Ortszeit Europe/Berlin (so liefert EXIF sie); offset_min gleicht eine
+    falsch gehende Kamera-Uhr aus (+5 = Kamera geht 5 Minuten vor). Liefert (lat, lng) oder None,
+    wenn die Zeit mehr als tolerance_s vor dem Start / nach dem Ende der Aufzeichnung liegt."""
+    if not timed_points or when_local is None:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+        ts = when_local.replace(tzinfo=ZoneInfo('Europe/Berlin')).timestamp() - (offset_min or 0) * 60
+    except Exception:
+        return None
+    first, last = timed_points[0], timed_points[-1]
+    if ts < first[0] - tolerance_s or ts > last[0] + tolerance_s:
+        return None
+    if ts <= first[0]:
+        return round(first[1], 6), round(first[2], 6)
+    if ts >= last[0]:
+        return round(last[1], 6), round(last[2], 6)
+    import bisect
+    i = bisect.bisect_left(timed_points, (ts,))      # erster Punkt mit Zeit >= ts (i >= 1, da ts > first)
+    a, b = timed_points[i - 1], timed_points[i]
+    span = b[0] - a[0]
+    if span <= 0:
+        frac = 0.0
+    elif span > PHOTO_TRACK_GAP_S:                    # Lücke: näher liegenden Punkt nehmen
+        frac = 0.0 if (ts - a[0]) <= (b[0] - ts) else 1.0
+    else:
+        frac = (ts - a[0]) / span
+    return (round(a[1] + (b[1] - a[1]) * frac, 6),
+            round(a[2] + (b[2] - a[2]) * frac, 6))
+
+
+def _place_photos_on_track(photos, timed_points, offset_min=0):
+    """Fotos ohne Position (oder mit bereits geschätzter Position) anhand ihrer Aufnahmezeit auf
+    den Track setzen. Liefert (platziert, ohne_zeit, ausserhalb). Commit macht der Aufrufer."""
+    placed = no_time = outside = 0
+    for p in photos:
+        if p.has_gps and p.gps_source != 'track':
+            continue
+        if not p.taken_at:
+            no_time += 1
+            continue
+        pos = _track_position_at(timed_points, p.taken_at, offset_min)
+        if pos:
+            p.lat, p.lng, p.gps_source = pos[0], pos[1], 'track'
+            placed += 1
+        else:
+            outside += 1
+    return placed, no_time, outside
+
+
 GASTRO_NEAR_M = 150   # Build j: Einkehr gilt als "an der Route", wenn sie höchstens so viele Meter neben dem Track liegt
 
 
@@ -2004,6 +2148,9 @@ def tour_detail(tour_id):
                            all_users=all_users,
                            participant_ids=participant_ids,
                            rides=rides, my_ride=my_ride,                 # Build ab
+                           gpx_timed=bool(gpx_data and gpx_data.get('moving_s')),   # Build ac: Aufzeichnung mit Zeiten?
+                           gpx_span=(f"{gpx_data['start_time']}–{gpx_data['end_time']} Uhr"
+                                     if gpx_data and gpx_data.get('start_time') and gpx_data.get('end_time') else ''),
                            today=date.today())
 
 
@@ -2261,9 +2408,16 @@ def tour_upload_photos(tour_id):
     resized   = 0
     zip_count = 0
     dupes     = 0
+    placed    = 0          # Build ac: per Aufnahmezeit auf dem Track platziert
     import hashlib as _hashlib
     seen_hashes = {h for (h,) in db.session.query(TourPhoto.orig_hash)
                    .filter(TourPhoto.tour_id == tour_id, TourPhoto.orig_hash.isnot(None)).all()}
+    _timed_cache = []      # Zeitstempel-Punkte des GPX, erst beim ersten Foto ohne GPS geladen
+
+    def _timed():
+        if not _timed_cache:
+            _timed_cache.append(_tour_timed_points(tour))
+        return _timed_cache[0]
 
     def _check_magic(data: bytes) -> bool:
         h = data[:12]
@@ -2277,7 +2431,7 @@ def tour_upload_photos(tour_id):
         """Save image bytes, run resize + GPS, return TourPhoto or None.
         form_idx: index used by client-side JS for gps_lat_N/gps_lng_N lookup
         (falls back to internal counter if not provided, e.g. for ZIP entries)."""
-        nonlocal count, gps_count, resized, dupes
+        nonlocal count, gps_count, resized, dupes, placed
         ext = original_name.rsplit('.', 1)[-1].lower()
         if ext not in app.config['ALLOWED_PHOTO_EXTENSIONS']:
             return None
@@ -2307,6 +2461,7 @@ def tour_upload_photos(tour_id):
         # Fallback: use client-extracted GPS if server EXIF failed
         # (mobile browsers often strip GPS before upload)
         idx_key = form_idx if form_idx is not None else count
+        gps_source = 'exif' if (lat is not None and lng is not None) else None   # Build ac
         if lat is None or lng is None:
             try:
                 c_lat = request.form.get(f'gps_lat_{idx_key}', '').strip()
@@ -2315,6 +2470,8 @@ def tour_upload_photos(tour_id):
                     clat, clng = float(c_lat), float(c_lng)
                     if -90 <= clat <= 90 and -180 <= clng <= 180 and not (clat == 0 and clng == 0):
                         lat, lng = clat, clng
+                        gps_source = ('device' if request.form.get(f'gps_src_{idx_key}') == 'device'
+                                      else 'exif')
             except (ValueError, TypeError):
                 pass
 
@@ -2327,7 +2484,14 @@ def tour_upload_photos(tour_id):
                     taken_at = _dt.strptime(c_dt[:19], '%Y:%m:%d %H:%M:%S')
             except (ValueError, TypeError):
                 pass
-        if lat and lng:
+        # Build ac: kein Standort, aber Aufnahmezeit → Position auf dem GPX-Track schätzen
+        if gps_source is None and taken_at is not None:
+            pos = _track_position_at(_timed(), taken_at)
+            if pos:
+                lat, lng = pos
+                gps_source = 'track'
+                placed += 1
+        if gps_source in ('exif', 'device'):
             gps_count += 1
         count += 1
         return TourPhoto(
@@ -2336,6 +2500,7 @@ def tour_upload_photos(tour_id):
             filename = filename,
             caption  = request.form.get('caption', '').strip() or None,
             lat=lat, lng=lng, taken_at=taken_at, orig_hash=h,
+            gps_source=gps_source,
         )
 
     for file_idx, f in enumerate(files):
@@ -2379,6 +2544,8 @@ def tour_upload_photos(tour_id):
         parts.append(f'📦 davon {zip_count} aus ZIP')
     if gps_count:
         parts.append(f'🗺️ {gps_count} mit GPS')
+    if placed:
+        parts.append(f'📍 {placed} anhand der Aufnahmezeit auf der Strecke platziert (geschätzt)')
     if resized:
         parts.append(f'📐 {resized} verkleinert')
     if dupes:
@@ -2386,9 +2553,28 @@ def tour_upload_photos(tour_id):
     if skipped:
         parts.append(f'{skipped} übersprungen')
     flash(' – '.join(parts), 'success' if count else 'warning')
+
+    # Build ac: Hinweis, wenn Fotos ohne Standort geblieben sind – und warum
+    no_gps = count - gps_count - placed
+    if count and no_gps > 0:
+        tip = (f'{no_gps} Foto(s) ohne Standort. Tipp fürs Handy: Fotos über die App „Dateien“ '
+               f'(Ordner DCIM/Camera) auswählen statt über die Galerie – die Galerie entfernt den '
+               f'Standort beim Hochladen. ')
+        if _timed():
+            tip += ('Fotos mit Aufnahmezeit werden automatisch auf der Strecke platziert; diese hatten '
+                    'keine Aufnahmezeit oder liegen außerhalb der Aufzeichnung – Position per ✏️ am Foto '
+                    'auf der Karte setzen.')
+        elif tour.gpx_file:
+            tip += ('Der GPX-Track dieser Tour hat keine Zeitstempel (geplante Route) – mit einer '
+                    'Aufzeichnung würden Fotos automatisch per Uhrzeit platziert. Sonst: Position per '
+                    '✏️ am Foto auf der Karte setzen.')
+        else:
+            tip += 'Position per ✏️ am Foto auf der Karte setzen.'
+        flash(tip, 'info')
     target = url_for('tour_detail', tour_id=tour_id) + '#fotos'
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return jsonify({'ok': True, 'redirect': target, 'count': count, 'dupes': dupes})
+        return jsonify({'ok': True, 'redirect': target, 'count': count, 'dupes': dupes,
+                        'placed': placed, 'no_gps': max(no_gps, 0)})
     return redirect(target)
 
 
@@ -8873,6 +9059,7 @@ def photo_set_gps(photo_id):
         if -90 <= lat <= 90 and -180 <= lng <= 180:
             photo.lat = round(lat, 6)
             photo.lng = round(lng, 6)
+            photo.gps_source = 'manual'                  # Build ac
             db.session.commit()
             flash('GPS-Position gespeichert.', 'success')
         else:
@@ -8892,9 +9079,85 @@ def photo_clear_gps(photo_id):
         abort(403)
     photo.lat = None
     photo.lng = None
+    photo.gps_source = None                              # Build ac
     db.session.commit()
     flash('GPS-Daten entfernt.', 'success')
     return redirect(url_for('tour_detail', tour_id=photo.tour_id) + '#fotos')
+
+
+@app.route('/touren/<int:tour_id>/fotos/platzieren', methods=['POST'])
+@login_required
+def tour_photos_place_on_track(tour_id):
+    """Build ac: alle Fotos der Tour ohne Standort anhand ihrer Aufnahmezeit auf den GPX-Track
+    setzen (braucht eine Aufzeichnung mit Zeitstempeln). offset_min gleicht eine falsch gehende
+    Kamera-Uhr aus; bereits geschätzte Positionen werden dabei neu berechnet, echte (EXIF/manuell)
+    bleiben unangetastet. action=undo entfernt alle geschätzten Positionen wieder."""
+    tour = _tour_or_404(tour_id)
+    if not _can_manage_tour(tour):
+        abort(403)
+    target = url_for('tour_detail', tour_id=tour_id) + '#fotos'
+    if request.form.get('action') == 'undo':
+        n = (TourPhoto.query.filter_by(tour_id=tour_id, gps_source='track')
+             .update({'lat': None, 'lng': None, 'gps_source': None}, synchronize_session=False))
+        db.session.commit()
+        flash(f'{n} geschätzte Position(en) entfernt.', 'success' if n else 'info')
+        return redirect(target)
+
+    offset_min = max(-720, min(720, _parse_int(request.form.get('offset_min'), 0) or 0))
+    timed = _tour_timed_points(tour)
+    if not timed:
+        flash('Der GPX-Track dieser Tour hat keine Zeitstempel (geplante Route statt Aufzeichnung) – '
+              'automatisches Platzieren geht nur mit einer Aufzeichnung. Du kannst die Positionen '
+              'per ✏️ am Foto auf der Karte setzen.', 'warning')
+        return redirect(target)
+    photos = TourPhoto.query.filter_by(tour_id=tour_id).all()
+    placed, no_time, outside = _place_photos_on_track(photos, timed, offset_min)
+    db.session.commit()
+    parts = [f'📍 {placed} Foto(s) auf der Strecke platziert (geschätzt)']
+    if offset_min:
+        parts.append(f'Zeitkorrektur {offset_min:+d} min')
+    if no_time:
+        parts.append(f'{no_time} ohne Aufnahmezeit')
+    if outside:
+        parts.append(f'{outside} außerhalb der Aufzeichnung ({_timed_range_text(timed)})')
+    flash(' – '.join(parts), 'success' if placed else 'warning')
+    if outside and not placed:
+        hint = _suggest_offset(photos, timed, offset_min)
+        if hint:
+            flash(hint, 'info')
+    return redirect(target)
+
+
+def _suggest_offset(photos, timed_points, offset_min=0):
+    """Build ac: Liegen alle Fotos außerhalb der Aufzeichnung, aber mit einer typischen Zeitzonen-
+    Verschiebung (±1 h, ±2 h) innerhalb, dann hat die App vermutlich Ortszeit statt UTC in den GPX
+    geschrieben (oder die Kamera-Uhr steht falsch). Liefert einen Hinweistext mit der passenden
+    Zeitkorrektur oder None."""
+    candidates = [p for p in photos if p.taken_at and not (p.has_gps and p.gps_source != 'track')]
+    if not candidates:
+        return None
+    best, best_n = None, 0
+    for delta in (-120, -60, 60, 120):
+        n = sum(1 for p in candidates if _track_position_at(timed_points, p.taken_at, offset_min + delta))
+        if n > best_n:
+            best, best_n = offset_min + delta, n
+    if not best_n:
+        return None
+    return (f'Hinweis: Mit Zeitkorrektur {best:+d} min lägen {best_n} Foto(s) in der Aufzeichnung – '
+            f'vermutlich schreibt die Aufzeichnungs-App Ortszeit statt Weltzeit (UTC) in den GPX, oder die '
+            f'Kamera-Uhr geht falsch. Einfach {best:+d} ins Feld „Zeitkorrektur“ eintragen und erneut platzieren.')
+
+
+def _timed_range_text(timed_points):
+    """'14.06.2025 08:00–11:20 Uhr' für die Spanne einer Aufzeichnung (Ortszeit)."""
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo('Europe/Berlin')
+        a = datetime.fromtimestamp(timed_points[0][0], tz)
+        b = datetime.fromtimestamp(timed_points[-1][0], tz)
+        return f"{a.strftime('%d.%m.%Y %H:%M')}–{b.strftime('%H:%M')} Uhr"
+    except Exception:
+        return '?'
 
 
 
@@ -9085,6 +9348,7 @@ def api_reextract_gps(photo_id):
     if lat and lng:
         photo.lat = lat
         photo.lng = lng
+        photo.gps_source = 'exif'                        # Build ac
         db.session.commit()
         return jsonify({'ok': True, 'lat': lat, 'lng': lng})
     return jsonify({'ok': False, 'msg': 'Keine GPS-Daten in EXIF gefunden'})
@@ -9611,6 +9875,7 @@ def migrate_db():
     add_column('tour_photos', 'taken_at',   'DATETIME')
     add_column('tour_photos', 'sort_order', 'INTEGER')
     add_column('tour_photos', 'orig_hash',  'VARCHAR(64)')
+    add_column('tour_photos', 'gps_source', 'VARCHAR(10)')   # Build ac
     add_column('users', 'morning_opener_until', 'VARCHAR(5)')
     add_column('tours', 'approx_km',      'FLOAT')
     add_column('tours', 'external_link',  'VARCHAR(500)')

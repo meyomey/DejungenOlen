@@ -263,6 +263,9 @@ class TourPhoto(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     sort_order = db.Column(db.Integer, nullable=True, default=None)
     orig_hash  = db.Column(db.String(64), nullable=True)  # SHA-256 des Originals (Duplikat-Schutz)
+    # Build ac: Herkunft der Position – 'exif' (aus dem Foto), 'manual' (Kartenklick),
+    # 'device' (Handy-Standort beim Hochladen), 'track' (per Aufnahmezeit auf dem GPX geschätzt)
+    gps_source = db.Column(db.String(10), nullable=True)
 
     tour = db.relationship('Tour', back_populates='photos')
     user = db.relationship('User', back_populates='photos')
@@ -270,6 +273,11 @@ class TourPhoto(db.Model):
     @property
     def has_gps(self):
         return self.lat is not None and self.lng is not None
+
+    @property
+    def gps_estimated(self):
+        """Build ac: Position wurde aus der Aufnahmezeit und dem GPX-Track geschätzt."""
+        return self.has_gps and self.gps_source == 'track'
 
 
 def morning_threshold():

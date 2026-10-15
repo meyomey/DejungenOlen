@@ -143,7 +143,9 @@ C-Erweiterungen (Pillow, cryptography/cffi), die für die alte Version gebaut wu
 
 | Problem | Lösung |
 |---|---|
-| 500 Internal Server Error | `passenger_wsgi.py` temporär auf `sys.stderr.write(traceback) + raise` umschreiben |
+| 500 Internal Server Error | Seit Build ae zeigt die Seite selbst den Python-Traceback, zusätzlich steht er in `logs/startup_error.log` (per FTP lesbar) |
+| `module 'passenger_wsgi' has no attribute 'application'` | Passenger hat `passenger_wsgi.py` zwar geladen, aber die Datei definiert kein `application` – typisch bei leerer/abgebrochener Übertragung (Größe per FTP prüfen) oder wenn `from app import app` fehlgeschlagen ist. `passenger_wsgi.py` und `app.py` aus dem Deploy-ZIP erneut hochladen (Binärmodus), dann Restart. Seit Build ae fängt `passenger_wsgi.py` Importfehler ab und zeigt sie an. |
+| Welche Fehlermeldung genau? | Plesk → Websites & Domains → **Protokolle/Logs** → `error_log`: direkt über der letzten Passenger-Meldung steht der eigentliche Python-Fehler |
 | Karte lädt nicht | Leaflet CDN erreichbar? HTTPS korrekt? |
 | Fotos werden nicht gespeichert | `static/uploads/` Ordner vorhanden und schreibbar? |
 | E-Mails kommen nicht an | SMTP-Einstellungen in Plesk/config.py prüfen |

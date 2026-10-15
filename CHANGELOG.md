@@ -2,6 +2,68 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build ae) – Startfehler sichtbar machen
+
+- Nach dem Upload von Build ad startete die App auf dem Server nicht; Passenger meldete nur
+  `module 'passenger_wsgi' has no attribute 'application'` – ohne SSH war die eigentliche Ursache nicht
+  zu sehen. `passenger_wsgi.py` fängt den Import von `app.py` jetzt ab (auch `SystemExit`): Der
+  Traceback erscheint als Antwortseite (HTTP 500, Klartext) **und** in `logs/startup_error.log` im
+  App-Ordner (per FTP lesbar). Zusätzlich wird geprüft, dass wirklich `<App-Ordner>/app.py` geladen
+  wurde und kein gleichnamiges Fremdmodul aus einem site-packages-Ordner.
+- Inhaltlich keine Änderung gegenüber Build ad (flache Bottom-Navigation) und ac (Fotos per
+  Aufnahmezeit). Troubleshooting-Tabelle in `docs/INSTALLATION_PLESK_FTP.md` ergänzt.
+
+Geänderte Dateien: `passenger_wsgi.py`, `app.py` (Build-Kennung), `docs/INSTALLATION_PLESK_FTP.md`, `CHANGELOG.md`.
+
+## 1.4.0 – 2026-10-15 (Build ad) – Bottom-Navigation wieder flach
+
+- Rückmeldung vom S23: Die untere Navigationsleiste war mit Build ab „nach oben gerutscht“. Ursache: Build ab
+  hatte nur die Beschriftung vergrößert (.6 → .75 rem), die Leiste wuchs dadurch nach oben – mit Großschrift
+  von ≈ 65 auf ≈ 69 px. Jetzt enge Abstände (Leiste 3 px, Einträge 2 px), feste Zeilenhöhe 1.2, kein Umbruch,
+  Plus-Knopf 44 px ohne Außenabstand: Die Leiste ist mit ≈ 51 px (Großschrift ≈ 53 px) **niedriger als vor
+  Build ab** (63 px), die Beschriftung bleibt mit .72 rem gut lesbar. Platzhalter unter dem Seiteninhalt und
+  Höhe des ausgeklappten Menüs entsprechend angepasst (58 px).
+
+Geänderte Dateien: `app.py` (Build-Kennung), `templates/base.html`, `tests/test_build_ab.py`, `CHANGELOG.md`.
+
+## 1.4.0 – 2026-10-15 (Build ac) – Fotos per Aufnahmezeit auf der Strecke platzieren
+
+Hintergrund: Android (seit 10) und iOS entfernen beim Hochladen über die Galerie/Fotos-Auswahl den
+Standort aus den Bildern – das passiert im Handy, bevor der Browser die Datei sieht. Die
+Aufnahmezeit bleibt dabei erhalten (Ausnahme: WhatsApp). 125 Smoke-Tests (28 neu in
+`tests/test_build_ac.py`).
+
+- **Automatisch beim Hochladen:** Hat die Tour eine GPX-**Aufzeichnung mit Zeitstempeln**
+  (Garmin, Komoot, Wahoo – keine geplante Route), bekommen Fotos ohne Standort die Position, an der
+  die Gruppe laut Track zur Aufnahmezeit war (zwischen den Nachbarpunkten interpoliert; bis 15 min
+  vor Start/nach Ende → erster/letzter Punkt; bei Lücken > 10 min kein Interpolieren). Solche
+  Positionen sind als **geschätzt** markiert: gelbes ≈-Badge am Foto, Hinweis im Karten-Popup
+  (`tour_photos.gps_source = 'track'`, Migration). Echte Positionen (EXIF, Kartenklick,
+  Handy-Standort) haben Vorrang und werden nie überschrieben.
+- **Nachträglich für bestehende Fotos:** Knopf „… Foto(s) ohne Standort auf der Strecke platzieren“
+  oberhalb der Fotos (Tourleitung/Organisator/Admin, `POST /touren/<id>/fotos/platzieren`), mit
+  **Zeitkorrektur in Minuten** für falsch gehende Kamera-Uhren (geschätzte Positionen werden dabei
+  neu berechnet) und „geschätzte Positionen wieder entfernen“ (`action=undo`). Der Block zeigt die
+  Spanne der Aufzeichnung („Aufzeichnung 10:02–12:41 Uhr“); liegen alle Fotos um ±1/±2 h daneben
+  (App schreibt Ortszeit statt UTC in den GPX), schlägt die Meldung die passende Zeitkorrektur vor.
+  Ohne Zeitstempel im GPX erklärt die Seite stattdessen, warum es nicht automatisch geht.
+- **Hinweis nach dem Upload** (Paket B): „n Foto(s) ohne Standort. Tipp fürs Handy: Fotos über die
+  App „Dateien“ (DCIM/Camera) auswählen …“ – je nach Tour ergänzt um den Grund (keine Aufnahmezeit /
+  außerhalb der Aufzeichnung / GPX ohne Zeitstempel). Die Erfolgsmeldung zählt „📍 n anhand der
+  Aufnahmezeit auf der Strecke platziert“ getrennt von „🗺️ n mit GPS“; der Hinweis vor dem Upload
+  kündigt das automatische Platzieren an, wenn der GPX Zeiten hat.
+- **Herkunft der Position** wird jetzt gespeichert (`gps_source`: exif / manual / device / track):
+  Kartenklick setzt `manual`, der Handy-Standort beim Hochladen `device`, „GPS entfernen“ löscht sie.
+- **EXIF-Aufnahmezeit korrekt gelesen:** `extract_datetime_from_exif` folgt jetzt dem Zeiger auf das
+  Exif-Unter-IFD und nimmt **DateTimeOriginal** (vorher wurde nur das IFD0 gelesen – also bei
+  bearbeiteten Fotos das Änderungsdatum, womit das Foto an der falschen Stelle gelandet wäre);
+  HEIC wird ebenfalls durchsucht, Pillow ist letzter Fallback. Pillow-GPS-Fallback schließt die Datei
+  wieder (ResourceWarning).
+- Hilfe: Abschnitt „Automatisch per Aufnahmezeit platzieren“ + iPhone-Weg „In Dateien sichern“.
+
+Geänderte Dateien: `app.py`, `models.py`, `templates/touren/detail.html`, `templates/hilfe.html`,
+`tests/test_build_ac.py` (neu), `tests/test_build_ab.py`, `README.md`, `CHANGELOG.md`.
+
 ## 1.4.0 – 2026-10-14 (Build ab) – Audit 3
 
 Drittes Komplett-Audit (Bericht in `docs/AUDIT_BERICHT.md`, Abschnitt „Audit 3“) und Umsetzung aller

@@ -74,17 +74,61 @@ if _missing:
 # Arbeitsverzeichnis setzen (wichtig für SQLite-Pfad)
 os.chdir(project_root)
 
-# App laden
-from app import app as application
+
+def _startup_failed(text):
+    """Build ae: Startfehler sichtbar machen. Bisher meldete Passenger bei einem Fehler in app.py
+    nur „module 'passenger_wsgi' has no attribute 'application'“ – ohne SSH war die Ursache nicht
+    zu sehen. Jetzt: Traceback in logs/startup_error.log (per FTP lesbar) und als Antwortseite."""
+    try:
+        import logging
+        logging.error('De jungen Olen – Start fehlgeschlagen:\n%s', text)
+    except Exception:
+        pass
+    try:
+        import datetime
+        os.makedirs(os.path.join(project_root, 'logs'), exist_ok=True)
+        with open(os.path.join(project_root, 'logs', 'startup_error.log'), 'a', encoding='utf-8') as fh:
+            fh.write('\n===== {} – Python {} =====\n{}\n'.format(
+                datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), sys.version.split()[0], text))
+    except Exception:
+        pass
+
+    def application(environ, start_response):
+        body = ('De jungen Olen – die App konnte nicht starten.\n\n'
+                'Fehler beim Laden von app.py (Python {}):\n\n{}\n\n'
+                'Derselbe Text steht in logs/startup_error.log im App-Ordner.\n'
+                'Nach dem Beheben: Plesk → Python → Restart (oder tmp/restart.txt anfassen).\n'
+                ).format(sys.version.split()[0], text).encode('utf-8')
+        start_response('500 Internal Server Error',
+                       [('Content-Type', 'text/plain; charset=utf-8'),
+                        ('Content-Length', str(len(body))),
+                        ('Cache-Control', 'no-store')])
+        return [body]
+    return application
+
+
+# App laden – jeder Fehler (auch SystemExit aus einer Bibliothek) wird angezeigt statt verschluckt
+try:
+    from app import app as application
+    _app_file = getattr(sys.modules.get('app'), '__file__', '') or ''
+    if not os.path.abspath(_app_file).startswith(os.path.abspath(project_root)):
+        raise ImportError('Es wurde ein fremdes Modul "app" geladen: {} – erwartet wurde {}'.format(
+            _app_file, os.path.join(project_root, 'app.py')))
+    _startup_error = None
+except BaseException:
+    import traceback
+    _startup_error = traceback.format_exc()
+    application = _startup_failed(_startup_error)
 
 # Datenbank + Schema-Migration beim Start
-with application.app_context():
-    try:
-        from models import db
-        db.create_all()
-        from app import migrate_db, init_site_config
-        migrate_db()
-        init_site_config()
-    except Exception as _e:
-        import logging
-        logging.warning(f'Startup init: {_e}')
+if _startup_error is None:
+    with application.app_context():
+        try:
+            from models import db
+            db.create_all()
+            from app import migrate_db, init_site_config
+            migrate_db()
+            init_site_config()
+        except Exception as _e:
+            import logging
+            logging.warning(f'Startup init: {_e}')

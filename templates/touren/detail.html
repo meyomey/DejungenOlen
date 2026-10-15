@@ -844,6 +844,47 @@
           </div>
         </form>
 
+        {# Build ac: Fotos ohne Standort per Aufnahmezeit auf dem GPX-Track platzieren (Tourleitung/Orga/Admin) #}
+        {% set photos_no_gps = photos|rejectattr('has_gps')|list|length %}
+        {% set photos_est = photos|selectattr('gps_estimated')|list|length %}
+        {% if photos and tour.gpx_file and (photos_no_gps or photos_est)
+              and (current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id) %}
+        <div class="border rounded p-2 mb-2 bg-light" id="place-on-track">
+          {% if gpx_timed %}
+          <form method="post" action="{{ url_for('tour_photos_place_on_track', tour_id=tour.id) }}"
+                class="d-flex flex-wrap align-items-center gap-2">
+            <button type="submit" class="btn btn-sm btn-outline-primary"
+                    title="Fotos ohne Standort anhand ihrer Aufnahmezeit dorthin setzen, wo die Gruppe laut GPX-Aufzeichnung zu dieser Uhrzeit war">
+              <i class="bi bi-geo-alt me-1"></i>{% if photos_no_gps %}{{ photos_no_gps }} Foto(s) ohne Standort auf der Strecke platzieren{% else %}Geschätzte Positionen neu berechnen{% endif %}
+            </button>
+            <label class="small text-muted d-flex align-items-center gap-1 mb-0"
+                   title="Nur nötig, wenn die Kamera-Uhr falsch geht: +5 = Kamera geht 5 Minuten vor, −60 = Kamera steht noch auf Winterzeit">
+              Zeitkorrektur
+              <input type="number" name="offset_min" value="0" min="-720" max="720" step="1"
+                     class="form-control form-control-sm" style="width:5.2rem">
+              min
+            </label>
+            <span class="small text-muted">{% if gpx_span %}Aufzeichnung {{ gpx_span }} · {% endif %}Die Position wird aus der Aufnahmezeit geschätzt (≈) und lässt sich per ✏️ am Foto korrigieren.</span>
+          </form>
+          {% if photos_est %}
+          <form method="post" action="{{ url_for('tour_photos_place_on_track', tour_id=tour.id) }}" class="mt-1"
+                onsubmit="return confirm('Alle geschätzten Positionen dieser Tour entfernen?')">
+            <input type="hidden" name="action" value="undo">
+            <button type="submit" class="btn btn-sm btn-link text-muted p-0" style="font-size:.78rem">
+              ≈ {{ photos_est }} geschätzte Position(en) wieder entfernen
+            </button>
+          </form>
+          {% endif %}
+          {% elif photos_no_gps %}
+          <div class="small text-muted">
+            <i class="bi bi-info-circle me-1"></i>{{ photos_no_gps }} Foto(s) ohne Standort. Der GPX-Track dieser Tour hat
+            keine Zeitstempel (geplante Route) – mit einer Aufzeichnung (Garmin, Komoot, Wahoo) würden Fotos automatisch
+            anhand der Aufnahmezeit platziert. Sonst: Position per ✏️ am Foto auf der Karte setzen.
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
         <!-- Photo grid -->
         {% if photos %}
         <!-- Bulk controls -->
@@ -893,7 +934,13 @@
                      alt="{{ p.caption or 'Foto' }}"
                      title="🔍 Antippen zum Vergrößern{% if p.has_gps %} · GPS vorhanden{% endif %}"
                      onclick="lbOpenFromEl(this)">
-                {% if p.has_gps %}
+                {% if p.gps_estimated %}
+                <span class="badge bg-warning text-dark position-absolute top-0 end-0 m-1"
+                      style="cursor:pointer" onclick="jumpToMarker({{ p.id }})"
+                      title="Position geschätzt – anhand der Aufnahmezeit auf der Strecke ({{ p.lat }}, {{ p.lng }}). Auf der Karte zeigen; bei Bedarf per ✏️ korrigieren.">
+                  <i class="bi bi-geo-alt-fill"></i>≈
+                </span>
+                {% elif p.has_gps %}
                 <span class="badge bg-success position-absolute top-0 end-0 m-1"
                       style="cursor:pointer" onclick="jumpToMarker({{ p.id }})"
                       title="Auf der Karte zeigen (GPS: {{ p.lat }}, {{ p.lng }})">
@@ -1911,6 +1958,9 @@ async function photoFilesSelected(input) {
         '⚠️ Kein GPS in den Fotos gefunden. ' +
         '<span class="text-muted" style="font-size:.7rem">Tipp: Foto über die <strong>Dateien-App</strong> ' +
         '(statt Galerie) aus DCIM/Camera auswählen – Android/iOS entfernen GPS oft bei der normalen Foto-Auswahl.</span><br>' +
+        (window.GPX_TIMED
+          ? '<span class="text-success" style="font-size:.72rem">Fotos mit Aufnahmezeit werden nach dem Hochladen automatisch auf der Strecke platziert (≈ geschätzt).</span><br>'
+          : '') +
         '<button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 mt-1" ' +
         'onclick="useDeviceLocationForUpload(' + imageCount + ')" ' +
         'style="font-size:.72rem">📍 Aktuellen Standort verwenden</button> ' +
@@ -1966,7 +2016,8 @@ function useDeviceLocationForUpload(imageCount) {
       if (allFiles[i].name.toLowerCase().endsWith('.zip')) continue;
       hidden.innerHTML +=
         `<input type="hidden" name="gps_lat_${i}" value="${lat}">` +
-        `<input type="hidden" name="gps_lng_${i}" value="${lng}">`;
+        `<input type="hidden" name="gps_lng_${i}" value="${lng}">` +
+        `<input type="hidden" name="gps_src_${i}" value="device">`;
       added++;
     }
     if (status) status.textContent =
@@ -2171,9 +2222,11 @@ const PHOTOS = [
     cap: {{ (p.caption or '')|tojson }},
     user: {{ p.user.display_name|tojson }},
     date: "{{ (p.taken_at or p.created_at).strftime('%d.%m.%Y %H:%M') }}",
-    is_taken: {{ 'true' if p.taken_at else 'false' }} },
+    is_taken: {{ 'true' if p.taken_at else 'false' }},
+    est: {{ 'true' if p.gps_estimated else 'false' }} },
   {% endif %}{% endfor %}
 ];
+window.GPX_TIMED = {{ 'true' if gpx_timed else 'false' }};   // Build ac: GPX ist eine Aufzeichnung mit Zeitstempeln (für den Upload-Hinweis)
 
 // ── Leaflet map ───────────────────────────────────────────────────────────────
 let center = [53.1, 9.2];
@@ -2740,6 +2793,7 @@ PHOTOS.forEach((p, idx) => {
       <div style="font-size:.72rem;color:#888;margin-top:3px">
         ${p.is_taken ? '📸' : '📤'} ${p.date} &middot; ${escHtml(p.user)}
       </div>
+      ${p.est ? '<div style="font-size:.68rem;color:#b07d00;margin-top:2px" title="anhand der Aufnahmezeit auf der Strecke">≈ Position geschätzt (per Uhrzeit)</div>' : ''}
     </div>
   `);
 

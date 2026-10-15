@@ -540,12 +540,14 @@ class OpsTest(AppTestCase):
         self.assertEqual(r.status_code, 200)
         body = r.get_data(as_text=True)
         self.assertNotIn('__BUILD__', body)
-        self.assertIn("const CACHE_VERSION = 'djo-2026-10-14-ab'", body)
+        build = appmod.APP_BUILD                                        # z. B. '2026-10-15 ac'
+        self.assertIn(f"const CACHE_VERSION = 'djo-{build.replace(' ', '-')}'", body)
         self.assertEqual(r.headers.get('Cache-Control'), 'no-cache')
         self.login_member()
         html = self.get_html('/')
-        self.assertIn('css/style.css?v=2026-10-14ab', html)
-        self.assertIn('font-size: .75rem', html)                          # Bottom-Nav lesbar
+        self.assertIn(f"css/style.css?v={build.replace(' ', '')}", html)
+        self.assertIn('.bottom-nav-item span { line-height: 1.2;', html)  # Build ad: flache Leiste, Beschriftung .72rem
+        self.assertIn('font-size: .72rem; line-height: 1.2', html)
 
     def test_live_map_attribution_top_right(self):
         self.login_member()
@@ -559,7 +561,7 @@ class RemovedRoutesTest(AppTestCase):
         self.assertEqual(self.client.get('/admin/run-migration?token=x').status_code, 404)
         self.assertEqual(self.client.get('/proposals/new').status_code, 404)
         self.assertEqual(self.client.post('/proposals/1/vote').status_code, 404)
-        self.assertEqual(appmod.APP_BUILD, '2026-10-14 ab')
+        self.assertRegex(appmod.APP_BUILD, r'^\d{4}-\d{2}-\d{2} [a-z]{1,2}$')
 
 
 if __name__ == '__main__':
