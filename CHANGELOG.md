@@ -2,6 +2,45 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build ag) – Uploads schneller & robuster, Erinnerung pünktlich per Cron
+
+Komplett-Review von Code, Templates und Tests vorab: keine Sicherheits- oder Stabilitätsprobleme.
+Umsetzung der dabei gefundenen Punkte:
+
+- **Foto-Upload deutlich schneller bei Touren ohne Zeitquelle** – Der Cache für die Zeitstempel-Punkte
+  (GPX, sonst Live-Aufzeichnung) merkte sich nur *nicht-leere* Ergebnisse: Hatte die Tour einen GPX
+  **ohne** Zeitstempel (geplante Route) und keine Live-Aufzeichnung, wurde der GPX für **jedes** Foto
+  ohne GPS neu geparst (gemessen ~100 ms je 3 000 Punkte am Server) plus je zwei Abfragen. Jetzt wird
+  pro Upload genau einmal geladen – auch wenn das Ergebnis leer ist.
+- **Erinnerungen pünktlich per Plesk-Cron** – Die Tourtag-/Vorabend-Erinnerung wird bisher nur mit
+  ~3 % Wahrscheinlichkeit pro Seitenaufruf ausgelöst; bei einer kleinen Gruppe kam „ab 7 Uhr" real
+  oft erst gegen Mittag. Neuer Endpunkt **`/api/reminder/trigger`** (gleiches Muster und gleiches
+  Token wie `/api/backup/trigger`): In Plesk als Geplante Aufgabe z. B. alle 15 Minuten aufrufen,
+  dann geht die Erinnerung pünktlich raus. Doppelt schicken ist unmöglich (Tagesflags), der
+  Selbst-Trigger bleibt als Rückfallebene und wird durch den Cron-Aufruf nicht zusätzlich angestoßen.
+  Fertige URL mit Kopier-Knopf: **Admin → Benachrichtigungen** (unter den Erinnerungs-Uhrzeiten).
+- **Freundliche 413-Seite** – Uploads über der Gesamtgrenze (z. B. Video > 500 MB, ein ganzer
+  Foto-Stapel) zeigen jetzt eine verständliche Fehlerseite mit Tipps statt eines technischen Fehlers.
+- **Größen-Caps vor dem Einlesen** – Fotos/ZIP-Einträge über **60 MB** (`MAX_PHOTO_SIZE`) und
+  Profilbilder über **20 MB** werden abgewiesen, **bevor** sie in den RAM gelesen werden (vorher:
+  erst komplett einlesen, dann prüfen). ZIP-Archive werden nicht mehr komplett in den Speicher
+  geladen, sondern Eintrag für Eintrag direkt aus dem Upload-Tempfile gelesen. Meldung zählt
+  „⚖️ n zu groß" getrennt auf.
+- **Aufräumen des Rate-Limiter-Speichers** – Veraltete Keys (älter als 1 h) werden entfernt, sobald
+  der Speicher über 512 Einträge wächst; vorher sammelten sich je gesehener IP Keys auf Dauer an.
+- **Kleine Aufräumarbeiten** (kein Verhalten geändert): `utcfromtimestamp` → `fromtimestamp(…, tz=utc)`
+  (ab Python 3.12 veraltet), tote Imports entfernt (u. a. `locale`/`cal_month` im Newsletter,
+  `selectinload`, doppeltes `shutil`), toter Inspector-Refresh in `migrate_db` jetzt wirksam
+  (`nonlocal`), `invite_url`-Leckvariable entfernt. Pack-Skript: `_DEPLOY_HINWEISE.txt` aus dem
+  Repo-Root wird nicht mehr zusätzlich zur generierten Datei ins ZIP gepackt (Doppelteintrag-Warnung).
+- **Tests**: 35 neue (15 in `tests/test_build_ag.py`, 20 in `tests/test_bereiche.py` – schließen die
+  im Audit 3 genannten Lücken: Registrierung/Einladung, Passwort-Reset, Kommentare, Zeitabstimmung,
+  Vorlagen, Ankündigungen, Video-Upload), insgesamt **177**.
+
+Geänderte Dateien: `app.py`, `config.py`, `templates/errors/413.html` (neu),
+`templates/admin/notifications.html`, `tests/test_build_ag.py` (neu), `tests/test_bereiche.py` (neu),
+`README.md`, `CHANGELOG.md`.
+
 ## 1.4.0 – 2026-10-15 (Build af) – Foto unterwegs (Option C) und Live-Karte als Aufzeichnung (Option D)
 
 **Option C – Foto unterwegs mit Handy-Standort**

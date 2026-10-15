@@ -159,6 +159,8 @@ python -m unittest tests.test_routes.RoutesTest.test_all_get_routes_member
 | `tests/test_downloads.py` | GPX-Download, Archiv-ZIP, Tour-Paket (tour.txt), Druckansicht |
 | `tests/test_live.py` | Live-Karte: Zeitfenster, `open_now`, Initialen, Migration, API-Rechte, veraltete Standorte, Seiten; Gruppen-Karte (Filter, Popup-Daten, „offen“) |
 | `tests/test_build_af.py` | Foto unterwegs (Handy-Standort), Live-Aufzeichnung: Punkte filtern, Zusammenfassungen, Spuren-API, GPX übernehmen/herunterladen/löschen, Fotos auf der Live-Aufzeichnung platzieren, Seiten |
+| `tests/test_build_ag.py` | Foto-Upload lädt die Zeitquelle nur einmal (auch wenn leer), Erinnerungs-Cron-Trigger (Token, kein doppelter Selbst-Trigger), 413-Fehlerseite, Größen-Caps für Fotos/Avatare/ZIP-Einträge, Aufräumen des Rate-Limiter-Speichers |
+| `tests/test_bereiche.py` | Registrierung per Einladung, Passwort-Reset (inkl. abgelaufen/verbraucht), Kommentare (Antworten, Löschen, Mandanten-Trennung), Zeitabstimmung, Tour-Vorlagen, Ankündigungen (Sichtbarkeit, Umschalten), Video-Upload |
 | `tests/test_helpers.py` | `parse_gpx`, Track-Vereinfachung, SVG-Vorschau, ICS-Maskierung/-Faltung, Formular-Parser, Template-Filter |
 | `tests/test_build_ac.py` | Fotos per Aufnahmezeit auf dem GPX-Track platzieren (Interpolation, Toleranz, Lücken, Zeitkorrektur), Upload-Hinweise, `gps_source`, EXIF-DateTimeOriginal |
 | `tests/test_build_ab.py` | Erinnerungen mit Uhrzeit-Schranke, Absage/Reaktivierung + Benachrichtigung, „Änderung mitteilen“, Anmelde-Link, Notfallkontakt/Teilnehmerliste, Fahrgemeinschaften, Backup-Modi/Rotation/sicheres Entpacken, GPX-Ausdünnung, Service-Worker-Cache, entfernte Routen |

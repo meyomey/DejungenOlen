@@ -111,6 +111,30 @@
         <button type="submit" class="btn btn-djo btn-sm w-100"><i class="bi bi-check-lg me-1"></i>Speichern</button>
       </div>
     </form>
+
+    {% if reminder_trigger_url %}
+    <!-- Build ag: pünktliche Auslösung per Plesk-Cron -->
+    <hr class="my-3">
+    <h6 class="fw-bold mb-1"><i class="bi bi-stopwatch me-2"></i>Pünktlich per Plesk-Cron (empfohlen)</h6>
+    <p class="text-muted small mb-2">
+      Ohne Cronjob kommt die Erinnerung beim <em>ersten Seitenaufruf nach der Uhrzeit</em> – bei einer
+      kleinen Gruppe kann das auch mal Mittags sein. Mit einer <strong>Geplanten Aufgabe in Plesk</strong>
+      (URL unten, z.&nbsp;B. alle 15 Minuten aufrufen) geht sie pünktlich raus. Doppelt schicken ist
+      unmöglich – je Tag und Art wird höchstens eine verschickt. Schritte wie beim Backup-Cronjob:
+      <a href="{{ url_for('admin_backup_cron_info') }}">Anleitung</a>.
+    </p>
+    <div class="p-2 rounded mb-2" style="background:#f8f9fa;border:1px solid #dee2e6">
+      <code style="word-break:break-all;font-size:.8rem" id="reminderCronUrl">{{ reminder_trigger_url }}</code>
+      <button type="button" class="btn btn-sm btn-outline-secondary ms-2 mt-1"
+              onclick="navigator.clipboard.writeText(document.getElementById('reminderCronUrl').textContent); this.textContent='Kopiert!'">
+        <i class="bi bi-clipboard me-1"></i>Kopieren
+      </button>
+    </div>
+    <div class="small text-muted">
+      Beispiel-Befehl in Plesk: <code>curl -s "{{ reminder_trigger_url }}" &gt; /dev/null 2&gt;&amp;1</code>
+      – der Link enthält ein geheimes Token, nicht öffentlich teilen.
+    </div>
+    {% endif %}
   </div>
 </div>
 

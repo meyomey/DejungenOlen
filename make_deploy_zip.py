@@ -45,7 +45,8 @@ MARKER = DEPLOY_DIR / 'LAST_DEPLOY.txt'
 # Dateien/Ordner, die nie auf den Server gehören
 EXCLUDE_PREFIXES = ('deploy/', '.git/', '.github/', 'venv/', '.venv/', 'backups/', 'instance/',
                     'static/uploads/', '__pycache__/', 'node_modules/')
-EXCLUDE_FILES = {'.gitignore', '.gitattributes', 'make_deploy_zip.py', 'LAST_DEPLOY.txt'}
+EXCLUDE_FILES = {'.gitignore', '.gitattributes', 'make_deploy_zip.py', 'LAST_DEPLOY.txt',
+                 '_DEPLOY_HINWEISE.txt'}   # Build ag: Vorlage im Repo-Root – in den ZIPs liegt die generierte
 EXCLUDE_SUFFIXES = ('.pyc', '.db', '.db-wal', '.db-shm', '.log', '.zip')
 FFMPEG = 'ffmpeg'  # 80-MB-Binärdatei, liegt bereits auf dem Server
 

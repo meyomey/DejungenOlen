@@ -4,7 +4,7 @@ import io
 import secrets
 import json
 import subprocess
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from functools import wraps
 
 from flask import (Flask, render_template, render_template_string, redirect, url_for, request,
@@ -60,6 +60,12 @@ def _photo_tour_or_404(photo):
 
 def _rate_limit(key: str, max_calls: int = 5, window: int = 60) -> bool:
     now = _time.time()
+    # Build ag: ab und zu veraltete Keys komplett entfernen – sonst wächst der Store
+    # mit jeder jemals gesehenen IP/langsamen Nutzern langsam weiter (größtes
+    # genutztes Fenster: 1 h, Login-Link je Nutzer).
+    if len(_rl_store) > 512:
+        for stale in [k for k, v in _rl_store.items() if not v or now - v[-1] > 3600]:
+            _rl_store.pop(stale, None)
     calls = [t for t in _rl_store[key] if now - t < window]
     _rl_store[key] = calls
     if len(calls) >= max_calls:
@@ -83,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 af'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 ag'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -277,7 +283,6 @@ def _tile_bounds(x, y, zoom):
 def cfg(key, default=None):
     """Read SiteConfig; fall back to DEFAULTS or .env. Never raises."""
     try:
-        from sqlalchemy.exc import OperationalError, ProgrammingError
         val = SiteConfig.get(key)
         if val is not None:
             return val
@@ -989,7 +994,6 @@ def index():
         Tour.tour_date != date(9999, 12, 31),
         Tour.status == 'planned'
     ).order_by(Tour.tour_date).all()
-    from sqlalchemy.orm import selectinload
     recent = (_gq(Tour)
               .filter(Tour.status == 'completed',
                       Tour.tour_date != date(9999, 12, 31))
@@ -2425,7 +2429,6 @@ def photo_set_caption(photo_id):
 @login_required
 def tour_upload_photos(tour_id):
     import zipfile as _zipfile
-    import io as _io
 
     # Rate-Limit: max 5 Upload-Requests pro Minute pro User
     if _rate_limit(f'photo_upload:{current_user.id}', max_calls=5, window=60):
@@ -2446,15 +2449,19 @@ def tour_upload_photos(tour_id):
     dupes     = 0
     placed    = 0          # Build ac: per Aufnahmezeit auf dem Track platziert
     device_n  = 0          # Build af: mit dem aktuellen Handy-Standort („Foto unterwegs“)
+    too_big   = 0          # Build ag: über MAX_PHOTO_SIZE (vor dem Einlesen abgelehnt)
     import hashlib as _hashlib
     seen_hashes = {h for (h,) in db.session.query(TourPhoto.orig_hash)
                    .filter(TourPhoto.tour_id == tour_id, TourPhoto.orig_hash.isnot(None)).all()}
-    _timed_cache = []      # Zeitstempel-Punkte (GPX, sonst Live-Aufzeichnung), erst beim ersten Foto ohne GPS geladen
+    _timed_cache = None    # Build ag: Zeitstempel-Punkte (GPX, sonst Live-Aufzeichnung), erst beim
+                           # ersten Foto ohne GPS geladen – auch LEERES Ergebnis wird gecacht, sonst
+                           # würde der GPX je Foto ohne GPS neu geparst (gemessen ~100 ms je 3 000 Punkte)
 
     def _timed():
-        if not _timed_cache:
-            _timed_cache.append(_tour_timed_points(tour, current_user.id))   # Build af: eigene Live-Aufzeichnung zuerst
-        return _timed_cache[0]
+        nonlocal _timed_cache
+        if _timed_cache is None:
+            _timed_cache = _tour_timed_points(tour, current_user.id)   # Build af: eigene Live-Aufzeichnung zuerst
+        return _timed_cache
 
     def _check_magic(data: bytes) -> bool:
         h = data[:12]
@@ -2549,9 +2556,10 @@ def tour_upload_photos(tour_id):
 
         # ── ZIP archive ───────────────────────────────────────────────────────
         if fname_lower.endswith('.zip'):
-            data = f.read()
+            # Build ag: ZIP nicht mehr komplett in den RAM – ZipFile liest direkt aus dem
+            # Upload-Tempfile, jeder Eintrag einzeln und nur bis MAX_PHOTO_SIZE.
             try:
-                with _zipfile.ZipFile(_io.BytesIO(data)) as zf:
+                with _zipfile.ZipFile(f.stream) as zf:
                     img_names = [
                         n for n in zf.namelist()
                         if not n.startswith('__MACOSX') and not n.startswith('.')
@@ -2559,6 +2567,9 @@ def tour_upload_photos(tour_id):
                            in app.config['ALLOWED_PHOTO_EXTENSIONS']
                     ]
                     for img_name in img_names:
+                        if zf.getinfo(img_name).file_size > app.config['MAX_PHOTO_SIZE']:
+                            too_big += 1
+                            continue
                         img_data = zf.read(img_name)
                         photo = _process_image_bytes(img_data, img_name)
                         if photo:
@@ -2572,6 +2583,19 @@ def tour_upload_photos(tour_id):
         # ── Normal image file ─────────────────────────────────────────────────
         if not allowed_file(f.filename, app.config['ALLOWED_PHOTO_EXTENSIONS']):
             skipped += 1
+            continue
+        # Build ag: Größe prüfen BEVOR die Datei in den RAM gelesen wird (Werkzeug legt große
+        # Uploads als Tempfile ab; ein absurdes Riesen-"Foto" sollte gar nicht erst gelesen werden).
+        try:
+            f.seek(0, 2)
+            f_size = f.tell()
+            f.seek(0)
+        except Exception:
+            f_size = 0
+        if f_size and f_size > app.config['MAX_PHOTO_SIZE']:
+            too_big += 1
+            skipped += 1
+            app.logger.info(f'Upload zu groß übersprungen ({f_size} Bytes): {f.filename}')
             continue
         photo = _process_image_bytes(f.read(), f.filename, form_idx=file_idx)
         if photo:
@@ -2589,6 +2613,8 @@ def tour_upload_photos(tour_id):
         parts.append(f'📐 {resized} verkleinert')
     if dupes:
         parts.append(f'♻️ {dupes} Duplikat(e) ignoriert')
+    if too_big:
+        parts.append(f'⚖️ {too_big} zu groß (über 60 MB je Foto)')
     if skipped:
         parts.append(f'{skipped} übersprungen')
     flash(' – '.join(parts), 'success' if count else 'warning')
@@ -3010,7 +3036,6 @@ def tour_video_render(tour_id):
         return redirect(url_for('tour_video', tour_id=tour_id))
 
     # ffmpeg: erst im Projektordner, dann systemweit
-    import shutil
     project_ffmpeg = os.path.join(os.path.dirname(__file__), 'ffmpeg')
     ffmpeg_bin = None
     if os.path.isfile(project_ffmpeg) and os.access(project_ffmpeg, os.X_OK):
@@ -4926,7 +4951,7 @@ def location_update():
     raw_since = data.get('since')                             # Build af: neue Spurpunkte gleich mitliefern
     since = _parse_int(str(raw_since)) if raw_since is not None else None
     if since is not None:
-        out['trails'] = _live_trails_payload(tour_id, datetime.utcfromtimestamp(since) if since else None)
+        out['trails'] = _live_trails_payload(tour_id, datetime.fromtimestamp(since, tz=timezone.utc) if since else None)
     return jsonify(out)
 
 
@@ -4938,7 +4963,7 @@ def location_get(tour_id):
     out = {'locations': _live_locations_payload(tour_id), 'stale_s': LIVE_STALE_S}
     since = _parse_int(request.args.get('since', ''))          # Build af: Spuren (unix-Zeit des letzten Punkts)
     if since is not None:
-        out['trails'] = _live_trails_payload(tour_id, datetime.utcfromtimestamp(since) if since else None)
+        out['trails'] = _live_trails_payload(tour_id, datetime.fromtimestamp(since, tz=timezone.utc) if since else None)
     return jsonify(out)
 
 
@@ -5766,7 +5791,6 @@ def admin_invite():
                          group_id=_grp_invite.id if _grp_invite else None)
     db.session.add(invite)
     db.session.commit()
-    invite_url = url_for('register', token=token, _external=True)
     label_str  = f' für {label}' if label else ''
     flash(f'Einladungslink{label_str} erstellt.', 'success')
     return redirect(url_for('admin_dashboard', invite=invite.id) + '#einladung')
@@ -8421,6 +8445,33 @@ def api_backup_trigger():
     return jsonify({'ok': ok, 'mode': due, 'message': msg})
 
 
+def _cron_token_ok():
+    """Gemeinsamer Token-Schutz der Cron-Endpunkte (Backup, Build ag: Erinnerung) –
+    Plesk-Geplante-Aufgaben können sich nicht einloggen. Same wie bisher:
+    Token = erste 20 Zeichen des SECRET_KEY."""
+    token = request.args.get('token', '')
+    expected = (app.config.get('SECRET_KEY') or '')[:20]
+    import hmac as _hmac
+    return bool(expected and not expected.startswith('change-me')
+                and _hmac.compare_digest(token.encode(), expected.encode()))
+
+
+@app.route('/api/reminder/trigger', methods=['GET', 'POST'])
+def api_reminder_trigger():
+    """Build ag: Externer Trigger-Endpunkt für die Tourtag-/Vorabend-Erinnerung,
+    gleiches Muster wie /api/backup/trigger für Plesk 'Geplante Aufgaben'.
+
+    Hintergrund: Die Selbstauslösung (3 % der Seitenaufrufe) kommt bei wenig
+    Traffic erst Stunden nach der eingestellten Uhrzeit zustande. Ein Cronjob
+    z. B. alle 15 Minuten schickt die Erinnerung pünktlich. Doppelt schicken
+    ist unmöglich – das Tagesflag in _run_tour_reminders erlaubt je Tag und Art
+    genau einen Versand; der Selbst-Trigger bleibt als Rückfallebene."""
+    if not _cron_token_ok():
+        return jsonify({'error': 'invalid token'}), 403
+    done = _run_tour_reminders()
+    return jsonify({'ok': True, 'erinnert': done})
+
+
 @app.route('/admin/backup/einstellungen', methods=['POST'])
 @login_required
 @admin_required
@@ -8761,7 +8812,12 @@ def admin_notifications():
                            tours=upcoming,
                            reminder_morning_hour=_cfg_int('reminder_morning_hour', 7, 0, 23),     # Build ab
                            reminder_evening_hour=_cfg_int('reminder_evening_hour', 18, 0, 23),
-                           reminder_evening_enabled=(cfg('reminder_evening_enabled') != '0'))
+                           reminder_evening_enabled=(cfg('reminder_evening_enabled') != '0'),
+                           reminder_trigger_url=(url_for('api_reminder_trigger',
+                                                         token=(app.config.get('SECRET_KEY') or '')[:20],
+                                                         _external=True)
+                                                 if not (app.config.get('SECRET_KEY') or '')[:20].startswith('change-me')
+                                                 else None))   # Build ag
 
 
 def _resolve_live_db_path():
@@ -9442,6 +9498,16 @@ def avatar_upload():
     if not f or not allowed_file(f.filename, {'jpg','jpeg','png','webp','gif'}):
         flash('Bitte ein gültiges Bild hochladen (JPG/PNG/WEBP).', 'danger')
         return redirect(url_for('profil_edit'))
+    # Build ag: Riesendateien ablehnen, bevor sie gelesen/verarbeitet werden
+    try:
+        f.seek(0, 2)
+        _avatar_size = f.tell()
+        f.seek(0)
+    except Exception:
+        _avatar_size = 0
+    if _avatar_size and _avatar_size > app.config.get('MAX_AVATAR_SIZE', 20 * 1024 * 1024):
+        flash('Das Bild ist zu groß – bitte eines unter 20 MB nehmen.', 'danger')
+        return redirect(url_for('profil_edit'))
 
     os.makedirs(app.config['UPLOAD_FOLDER_AVATARS'], exist_ok=True)
     # Remove old avatar
@@ -9677,8 +9743,8 @@ def admin_gps_diagnose():
 
             # 2. Pillow
             try:
-                from PIL import Image, ExifTags
-                from PIL.ExifTags import TAGS, GPSTAGS
+                from PIL import Image
+                from PIL.ExifTags import TAGS
                 img = Image.open(path)
                 lines.append(f'✅ Pillow OK, Pillow-Version: {Image.__version__}')
                 exif_obj = img.getexif()
@@ -10017,6 +10083,7 @@ def migrate_db():
             return False
 
     def add_column(table, col, col_type):
+        nonlocal inspector
         if not column_exists(table, col):
             try:
                 with db.engine.connect() as conn:
@@ -10427,7 +10494,7 @@ def _run_tour_reminders(now=None):
 
 @app.before_request
 def _self_trigger_morning_reminder():
-    if request.endpoint in ('static', 'service_worker', 'api_backup_trigger'):
+    if request.endpoint in ('static', 'service_worker', 'api_backup_trigger', 'api_reminder_trigger'):
         return
     import random
     if random.random() > 0.03:  # ~3% Chance pro Request
@@ -10536,8 +10603,6 @@ def datenschutz_delete_account():
 @app.route('/newsletter/<int:year>/<int:month>')
 @login_required
 def newsletter(year, month):
-    from calendar import month_name as cal_month
-    import locale
     tours = _gq(Tour).filter(
         Tour.status == 'completed',
         db.extract('year',  Tour.tour_date) == year,
@@ -10676,7 +10741,6 @@ def foto_challenge():
                          .order_by(POI.created_at.desc()).first()
 
     # Recent photos from this month for the challenge
-    from datetime import timedelta
     month_start = date.today().replace(day=1)
     # Audit 1.4.0: nur Fotos aus Touren der aktiven Gruppe (Mandanten-Trennung)
     from flask import g as _g
@@ -10920,7 +10984,6 @@ def explore_map():
 def upcoming_birthdays(days=30):
     """Return users whose birthday falls within the next `days` days, in the active group."""
     try:
-        from datetime import timedelta
         today   = date.today()
         results = []
         users   = _gq(User).filter(User.birthday != None, User.is_active == True).all()
@@ -10947,7 +11010,6 @@ def tours_this_day_past_years():
     """Touren von ungefähr diesem Tag (±3 Tage) in vergangenen Jahren,
     inkl. Titelfoto für einen ansprechenderen Rückblick."""
     try:
-        from datetime import timedelta as _td
         today = date.today()
         tours = _gq(Tour).filter(
             Tour.status == 'completed',
@@ -10992,6 +11054,12 @@ def forbidden(e):
 @app.errorhandler(404)
 def not_found(e):
     return render_template('errors/404.html'), 404
+
+@app.errorhandler(413)
+def request_too_large(e):
+    """Build ag: freundliche Meldung statt technischer Fehlerseite, wenn ein Upload
+    über der Größenbegrenzung liegt (z. B. Video > 500 MB oder ein ganzer Foto-Stapel)."""
+    return render_template('errors/413.html'), 413
 
 @app.errorhandler(500)
 def server_error(e):

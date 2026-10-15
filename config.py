@@ -32,6 +32,7 @@ class Config:
     UPLOAD_FOLDER_VIDEOS      = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'videos')
     ALLOWED_VIDEO_EXTENSIONS  = {'mp4', 'mov', 'avi', 'mkv', 'm4v'}
     MAX_VIDEO_SIZE            = 500 * 1024 * 1024  # 500 MB
+    MAX_PHOTO_SIZE            = 60 * 1024 * 1024   # Build ag: je Foto/ZIP-Eintrag (Handys: 2–8 MB)
 
     # Telegram Bot (optional – leave empty to disable)
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
