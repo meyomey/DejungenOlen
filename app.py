@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 al'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 am'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -4698,6 +4698,12 @@ def archiv():
     ).filter(TourPhoto.tour_id.in_(tour_ids))
      .group_by(TourPhoto.tour_id).all()) if tour_ids else {}
 
+    # Build am: Video-Zahlen in derselben Schlankheit (eine Abfrage, kein N+1)
+    video_counts = dict(db.session.query(
+        TourVideo.tour_id, db.func.count(TourVideo.id)
+    ).filter(TourVideo.tour_id.in_(tour_ids))
+     .group_by(TourVideo.tour_id).all()) if tour_ids else {}
+
     # Cover-Fotos
     cover_photos = {}
     if tour_ids:
@@ -4717,6 +4723,7 @@ def archiv():
     gpx_total = q.filter(Tour.gpx_file != None).count()
     return render_template('touren/archiv.html', tours=tours,
                            part_counts=part_counts, photo_counts=photo_counts,
+                           video_counts=video_counts,
                            page=page, pages=pages, total=total,
                            cover_photos=cover_photos, all_years=_archiv_years(),
                            q='', year='', diff='', gpx_total=gpx_total)
@@ -10633,6 +10640,11 @@ def archiv_suche():
         TourPhoto.tour_id, db.func.count(TourPhoto.id)
     ).filter(TourPhoto.tour_id.in_(tour_ids))
      .group_by(TourPhoto.tour_id).all()) if tour_ids else {}
+    # Build am: Video-Zahlen in derselben Schlankheit (eine Abfrage, kein N+1)
+    video_counts = dict(db.session.query(
+        TourVideo.tour_id, db.func.count(TourVideo.id)
+    ).filter(TourVideo.tour_id.in_(tour_ids))
+     .group_by(TourVideo.tour_id).all()) if tour_ids else {}
     cover_photos = {}
     if tour_ids:
         for p_ in (TourPhoto.query.filter(TourPhoto.tour_id.in_(tour_ids))
@@ -10644,7 +10656,8 @@ def archiv_suche():
     return render_template('touren/archiv.html', tours=tours,
                            q=q, year=year, diff=diff, all_years=all_years,
                            is_search=True, part_counts=part_counts,
-                           photo_counts=photo_counts, cover_photos=cover_photos,
+                           photo_counts=photo_counts, video_counts=video_counts,
+                           cover_photos=cover_photos,
                            page=1, pages=1, total=len(tours), gpx_total=gpx_total)
 
 

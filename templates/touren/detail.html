@@ -885,6 +885,8 @@
       <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
         <span><i class="bi bi-images me-1"></i>Fotos
           {% if photos %}<span class="badge bg-light text-dark ms-1">{{ photos|length }}</span>{% endif %}
+          {# Build am: Video-Zahl direkt neben den Fotos (statt nur ganz unten in der Video-Karte) #}
+          {% if videos %}<span class="badge bg-light text-dark ms-1" title="Videos zur Tour">🎬 {{ videos|length }}</span>{% endif %}
           {% if tour.status == 'completed' %}
           <span class="badge bg-secondary ms-1" title="Fotos können auch nach der Tour noch hinzugefügt werden">Archiv</span>
           {% endif %}

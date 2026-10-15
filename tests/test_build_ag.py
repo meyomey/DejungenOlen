@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 al')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 am')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -391,3 +391,46 @@ class VideoButtonTest(AppTestCase):
         self.assertIn('>Rückblick & Video</span>', html)      # gelber Haupt-Knopf bleibt
         self.assertNotIn('Tour-Video erstellen', html)        # zweiter Knopf ist weg
         self.assertIn('data-short="Rückblick"', html)         # Handy-Kurzschrift unangetastet
+
+
+class VideoCountTest(AppTestCase):
+    """Build am: Video-Anzahlen neben den Foto-Anzahlen – Archiv (Tabelle + Karten),
+    Archiv-Suche und Tourseite (Badge neben dem Fotos-Zähler)."""
+
+    def _add_videos(self, tour_id, n=2):
+        M.TourVideo.query.delete()          # Tests teilen sich eine DB – immer leer starten
+        db.session.commit()
+        db.session.add_all(
+            M.TourVideo(tour_id=tour_id, user_id=self.org.id, filename=f'v{i}.mp4')
+            for i in range(n)
+        )
+        db.session.commit()
+
+    def test_archiv_shows_video_count_table_and_cards(self):
+        self._add_videos(self.t_done_id, 2)
+        self.login_org()
+        html = self.get_html('/archiv')
+        self.assertIn('📷 🎬', html)                       # Spaltenkopf
+        self.assertIn('🎬 2', html)                        # Zelle + Karte
+        self.assertIn('2 Videos', html)                    # Titel-Attribut (Mehrzahl)
+
+    def test_archiv_search_shows_video_count(self):
+        self._add_videos(self.t_done_id, 1)
+        self.login_org()
+        html = self.get_html('/archiv/suche?q=Alte')
+        self.assertIn('🎬 1', html)
+        self.assertIn('1 Video">', html)                   # Titel-Attribut (Einzahl)
+
+    def test_detail_shows_video_badge_next_to_photos(self):
+        self._add_videos(self.t_done_id, 3)
+        self.login_org()
+        html = self.get_html(f'/touren/{self.t_done_id}')
+        self.assertIn('title="Videos zur Tour">🎬 3</span>', html)   # neben Fotos-Zähler
+        self.assertIn('id="videos"', html)                 # Video-Karte weiterhin da
+
+    def test_detail_without_videos_has_no_badge(self):
+        M.TourVideo.query.delete()          # sicherstellen, dass wirklich kein Video existiert
+        db.session.commit()
+        self.login_org()
+        html = self.get_html(f'/touren/{self.t_done_id}')
+        self.assertNotIn('Videos zur Tour', html)

@@ -89,7 +89,7 @@
           <th>km</th>
           <th title="Fahrzeit · Ø Tempo (aus GPX-Zeitstempeln)">⏱</th>
           <th>👥</th>
-          <th>📷</th>
+          <th title="Anzahl Fotos · Anzahl Videos">📷 🎬</th>
           <th></th>
         </tr>
       </thead>
@@ -114,6 +114,8 @@
           </td>
           <td class="small">
             {% set pc = photo_counts.get(t.id, 0) %}{{ pc if pc else '–' }}
+            {# Build am: Video-Zahl neben den Fotos #}
+            {% set vc = video_counts.get(t.id, 0) %}{% if vc %}<span title="{{ vc }} Video{{ 's' if vc != 1 }}">🎬 {{ vc }}</span>{% endif %}
           </td>
           <td>
             <div class="d-flex gap-1" onclick="event.stopPropagation()">
@@ -211,6 +213,9 @@
           </span>
           {% set pc = photo_counts.get(t.id, 0) %}
           {% if pc %}<span>📷 {{ pc }}</span>{% endif %}
+          {# Build am: Video-Zahl neben den Fotos #}
+          {% set vc = video_counts.get(t.id, 0) %}
+          {% if vc %}<span title="{{ vc }} Video{{ 's' if vc != 1 }}">🎬 {{ vc }}</span>{% endif %}
         </div>
       </div>
     </div>

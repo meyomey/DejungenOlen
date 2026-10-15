@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build am) – Video-Anzahlen neben den Foto-Anzahlen
+
+- **Archiv:** Die Listen zeigen jetzt auch die Anzahl der Videos – in der Tabelle neben der Foto-Spalte (Kopf „📷 🎬") und in den Handy-Karten („🎬 N" neben „📷 N"). Die Zahl kommt aus je einer Sammel-Abfrage (kein N+1), sowohl in der Liste als auch in der Archiv-Suche.
+- **Tourseite:** Der Fotos-Karten-Kopf zeigt neben dem Foto-Zähler ein 🎬-Badge mit der Video-Anzahl (bislang stand die Zahl nur ganz unten in der Video-Karte).
+- 193 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-15 (Build al) – Doppelten Video-Knopf entfernt
 
 - Auf fertigen Touren mit Fotos standen zwei Knöpfe mit demselben Ziel („Rückblick & Video“ und „Video“ – beides öffnete die Foto-Video-Seite). Jetzt gibt es nur noch **einen** Knopf: fertige Touren zeigen den gelben „Rückblick & Video“-Knopf, geplante Touren mit Fotos weiterhin den schlichten „Video“-Knopf.
