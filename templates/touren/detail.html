@@ -387,6 +387,75 @@
     </div>
     {% endif %}
 
+    {# Build af (Option D): Aufzeichnung der Live-Karte – als GPX übernehmen, herunterladen, löschen #}
+    {% if live_recs and (can_manage or live_rec_mine) %}
+    <div class="card mb-3 border-info-subtle" id="live-aufzeichnung">
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="bi bi-record-circle me-1"></i>Live-Aufzeichnung <span class="fw-normal small">(„Standort teilen“ auf der Live-Karte)</span></span>
+        <span class="badge bg-light text-dark">{{ live_recs|length }}</span>
+      </div>
+      <div class="card-body py-2">
+        <div class="table-responsive">
+          <table class="table table-sm mb-2 align-middle" style="font-size:.85rem">
+            <thead><tr><th>Wer</th><th>Zeitraum</th><th class="text-end">km</th><th class="text-end">Punkte</th><th></th></tr></thead>
+            <tbody>
+            {% for r in live_recs %}
+              <tr>
+                <td>{{ r.name }}{% if r.user_id == current_user.id %} <span class="text-muted">(du)</span>{% endif %}</td>
+                <td class="text-nowrap">{{ r.span }}</td>
+                <td class="text-end">{{ r.km|de1 }}</td>
+                <td class="text-end">{{ r.n }}</td>
+                <td class="text-end text-nowrap">
+                  {% if can_manage or r.user_id == current_user.id %}
+                  <a class="btn btn-sm btn-outline-secondary py-0" href="{{ url_for('tour_live_recording_download', tour_id=tour.id, user_id=r.user_id) }}"
+                     title="Als GPX-Datei herunterladen">⬇ GPX</a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          {% if can_manage %}
+          <form method="post" action="{{ url_for('tour_live_recording', tour_id=tour.id) }}" class="d-flex flex-wrap align-items-center gap-2"
+                onsubmit="return confirm('{% if tour.gpx_file %}Den vorhandenen GPX-Track dieser Tour durch die Live-Aufzeichnung ersetzen?{% else %}Live-Aufzeichnung als GPX-Track der Tour übernehmen?{% endif %}')">
+            <input type="hidden" name="action" value="adopt">
+            {% if live_recs|length > 1 %}
+            <select name="user_id" class="form-select form-select-sm" style="width:auto">
+              {% for r in live_recs %}<option value="{{ r.user_id }}">{{ r.name }} ({{ r.km|de1 }} km)</option>{% endfor %}
+            </select>
+            {% else %}
+            <input type="hidden" name="user_id" value="{{ live_recs[0].user_id }}">
+            {% endif %}
+            <button type="submit" class="btn btn-sm btn-outline-primary"
+                    title="Die Aufzeichnung wird zum GPX-Track der Tour (mit Zeitstempeln): Karte, Kennzahlen, Fotos per Aufnahmezeit{% if tour.gpx_file %} – ersetzt den bisherigen Track{% endif %}">
+              <i class="bi bi-geo-alt me-1"></i>Als GPX-Track der Tour übernehmen
+            </button>
+          </form>
+          {% endif %}
+          {% if live_rec_mine %}
+          <form method="post" action="{{ url_for('tour_live_recording', tour_id=tour.id) }}" onsubmit="return confirm('Deine Live-Aufzeichnung dieser Tour löschen?')">
+            <input type="hidden" name="action" value="delete">
+            <button type="submit" class="btn btn-sm btn-link text-muted p-0" style="font-size:.78rem">Meine Aufzeichnung löschen</button>
+          </form>
+          {% endif %}
+          {% if can_manage %}
+          <form method="post" action="{{ url_for('tour_live_recording', tour_id=tour.id) }}" onsubmit="return confirm('Alle Live-Aufzeichnungen dieser Tour löschen?')">
+            <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="all">
+            <button type="submit" class="btn btn-sm btn-link text-muted p-0" style="font-size:.78rem">Alle löschen</button>
+          </form>
+          {% endif %}
+        </div>
+        <div class="text-muted mt-1" style="font-size:.72rem">
+          Ohne Höhenangaben (das Handy liefert keine verlässlichen). Aufzeichnungen werden nach {{ keep_days }} Tagen automatisch gelöscht –
+          als GPX-Track übernommen bleibt die Strecke erhalten.{% if timed_source == 'live' %} Fotos ohne Standort werden anhand ihrer Aufnahmezeit
+          auf dieser Aufzeichnung platziert.{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- GPX upload with drag & drop -->
     {% if current_user.is_organizer and not tour.gpx_file %}
     <form id="gpx-form" method="post" action="{{ url_for('tour_upload_gpx', tour_id=tour.id) }}"
@@ -827,6 +896,16 @@
           </div>
           <input type="file" id="photo-input" name="photos" accept="image/*,.zip" multiple
                  class="d-none" onchange="photoFilesSelected(this)">
+          {# Build af (Option C): Foto unterwegs – Kamera öffnen, aktuellen Handy-Standort mitschicken #}
+          <input type="file" id="photo-camera" accept="image/*" capture="environment" class="d-none"
+                 onchange="photoFromCamera(this)">
+          <div id="photo-camera-row" class="d-none align-items-center gap-2 flex-wrap mb-2">
+            <button type="button" class="btn btn-sm btn-outline-success" onclick="document.getElementById('photo-camera').click()"
+                    title="Kamera öffnen – das Foto wird sofort hochgeladen und bekommt den aktuellen Standort des Handys">
+              📷 Foto unterwegs aufnehmen
+            </button>
+            <span class="text-muted" style="font-size:.72rem">Kamera öffnet sich, Foto wird sofort mit dem aktuellen Standort hochgeladen.</span>
+          </div>
           <div id="gps-hidden-fields"></div>
           <div id="photo-submit-row" class="d-none d-flex align-items-center gap-2 mt-1">
             <button type="submit" id="photo-submit-btn" class="btn btn-sm btn-djo">
@@ -847,14 +926,14 @@
         {# Build ac: Fotos ohne Standort per Aufnahmezeit auf dem GPX-Track platzieren (Tourleitung/Orga/Admin) #}
         {% set photos_no_gps = photos|rejectattr('has_gps')|list|length %}
         {% set photos_est = photos|selectattr('gps_estimated')|list|length %}
-        {% if photos and tour.gpx_file and (photos_no_gps or photos_est)
+        {% if photos and (tour.gpx_file or live_recs) and (photos_no_gps or photos_est)
               and (current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id) %}
         <div class="border rounded p-2 mb-2 bg-light" id="place-on-track">
           {% if gpx_timed %}
           <form method="post" action="{{ url_for('tour_photos_place_on_track', tour_id=tour.id) }}"
                 class="d-flex flex-wrap align-items-center gap-2">
             <button type="submit" class="btn btn-sm btn-outline-primary"
-                    title="Fotos ohne Standort anhand ihrer Aufnahmezeit dorthin setzen, wo die Gruppe laut GPX-Aufzeichnung zu dieser Uhrzeit war">
+                    title="Fotos ohne Standort anhand ihrer Aufnahmezeit dorthin setzen, wo die Gruppe laut {% if timed_source == 'live' %}Live-Aufzeichnung{% else %}GPX-Aufzeichnung{% endif %} zu dieser Uhrzeit war">
               <i class="bi bi-geo-alt me-1"></i>{% if photos_no_gps %}{{ photos_no_gps }} Foto(s) ohne Standort auf der Strecke platzieren{% else %}Geschätzte Positionen neu berechnen{% endif %}
             </button>
             <label class="small text-muted d-flex align-items-center gap-1 mb-0"
@@ -878,8 +957,8 @@
           {% elif photos_no_gps %}
           <div class="small text-muted">
             <i class="bi bi-info-circle me-1"></i>{{ photos_no_gps }} Foto(s) ohne Standort. Der GPX-Track dieser Tour hat
-            keine Zeitstempel (geplante Route) – mit einer Aufzeichnung (Garmin, Komoot, Wahoo) würden Fotos automatisch
-            anhand der Aufnahmezeit platziert. Sonst: Position per ✏️ am Foto auf der Karte setzen.
+            keine Zeitstempel (geplante Route) – mit einer Aufzeichnung (Garmin, Komoot, Wahoo oder „Standort teilen“ auf der
+            Live-Karte) würden Fotos automatisch anhand der Aufnahmezeit platziert. Sonst: Position per ✏️ am Foto auf der Karte setzen.
           </div>
           {% endif %}
         </div>
@@ -2027,6 +2106,55 @@ function useDeviceLocationForUpload(imageCount) {
   }, {timeout: 8000, enableHighAccuracy: true});
 }
 
+// ── Build af (Option C): Foto unterwegs – Kamera öffnen, aktuellen Handy-Standort mitschicken ──
+// Knopf nur auf Geräten mit Touch-Bedienung zeigen (am PC würde „aktueller Standort“ = Schreibtisch).
+(function(){
+  const row = document.getElementById('photo-camera-row');
+  if (!row) return;
+  const coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 1;
+  if (coarse) { row.classList.remove('d-none'); row.classList.add('d-flex'); }
+})();
+
+function _exifNow() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + ':' + p(d.getMonth() + 1) + ':' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+
+async function photoFromCamera(camInput) {
+  const file = camInput.files && camInput.files[0];
+  if (!file) return;
+  const input  = document.getElementById('photo-input');
+  const hidden = document.getElementById('gps-hidden-fields');
+  const status = document.getElementById('gps-status');
+  const submit = document.getElementById('photo-submit-row');
+  if (!input || !hidden) return;
+  // Datei ins normale Upload-Formular übernehmen (Index 0 → gps_lat_0 / exif_dt_0 am Server)
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  input.files = dt.files;
+  camInput.value = '';
+  try { await photoFilesSelected(input); } catch (e) { console.warn('EXIF', e); }   // Standort/Zeit aus der Kamera, falls vorhanden
+  if (submit) submit.classList.remove('d-none');
+  if (!hidden.querySelector('input[name="exif_dt_0"]')) {
+    hidden.insertAdjacentHTML('beforeend', `<input type="hidden" name="exif_dt_0" value="${_exifNow()}">`);
+  }
+  const go = () => document.getElementById('photo-submit-btn').click();
+  if (hidden.querySelector('input[name="gps_lat_0"]') || !navigator.geolocation) { go(); return; }
+  if (status) status.textContent = '📍 Ermittle Standort …';
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    const lat = Math.round(pos.coords.latitude * 1e6) / 1e6, lng = Math.round(pos.coords.longitude * 1e6) / 1e6;
+    hidden.insertAdjacentHTML('beforeend',
+      `<input type="hidden" name="gps_lat_0" value="${lat}">` +
+      `<input type="hidden" name="gps_lng_0" value="${lng}">` +
+      `<input type="hidden" name="gps_src_0" value="device">`);
+    if (status) status.textContent = `📍 Standort ${lat}, ${lng}` + (pos.coords.accuracy ? ` (±${Math.round(pos.coords.accuracy)} m)` : '') + ' – lade hoch …';
+    go();
+  }, function() {
+    if (status) status.textContent = '⚠️ Kein Standort – Foto wird ohne Position hochgeladen (per ✏️ nachträglich setzbar).';
+    go();
+  }, {timeout: 10000, maximumAge: 30000, enableHighAccuracy: true});
+}
+
 // ── Drag & Drop + Clipboard paste ────────────────────────────────────────────
 // Listen for paste anywhere on the page when photo drop zone is visible
 document.addEventListener('paste', (e) => {
@@ -2226,7 +2354,7 @@ const PHOTOS = [
     est: {{ 'true' if p.gps_estimated else 'false' }} },
   {% endif %}{% endfor %}
 ];
-window.GPX_TIMED = {{ 'true' if gpx_timed else 'false' }};   // Build ac: GPX ist eine Aufzeichnung mit Zeitstempeln (für den Upload-Hinweis)
+window.GPX_TIMED = {{ 'true' if gpx_timed else 'false' }};   // Build ac/af: Zeitstempel vorhanden – GPX-Aufzeichnung oder Live-Aufzeichnung (für den Upload-Hinweis)
 
 // ── Leaflet map ───────────────────────────────────────────────────────────────
 let center = [53.1, 9.2];

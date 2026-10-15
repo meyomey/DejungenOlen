@@ -53,6 +53,9 @@
                 {% if not can_share %}disabled title="{{ share_hint }}"{% endif %}>📍 Standort teilen</button>
         <button type="button" class="btn btn-light" id="btn-follow" onclick="toggleFollow()" title="Karte bleibt auf meiner Position zentriert">🎯 Karte folgt mir</button>
         <button type="button" class="btn btn-light" onclick="showAll()" title="Alle Mitfahrer und die Strecke einpassen">👥 Alle zeigen</button>
+        <button type="button" class="btn btn-light" id="btn-photo" onclick="document.getElementById('live-cam').click()"
+                title="Foto aufnehmen – wird sofort mit deinem aktuellen Standort zur Tour hochgeladen">📷 Foto</button>
+        <input type="file" id="live-cam" accept="image/*" capture="environment" class="d-none" onchange="livePhoto(this)">
         <button type="button" class="btn btn-light" id="btn-fs" onclick="toggleFs()" title="Vollbild">⛶</button>
       </div>
     </div>
@@ -73,6 +76,12 @@
       Beim Teilen sendet das Handy höchstens alle 10 Sekunden und der Bildschirm bleibt an, solange die Seite offen ist.
       Teilen endet beim Schließen der Seite, spätestens nach 8 Stunden.
     </div>
+    <div class="small text-muted mt-2" id="live-rec-hint">
+      <strong>Aufzeichnung:</strong> Beim Teilen wird dein Weg als dünne Linie aufgezeichnet. Die Tourleitung kann die Aufzeichnung
+      danach als GPX-Track der Tour übernehmen – damit werden auch Fotos ohne Standort anhand ihrer Aufnahmezeit auf der Strecke platziert.
+      Aufzeichnungen werden nach {{ keep_days }} Tagen automatisch gelöscht; auf der Tourseite kannst du deine jederzeit löschen.
+      <strong>📷 Foto</strong> nimmt ein Foto auf und lädt es sofort mit deinem aktuellen Standort zur Tour hoch.
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -87,9 +96,12 @@ const ME        = {{ me_json|safe }};
 const CAN_SHARE = {{ 'true' if can_share else 'false' }};
 const FRESH_S   = {{ fresh_s }};
 const INITIAL   = {{ locations_json|safe }};
+const TRAILS    = {{ trails_json|safe }};        // Build af: {user_id: [[lat, lng, ts], …]} – Aufzeichnung der letzten 12 h
+const UPLOAD_URL = "{{ url_for('tour_upload_photos', tour_id=tour.id) }}";
 // Zustand (vor allen Funktionen deklariert – onclick-Handler sind global)
 let sharing = false, following = false, watchId = null, lastSent = 0, lastPos = null, shareStart = 0;
 let ownLatLng = null, ownMarker = null, accCircle = null, wakeLock = null, sentCount = 0;
+let lastOwnAt = 0, ownAcc = null;                 // Build af: für „📷 Foto“ (frische Position ohne neue Abfrage)
 
 // ── Karte, Strecke, Treffpunkt, Einkehr ──────────────────────────────────────────────────────
 const map = L.map('live-map', {zoomControl: true, attributionControl: false});
@@ -224,12 +236,36 @@ function showAll() {
   }
 }
 
+// ── Build af: Aufzeichnung – zurückgelegte Wege als dünne Linien ─────────────────────────────
+const trails = {}, trailLast = {};
+let trailSince = 0;
+const TRAIL_COLORS = ['#C0392B', '#8E44AD', '#D98E04', '#16A085', '#2E7D4F', '#7F8C8D', '#E67E22', '#2C3E50'];
+function trailColor(uid) { return uid === ME.id ? '#1E88E5' : TRAIL_COLORS[uid % TRAIL_COLORS.length]; }
+function addTrails(obj) {
+  if (!obj) return;
+  Object.keys(obj).forEach(k => {
+    const uid = parseInt(k, 10);
+    const pts = obj[k] || [];
+    if (!trails[uid]) {
+      trails[uid] = L.polyline([], {color: trailColor(uid), weight: 3, opacity: .55, interactive: false}).addTo(map);
+      trailLast[uid] = 0;
+    }
+    pts.forEach(p => {
+      if (p[2] <= trailLast[uid]) return;             // schon bekannt (Server liefert ab „since“ inklusive)
+      trails[uid].addLatLng([p[0], p[1]]);
+      trailLast[uid] = p[2];
+      if (p[2] > trailSince) trailSince = p[2];
+    });
+  });
+}
+addTrails(TRAILS);
+
 // ── Polling (für alle Zuschauer) ──────────────────────────────────────────────────────────────
 function poll() {
   if (document.hidden) return;                      // verdeckter Tab: nichts abrufen
-  fetch('/api/location/tour/' + TOUR_ID, {cache: 'no-store'})
+  fetch('/api/location/tour/' + TOUR_ID + '?since=' + trailSince, {cache: 'no-store'})
     .then(r => r.json())
-    .then(d => { if (d && d.locations) render(d.locations); })
+    .then(d => { if (d && d.locations) render(d.locations); if (d) addTrails(d.trails); })
     .catch(() => {});
 }
 render(INITIAL);
@@ -310,6 +346,7 @@ function drawOwn(c) {
 function onPos(pos) {
   const c = pos.coords;
   ownLatLng = [c.latitude, c.longitude];
+  lastOwnAt = Date.now(); ownAcc = c.accuracy || null;
   drawOwn(c);
   if (following) map.panTo(ownLatLng, {animate: true});
   if (!sharing) return;
@@ -323,13 +360,15 @@ function onPos(pos) {
     method: 'POST', headers: {'Content-Type': 'application/json'}, keepalive: true,
     body: JSON.stringify({tour_id: TOUR_ID, lat: c.latitude, lng: c.longitude, accuracy: c.accuracy,
                           speed: (c.speed != null && !isNaN(c.speed)) ? c.speed : null,
-                          heading: (c.heading != null && !isNaN(c.heading)) ? c.heading : null})
+                          heading: (c.heading != null && !isNaN(c.heading)) ? c.heading : null,
+                          since: trailSince || 0})
   }).then(async r => {
     const d = await r.json().catch(() => ({}));
     if (r.status === 403) { stopShare(false); setStatus(d.error || 'Teilen ist für diese Tour gerade nicht möglich.', 'warning'); return; }
     if (!r.ok) { setStatus('Server meldet HTTP ' + r.status + ' – wird weiter versucht.', 'warning'); return; }
     sentCount++;
     if (d.locations) render(d.locations);
+    if (d.trails) addTrails(d.trails);
     const t = new Date(shareStart);
     setStatus('Du teilst deinen Standort seit ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') +
               ' Uhr · zuletzt gesendet gerade eben' + (c.accuracy ? ' · Genauigkeit ±' + Math.round(c.accuracy) + ' m' : ''), 'sharing');
@@ -343,6 +382,47 @@ function onGeoErr(err) {
   if (err.code === 1) { stopShare(false); following = false; updateFollowBtn(); maybeStopWatch(); }
 }
 window.addEventListener('pagehide', () => { if (sharing) stopShare(true); });
+
+// ── Build af (Option C): Foto unterwegs – Kamera, aktueller Standort, sofort hochladen ──────────
+let photoBusy = false;
+function _exifNow() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + ':' + p(d.getMonth() + 1) + ':' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function livePhoto(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || photoBusy) return;
+  photoBusy = true;
+  const btn = document.getElementById('btn-photo');
+  btn.disabled = true; btn.textContent = '⏳ Foto …';
+  const send = (lat, lng, acc) => {
+    const fd = new FormData();
+    fd.append('photos', file, file.name || 'foto.jpg');
+    fd.append('exif_dt_0', _exifNow());
+    if (lat != null && lng != null) {
+      fd.append('gps_lat_0', String(Math.round(lat * 1e6) / 1e6));
+      fd.append('gps_lng_0', String(Math.round(lng * 1e6) / 1e6));
+      fd.append('gps_src_0', 'device');
+    }
+    setStatus('📷 Foto wird hochgeladen …', 'sharing');
+    fetch(UPLOAD_URL, {method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(async r => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok || !d.count) { setStatus('Foto konnte nicht gespeichert werden' + (r.ok ? ' (Dateityp? Duplikat?)' : ' – HTTP ' + r.status) + '.', 'warning'); return; }
+        setStatus('📷 Foto gespeichert' + (lat != null ? ' – mit deinem Standort' + (acc ? ' (±' + Math.round(acc) + ' m)' : '') : ' – ohne Standort (per ✏️ auf der Tourseite setzbar)') + '. Zu sehen unter „Zur Tour“ → Fotos.', 'sharing');
+      })
+      .catch(() => setStatus('Keine Verbindung – Foto bitte später über die Tourseite hochladen.', 'warning'))
+      .finally(() => { photoBusy = false; btn.disabled = false; btn.textContent = '📷 Foto'; });
+  };
+  // Frische Position vom laufenden Watch (Teilen/Folgen) nehmen, sonst einmalig abfragen
+  if (ownLatLng && Date.now() - lastOwnAt < 60000) { send(ownLatLng[0], ownLatLng[1], ownAcc); return; }
+  if (!navigator.geolocation) { send(null, null, null); return; }
+  setStatus('📍 Ermittle Standort für das Foto …', 'sharing');
+  navigator.geolocation.getCurrentPosition(p => send(p.coords.latitude, p.coords.longitude, p.coords.accuracy),
+                                           () => send(null, null, null),
+                                           {enableHighAccuracy: true, timeout: 10000, maximumAge: 30000});
+}
 
 // Bildschirm anlassen (Screen Wake Lock – Android/Chrome, iOS ab 16.4); ohne Unterstützung passiert nichts
 async function requestWakeLock() {

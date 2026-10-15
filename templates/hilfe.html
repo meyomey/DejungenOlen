@@ -208,11 +208,27 @@ kbd { background:#e9ecef !important; border:1px solid #adb5bd !important; border
                 <div class="fw-semibold small">Automatisch per Aufnahmezeit platzieren</div>
                 <div class="text-muted small">
                   Die Aufnahmezeit bleibt beim Hochladen fast immer erhalten (Ausnahme: WhatsApp). Hat die Tour eine
-                  <strong>GPX-Aufzeichnung mit Zeitstempeln</strong> (Garmin, Komoot, Wahoo – keine geplante Route), setzt die App
-                  Fotos ohne Standort beim Hochladen automatisch dorthin, wo die Gruppe zu dieser Uhrzeit war. Solche Positionen sind
+                  <strong>GPX-Aufzeichnung mit Zeitstempeln</strong> (Garmin, Komoot, Wahoo – keine geplante Route) oder eine
+                  <strong>Live-Aufzeichnung</strong> (jemand hat auf der Live-Karte „Standort teilen“ eingeschaltet), setzt die App
+                  Fotos ohne Standort beim Hochladen automatisch dorthin, wo die Gruppe zu dieser Uhrzeit war – bei Live-Aufzeichnungen
+                  bevorzugt auf der eigenen. Solche Positionen sind
                   mit <span class="badge bg-warning text-dark">≈</span> markiert und lassen sich per ✏️ korrigieren.
                   Tourleitung, Organisatoren und Admins können das für bereits hochgeladene Fotos über den Knopf
                   „… auf der Strecke platzieren" oberhalb der Fotos nachholen – bei falsch gehender Kamera-Uhr mit Zeitkorrektur in Minuten.
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex gap-3 mt-3">
+              <div class="feature-icon">📷</div>
+              <div>
+                <div class="fw-semibold small">Foto unterwegs aufnehmen (mit Handy-Standort)</div>
+                <div class="text-muted small">
+                  Auf dem Handy gibt es in der Foto-Karte der Tour und auf der Live-Karte den Knopf <strong>📷 Foto</strong>:
+                  Die Kamera öffnet sich, das Foto wird sofort hochgeladen und bekommt den <strong>aktuellen Standort des Handys</strong>
+                  – so landet es auch dann richtig auf der Karte, wenn die Kamera-App keinen Standort ins Bild schreibt.
+                  Beim ersten Mal fragt der Browser nach der Standortfreigabe. Ohne Empfang wird das Foto ohne Position gespeichert
+                  und lässt sich später per ✏️ setzen.
                 </div>
               </div>
             </div>
@@ -245,7 +261,12 @@ kbd { background:#e9ecef !important; border:1px solid #adb5bd !important; border
                 Dort kann jeder aus der Gruppe <strong>zuschauen</strong> – auch Daheimgebliebene. Wer <strong>„Standort teilen“</strong> einschaltet, erscheint für die anderen als
                 Punkt mit seinen Initialen; die Liste daneben zeigt, wer wo auf der Strecke ist und wie weit die Gruppe auseinandergezogen ist.
                 Teilen geht am Tourtag (einen Tag davor und danach), wird höchstens alle 10 Sekunden gesendet und endet automatisch beim Schließen der Seite.
-                <em>„Karte folgt mir“</em> hält die eigene Position in der Mitte, <em>⛶</em> schaltet auf Vollbild. Der Bildschirm bleibt dabei an, solange die Seite offen ist.</div>
+                <em>„Karte folgt mir“</em> hält die eigene Position in der Mitte, <em>⛶</em> schaltet auf Vollbild. Der Bildschirm bleibt dabei an, solange die Seite offen ist.
+                <br><strong>Aufzeichnung:</strong> Wer teilt, zeichnet dabei seinen Weg auf (dünne Linie auf der Live-Karte). Auf der Tourseite erscheint danach
+                die Karte „Live-Aufzeichnung“: Tourleitung, Organisatoren und Admins können sie <strong>als GPX-Track der Tour übernehmen</strong>
+                (Karte, Kennzahlen, Fotos per Aufnahmezeit – praktisch, wenn niemand ein GPS-Gerät dabei hatte) oder als GPX herunterladen;
+                jeder kann seine eigene Aufzeichnung löschen. Ohne Übernahme werden Aufzeichnungen nach 30 Tagen automatisch gelöscht.
+                <strong>📷 Foto</strong> auf der Live-Karte nimmt ein Foto auf und lädt es sofort mit dem aktuellen Standort hoch.</div>
             </div>
           </div>
 

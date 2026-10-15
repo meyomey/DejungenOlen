@@ -2,6 +2,41 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build af) – Foto unterwegs (Option C) und Live-Karte als Aufzeichnung (Option D)
+
+**Option C – Foto unterwegs mit Handy-Standort**
+- Neuer Knopf **„📷 Foto unterwegs aufnehmen“** in der Foto-Karte der Tour (nur auf Touch-Geräten eingeblendet)
+  und **„📷 Foto“** in der Leiste der Live-Karte: Die Kamera öffnet sich, das Foto wird sofort hochgeladen und
+  bekommt den **aktuellen Standort des Handys** (`gps_source='device'`), falls die Kamera keinen Standort ins
+  Bild schreibt. Ohne Standortfreigabe/Empfang wird es ohne Position gespeichert (per ✏️ nachträglich setzbar).
+  Fehlt die EXIF-Aufnahmezeit, gilt der Aufnahmezeitpunkt (`exif_dt_0`). Auf der Live-Karte bleibt die Seite
+  offen – Teilen läuft weiter; die frische Position vom laufenden Standort-Watch wird direkt verwendet.
+- Erfolgsmeldung zählt „📱 n mit aktuellem Handy-Standort“.
+
+**Option D – Live-Karte als Aufzeichnung**
+- Neue Tabelle `live_track_points` (wird automatisch angelegt): Jede beim „Standort teilen“ gesendete Position
+  bleibt als Punkt erhalten – bisher hielt `live_locations` nur die letzte. Nicht aufgezeichnet werden ungenaue
+  Fixe (> 100 m), Doppelsendungen (< 3 s) und unplausible Sprünge (> 90 km/h).
+- **Live-Karte:** Der zurückgelegte Weg jeder Person erscheint als dünne Linie (eigene blau), auch für Zuschauer;
+  das Polling holt nur neue Punkte (`?since=`), die Antwort auf das Senden liefert sie gleich mit.
+- **Tourseite:** Karte **„Live-Aufzeichnung“** (sichtbar für Tourleitung/Orga/Admin und für alle mit eigener
+  Aufzeichnung) mit Zeitraum, km und Punkten je Person. Tourleitung/Orga/Admin können eine Aufzeichnung
+  **als GPX-Track der Tour übernehmen** (`POST /touren/<id>/live/aufzeichnung`, `action=adopt`): GPX 1.1 mit
+  Zeitstempeln, ohne Höhen (Handy-Höhen sind unbrauchbar) und ohne Personenbezug in der Datei; Kennzahlen
+  (km, Fahrzeit, Ø-Tempo, Vorschau) werden wie beim GPX-Upload gesetzt, ein vorhandener Track (geplante Route)
+  wird ersetzt, Fotos ohne Standort gleich per Aufnahmezeit platziert. Download als GPX
+  (`/touren/<id>/live/aufzeichnung.gpx?user_id=`): eigene für jeden, fremde für Tourleitung/Orga/Admin.
+  Löschen: eigene Aufzeichnung jeder, alle Tourleitung/Orga/Admin.
+- **Fotos per Aufnahmezeit (Build ac) ohne GPX-Zeiten:** Hat der GPX der Tour keine Zeitstempel (geplante Route)
+  oder gibt es gar keinen, dient die Live-Aufzeichnung als Zeitquelle – bevorzugt die des hochladenden Nutzers,
+  sonst die längste der Tour (`_tour_timed_source`). Gilt für den Upload und den Knopf „… auf der Strecke platzieren“.
+- Aufbewahrung: Rohpunkte werden 30 Tage nach Aufzeichnung automatisch gelöscht (`_live_cleanup`), beim Löschen
+  einer Tour oder Anonymisieren eines Nutzers sofort. Datenschutz- und Hilfeseite ergänzt.
+- 17 neue Tests (`tests/test_build_af.py`), insgesamt 142.
+
+Geänderte Dateien: `app.py`, `models.py`, `templates/touren/detail.html`, `templates/touren/live.html`,
+`templates/hilfe.html`, `templates/datenschutz.html`, `tests/test_build_af.py`, `README.md`, `CHANGELOG.md`.
+
 ## 1.4.0 – 2026-10-15 (Build ae) – Startfehler sichtbar machen
 
 - Nach dem Upload von Build ad startete die App auf dem Server nicht; Passenger meldete nur

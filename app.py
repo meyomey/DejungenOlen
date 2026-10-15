@@ -73,7 +73,7 @@ import requests as http_requests
 
 from config import Config
 from models import (db, Group, User, InviteToken, Tour, TourParticipant, TourPhoto, TourVideo,
-                    GastroPhoto, TimeVote, LiveLocation, TourRide,
+                    GastroPhoto, TimeVote, LiveLocation, LiveTrackPoint, TourRide,
                     PasswordReset, GastroSpot, GastroReview, POI, TourComment, SiteConfig,
                     RouteRating, TourTemplate, PushSubscription, Announcement)
 
@@ -83,7 +83,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 ae'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 af'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -1791,7 +1791,7 @@ def _gpx_timed_points(filepath):
         return []
 
 
-def _tour_timed_points(tour):
+def _tour_gpx_timed_points(tour):
     """Zeitstempel-Punkte des Tour-GPX oder [] (kein GPX / Datei fehlt / keine Zeiten)."""
     if not tour.gpx_file:
         return []
@@ -1799,6 +1799,25 @@ def _tour_timed_points(tour):
     if not os.path.exists(path):
         return []
     return _gpx_timed_points(path)
+
+
+def _tour_timed_source(tour, user_id=None):
+    """Build af: (Zeitstempel-Punkte, Quelle) für das Platzieren von Fotos per Aufnahmezeit.
+    Quelle 'gpx' = der GPX-Track der Tour hat Zeiten (wie bisher). Sonst springt die Aufzeichnung
+    der Live-Karte ein ('live'): bevorzugt die des Nutzers user_id (er hat die Fotos gemacht),
+    sonst die längste Aufzeichnung der Tour. ([], None) wenn es keine Zeiten gibt."""
+    pts = _tour_gpx_timed_points(tour)
+    if pts:
+        return pts, 'gpx'
+    pts = _live_track_timed_points(tour.id, user_id)
+    if pts:
+        return pts, 'live'
+    return [], None
+
+
+def _tour_timed_points(tour, user_id=None):
+    """Zeitstempel-Punkte für diese Tour – GPX-Aufzeichnung, sonst Live-Aufzeichnung (Build af)."""
+    return _tour_timed_source(tour, user_id)[0]
 
 
 def _track_position_at(timed_points, when_local, offset_min=0, tolerance_s=PHOTO_TRACK_TOLERANCE_S):
@@ -2132,6 +2151,21 @@ def tour_detail(tour_id):
         for _spot in gastro_near:
             _spot['url'] = url_for('gastro_detail', spot_id=_spot['id'])
 
+    # Build af: Live-Aufzeichnung(en) der Tour – als GPX übernehmen, herunterladen, löschen; und als
+    # Zeitquelle fürs Platzieren von Fotos, wenn der GPX keine Zeitstempel hat
+    live_recs = []
+    try:
+        live_recs = [{k: v for k, v in d.items() if k != 'points'} for d in _live_track_summaries(tour.id)]
+    except Exception as _ex:
+        app.logger.warning(f'Live-Aufzeichnung Tour {tour.id}: {_ex}')
+    gpx_timed = bool(gpx_data and gpx_data.get('moving_s'))
+    gpx_span = (f"{gpx_data['start_time']}–{gpx_data['end_time']} Uhr"
+                if gpx_data and gpx_data.get('start_time') and gpx_data.get('end_time') else '')
+    timed_source = 'gpx' if gpx_timed else ('live' if live_recs else None)
+    if timed_source == 'live':
+        _mine = next((d for d in live_recs if d['user_id'] == current_user.id), None) or live_recs[0]
+        gpx_span = f"Live-Karte, {_mine['name']}: {_mine['span']}"
+
     return render_template('touren/detail.html',
                            tour=tour,
                            my_rsvp=my_rsvp,
@@ -2148,9 +2182,11 @@ def tour_detail(tour_id):
                            all_users=all_users,
                            participant_ids=participant_ids,
                            rides=rides, my_ride=my_ride,                 # Build ab
-                           gpx_timed=bool(gpx_data and gpx_data.get('moving_s')),   # Build ac: Aufzeichnung mit Zeiten?
-                           gpx_span=(f"{gpx_data['start_time']}–{gpx_data['end_time']} Uhr"
-                                     if gpx_data and gpx_data.get('start_time') and gpx_data.get('end_time') else ''),
+                           gpx_timed=bool(timed_source),                 # Build ac/af: Zeiten vorhanden (GPX oder Live-Aufzeichnung)?
+                           timed_source=timed_source, gpx_span=gpx_span,
+                           live_recs=live_recs,                          # Build af
+                           live_rec_mine=any(d['user_id'] == current_user.id for d in live_recs),
+                           keep_days=LIVE_TRACK_KEEP_DAYS,
                            today=date.today())
 
 
@@ -2409,14 +2445,15 @@ def tour_upload_photos(tour_id):
     zip_count = 0
     dupes     = 0
     placed    = 0          # Build ac: per Aufnahmezeit auf dem Track platziert
+    device_n  = 0          # Build af: mit dem aktuellen Handy-Standort („Foto unterwegs“)
     import hashlib as _hashlib
     seen_hashes = {h for (h,) in db.session.query(TourPhoto.orig_hash)
                    .filter(TourPhoto.tour_id == tour_id, TourPhoto.orig_hash.isnot(None)).all()}
-    _timed_cache = []      # Zeitstempel-Punkte des GPX, erst beim ersten Foto ohne GPS geladen
+    _timed_cache = []      # Zeitstempel-Punkte (GPX, sonst Live-Aufzeichnung), erst beim ersten Foto ohne GPS geladen
 
     def _timed():
         if not _timed_cache:
-            _timed_cache.append(_tour_timed_points(tour))
+            _timed_cache.append(_tour_timed_points(tour, current_user.id))   # Build af: eigene Live-Aufzeichnung zuerst
         return _timed_cache[0]
 
     def _check_magic(data: bytes) -> bool:
@@ -2431,7 +2468,7 @@ def tour_upload_photos(tour_id):
         """Save image bytes, run resize + GPS, return TourPhoto or None.
         form_idx: index used by client-side JS for gps_lat_N/gps_lng_N lookup
         (falls back to internal counter if not provided, e.g. for ZIP entries)."""
-        nonlocal count, gps_count, resized, dupes, placed
+        nonlocal count, gps_count, resized, dupes, placed, device_n
         ext = original_name.rsplit('.', 1)[-1].lower()
         if ext not in app.config['ALLOWED_PHOTO_EXTENSIONS']:
             return None
@@ -2493,6 +2530,8 @@ def tour_upload_photos(tour_id):
                 placed += 1
         if gps_source in ('exif', 'device'):
             gps_count += 1
+        if gps_source == 'device':
+            device_n += 1
         count += 1
         return TourPhoto(
             tour_id  = tour_id,
@@ -2543,7 +2582,7 @@ def tour_upload_photos(tour_id):
     if zip_count:
         parts.append(f'📦 davon {zip_count} aus ZIP')
     if gps_count:
-        parts.append(f'🗺️ {gps_count} mit GPS')
+        parts.append(f'🗺️ {gps_count} mit GPS' + (f' (📱 {device_n} mit aktuellem Handy-Standort)' if device_n else ''))
     if placed:
         parts.append(f'📍 {placed} anhand der Aufnahmezeit auf der Strecke platziert (geschätzt)')
     if resized:
@@ -2566,8 +2605,8 @@ def tour_upload_photos(tour_id):
                     'auf der Karte setzen.')
         elif tour.gpx_file:
             tip += ('Der GPX-Track dieser Tour hat keine Zeitstempel (geplante Route) – mit einer '
-                    'Aufzeichnung würden Fotos automatisch per Uhrzeit platziert. Sonst: Position per '
-                    '✏️ am Foto auf der Karte setzen.')
+                    'Aufzeichnung (GPX-Gerät oder „Standort teilen“ auf der Live-Karte) würden Fotos '
+                    'automatisch per Uhrzeit platziert. Sonst: Position per ✏️ am Foto auf der Karte setzen.')
         else:
             tip += 'Position per ✏️ am Foto auf der Karte setzen.'
         flash(tip, 'info')
@@ -2852,7 +2891,7 @@ def _delete_tour_dependents(tour_id):
     """Löscht Datensätze ohne DB-Cascade, die sonst als Waisen zurückbleiben
     (Videos, Kommentare, Zeitabstimmung, Bewertungen, Live-Standorte, Fahrgemeinschaften).
     Teilnehmer und Fotos räumt SQLAlchemy über die Relationship-Cascade ab."""
-    for model in (TourVideo, TourComment, TimeVote, RouteRating, LiveLocation, TourRide):
+    for model in (TourVideo, TourComment, TimeVote, RouteRating, LiveLocation, LiveTrackPoint, TourRide):
         try:
             model.query.filter_by(tour_id=tour_id).delete(synchronize_session=False)
         except Exception as e:
@@ -4571,6 +4610,12 @@ def hilfe():
 # ─── Build aa: Live-Karte (Standorte der Mitfahrer) ────────────────────────────────────────────
 LIVE_STALE_S = 15 * 60      # ohne neues Signal nach 15 Minuten ausgeblendet
 LIVE_FRESH_S = 5 * 60       # „aktuell“ – zählt für die Spannweite der Gruppe
+# Build af: Live-Karte als Aufzeichnung – jede gesendete Position bleibt als Punkt erhalten
+LIVE_TRACK_KEEP_DAYS = 30    # Rohpunkte werden danach automatisch gelöscht (als GPX übernommen bleibt die Strecke)
+LIVE_TRACK_MAX_ACC_M = 100   # ungenauere Positionen (WLAN-/Funkzellen-Ortung) kommen nicht in die Aufzeichnung
+LIVE_TRACK_MIN_PTS   = 8     # weniger Punkte sind keine brauchbare Aufzeichnung
+LIVE_TRACK_MAX_KMH   = 90    # Sprünge schneller als das gelten als Ausreißer (GPS-Aussetzer)
+LIVE_TRACK_PAGE_PTS  = 400   # Spur je Person auf der Live-Karte höchstens so viele Punkte (Erstaufruf)
 
 
 def _berlin_today():
@@ -4640,6 +4685,127 @@ def _live_share_window(tour, user=None, today=None):
     return True, ''
 
 
+def _haversine_m(lat1, lng1, lat2, lng2):
+    """Abstand zweier Koordinaten in Metern."""
+    import math
+    r = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = math.radians(lat2 - lat1), math.radians(lng2 - lng1)
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(min(1.0, math.sqrt(h)))
+
+
+def _live_track_add(tour_id, user_id, lat, lng, accuracy, now):
+    """Build af: Position an die Aufzeichnung anhängen – nur brauchbare Fixe (Genauigkeit ≤ 100 m)
+    und keine unplausiblen Sprünge (> 90 km/h seit dem letzten Punkt = GPS-Aussetzer).
+    Liefert True, wenn ein Punkt gespeichert wurde. Commit macht der Aufrufer."""
+    if accuracy is not None and accuracy > LIVE_TRACK_MAX_ACC_M:
+        return False
+    last = (LiveTrackPoint.query.filter_by(tour_id=tour_id, user_id=user_id)
+            .order_by(LiveTrackPoint.recorded_at.desc()).first())
+    if last:
+        dt_s = (now - last.recorded_at).total_seconds()
+        if dt_s < 3:                                     # Doppelsendung
+            return False
+        if dt_s < 6 * 3600 and _haversine_m(last.lat, last.lng, lat, lng) / dt_s * 3.6 > LIVE_TRACK_MAX_KMH:
+            return False
+    db.session.add(LiveTrackPoint(tour_id=tour_id, user_id=user_id, lat=lat, lng=lng,
+                                  accuracy=accuracy, recorded_at=now))
+    return True
+
+
+def _live_track_rows(tour_id, user_id=None, since=None):
+    """Rohpunkte einer Tour (optional eines Nutzers / nur neuer als since), zeitlich sortiert."""
+    q = LiveTrackPoint.query.filter_by(tour_id=tour_id)
+    if user_id is not None:
+        q = q.filter_by(user_id=user_id)
+    if since is not None:
+        q = q.filter(LiveTrackPoint.recorded_at > since)
+    return q.order_by(LiveTrackPoint.recorded_at.asc(), LiveTrackPoint.id.asc()).all()
+
+
+def _live_track_summaries(tour_id):
+    """Build af: je Person eine Zusammenfassung ihrer Aufzeichnung – längste Strecke zuerst.
+    [{'user_id', 'name', 'n', 'start', 'end' (UTC-datetime), 'km', 'span' ('10:02–12:41 Uhr'),
+      'points': [(unix_ts, lat, lng), …]}, …]; Aufzeichnungen unter LIVE_TRACK_MIN_PTS Punkten fehlen."""
+    rows = _live_track_rows(tour_id)
+    if not rows:
+        return []
+    from datetime import timezone as _utc
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo('Europe/Berlin')
+    per_user = {}
+    for r in rows:
+        per_user.setdefault(r.user_id, []).append(r)
+    users = {u.id: u for u in User.query.filter(User.id.in_(list(per_user))).all()}
+    out = []
+    for uid, pts in per_user.items():
+        if len(pts) < LIVE_TRACK_MIN_PTS:
+            continue
+        dist = 0.0
+        for a, b in zip(pts, pts[1:]):
+            dist += _haversine_m(a.lat, a.lng, b.lat, b.lng)
+        u = users.get(uid)
+        name = u.display_name if u else 'Unbekannt'
+        start, end = pts[0].recorded_at, pts[-1].recorded_at
+        s_loc = start.replace(tzinfo=_utc.utc).astimezone(tz)
+        e_loc = end.replace(tzinfo=_utc.utc).astimezone(tz)
+        span = s_loc.strftime('%d.%m.%Y %H:%M') + '–' + e_loc.strftime('%H:%M') + ' Uhr'
+        out.append({'user_id': uid, 'name': name, 'initials': _initials(name), 'n': len(pts),
+                    'start': start, 'end': end, 'km': round(dist / 1000, 1), 'span': span,
+                    'points': [(p.recorded_at.replace(tzinfo=_utc.utc).timestamp(), p.lat, p.lng) for p in pts]})
+    out.sort(key=lambda d: (-d['km'], -d['n']))
+    return out
+
+
+def _live_track_timed_points(tour_id, user_id=None):
+    """Build af: Zeitstempel-Punkte (unix_ts, lat, lng) aus der Live-Aufzeichnung – die des Nutzers,
+    wenn er eine brauchbare hat, sonst die längste der Tour. [] ohne Aufzeichnung."""
+    summaries = _live_track_summaries(tour_id)
+    if not summaries:
+        return []
+    mine = next((d for d in summaries if d['user_id'] == user_id), None) if user_id else None
+    return (mine or summaries[0])['points']
+
+
+def _live_track_gpx_xml(summary, tour):
+    """Build af: GPX 1.1 mit Zeitstempeln (UTC) aus einer Aufzeichnung – ohne Höhenangaben, das
+    Handy liefert keine verlässlichen. Lesbar für parse_gpx/_gpx_timed_points und jedes Navi."""
+    import gpxpy
+    import gpxpy.gpx
+    from datetime import timezone as _utc
+    g = gpxpy.gpx.GPX()
+    g.creator = 'De jungen Olen – Live-Karte'            # bewusst ohne Personenname in der Datei
+    trk = gpxpy.gpx.GPXTrack(name=tour.title)
+    seg = gpxpy.gpx.GPXTrackSegment()
+    for ts, lat, lng in summary['points']:
+        seg.points.append(gpxpy.gpx.GPXTrackPoint(round(lat, 6), round(lng, 6),
+                                                  time=datetime.fromtimestamp(ts, _utc.utc)))
+    trk.segments.append(seg)
+    g.tracks.append(trk)
+    return g.to_xml()
+
+
+def _live_trails_payload(tour_id, since=None, max_pts=LIVE_TRACK_PAGE_PTS):
+    """Build af: Spuren für die Live-Karte – {user_id: [[lat, lng, unix_ts], …]}; ohne since die
+    letzten 12 Stunden (je Person auf max_pts ausgedünnt), mit since nur neuere Punkte (Polling)."""
+    from datetime import timezone as _utc
+    if since is None:
+        since = datetime.utcnow() - timedelta(hours=12)
+    rows = _live_track_rows(tour_id, since=since)
+    per_user = {}
+    for r in rows:
+        per_user.setdefault(r.user_id, []).append(r)
+    out = {}
+    for uid, pts in per_user.items():
+        if len(pts) > max_pts:
+            step = len(pts) // max_pts + 1
+            pts = pts[::step] + ([pts[-1]] if (len(pts) - 1) % step else [])
+        out[str(uid)] = [[round(p.lat, 5), round(p.lng, 5), int(p.recorded_at.replace(tzinfo=_utc.utc).timestamp())]
+                         for p in pts]
+    return out
+
+
 def _live_locations_payload(tour_id, now=None):
     """Aktuelle Standorte einer Tour – eine Abfrage mit Nutzer-Join (vorher je Zeile ein User-Zugriff)."""
     now = now or datetime.utcnow()
@@ -4659,9 +4825,15 @@ def _live_locations_payload(tour_id, now=None):
 
 
 def _live_cleanup(now=None):
-    """Zeilen älter als ein Tag löschen (wird aus location_update gelegentlich aufgerufen)."""
+    """Zeilen älter als ein Tag löschen (wird aus location_update gelegentlich aufgerufen);
+    Build af: Aufzeichnungspunkte älter als LIVE_TRACK_KEEP_DAYS ebenfalls."""
     now = now or datetime.utcnow()
     n = LiveLocation.query.filter(LiveLocation.updated_at < now - timedelta(days=1)).delete(synchronize_session=False)
+    try:
+        LiveTrackPoint.query.filter(LiveTrackPoint.recorded_at < now - timedelta(days=LIVE_TRACK_KEEP_DAYS)) \
+            .delete(synchronize_session=False)
+    except Exception as e:
+        app.logger.warning(f'live track cleanup: {e}')
     return n
 
 
@@ -4698,8 +4870,9 @@ def tour_live(tour_id):
                            track_json=_json_for_script(track), meeting_json=_json_for_script(meeting),
                            einkehr_json=_json_for_script(einkehr), me_json=_json_for_script(me),
                            locations_json=_json_for_script(_live_locations_payload(tour.id)),
+                           trails_json=_json_for_script(_live_trails_payload(tour.id)),   # Build af
                            can_share=can_share, share_hint=share_hint,
-                           stale_s=LIVE_STALE_S, fresh_s=LIVE_FRESH_S)
+                           stale_s=LIVE_STALE_S, fresh_s=LIVE_FRESH_S, keep_days=LIVE_TRACK_KEEP_DAYS)
 
 
 @app.route('/api/location/update', methods=['POST'])
@@ -4744,11 +4917,17 @@ def location_update():
     else:
         db.session.add(LiveLocation(tour_id=tour_id, user_id=current_user.id, lat=lat, lng=lng,
                                     accuracy=accuracy, speed=speed, heading=heading, updated_at=now))
+    recorded = _live_track_add(tour_id, current_user.id, lat, lng, accuracy, now)   # Build af: Aufzeichnung
     import random
     if random.random() < 0.05:
         _live_cleanup(now)
     db.session.commit()
-    return jsonify({'ok': True, 'locations': _live_locations_payload(tour_id, now)})
+    out = {'ok': True, 'recorded': recorded, 'locations': _live_locations_payload(tour_id, now)}
+    raw_since = data.get('since')                             # Build af: neue Spurpunkte gleich mitliefern
+    since = _parse_int(str(raw_since)) if raw_since is not None else None
+    if since is not None:
+        out['trails'] = _live_trails_payload(tour_id, datetime.utcfromtimestamp(since) if since else None)
+    return jsonify(out)
 
 
 @app.route('/api/location/tour/<int:tour_id>')
@@ -4756,7 +4935,11 @@ def location_update():
 def location_get(tour_id):
     """Alle aktuellen Live-Standorte einer Tour (Polling der Live-Karte)."""
     _tour_or_404(tour_id)   # Audit 1.4.0: nur Touren der eigenen Gruppe
-    return jsonify({'locations': _live_locations_payload(tour_id), 'stale_s': LIVE_STALE_S})
+    out = {'locations': _live_locations_payload(tour_id), 'stale_s': LIVE_STALE_S}
+    since = _parse_int(request.args.get('since', ''))          # Build af: Spuren (unix-Zeit des letzten Punkts)
+    if since is not None:
+        out['trails'] = _live_trails_payload(tour_id, datetime.utcfromtimestamp(since) if since else None)
+    return jsonify(out)
 
 
 @app.route('/api/location/stop', methods=['POST'])
@@ -4772,6 +4955,95 @@ def location_stop():
     LiveLocation.query.filter_by(tour_id=tour_id, user_id=current_user.id).delete()
     db.session.commit()
     return jsonify({'ok': True})
+
+
+# ─── Build af: Live-Aufzeichnung → GPX der Tour / Download / Löschen ─────────────────────────
+def _live_summary_or_none(tour, user_id):
+    return next((d for d in _live_track_summaries(tour.id) if d['user_id'] == user_id), None)
+
+
+@app.route('/touren/<int:tour_id>/live/aufzeichnung.gpx')
+@login_required
+def tour_live_recording_download(tour_id):
+    """GPX einer Live-Aufzeichnung herunterladen – die eigene darf jeder, fremde nur Tourleitung/Orga/Admin."""
+    tour = _tour_or_404(tour_id)
+    uid = _parse_int(request.args.get('user_id', '')) or current_user.id
+    if uid != current_user.id and not _can_manage_tour(tour):
+        abort(403)
+    summary = _live_summary_or_none(tour, uid)
+    if not summary:
+        abort(404)
+    xml = _live_track_gpx_xml(summary, tour)
+    from io import BytesIO as _BytesIO
+    safe = secure_filename(tour.title)[:40] or 'tour'
+    return send_file(_BytesIO(xml.encode('utf-8')), mimetype='application/gpx+xml', as_attachment=True,
+                     download_name=f'{safe}_live_{secure_filename(summary["name"])[:20]}.gpx')
+
+
+@app.route('/touren/<int:tour_id>/live/aufzeichnung', methods=['POST'])
+@login_required
+def tour_live_recording(tour_id):
+    """action=adopt: Aufzeichnung (user_id) als GPX-Track der Tour übernehmen (Tourleitung/Orga/Admin) –
+    danach werden Fotos ohne Standort gleich per Aufnahmezeit platziert.
+    action=delete: eigene Aufzeichnung löschen (jeder) bzw. alle (Tourleitung/Orga/Admin, user_id=all)."""
+    tour = _tour_or_404(tour_id)
+    target = url_for('tour_detail', tour_id=tour_id) + '#live-aufzeichnung'
+    action = request.form.get('action', '')
+    raw_uid = request.form.get('user_id', '')
+    if action == 'delete':
+        if raw_uid == 'all':
+            if not _can_manage_tour(tour):
+                abort(403)
+            n = LiveTrackPoint.query.filter_by(tour_id=tour_id).delete(synchronize_session=False)
+            db.session.commit()
+            flash(f'Alle Live-Aufzeichnungen dieser Tour gelöscht ({n} Punkte).', 'success' if n else 'info')
+        else:
+            n = LiveTrackPoint.query.filter_by(tour_id=tour_id, user_id=current_user.id).delete(synchronize_session=False)
+            db.session.commit()
+            flash(f'Deine Live-Aufzeichnung dieser Tour wurde gelöscht ({n} Punkte).', 'success' if n else 'info')
+        return redirect(url_for('tour_detail', tour_id=tour_id))
+    if action != 'adopt':
+        abort(400)
+    if not _can_manage_tour(tour):
+        abort(403)
+    summaries = _live_track_summaries(tour.id)
+    uid = _parse_int(raw_uid)
+    summary = next((d for d in summaries if d['user_id'] == uid), None) if uid else (summaries[0] if summaries else None)
+    if not summary:
+        flash('Keine brauchbare Live-Aufzeichnung für diese Tour gefunden.', 'warning')
+        return redirect(target)
+    os.makedirs(app.config['UPLOAD_FOLDER_GPX'], exist_ok=True)
+    filename = f'{tour_id}_live_{secrets.token_hex(6)}.gpx'
+    save_path = os.path.join(app.config['UPLOAD_FOLDER_GPX'], filename)
+    with open(save_path, 'w', encoding='utf-8') as fh:
+        fh.write(_live_track_gpx_xml(summary, tour))
+    parsed = parse_gpx(save_path)
+    if not parsed or not parsed.get('points'):
+        try:
+            os.remove(save_path)
+        except OSError:
+            pass
+        flash('Die Aufzeichnung ließ sich nicht als GPX ablegen.', 'danger')
+        return redirect(target)
+    replaced = bool(tour.gpx_file)
+    tour.gpx_file   = filename
+    tour.gpx_km     = parsed['km']
+    tour.gpx_ascent = parsed['ascent']
+    _tour_apply_gpx_metrics(tour, parsed)
+    placed = 0
+    photos = TourPhoto.query.filter_by(tour_id=tour_id).all()
+    if photos:
+        timed = _gpx_timed_points(save_path)
+        placed = _place_photos_on_track(photos, timed)[0] if timed else 0
+    db.session.commit()
+    msg = (f'Live-Aufzeichnung von {summary["name"]} als GPX-Track übernommen: {parsed["km"]} km, '
+           f'{summary["span"]}, {summary["n"]} Punkte.')
+    if replaced:
+        msg += ' Der bisherige GPX-Track (geplante Route) wurde ersetzt.'
+    if placed:
+        msg += f' 📍 {placed} Foto(s) anhand der Aufnahmezeit auf der Strecke platziert (geschätzt).'
+    flash(msg, 'success')
+    return redirect(url_for('tour_detail', tour_id=tour_id))
 
 
 @app.route('/geplante-touren')
@@ -5566,7 +5838,7 @@ def _anonymize_user(user):
     user.bio           = None
     user.birthday      = None
     # Geräte-/Standortdaten und offene Reset-Links gehören niemandem mehr
-    for model in (PushSubscription, LiveLocation, PasswordReset, TourRide):
+    for model in (PushSubscription, LiveLocation, LiveTrackPoint, PasswordReset, TourRide):
         try:
             model.query.filter_by(user_id=user.id).delete(synchronize_session=False)
         except Exception as e:
@@ -9104,11 +9376,11 @@ def tour_photos_place_on_track(tour_id):
         return redirect(target)
 
     offset_min = max(-720, min(720, _parse_int(request.form.get('offset_min'), 0) or 0))
-    timed = _tour_timed_points(tour)
+    timed = _tour_timed_points(tour, current_user.id)      # Build af: GPX, sonst Live-Aufzeichnung
     if not timed:
-        flash('Der GPX-Track dieser Tour hat keine Zeitstempel (geplante Route statt Aufzeichnung) – '
-              'automatisches Platzieren geht nur mit einer Aufzeichnung. Du kannst die Positionen '
-              'per ✏️ am Foto auf der Karte setzen.', 'warning')
+        flash('Der GPX-Track dieser Tour hat keine Zeitstempel (geplante Route statt Aufzeichnung) und es gibt '
+              'keine Live-Aufzeichnung – automatisches Platzieren geht nur mit einer Aufzeichnung. Du kannst die '
+              'Positionen per ✏️ am Foto auf der Karte setzen.', 'warning')
         return redirect(target)
     photos = TourPhoto.query.filter_by(tour_id=tour_id).all()
     placed, no_time, outside = _place_photos_on_track(photos, timed, offset_min)

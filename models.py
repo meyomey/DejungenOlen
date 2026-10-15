@@ -219,6 +219,22 @@ class LiveLocation(db.Model):
     __table_args__ = (db.UniqueConstraint('tour_id', 'user_id'),)
 
 
+class LiveTrackPoint(db.Model):
+    """Build af: Aufzeichnung der Live-Karte – jede gesendete Position bleibt als Punkt erhalten
+    (LiveLocation hält nur die jeweils letzte). Daraus entsteht nach der Tour ein GPX-Track mit
+    Zeitstempeln (für die Tour übernehmen, herunterladen, Fotos per Aufnahmezeit platzieren).
+    Rohpunkte werden nach LIVE_TRACK_KEEP_DAYS automatisch gelöscht."""
+    __tablename__ = 'live_track_points'
+    id          = db.Column(db.Integer, primary_key=True)
+    tour_id     = db.Column(db.Integer, db.ForeignKey('tours.id'), nullable=False, index=True)
+    user_id     = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    lat         = db.Column(db.Float, nullable=False)
+    lng         = db.Column(db.Float, nullable=False)
+    accuracy    = db.Column(db.Float, nullable=True)
+    recorded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)   # UTC
+    __table_args__ = (db.Index('ix_live_track_tour_user_time', 'tour_id', 'user_id', 'recorded_at'),)
+
+
 class TourRide(db.Model):
     """Build ab: Fahrgemeinschaft zu einer Tour – ein Eintrag je Nutzer und Tour,
     entweder Angebot (freie Plätze) oder Gesuch (Mitfahrwunsch)."""

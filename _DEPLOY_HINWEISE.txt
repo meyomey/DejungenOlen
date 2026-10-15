@@ -1,31 +1,26 @@
-De jungen Olen – Deploy-Paket v1.4.0 (Build 2026-10-15 ae)
-Erstellt: 15.10.2026 15:26 – Änderungspaket
+De jungen Olen – Deploy-Paket v1.4.0 (Build 2026-10-15 af)
+Erstellt: 15.10.2026 17:26 – Änderungspaket
 
 UPLOAD
   ZIP entpacken und den Inhalt mit gleicher Ordnerstruktur per FTP in den
   App-Ordner (…/dejungen_olen/) kopieren, vorhandene Dateien überschreiben.
-  Enthält nur die geänderten Dateien (Änderungen seit origin/main).
+  Enthält nur die geänderten Dateien (Änderungen seit 24452bbba98c).
 
-DATEIEN (11):
+DATEIEN (9):
   CHANGELOG.md
   README.md
   app.py
-  docs/INSTALLATION_PLESK_FTP.md
   models.py
-  passenger_wsgi.py
-  templates/base.html
+  templates/datenschutz.html
   templates/hilfe.html
   templates/touren/detail.html
-  tests/test_build_ab.py
-  tests/test_build_ac.py
-
-AUF DEM SERVER LÖSCHEN (im Projekt entfernt):
-  _DEPLOY_HINWEISE.txt
+  templates/touren/live.html
+  tests/test_build_af.py
 
 NACH DEM UPLOAD
   1. Passenger neu starten: Plesk → Python → Restart (oder tmp/restart.txt anfassen).
   2. ffmpeg (falls hochgeladen oder noch nie gesetzt): Rechte 755 (FTP-Client → Dateiberechtigungen).
-  3. Einloggen, Footer prüfen: dort muss "Version 1.4.0 · 2026-10-15 ae" stehen.
+  3. Einloggen, Footer prüfen: dort muss "Version 1.4.0 · 2026-10-15 af" stehen.
   4. Admin → Tools → Pakete installieren: Kasten "Python-Umgebung" kontrollieren.
 
 Nicht enthalten (bleiben auf dem Server unverändert): .env, instance/*.db,

@@ -34,6 +34,7 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 - Höhenprofil (Chart.js)
 - Kartenvorschau auf Tourenkarten (lazy-loading Leaflet Mini-Maps)
 - Live-Karte je Tour (`/touren/<id>/live`): zuschauen oder Standort teilen, Mitfahrer mit Initialen, Streckenkilometer, Vollbild, Wake Lock
+- Live-Karte als Aufzeichnung (Build af): geteilte Positionen bleiben als Spur erhalten; Tourleitung übernimmt sie als GPX-Track der Tour (mit Zeitstempeln) oder lädt sie herunter, jeder kann seine eigene löschen, automatische Löschung nach 30 Tagen
 - Gruppen-Karte: Gastro (mit Öffnungszeiten, Ruhetag, Mittagstisch, „jetzt geöffnet“, Filter, Clustering), Orte, Treffpunkte
 - Offline-Kartenkacheln cachen (Service Worker)
 - Kartensperre auf Mobile (Tippen zum Aktivieren)
@@ -43,7 +44,8 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 - Einzel- oder ZIP-Upload
 - Automatische GPS-EXIF-Erkennung (inkl. HEIC) → Marker auf Karte
 - Manuelle Positions-Korrektur per Kartenklick
-- Fotos ohne Standort (Galerie-Upload vom Handy) werden anhand der Aufnahmezeit auf der GPX-Aufzeichnung platziert – automatisch beim Hochladen, nachträglich per Knopf mit Zeitkorrektur; geschätzte Positionen sind markiert (Build ac)
+- Fotos ohne Standort (Galerie-Upload vom Handy) werden anhand der Aufnahmezeit auf der GPX-Aufzeichnung platziert – automatisch beim Hochladen, nachträglich per Knopf mit Zeitkorrektur; geschätzte Positionen sind markiert (Build ac); ohne GPX-Zeiten springt die Live-Aufzeichnung ein (Build af)
+- „📷 Foto unterwegs“ auf dem Handy: Kamera öffnen, Foto wird sofort mit dem aktuellen Handy-Standort hochgeladen (Tourseite und Live-Karte, Build af)
 - Lightbox mit Swipe/Keyboard-Navigation
 - Beschriftung direkt in der Lightbox (AJAX, kein Reload)
 - Bulk-Auswahl und Löschung
@@ -156,6 +158,7 @@ python -m unittest tests.test_routes.RoutesTest.test_all_get_routes_member
 | `tests/test_gastro.py` | Gastro-Liste, Schnell-Übernahme mit Duplikat-Schutz, Overpass-Suche (Attrappe: 406-Ausweich, Cache, 502), Streckensuche, Öffnungszeiten-Helfer, geplante Einkehr, Mittagstisch (Parser, OSM-Tags, Filter, Formular, Einkehr-Hinweis) |
 | `tests/test_downloads.py` | GPX-Download, Archiv-ZIP, Tour-Paket (tour.txt), Druckansicht |
 | `tests/test_live.py` | Live-Karte: Zeitfenster, `open_now`, Initialen, Migration, API-Rechte, veraltete Standorte, Seiten; Gruppen-Karte (Filter, Popup-Daten, „offen“) |
+| `tests/test_build_af.py` | Foto unterwegs (Handy-Standort), Live-Aufzeichnung: Punkte filtern, Zusammenfassungen, Spuren-API, GPX übernehmen/herunterladen/löschen, Fotos auf der Live-Aufzeichnung platzieren, Seiten |
 | `tests/test_helpers.py` | `parse_gpx`, Track-Vereinfachung, SVG-Vorschau, ICS-Maskierung/-Faltung, Formular-Parser, Template-Filter |
 | `tests/test_build_ac.py` | Fotos per Aufnahmezeit auf dem GPX-Track platzieren (Interpolation, Toleranz, Lücken, Zeitkorrektur), Upload-Hinweise, `gps_source`, EXIF-DateTimeOriginal |
 | `tests/test_build_ab.py` | Erinnerungen mit Uhrzeit-Schranke, Absage/Reaktivierung + Benachrichtigung, „Änderung mitteilen“, Anmelde-Link, Notfallkontakt/Teilnehmerliste, Fahrgemeinschaften, Backup-Modi/Rotation/sicheres Entpacken, GPX-Ausdünnung, Service-Worker-Cache, entfernte Routen |
