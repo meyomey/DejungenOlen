@@ -2,6 +2,15 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build an) – Flüssigere Video-Bewegungseffekte
+
+Das leichte Ruckeln bei der Video-Erstellung hatte drei Ursachen, alle behoben:
+
+- **Ken-Burns-Zoom (Fotos):** FFmpeg `zoompan` rundet den Bildausschnitt auf ganze Pixel – bei nur 2-facher Überhöhung sichtbar als feines Zittern. Jetzt wird 3-fach überhöht gerechnet, das Zoomfenster auf 1,5-facher Größe ausgewertet und erst danach per Lanczos aufs Zielmaß verkleinert (subpixelgenaue Bewegung). Zusätzlich Sanftanlauf aus (Cosinus) statt konstanter Zoom-Fahrt.
+- **Karten-Animation:** Der Track baute sich bisher in nur 16 sichtbaren Sprüngen auf. Jetzt entsteht ein Kartenaufbau-Bild pro Video-Bild (25/s) – flüssiges Wachstum wie in der Browser-Vorschau.
+- **Statistik-/Einkehr-/Höhenprofil-Folien:** Bisher 15 Einzelbilder/s, die auf die 25-fps-Ausgabe umgetaktet wurden (unglemäßige Bildfolge). Jetzt mit voller Framerate und exakter Bild-Taktung.
+- Render-Timeouts für die jetzt größeren Segmente erhöht (60 → 180 s je Segment). 196 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-15 (Build am) – Video-Anzahlen neben den Foto-Anzahlen
 
 - **Archiv:** Die Listen zeigen jetzt auch die Anzahl der Videos – in der Tabelle neben der Foto-Spalte (Kopf „📷 🎬") und in den Handy-Karten („🎬 N" neben „📷 N"). Die Zahl kommt aus je einer Sammel-Abfrage (kein N+1), sowohl in der Liste als auch in der Archiv-Suche.

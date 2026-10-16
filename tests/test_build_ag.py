@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 am')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 an')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -434,3 +434,33 @@ class VideoCountTest(AppTestCase):
         self.login_org()
         html = self.get_html(f'/touren/{self.t_done_id}')
         self.assertNotIn('Videos zur Tour', html)
+
+
+class VideoSmoothTest(AppTestCase):
+    """Build an: Ruckeln in den Bewegungseffekten des Video-Renderers geglättet –
+    Ken-Burns-Zoom subpixelgenau (Supersampling + Lanczos + Sanftanlauf),
+    Karten-/Stats-/Profil-Animationen mit voller Video-Framerate."""
+
+    @staticmethod
+    def _app_src():
+        return open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+
+    def test_ken_burns_supersampled_and_eased(self):
+        src = self._app_src()
+        self.assertIn('scale={W*3}:{H*3}:flags=lanczos', src)     # 3x Supersampling
+        self.assertIn('scale={W}:{H}:flags=lanczos,', src)        # feines Downscaling
+        self.assertIn('(1-cos(PI*on/', src)                       # Sanftanlauf
+        self.assertNotIn('0.09*on/', src)                         # alte lineare Fahrt weg
+
+    def test_card_animations_use_full_framerate(self):
+        src = self._app_src()
+        self.assertIn('N_STEPS = max(16, int(round(', src)        # Karte: 25 Bilder/s
+        self.assertIn('per_frame_dur = round(1 / fps, 3)', src)   # exakte Bild-Taktung
+        self.assertIn('step_fps = 4.0, 3.6, fps', src)            # Statistik
+        self.assertIn('len(rows)), fps', src)                     # Einkehr
+        self.assertIn('step_fps = 3.5, 2.6, fps', src)            # Höhenprofil
+        self.assertNotIn('step_fps = 4.0, 3.6, 15', src)          # alte 15-Bilder/s-Taktung weg
+
+    def test_segment_timeouts_raised(self):
+        src = self._app_src()
+        self.assertIn('capture_output=True, timeout=180', src)

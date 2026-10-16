@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 am'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 an'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3352,7 +3352,7 @@ def tour_video_render(tour_id):
                     '-pix_fmt', 'yuv420p',
                     out_path
                 ]
-                result = subprocess.run(cmd, capture_output=True, timeout=60)
+                result = subprocess.run(cmd, capture_output=True, timeout=180)
                 try:
                     os.remove(inner_concat)
                 except Exception:
@@ -3377,14 +3377,23 @@ def tour_video_render(tour_id):
                 canvas.save(base_jpg, 'JPEG', quality=95)
 
                 n_frames = max(2, int(round(total_dur * fps)))
+                # Build an: Sanftanlauf aus (Cosinus-Übergang) statt konstanter Zoom-
+                # Geschwindigkeit – Start und Ende der Bewegung wirken ruhiger.
+                prog = f"(1-cos(PI*on/{n_frames-1}))/2"
                 if zoom_in:
-                    z_expr = f"1+0.09*on/{n_frames-1}"
+                    z_expr = f"1+0.09*{prog}"
                 else:
-                    z_expr = f"1.09-0.09*on/{n_frames-1}"
+                    z_expr = f"1.09-0.09*{prog}"
 
-                vf = (f"scale={W*2}:{H*2},"
+                # Build an: 3-fach überhöht rechnen, Zoomfenster auf 1,5-facher Größe
+                # auswerten und erst danach per Lanczos aufs Zielmaß verkleinern.
+                # zoompan rundet Bildausschnitte auf ganze Pixel – auf dem kleinen
+                # Gitter zeigte sich das als feines Ruckeln; so bleibt die Bewegung
+                # effektiv subpixelgenau.
+                vf = (f"scale={W*3}:{H*3}:flags=lanczos,"
                       f"zoompan=z='{z_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-                      f":d={n_frames}:s={W}x{H}:fps={fps},"
+                      f":d={n_frames}:s={int(W*1.5)//2*2}x{int(H*1.5)//2*2}:fps={fps},"
+                      f"scale={W}:{H}:flags=lanczos,"
                       f"{_fade_vf(total_dur)}")
                 if overlay_png:
                     cmd = [
@@ -3403,7 +3412,7 @@ def tour_video_render(tour_id):
                         '-pix_fmt', 'yuv420p',
                         out_path
                     ]
-                result = subprocess.run(cmd, capture_output=True, timeout=60)
+                result = subprocess.run(cmd, capture_output=True, timeout=180)
                 try:
                     os.remove(base_jpg)
                 except Exception:
@@ -3888,7 +3897,7 @@ def tour_video_render(tour_id):
                 return []
             try:
                 avatar_layer = _avatar_row_layer(users_info)   # einmal bauen, pro Bild nur einblenden
-                total, anim_secs, step_fps = 4.0, 3.6, 15
+                total, anim_secs, step_fps = 4.0, 3.6, fps
                 n_anim = int(anim_secs * step_fps)
                 frames = []
                 for i in range(n_anim):
@@ -3977,7 +3986,7 @@ def tour_video_render(tour_id):
                     return canvas
 
                 total = min(6.0, 2.5 + 0.5*len(rows))
-                anim_secs, step_fps = min(total - 0.4, 1.2 + 0.4*len(rows)), 15
+                anim_secs, step_fps = min(total - 0.4, 1.2 + 0.4*len(rows)), fps
                 frames = []
                 for i in range(int(anim_secs * step_fps)):
                     progress = (i / step_fps) / anim_secs
@@ -4103,7 +4112,7 @@ def tour_video_render(tour_id):
                     paste_watermark(canvas, 'tr')
                     return canvas
 
-                total, anim_secs, step_fps = 3.5, 2.6, 15
+                total, anim_secs, step_fps = 3.5, 2.6, fps
                 frames = []
                 for i in range(int(anim_secs * step_fps)):
                     fpath = os.path.join(tmpdir, f'profile_{i:03d}.jpg')
@@ -4295,7 +4304,8 @@ def tour_video_render(tour_id):
                             pass
                 badge_font = _pil_font(13)
 
-                N_STEPS = 16
+                # Build an: ein Kartenaufbau-Bild pro Ausgabebild (25/s) statt 16 Sprüngen
+                N_STEPS = max(16, int(round(max(2.5, min(9, 3 + len(photos_with_gps))) * fps)))
                 frame_paths = []
                 for step_i in range(1, N_STEPS + 1):
                     progress = step_i / N_STEPS
@@ -4359,7 +4369,7 @@ def tour_video_render(tour_id):
                     frame.convert('RGB').save(fpath, 'JPEG', quality=88)
                     frame_paths.append(fpath)
 
-                per_frame_dur = round(max(2.5, min(9, 3 + len(photos_with_gps))) / N_STEPS, 3)
+                per_frame_dur = round(1 / fps, 3)   # exakt ein Ausgabebild pro Schritt
                 return [(p, per_frame_dur) for p in frame_paths]
             except Exception as e:
                 app.logger.warning(f'build_track_frames error: {e}', exc_info=True)
