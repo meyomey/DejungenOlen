@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 ao'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 ap'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3371,13 +3371,39 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'frames_to_segment error: {e}', exc_info=True)
                 return False
 
-        def make_photo_zoom_segment(src_path, out_path, total_dur, zoom_in=True, overlay_png=None):
-            """Ken-Burns-Effekt: FLUESSIGER Zoom uebers Foto via FFmpeg zoompan-Filter
+        # Build ap: Ken-Burns-Effekt-Vielfalt – gleiche Namen/Verläufe wie in der
+        # Browser-Vorschau (templates/touren/video.html). Hochkant-Fotos bekommen
+        # keine vertikalen Fahrten (die Safe-Area-Balken würden mitschieben).
+        KB_LANDSCAPE = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'pan_ud', 'pan_du', 'diag', 'diag_back']
+        KB_PORTRAIT  = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'drift_lr', 'drift_rl']
+
+        def _kb_exprs(effect, n_frames):
+            """Liefert (z, x, y)-Ausdrücke für den zoompan-Filter. Alle Fahrten mit
+            Sanftanlauf (Cosinus, Build an), Bewegungsradius bewusst dezent."""
+            p = f"(1-cos(PI*on/{n_frames-1}))/2"
+            cx, cy = 'iw/2-(iw/zoom/2)', 'ih/2-(ih/zoom/2)'
+            fx = f'(iw-iw/zoom)*{p}'
+            fy = f'(ih-ih/zoom)*{p}'
+            return {
+                'zoom_in':   (f'1+0.09*{p}', cx, cy),
+                'zoom_out':  (f'1.09-0.09*{p}', cx, cy),
+                'pan_lr':    ('1.10', fx, cy),
+                'pan_rl':    ('1.10', f'(iw-iw/zoom)*(1-{p})', cy),
+                'pan_ud':    ('1.10', cx, fy),
+                'pan_du':    ('1.10', cx, f'(ih-ih/zoom)*(1-{p})'),
+                'diag':      (f'1.04+0.08*{p}', fx, fy),
+                'diag_back': (f'1.12-0.08*{p}', f'(iw-iw/zoom)*(1-{p})', f'(ih-ih/zoom)*(1-{p})'),
+                'drift_lr':  (f'1.06+0.05*{p}', fx, cy),
+                'drift_rl':  (f'1.11-0.05*{p}', f'(iw-iw/zoom)*(1-{p})', cy),
+            }[effect]
+
+        def make_photo_zoom_segment(src_path, out_path, total_dur, effect='zoom_in', overlay_png=None):
+            """Ken-Burns-Effekt: FLUESSIGE Bewegung uebers Foto via FFmpeg zoompan-Filter
             (echte Pro-Frame-Berechnung durch FFmpeg selbst, kein sichtbares Ruckeln
             wie bei wenigen Einzelbildern). Gibt True bei Erfolg zurueck.
-            Build i: Zoom um die Bildmitte (vorher Richtung linke obere Ecke), Ein-/Aus-
-            blenden, und optional ein transparentes PNG (Logo, Bildunterschrift), das NACH
-            dem Zoom aufgelegt wird – bleibt dadurch scharf und ortsfest."""
+            Build i: Zoom um die Bildmitte, Ein-/Ausblenden, optionales transparentes PNG
+            (Logo, Bildunterschrift) – wird NACH der Bewegung aufgelegt, bleibt scharf und
+            ortsfest. Build ap: 10 Effekt-Varianten (Zoom, Fahrten, Diagonalen)."""
             canvas = build_photo_canvas(src_path)
             if canvas is None or not ffmpeg_bin:
                 return False
@@ -3386,21 +3412,15 @@ def tour_video_render(tour_id):
                 canvas.save(base_jpg, 'JPEG', quality=95)
 
                 n_frames = max(2, int(round(total_dur * fps)))
-                # Build an: Sanftanlauf aus (Cosinus-Übergang) statt konstanter Zoom-
-                # Geschwindigkeit – Start und Ende der Bewegung wirken ruhiger.
-                prog = f"(1-cos(PI*on/{n_frames-1}))/2"
-                if zoom_in:
-                    z_expr = f"1+0.09*{prog}"
-                else:
-                    z_expr = f"1.09-0.09*{prog}"
+                z_expr, x_expr, y_expr = _kb_exprs(effect, n_frames)
 
-                # Build an: 3-fach überhöht rechnen, Zoomfenster auf 1,5-facher Größe
+                # Build an: 3-fach überhöht rechnen, Bewegungsfenster auf 1,5-facher Größe
                 # auswerten und erst danach per Lanczos aufs Zielmaß verkleinern.
                 # zoompan rundet Bildausschnitte auf ganze Pixel – auf dem kleinen
                 # Gitter zeigte sich das als feines Ruckeln; so bleibt die Bewegung
                 # effektiv subpixelgenau.
                 vf = (f"scale={W*3}:{H*3}:flags=lanczos,"
-                      f"zoompan=z='{z_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+                      f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}'"
                       f":d={n_frames}:s={int(W*1.5)//2*2}x{int(H*1.5)//2*2}:fps={fps},"
                       f"scale={W}:{H}:flags=lanczos,"
                       f"{_fade_vf(total_dur)}")
@@ -4495,20 +4515,30 @@ def tour_video_render(tour_id):
                         cf.write(f"file '{stats_seg}'\n")
                         _slide_secs += 4
 
-            # 3. Fotos (mit flüssigem Ken-Burns-Zoom via FFmpeg zoompan-Filter)
+            # 3. Fotos (flüssige Ken-Burns-Bewegungen via FFmpeg zoompan-Filter)
             for i, p in enumerate(photos):
                 src = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], p.filename)
                 if not os.path.exists(src):
                     continue
                 oriented = os.path.join(tmpdir, f'oriented_{i:04d}.jpg')
                 auto_orient(src, oriented)
-                zoom_in = (i % 2 == 0)  # abwechselnd rein-/rauszoomen für Abwechslung
+                # Build ap: Effekt pro Foto variieren – Hochkant ohne vertikale Fahrten,
+                # Startpunkt der Effekt-Reihe pro Tour versetzt (tour.id)
+                try:
+                    with _PIL.open(oriented) as _pim:
+                        _ow, _oh = _pim.size
+                except Exception:
+                    _ow, _oh = 0, 0
+                if _oh and _oh >= _ow:
+                    _kb_effect = KB_PORTRAIT[(i + tour.id) % len(KB_PORTRAIT)]
+                else:
+                    _kb_effect = KB_LANDSCAPE[(i + tour.id) % len(KB_LANDSCAPE)]
                 # Build i: Overlay mit Logo + Uhrzeit/Bildunterschrift (None, wenn nichts zu zeigen)
                 overlay_png = os.path.join(tmpdir, f'overlay_{i:04d}.png')
                 if not (PIL_OK and make_photo_overlay(p, overlay_png)):
                     overlay_png = None
                 segment_path = os.path.join(tmpdir, f'photo_{i:04d}.mp4')
-                if make_photo_zoom_segment(oriented, segment_path, photo_dur, zoom_in=zoom_in,
+                if make_photo_zoom_segment(oriented, segment_path, photo_dur, effect=_kb_effect,
                                            overlay_png=overlay_png):
                     cf.write(f"file '{segment_path}'\n")
                     _slide_secs += photo_dur

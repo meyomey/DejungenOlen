@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ao')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ap')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -472,3 +472,19 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn("seg_codec_opts = (['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']", src)
         self.assertEqual(src.count('*seg_codec_opts,'), 4)    # alle 4 Segment-Encoder
         self.assertIn('(1-cos(PI*on/', src)                   # Sanftanlauf bleibt
+
+    def test_server_has_effect_variety(self):
+        src = self._app_src()
+        self.assertIn("KB_LANDSCAPE = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'pan_ud', 'pan_du', 'diag', 'diag_back']", src)
+        self.assertIn("KB_PORTRAIT  = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'drift_lr', 'drift_rl']", src)
+        self.assertIn('def _kb_exprs(effect, n_frames)', src)
+        self.assertIn("effect='zoom_in', overlay_png=None", src)   # neue Signatur
+        self.assertIn('effect=_kb_effect', src)                     # Aufrufstelle
+        self.assertIn('_oh >= _ow', src)                            # Hochkant ohne Vertikal-Fahrten
+        self.assertNotIn('zoom_in = (i % 2 == 0)', src)             # alt: nur rein/raus
+
+    def test_preview_matches_server_effects(self):
+        html = open(os.path.join(ROOT, 'templates', 'touren', 'video.html'), encoding='utf-8').read()
+        for name in ('KB_FX', 'KB_EASE', 'KB_PORTRAIT', 'KB_LANDSCAPE', 'pan_ud', 'diag_back', 'TOUR_ID'):
+            self.assertIn(name, html)
+        self.assertNotIn('const zoomIn = (pi % 2 === 0);', html)    # alt: nur rein/raus

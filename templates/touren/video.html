@@ -417,19 +417,39 @@ function drawMiniMap(p, x0, y1, side) {
   ctx.restore();
 }
 
-function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, zoomIn=true, photo=null) {
+// ── Build ap: Ken-Burns-Effekt-Vielfalt (gleiche Verläufe wie im Server-MP4) ──
+const TOUR_ID = {{ tour.id|default(0) }};
+const KB_EASE = t => (1 - Math.cos(Math.PI * t)) / 2;   // Sanftanlauf
+const KB_FX = {
+  zoom_in:   t => ({ z: 1 + .09*t }),
+  zoom_out:  t => ({ z: 1.09 - .09*t }),
+  pan_lr:    t => ({ z: 1.10, x: t }),
+  pan_rl:    t => ({ z: 1.10, x: 1 - t }),
+  pan_ud:    t => ({ z: 1.10, y: t }),
+  pan_du:    t => ({ z: 1.10, y: 1 - t }),
+  diag:      t => ({ z: 1.04 + .08*t, x: t, y: t }),
+  diag_back: t => ({ z: 1.12 - .08*t, x: 1 - t, y: 1 - t }),
+  drift_lr:  t => ({ z: 1.06 + .05*t, x: t }),
+  drift_rl:  t => ({ z: 1.11 - .05*t, x: 1 - t }),
+};
+const KB_PORTRAIT  = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'drift_lr', 'drift_rl'];
+const KB_LANDSCAPE = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'pan_ud', 'pan_du', 'diag', 'diag_back'];
+
+function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, effect='zoom_in', photo=null) {
   ctx.globalAlpha = alpha;
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
 
-  // Ken-Burns-Effekt: dezenter Zoom über die Anzeigedauer (9% gesamt)
-  const MAX_ZOOM = 1.09;
-  const t = Math.max(0, Math.min(1, progress));
-  const zoom = zoomIn ? 1 + t*(MAX_ZOOM-1) : MAX_ZOOM - t*(MAX_ZOOM-1);
+  // Ken-Burns-Effekt: sanfte Bewegung – Zoom, Fahrten, Diagonalen
+  const t = KB_EASE(Math.max(0, Math.min(1, progress)));
+  const mv = (KB_FX[effect] || KB_FX.zoom_in)(t);
+  const zoom = mv.z;
 
   const baseScale = Math.min(W/img.width, (H-80)/img.height);
   const scale = baseScale * zoom;
   const dw = img.width*scale, dh = img.height*scale;
-  const dx = (W-dw)/2, dy = (H-80-dh)/2+10;
+  let dx = (W-dw)/2, dy = (H-80-dh)/2+10;
+  if (mv.x !== undefined && dw > W + 1)  dx = -(dw - W) * mv.x;                   // horizontale Fahrt
+  if (mv.y !== undefined && dh > H - 79) dy = (H-80-dh)/2 + 10 - (dh - (H-80)) * mv.y;  // vertikale Fahrt
   ctx.drawImage(img, dx, dy, dw, dh);
 
   // Bottom bar
@@ -1183,18 +1203,19 @@ async function runSequence(onFrame) {
     await next(FPS*4, (f,tot) => drawStatsFrame(f/tot));
   }
 
-  // 3. Photos (mit leichtem Ken-Burns-Zoom, passend zum Server-MP4-Export)
+  // 3. Photos (Ken-Burns-Effekte, wie im Server-MP4-Export)
   for (let pi=0; pi<PHOTOS.length; pi++) {
     const img = imgs[pi]; if(!img) continue;
     const p = PHOTOS[pi];
-    const zoomIn = (pi % 2 === 0);
+    const _kbList = (img.height >= img.width) ? KB_PORTRAIT : KB_LANDSCAPE;   // Build ap
+    const effect = _kbList[(pi + TOUR_ID) % _kbList.length];
     status.textContent = `Foto ${pi+1}/${PHOTOS.length}…`;
     await next(FPS*photoDur, (f,tot) => {
       const fadeDur = FPS*0.4;
       const a = transition==='none' ? 1
         : f < fadeDur ? f/fadeDur
         : f > tot-fadeDur ? (tot-f)/fadeDur : 1;
-      drawPhotoFrame(img, p.cap, p.date, a, f/tot, zoomIn, p);
+      drawPhotoFrame(img, p.cap, p.date, a, f/tot, effect, p);
     });
   }
 

@@ -2,6 +2,15 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build ap) – Ken-Burns-Effekt-Vielfalt
+
+Bisher wechselten sich beim Foto-Video nur Zoom rein / Zoom raus ab. Jetzt 10 Varianten:
+
+- **Zoom rein / raus** (bisher), **Panorama-Fahrten** links→rechts, rechts→links, oben→unten, unten→oben (Kamera fährt über das Foto, leicht eingezoomt), **Diagonalen** (Fahrt über Eck plus sanfter Zoom, hin und zurück) und **Drift** für Hochkant-Fotos (Zoom mit seitlicher Drift).
+- Hochkant-Fotos bekommen keine vertikalen Fahrten – sonst würden die schwarzen Safe-Area-Balken mitschieben. Die Effekt-Reihenfolge ist pro Tour versetzt, nicht jede Tour gleich.
+- Die Browser-Vorschau auf der Video-Seite zeigt dieselben Effekte wie der fertige MP4-Export (gleiche Namen und Verläufe).
+- 199 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-15 (Build ao) – Foto-Zoom noch ruhiger
 
 Nachlegen beim Ken-Burns-Zoom der Fotos:
