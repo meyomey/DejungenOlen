@@ -2,6 +2,14 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build ar) – Video-Render schonender gerechnet
+
+Nach Meldung „kein Video mehr erstellen“ (Abbruch nach 2–3 s ohne Meldung): Der Server bricht den Auftrag offensichtlich früh ab – die Rechenlast der letzten Optimierungen (3-fach überhöhter Zoom, 30 fps) übersteigt vermutlich die Ressourcen des Shared Hostings. Gegenmaßnahmen:
+
+- **Zoom-Rechnung entlastet:** 2-fach Überhöhung mit 1,25-fachem Bewegungsfenster statt 3-fach/1,5-fach – deutlich weniger RAM und Rechenzeit, die Bewegung bleibt glatt (Schrittweite weiter unter 1 Ausgabepixel).
+- **Verwaiste Videosperren** werden schon nach 4 min statt 15 min abgebaut; **Überreste abgestürzter Renders** in /tmp räumt der nächste Render automatisch weg (schützt vor vollem /tmp).
+- 201 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-15 (Build aq) – Kein Foto mehr ohne Bewegung, Effekte kräftiger
 
 - **Fehler behoben:** Bei bündig containeden Fotos (z. B. Hochkant-Foto im Hochkant-Video) blieben Panorama-Fahrten in der Vorschau nichtig bzw. bewegten im MP4 nur die schwarzen Balken. Jetzt arbeiten Vorschau und MP4 mit demselben Fenster-Modell wie FFmpeg (Ausschnitt über das komplette Bild inkl. Balken) – jeder Effekt bewegt sich auf jedem Foto sichtbar.

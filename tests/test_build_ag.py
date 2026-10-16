@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 aq')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ar')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -447,7 +447,7 @@ class VideoSmoothTest(AppTestCase):
 
     def test_ken_burns_supersampled_and_eased(self):
         src = self._app_src()
-        self.assertIn('scale={W*3}:{H*3}:flags=lanczos', src)     # 3x Supersampling
+        self.assertIn('scale={W*2}:{H*2}:flags=lanczos', src)     # Supersampling (Build ar: 2x, RAM-schonend)
         self.assertIn('scale={W}:{H}:flags=lanczos,', src)        # feines Downscaling
         self.assertIn('(1-cos(PI*on/', src)                       # Sanftanlauf
         self.assertNotIn('0.09*on/', src)                         # alte lineare Fahrt weg
@@ -482,6 +482,14 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('effect=_kb_effect', src)                     # Aufrufstelle
         self.assertIn('_oh >= _ow', src)                            # Hochkant ohne Vertikal-Fahrten
         self.assertNotIn('zoom_in = (i % 2 == 0)', src)             # alt: nur rein/raus
+
+    def test_ar_lighter_zoompan_and_cleanup(self):
+        src = self._app_src()
+        self.assertIn('scale={W*2}:{H*2}:flags=lanczos', src)       # 2x statt 3x (RAM/CPU)
+        self.assertNotIn('scale={W*3}:{H*3}:flags=lanczos', src)    # alte 3x-Stufe weg
+        self.assertIn('int(W*1.25)//2*2', src)                      # 1,25x-Fenster
+        self.assertIn('> 240:', src)                                # Sperre nach 4 min frei
+        self.assertIn("startswith('djo_video_')", src)              # /tmp-Aufraeumen
 
     def test_preview_matches_server_effects(self):
         html = open(os.path.join(ROOT, 'templates', 'touren', 'video.html'), encoding='utf-8').read()

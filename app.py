@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 aq'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 ar'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3193,7 +3193,7 @@ def tour_video_render(tour_id):
     os.makedirs(lock_dir, exist_ok=True)
     lock_path = os.path.join(lock_dir, f'.render_{tour_id}.lock')
     try:
-        if os.path.exists(lock_path) and (_time.time() - os.path.getmtime(lock_path)) > 900:
+        if os.path.exists(lock_path) and (_time.time() - os.path.getmtime(lock_path)) > 240:
             os.remove(lock_path)                        # verwaiste Sperre (> 15 min) aufräumen
         lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         os.close(lock_fd)
@@ -3203,6 +3203,22 @@ def tour_video_render(tour_id):
     except OSError as e:
         app.logger.warning(f'Video-Sperre {lock_path}: {e}')
 
+    # Build ar: Ueberreste abgestuerzter Renders aufraeumen (aelter als 2 h),
+    # damit /tmp nicht volllaeuft und Folge-Renders an vollem Datentraeger scheitern
+    try:
+        _now = _time.time()
+        for _entry in os.listdir('/tmp'):
+            if not _entry.startswith('djo_video_'):
+                continue
+            _old_dir = os.path.join('/tmp', _entry)
+            try:
+                if os.path.isdir(_old_dir) and (_now - os.path.getmtime(_old_dir)) > 7200:
+                    shutil.rmtree(_old_dir, ignore_errors=True)
+                    app.logger.info('Alten Video-Temp-Ordner entfernt: ' + _entry)
+            except Exception:
+                pass
+    except Exception:
+        pass
     tmpdir = tempfile.mkdtemp(prefix='djo_video_')
     try:
         # ── Fotos in korrekte Ausrichtung bringen (EXIF auto-orient) ─────────
@@ -3424,9 +3440,12 @@ def tour_video_render(tour_id):
                 # zoompan rundet Bildausschnitte auf ganze Pixel – auf dem kleinen
                 # Gitter zeigte sich das als feines Ruckeln; so bleibt die Bewegung
                 # effektiv subpixelgenau.
-                vf = (f"scale={W*3}:{H*3}:flags=lanczos,"
+                # Build ar: 2-fach ueberhoeht statt 3-fach, Fenster 1,25x statt 1,5x -
+                # deutlich weniger RAM/Rechenzeit (Shared-Hosting-Schonung), die
+                # Bewegung bleibt glatt (Schrittweite < 1 Ausgabepixel).
+                vf = (f"scale={W*2}:{H*2}:flags=lanczos,"
                       f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}'"
-                      f":d={n_frames}:s={int(W*1.5)//2*2}x{int(H*1.5)//2*2}:fps={fps},"
+                      f":d={n_frames}:s={int(W*1.25)//2*2}x{int(H*1.25)//2*2}:fps={fps},"
                       f"scale={W}:{H}:flags=lanczos,"
                       f"{_fade_vf(total_dur)}")
                 if overlay_png:
