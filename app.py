@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 ar'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 as'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3187,6 +3187,17 @@ def tour_video_render(tour_id):
     seg_codec_opts = (['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']
                       if vcodec == 'libx264' else ['-c:v', vcodec, '-q:v', '3'])
 
+    # Build as: Kann das FFmpeg tmix (Bewegungsglättung)? Bei langsamen Fahrten
+    # verteilt ein Ein-Bild-Motion-Blur die Pixel-Schritte der Zoomfahrt – das
+    # Auge nimmt die Bewegung als ruhig statt stufig wahr. Bilder-/Logos bleiben
+    # scharf (Overlay kommt erst NACH dieser Stufe). Guard: ohne tmix einfach ohne.
+    try:
+        _flt = subprocess.run([ffmpeg_bin, '-hide_banner', '-filters'],
+                              capture_output=True, timeout=15)
+        _tmix_ok = b' tmix ' in _flt.stdout
+    except Exception:
+        _tmix_ok = False
+
     # Build ab: pro Tour nur ein Rendern gleichzeitig – ein zweiter Klick (oder ein zweiter
     # Browser-Tab) würde sonst einen weiteren ffmpeg-Lauf auf demselben Shared Hosting starten.
     lock_dir = app.config['UPLOAD_FOLDER_VIDEOS']
@@ -3440,13 +3451,15 @@ def tour_video_render(tour_id):
                 # zoompan rundet Bildausschnitte auf ganze Pixel – auf dem kleinen
                 # Gitter zeigte sich das als feines Ruckeln; so bleibt die Bewegung
                 # effektiv subpixelgenau.
-                # Build ar: 2-fach ueberhoeht statt 3-fach, Fenster 1,25x statt 1,5x -
-                # deutlich weniger RAM/Rechenzeit (Shared-Hosting-Schonung), die
-                # Bewegung bleibt glatt (Schrittweite < 1 Ausgabepixel).
+                # Build ar/as: 2-fach ueberhoeht (Hosting-schonend), Bewegungsfenster
+                # 1,5x – das feinere End-Downscaling verschmilzt die Pixel-Schritte.
+                # Build as: tmix (falls verfuegbar) als Motion-Blur glättet die Fahrten.
+                _tmix = 'tmix=frames=2,' if _tmix_ok else ''
                 vf = (f"scale={W*2}:{H*2}:flags=lanczos,"
                       f"zoompan=z='{z_expr}':x='{x_expr}':y='{y_expr}'"
-                      f":d={n_frames}:s={int(W*1.25)//2*2}x{int(H*1.25)//2*2}:fps={fps},"
+                      f":d={n_frames}:s={int(W*1.5)//2*2}x{int(H*1.5)//2*2}:fps={fps},"
                       f"scale={W}:{H}:flags=lanczos,"
+                      f"{_tmix}"
                       f"{_fade_vf(total_dur)}")
                 if overlay_png:
                     cmd = [
@@ -3569,7 +3582,9 @@ def tour_video_render(tour_id):
             side = int(min(W, H) * 0.22)
             m = SAFE + 24
             x0 = W - m - side
-            y1 = (bar_top - 16) if bar_top else (H - m)
+            # Build as: Kasten weiter unten – knapp über der Unterschrift-Leiste
+            # bzw. nah an der Unterkante, statt deutlich ins Bild gerückt
+            y1 = (bar_top - 6) if bar_top else (H - SAFE - 8)
             y0 = y1 - side
             draw = _ID_MOD.Draw(layer)
             draw.rounded_rectangle([x0, y0, x0 + side, y1], radius=18, fill=(0, 0, 0, 140),

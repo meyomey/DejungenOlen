@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build as) – Mini-Karte tiefer, Fahrten wieder ruhiger
+
+- **Mini-Karte auf Fotos weiter unten:** Der 🗺️-Kartenausschnitt saß zu weit im Bild – jetzt liegt er knapp über der Unterschrift-Leiste (bzw. nah an der Unterkante), im MP4 und in der Vorschau.
+- **Fahrten wieder ruhiger, ohne den Server zu überfordern:** Das Bewegungsfenster ist zurück auf 1,5-fach (feineres End-Downscaling verschmilzt die Pixel-Schritte), und wenn FFmpeg `tmix` beherrscht, bekommt jede Foto-Fahrt einen hauchfeinen Motion-Blur (Ein-Bild-Glättung) – Schritte werden vom Auge als ruhige Bewegung wahrgenommen. Unterschriften/Logo bleiben scharf, sie werden erst danach aufgelegt. Die 2-fach-Überhöhung bleibt (Ressourcen!), der Filter wird vorher geprüft und sonst einfach weggelassen.
+- 202 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-15 (Build ar) – Video-Render schonender gerechnet
 
 Nach Meldung „kein Video mehr erstellen“ (Abbruch nach 2–3 s ohne Meldung): Der Server bricht den Auftrag offensichtlich früh ab – die Rechenlast der letzten Optimierungen (3-fach überhöhter Zoom, 30 fps) übersteigt vermutlich die Ressourcen des Shared Hostings. Gegenmaßnahmen:

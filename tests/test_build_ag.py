@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ar')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 as')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -483,11 +483,19 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('_oh >= _ow', src)                            # Hochkant ohne Vertikal-Fahrten
         self.assertNotIn('zoom_in = (i % 2 == 0)', src)             # alt: nur rein/raus
 
+    def test_as_minimap_lower_and_motion_smoothing(self):
+        src = self._app_src()
+        self.assertIn("y1 = (bar_top - 6) if bar_top else (H - SAFE - 8)", src)   # MP4: Kasten tiefer
+        self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
+        self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+        html = open(os.path.join(ROOT, 'templates', 'touren', 'video.html'), encoding='utf-8').read()
+        self.assertIn('H - 70 - 5, mmSide', html)                   # Vorschau: ebenso tiefer
+
     def test_ar_lighter_zoompan_and_cleanup(self):
         src = self._app_src()
         self.assertIn('scale={W*2}:{H*2}:flags=lanczos', src)       # 2x statt 3x (RAM/CPU)
         self.assertNotIn('scale={W*3}:{H*3}:flags=lanczos', src)    # alte 3x-Stufe weg
-        self.assertIn('int(W*1.25)//2*2', src)                      # 1,25x-Fenster
+        self.assertIn('int(W*1.5)//2*2', src)                       # 1,5x-Fenster (Build as wieder)
         self.assertIn('> 240:', src)                                # Sperre nach 4 min frei
         self.assertIn("startswith('djo_video_')", src)              # /tmp-Aufraeumen
 

@@ -466,7 +466,7 @@ function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, effect='zoom
   ctx.fillText(GROUP_NAME, W-20, H-35);
   // Build o: Mini-Karte unten rechts über der Fußleiste (nur Fotos mit GPS)
   const mmSide = Math.round(Math.min(W, H) * 0.22);
-  drawMiniMap(photo, W - 20 - mmSide, H - 70 - 14, mmSide);
+  drawMiniMap(photo, W - 20 - mmSide, H - 70 - 5, mmSide);   // Build as: weiter unten
   ctx.globalAlpha = 1;
 }
 
