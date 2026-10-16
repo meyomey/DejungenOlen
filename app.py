@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 ap'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 aq'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3072,6 +3072,37 @@ def _pick_ffmpeg_codec(ffmpeg_bin: str) -> str:
     return 'mpeg4'
 
 
+# ── Build aq: Ken-Burns-Effekte auf Modul-Ebene – Vorschau, MP4 und Tests lesen
+#    dieselben Verläufe. Hochkant-Fotos bekommen keine vertikalen Fahrten (die
+#    Safe-Area-Balken würden mitwandern). Amplituden kräftiger als in ap: Zoom 13 %,
+#    Fahrten mit 16 % Einzug, Diagonalen bis 20 % – vorher wirkten manche Kombis statisch.
+KB_LANDSCAPE = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'pan_ud', 'pan_du', 'diag', 'diag_back']
+KB_PORTRAIT  = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'drift_lr', 'drift_rl']
+
+
+def ken_burns_exprs(effect, n_frames):
+    """Liefert (z, x, y)-Ausdrücke für den FFmpeg-zoompan-Filter (alle Fahrten mit
+    Sanftanlauf per Cosinus). z bezieht sich auf den 3-fach überhöht skalierten
+    Canvas, x/y auf dessen volle Fläche inkl. Safe-Area-Balken – Bewegung kommt
+    also auf JEDEM Foto an."""
+    p = f"(1-cos(PI*on/{n_frames-1}))/2"
+    cx, cy = 'iw/2-(iw/zoom/2)', 'ih/2-(ih/zoom/2)'
+    fx = f'(iw-iw/zoom)*{p}'
+    fy = f'(ih-ih/zoom)*{p}'
+    return {
+        'zoom_in':   (f'1+0.13*{p}', cx, cy),
+        'zoom_out':  (f'1.13-0.13*{p}', cx, cy),
+        'pan_lr':    ('1.16', fx, cy),
+        'pan_rl':    ('1.16', f'(iw-iw/zoom)*(1-{p})', cy),
+        'pan_ud':    ('1.16', cx, fy),
+        'pan_du':    ('1.16', cx, f'(ih-ih/zoom)*(1-{p})'),
+        'diag':      (f'1.06+0.14*{p}', fx, fy),
+        'diag_back': (f'1.20-0.14*{p}', f'(iw-iw/zoom)*(1-{p})', f'(ih-ih/zoom)*(1-{p})'),
+        'drift_lr':  (f'1.08+0.09*{p}', fx, cy),
+        'drift_rl':  (f'1.17-0.09*{p}', f'(iw-iw/zoom)*(1-{p})', cy),
+    }[effect]
+
+
 @app.route('/touren/<int:tour_id>/video')
 @login_required
 def tour_video(tour_id):
@@ -3371,32 +3402,6 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'frames_to_segment error: {e}', exc_info=True)
                 return False
 
-        # Build ap: Ken-Burns-Effekt-Vielfalt – gleiche Namen/Verläufe wie in der
-        # Browser-Vorschau (templates/touren/video.html). Hochkant-Fotos bekommen
-        # keine vertikalen Fahrten (die Safe-Area-Balken würden mitschieben).
-        KB_LANDSCAPE = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'pan_ud', 'pan_du', 'diag', 'diag_back']
-        KB_PORTRAIT  = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'drift_lr', 'drift_rl']
-
-        def _kb_exprs(effect, n_frames):
-            """Liefert (z, x, y)-Ausdrücke für den zoompan-Filter. Alle Fahrten mit
-            Sanftanlauf (Cosinus, Build an), Bewegungsradius bewusst dezent."""
-            p = f"(1-cos(PI*on/{n_frames-1}))/2"
-            cx, cy = 'iw/2-(iw/zoom/2)', 'ih/2-(ih/zoom/2)'
-            fx = f'(iw-iw/zoom)*{p}'
-            fy = f'(ih-ih/zoom)*{p}'
-            return {
-                'zoom_in':   (f'1+0.09*{p}', cx, cy),
-                'zoom_out':  (f'1.09-0.09*{p}', cx, cy),
-                'pan_lr':    ('1.10', fx, cy),
-                'pan_rl':    ('1.10', f'(iw-iw/zoom)*(1-{p})', cy),
-                'pan_ud':    ('1.10', cx, fy),
-                'pan_du':    ('1.10', cx, f'(ih-ih/zoom)*(1-{p})'),
-                'diag':      (f'1.04+0.08*{p}', fx, fy),
-                'diag_back': (f'1.12-0.08*{p}', f'(iw-iw/zoom)*(1-{p})', f'(ih-ih/zoom)*(1-{p})'),
-                'drift_lr':  (f'1.06+0.05*{p}', fx, cy),
-                'drift_rl':  (f'1.11-0.05*{p}', f'(iw-iw/zoom)*(1-{p})', cy),
-            }[effect]
-
         def make_photo_zoom_segment(src_path, out_path, total_dur, effect='zoom_in', overlay_png=None):
             """Ken-Burns-Effekt: FLUESSIGE Bewegung uebers Foto via FFmpeg zoompan-Filter
             (echte Pro-Frame-Berechnung durch FFmpeg selbst, kein sichtbares Ruckeln
@@ -3412,7 +3417,7 @@ def tour_video_render(tour_id):
                 canvas.save(base_jpg, 'JPEG', quality=95)
 
                 n_frames = max(2, int(round(total_dur * fps)))
-                z_expr, x_expr, y_expr = _kb_exprs(effect, n_frames)
+                z_expr, x_expr, y_expr = ken_burns_exprs(effect, n_frames)
 
                 # Build an: 3-fach überhöht rechnen, Bewegungsfenster auf 1,5-facher Größe
                 # auswerten und erst danach per Lanczos aufs Zielmaß verkleinern.

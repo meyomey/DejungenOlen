@@ -421,16 +421,16 @@ function drawMiniMap(p, x0, y1, side) {
 const TOUR_ID = {{ tour.id|default(0) }};
 const KB_EASE = t => (1 - Math.cos(Math.PI * t)) / 2;   // Sanftanlauf
 const KB_FX = {
-  zoom_in:   t => ({ z: 1 + .09*t }),
-  zoom_out:  t => ({ z: 1.09 - .09*t }),
-  pan_lr:    t => ({ z: 1.10, x: t }),
-  pan_rl:    t => ({ z: 1.10, x: 1 - t }),
-  pan_ud:    t => ({ z: 1.10, y: t }),
-  pan_du:    t => ({ z: 1.10, y: 1 - t }),
-  diag:      t => ({ z: 1.04 + .08*t, x: t, y: t }),
-  diag_back: t => ({ z: 1.12 - .08*t, x: 1 - t, y: 1 - t }),
-  drift_lr:  t => ({ z: 1.06 + .05*t, x: t }),
-  drift_rl:  t => ({ z: 1.11 - .05*t, x: 1 - t }),
+  zoom_in:   t => ({ z: 1 + .13*t }),
+  zoom_out:  t => ({ z: 1.13 - .13*t }),
+  pan_lr:    t => ({ z: 1.16, x: t }),
+  pan_rl:    t => ({ z: 1.16, x: 1 - t }),
+  pan_ud:    t => ({ z: 1.16, y: t }),
+  pan_du:    t => ({ z: 1.16, y: 1 - t }),
+  diag:      t => ({ z: 1.06 + .14*t, x: t, y: t }),
+  diag_back: t => ({ z: 1.20 - .14*t, x: 1 - t, y: 1 - t }),
+  drift_lr:  t => ({ z: 1.08 + .09*t, x: t }),
+  drift_rl:  t => ({ z: 1.17 - .09*t, x: 1 - t }),
 };
 const KB_PORTRAIT  = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'drift_lr', 'drift_rl'];
 const KB_LANDSCAPE = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'pan_ud', 'pan_du', 'diag', 'diag_back'];
@@ -439,18 +439,22 @@ function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, effect='zoom
   ctx.globalAlpha = alpha;
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
 
-  // Ken-Burns-Effekt: sanfte Bewegung – Zoom, Fahrten, Diagonalen
+  // Build aq: Fenster-Modell wie beim MP4 (zoompan): Das Foto wird auf W×(H-80)
+  // contained (schwarze Balken wie auf dem Server-Canvas), darüber liegt ein
+  // W×H-Ausschnitt, den der Effekt zoomt/fährt. Dadurch bewegt sich JEDER Effekt
+  // auf JEDEM Foto – auch wenn das Foto in einer Achse bündig contained ist.
   const t = KB_EASE(Math.max(0, Math.min(1, progress)));
   const mv = (KB_FX[effect] || KB_FX.zoom_in)(t);
   const zoom = mv.z;
 
   const baseScale = Math.min(W/img.width, (H-80)/img.height);
-  const scale = baseScale * zoom;
-  const dw = img.width*scale, dh = img.height*scale;
-  let dx = (W-dw)/2, dy = (H-80-dh)/2+10;
-  if (mv.x !== undefined && dw > W + 1)  dx = -(dw - W) * mv.x;                   // horizontale Fahrt
-  if (mv.y !== undefined && dh > H - 79) dy = (H-80-dh)/2 + 10 - (dh - (H-80)) * mv.y;  // vertikale Fahrt
-  ctx.drawImage(img, dx, dy, dw, dh);
+  const bw = img.width*baseScale, bh = img.height*baseScale;
+  const bx = (W-bw)/2, by = (H-80-bh)/2+10;
+  const cw = W/zoom, ch = H/zoom;
+  const fx = (mv.x === undefined) ? .5 : mv.x;
+  const fy = (mv.y === undefined) ? .5 : mv.y;
+  const ox = fx*(W-cw), oy = fy*(H-ch);
+  ctx.drawImage(img, (bx-ox)*zoom, (by-oy)*zoom, bw*zoom, bh*zoom);
 
   // Bottom bar
   ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(0, H-70, W, 70);

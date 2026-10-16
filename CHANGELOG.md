@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build aq) – Kein Foto mehr ohne Bewegung, Effekte kräftiger
+
+- **Fehler behoben:** Bei bündig containeden Fotos (z. B. Hochkant-Foto im Hochkant-Video) blieben Panorama-Fahrten in der Vorschau nichtig bzw. bewegten im MP4 nur die schwarzen Balken. Jetzt arbeiten Vorschau und MP4 mit demselben Fenster-Modell wie FFmpeg (Ausschnitt über das komplette Bild inkl. Balken) – jeder Effekt bewegt sich auf jedem Foto sichtbar.
+- **Kräftigere Bewegungen:** Zoom 9 % → 13 %, Panorama-Fahrten 9 % → 16 % Bildschirm-Einzug, Diagonalen bis 20 %, Drift stärker. Die Effekt-Helfer logieren auf Modulebene – Vorschau, MP4-Export und Tests lesen dieselben Verläufe.
+- 200 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-15 (Build ap) – Ken-Burns-Effekt-Vielfalt
 
 Bisher wechselten sich beim Foto-Video nur Zoom rein / Zoom raus ab. Jetzt 10 Varianten:

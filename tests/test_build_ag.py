@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ap')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 aq')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -477,7 +477,7 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("KB_LANDSCAPE = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'pan_ud', 'pan_du', 'diag', 'diag_back']", src)
         self.assertIn("KB_PORTRAIT  = ['zoom_in', 'zoom_out', 'pan_lr', 'pan_rl', 'drift_lr', 'drift_rl']", src)
-        self.assertIn('def _kb_exprs(effect, n_frames)', src)
+        self.assertIn('def ken_burns_exprs(effect, n_frames):', src)   # Build aq: Modul-Ebene
         self.assertIn("effect='zoom_in', overlay_png=None", src)   # neue Signatur
         self.assertIn('effect=_kb_effect', src)                     # Aufrufstelle
         self.assertIn('_oh >= _ow', src)                            # Hochkant ohne Vertikal-Fahrten
@@ -488,3 +488,17 @@ class VideoSmoothTest(AppTestCase):
         for name in ('KB_FX', 'KB_EASE', 'KB_PORTRAIT', 'KB_LANDSCAPE', 'pan_ud', 'diag_back', 'TOUR_ID'):
             self.assertIn(name, html)
         self.assertNotIn('const zoomIn = (pi % 2 === 0);', html)    # alt: nur rein/raus
+
+    def test_aq_stronger_effects_and_window_model(self):
+        src = self._app_src()
+        self.assertIn("\nKB_LANDSCAPE = ['zoom_in'", src)           # Modul-Ebene (Spalte 0)
+        self.assertIn('def ken_burns_exprs(effect, n_frames):', src)
+        self.assertNotIn('def _kb_exprs', src)                      # alter innerer Helfer weg
+        self.assertIn("'pan_lr':    ('1.16', fx, cy),", src)        # kräftigere Fahrten
+        self.assertIn("f'1+0.13*{p}'", src)                         # Zoom 13 %
+        self.assertIn("f'1.20-0.14*{p}'", src)                      # Diagonale bis 20 %
+        self.assertNotIn("f'1+0.09*{p}'", src)                      # alte dezente Stärke weg
+        html = open(os.path.join(ROOT, 'templates', 'touren', 'video.html'), encoding='utf-8').read()
+        self.assertIn('const cw = W/zoom', html)                    # Fenster-Modell in der Vorschau
+        self.assertNotIn('dw > W + 1', html)                        # alte „tote Achse“-Bedingung weg
+        self.assertIn('z: 1.06 + .14*t', html)                      # gleiche Amplituden wie MP4
