@@ -2,6 +2,14 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build ao) – Foto-Zoom noch ruhiger
+
+Nachlegen beim Ken-Burns-Zoom der Fotos:
+
+- **30 fps statt 25:** 25 Bilder/s laufen auf 60-Hz-Handy-/PC-Displays in ungleichem Takt (2-3-2-3-Bilder) – genau das fühlt sich bei langsamen Zoomfahrten wie Ruckeln an. 30 fps teilen durch 60 genau, die Bewegung ist gleichmäßig.
+- **Höherwertige Zwischen-Segmente:** Die Einzel-Segmente werden jetzt mit CRF 18 statt Werkseinstellung encodiert (Codec-Erkennung einmalig am Anfang) – der finale Zusammenbau verstärkt weniger Artefakte, Himmel/Feinstruktur schimmern nicht.
+- 196 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-15 (Build an) – Flüssigere Video-Bewegungseffekte
 
 Das leichte Ruckeln bei der Video-Erstellung hatte drei Ursachen, alle behoben:

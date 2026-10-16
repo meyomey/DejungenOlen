@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 an')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ao')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -464,3 +464,11 @@ class VideoSmoothTest(AppTestCase):
     def test_segment_timeouts_raised(self):
         src = self._app_src()
         self.assertIn('capture_output=True, timeout=180', src)
+
+    def test_photo_zoom_30fps_and_quality_segments(self):
+        src = self._app_src()
+        self.assertIn('fps        = 30', src)                 # ruhig auf 60-Hz-Displays
+        self.assertNotIn('fps        = 25', src)              # alter Takt weg
+        self.assertIn("seg_codec_opts = (['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']", src)
+        self.assertEqual(src.count('*seg_codec_opts,'), 4)    # alle 4 Segment-Encoder
+        self.assertIn('(1-cos(PI*on/', src)                   # Sanftanlauf bleibt

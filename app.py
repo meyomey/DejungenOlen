@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 an'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 ao'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3149,6 +3149,13 @@ def tour_video_render(tour_id):
         return redirect(url_for('tour_video', tour_id=tour_id))
     app.logger.info(f'FFmpeg gefunden: {ffmpeg_bin}')
 
+    # Build ao: Codec EINMAL früh bestimmen – auch die Zwischen-Segmente encodieren
+    # damit, in höherer Qualität (CRF 18), damit der finale Zusammenbau weniger
+    # Generationsverlust/Artefakte (Schimmern bei sanftem Zoom) zeigt.
+    vcodec = _pick_ffmpeg_codec(ffmpeg_bin)
+    seg_codec_opts = (['-c:v', 'libx264', '-preset', 'fast', '-crf', '18']
+                      if vcodec == 'libx264' else ['-c:v', vcodec, '-q:v', '3'])
+
     # Build ab: pro Tour nur ein Rendern gleichzeitig – ein zweiter Klick (oder ein zweiter
     # Browser-Tab) würde sonst einen weiteren ffmpeg-Lauf auf demselben Shared Hosting starten.
     lock_dir = app.config['UPLOAD_FOLDER_VIDEOS']
@@ -3220,7 +3227,7 @@ def tour_video_render(tour_id):
                     _sh2.copy2(default_src, music_path)
 
         photo_dur  = int(request.form.get('photo_duration', 5))
-        fps        = 25
+        fps        = 30   # Build ao: 25 fps laufen auf 60-Hz-Displays im 2:3-Takt (Ruckeln)
         fmt        = request.form.get('video_format', 'reels')
         # Plattform-Presets – Auflösung + "Safe Area" (Rand ohne Foto, für Titel/Untertitel-Bereich)
         FORMAT_PRESETS = {
@@ -3320,6 +3327,7 @@ def tour_video_render(tour_id):
                     '-vf', f'scale={W}:{H},{_fade_vf(duration)}',
                     '-frames:v', str(n_frames),
                     '-pix_fmt', 'yuv420p',
+                    *seg_codec_opts,
                     out_path
                 ]
                 result = subprocess.run(cmd, capture_output=True, timeout=30)
@@ -3350,6 +3358,7 @@ def tour_video_render(tour_id):
                     '-r', str(fps),
                     '-vf', f'scale={W}:{H},{_fade_vf(total_dur)}',
                     '-pix_fmt', 'yuv420p',
+                    *seg_codec_opts,
                     out_path
                 ]
                 result = subprocess.run(cmd, capture_output=True, timeout=180)
@@ -3402,6 +3411,7 @@ def tour_video_render(tour_id):
                         '-map', '[v]',
                         '-frames:v', str(n_frames),
                         '-pix_fmt', 'yuv420p',
+                        *seg_codec_opts,
                         out_path
                     ]
                 else:
@@ -3410,6 +3420,7 @@ def tour_video_render(tour_id):
                         '-vf', vf,
                         '-frames:v', str(n_frames),
                         '-pix_fmt', 'yuv420p',
+                        *seg_codec_opts,
                         out_path
                     ]
                 result = subprocess.run(cmd, capture_output=True, timeout=180)
@@ -4535,8 +4546,7 @@ def tour_video_render(tour_id):
 
         total_secs = _slide_secs
 
-        # ── Codec wählen ──────────────────────────────────────────────────────
-        vcodec = _pick_ffmpeg_codec(ffmpeg_bin)
+        # ── Codec wählen (vcodec schon oben bestimmt) ─────────────────────────
         codec_opts = (['-c:v', 'libx264', '-preset', 'fast', '-crf', '23']
                       if vcodec == 'libx264' else ['-c:v', vcodec, '-q:v', '5'])
 
