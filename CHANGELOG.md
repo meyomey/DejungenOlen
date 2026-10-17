@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-17 (Build ax) – Vorschau-Abbruch nach der Statistikfolie behoben
+
+- **Fehler behoben (Build-aw-Nachzieher):** Die neue Uhrzeit-Leiste nutzte die Variable `mmSide` (Mini-Karten-Breite), bevor sie deklariert wurde – JavaScript wirft dafür einen Referenzfehler, die Browser-Vorschau frozte daraufhin nach der Statistikfolie (direkt vor den Fotos), die Musik lief weiter. Die Deklaration steht jetzt vor der ersten Nutzung.
+- **Sicherheitsnetz:** Echte Vorschau-Fehler werden jetzt als „Vorschau-Fehler: …“ im Status angezeigt (Musik stoppt, Knöpfe kehren zurück), statt die Vorschau stumm einfrieren zu lassen. `node --check` erkennt solche Laufzeit-Fehler nicht – deshalb der neue Test, der Deklarations-Reihenfolge prüft.
+- 206 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-17 (Build aw) – Vorschau zeigt die Foto-Uhrzeit wie das MP4
 
 - Die **Browser-Vorschau** der Video-Seite zeichnet in der Unterschrift-Leiste jetzt dieselbe **gelbe Uhrzeit über dem Text** wie der fertige MP4-Export (bislang zeigte sie nur Text bzw. Datum – deshalb wirkte die Uhrzeit im MP4-Abgleich als „verschwunden“; das MP4 selbst war zu jeder Zeit korrekt).

@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 aw')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ax')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,14 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_ax_preview_no_tdz_and_visible_errors(self):
+        html = open(os.path.join(ROOT, 'templates', 'touren', 'video.html'), encoding='utf-8').read()
+        self.assertEqual(html.count('const mmSide = Math.round'), 1)   # genau EINE Deklaration
+        self.assertLess(html.find('const mmSide = Math.round'),
+                        html.find('(_hasMM2 ? mmSide : 0)'))           # Deklaration VOR der Nutzung
+        self.assertIn("status.textContent = 'Vorschau-Fehler: ' + e.message;", html)  # Fehler sichtbar
+        self.assertNotIn("if (e.message !== 'stopped') throw e;", html)  # stilles Weiterwerfen weg
 
     def test_aw_preview_shows_time_like_mp4(self):
         html = open(os.path.join(ROOT, 'templates', 'touren', 'video.html'), encoding='utf-8').read()

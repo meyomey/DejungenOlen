@@ -457,6 +457,11 @@ function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, effect='zoom
   const ox = fx*(W-cw), oy = fy*(H-ch);
   ctx.drawImage(img, (bx-ox)*zoom, (by-oy)*zoom, bw*zoom, bh*zoom);
 
+  // Build ax: mmSide muss VOR der ersten Nutzung deklariert sein (TDZ-Falle aus aw:
+  // die Referenz in der Leiste kam vor der Deklaration → Referenzfehler beim ersten
+  // Foto, die Vorschau froz nach der Statistikfolie)
+  const mmSide = Math.round(Math.min(W, H) * 0.22);
+
   // Bottom bar – Build aw: gleiche Darstellung wie im MP4 (gelbe Uhrzeit über dem Text)
   ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(0, H-70, W, 70);
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
@@ -478,8 +483,7 @@ function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, effect='zoom
   const _mm2 = miniTrack();
   const _hasMM2 = _mm2 && photo && photoOnMap(photo, _mm2.b);   // Gruppenname nicht unter die Mini-Karte
   ctx.fillText(GROUP_NAME, W - 20 - (_hasMM2 ? mmSide : 0), H-35);
-  // Build o: Mini-Karte unten rechts über der Fußleiste (nur Fotos mit GPS)
-  const mmSide = Math.round(Math.min(W, H) * 0.22);
+  // Build o: Mini-Karte unten rechts (nur Fotos mit GPS)
   drawMiniMap(photo, W - 20 - mmSide, H - 6, mmSide);   // Build at: Unterkante auf Leisten-Höhe
   ctx.globalAlpha = 1;
 }
@@ -1270,7 +1274,10 @@ async function startPreview() {
     await runSequence(waitFrame);
     status.textContent = 'Fertig';
   } catch(e) {
-    if (e.message !== 'stopped') throw e;
+    if (e.message !== 'stopped') {
+      // Build ax: Fehler sichtbar zeigen (statt stiller Freeze mit weiterlaufender Musik)
+      status.textContent = 'Vorschau-Fehler: ' + e.message;
+    }
   }
   stopMusic();
   setPreviewControls(false);
