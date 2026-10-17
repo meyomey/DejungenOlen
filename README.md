@@ -182,6 +182,14 @@ Kurzfassung:
 4. App neu starten
 5. Setup-Wizard aufrufen
 
+**Python-Pakete ohne SSH prüfen/reparieren:** Admin → „Pakete installieren“ zeigt die
+Python-Umgebung der App (Version, pip, gpxpy, ImageMagick-Fallback) und den Status von
+Pillow, piexif, cryptography und pywebpush. Pillow wird dabei **funktional** getestet
+(C-Erweiterung muss laden) – wichtig nach Python-Updates des Hostings (z. B. 3.9 → 3.11),
+weil alte Paket-Builds zwar „vorhanden“ erscheinen, aber nicht arbeiten. Defekte/fehlende
+Pakete per Häkchen direkt aus der Seite heraus installieren (pip im venv) und die App
+danach einmal neu starten.
+
 ---
 
 ## Mehrere Gruppen betreiben

@@ -2,6 +2,11 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build au) – Doku: Pakete-Admin im README
+
+- README (Deployment-Kurzfassung) um einen Absatz ergänzt: Admin → „Pakete installieren“ prüft und repariert Python-Pakete ohne SSH – inkl. Hinweis auf den funktionalen Pillow-Test, der nach Python-Updates des Hostings (3.9 → 3.11) alte, nicht mehr ladende Paket-Builds zuverlässig erkennt. Reine Dokumentation, keine Code-Änderung.
+- 203 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-15 (Build at) – Mini-Karte auf Höhe von Uhrzeit und Text
 
 - Die 🗺️-Mini-Karte auf den Fotos hat jetzt dieselbe Unterkante wie die Unterschrift-Leiste – sie liegt also genau auf Höhe von Uhrzeit und Text (vorher schwebte sie eine Kartenhöhe darüber). Gilt für MP4 und Vorschau.

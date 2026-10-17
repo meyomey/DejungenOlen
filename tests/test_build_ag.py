@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 at')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 au')
 
 
 class PauseDetectionTest(AppTestCase):
