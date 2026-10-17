@@ -1,3 +1,57 @@
+# Audit-Bericht – De jungen Olen, Audit 5 (Version 1.4.0, Build av, 17.10.2026)
+
+Fünftes Komplett-Audit, Stand Build au. Scope: der Zuwachs seit Audit 4 – Vorlesen-Knopf und
+Pausen-Erkennung (aj), mobile Kurzschrift/Kachel-Raster (ak), Video-Knopf-Dedup (al), Video-Zahlen
+(am), Video-Renderer-Überarbeitung (an–at: Ken-Burns-Vielfalt, Supersampling/Sanftanlauf, 30 fps,
+CRF-18-Segmente, tmix-Glättung, Mini-Karte-Position) und Pakete-Doku (au).
+Ergebnis im Satz: **keine Sicherheitslücke; ein selbst gefundener Stabilitätsbefund (Lock-Race bei
+langen Video-Renders) behoben, zwei Doku-Lücken (Hilfe/README: Videos) geschlossen.**
+
+## Vorgehen
+- **Statisch:** py_compile; pyflakes über app.py/models.py/config.py/tests (nur bekannte, absichtliche
+  Muster: funktionaler Import-Test in `_pillow_ok`, Probe-Imports im Push-Code, drei ungenutzte
+  Test-Variablen); Review aller neuen ffmpeg-Befehlsketten – argv-Listen ohne Shell, Filter-Ausdrücke
+  ausschließlich aus festen Effekt-Listen (keine Nutzereingaben), Zeitlimits je Stufe (30/180/300 s);
+  `/tmp`-Sweep mit festem Präfix; Sperren-Logik (O_EXCL, verwaiste Sperre 240 s, Cleanup nach Render);
+  Vorlesen-Text ausschließlich via `_json_for_script` eingebettet (XSS-fest); Pausen-Berechnung als
+  reine Funktion, Spalten-Migration guarded; `video_counts` als Sammel-Query (kein N+1)
+- **Dynamisch** (Test-DB, Fake-ffmpeg für den Render-Pfad): `node --check` über alle Inline-Skripte
+  von 4 gerenderten Seiten (Tourseite, Video-Seite, Archiv, Tourenliste) → sauber; SQL-Zähler
+  Tour-Detail 17 / Archiv 13 (flach, konstant); Mandanten-Probe: Fremd-Login auf Video-Seite und
+  -Render → 404; Fuzz `photo_duration` ('', 'x', -5, 99999, 0.5, 50 Zeichen) → kein 500
+  („Unerwarteter Fehler“-Handler greift); Sperre nach Render sauber entfernt; Render-Lauf mit und
+  ohne tmix-Verfügbarkeit → jeweils 200/video-mp4; 203 Tests grün
+- **Doku-Vollständigkeit:** README (Features, Tests-Tabelle, Deployment, Pakete-Admin-Abschnitt),
+  `docs/INSTALLATION_PLESK_FTP.md` (Python-3.11, `passenger_wsgi`-Auto-Erkennung, Pakete-Admin,
+  eigener Abschnitt „Python-Update 3.9 → 3.11“ – vollständig), `templates/hilfe.html` (Mitglieder-
+  Sicht), CHANGELOG-Konsistenz (Build-Buchstaben je einmal, Tests-Zahlen aktuell)
+
+## Befunde
+
+| Nr. | Schwere | Befund | Status (Build av) |
+|---|---|---|---|
+| B1 | **Mittel** (Stabilität) | Lock-Race: Seit ar gilt eine Render-Sperre nach 4 min als verwaist – ein legitimer langer Render (30 fps + Effekte dauern real mehrere Minuten) erneuerte die Sperre aber nicht; ein zweiter Klick hätte die Sperre entfernt und einen **parallelen ffmpeg** gestartet (doppelte RAM-Last auf dem Hosting) | **behoben:** Sperre wird während des Renderns regelmäßig „angefasst“ (`os.utime` je Foto-Segment + vor dem Final-Render); nur wirklich tote Sperren verfallen nach 4 min |
+| B2 | Niedrig (Doku) | Die Video-Seite ist für alle Mitglieder, die Mitglieder-Hilfe hatte aber keinen Video-Abschnitt; README-Foto-Kapitel erwähnte die Video-Erstellung nicht | **behoben:** Hilfe → Fotos um „🎬 Videos zur Tour“ ergänzt, README-Foto-Bullet ergänzt |
+| B3 | Info | Archiv-SQL 9 → 13 Abfragen (video_counts + Cover-Fotos), Tour-Detail 17 – konstant pro Seite, kein N+1 | ohne Handlungsbedarf |
+
+## Bestätigt (ohne Handlungsbedarf)
+- ffmpeg-Aufrufe: ausschließlich argv-Listen (keine Shell-Interpolation), Effekt-Ausdrücke aus dem
+  festen `ken_burns_exprs`-Katalog, tmix nur nach Funktionsprobe (`ffmpeg -filters`), sonst still
+  ohne Glättung; Segment-Timeouts je Stufe; temp. Ordner mit festem Präfix, Überreste alter Renders
+  (> 2 h) räumt der nächste Render ab
+- Doppelklick-Schutz doppelt: Browser-seitig (Button-Sperre + beforeunload) und server-seitig
+  (Lock pro Tour, jetzt mit Keep-alive); verwaiste Sperren nach 4 min automatisch weg
+- Vorlesen: Text nur als JSON-Script-Block (`_json_for_script`, maskiert `<`, `>`, `&`), Stopp bei
+  Seitenwechsel; ohne speechSynthesis wird der Knopf ausgeblendet
+- Pausen-Erkennung: reine Funktion über GPX-Zeitpunkte, Schwellen konstant (1 m/s, 180 s), keine
+  DB-Zugriffe im Hot Path; `gpx_pauses_n/_s`-Migration guarded (ALTER-try)
+- Video-Zahlen: je Liste eine GROUP-BY-Query, Badge auf der Tourseite nutzt die bereits geladene
+  `videos`-Liste (0 Extra-Queries)
+
+Die Berichte zu Audit 1–4 stehen unten.
+
+---
+
 # Audit-Bericht – De jungen Olen, Audit 4 (Version 1.4.0, Build ai, 15.10.2026)
 
 Viertes Komplett-Audit, Stand Build ah (Tourseite mobil kompakt). Geprüft wurde vor allem der

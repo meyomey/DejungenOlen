@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 au'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 av'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3214,6 +3214,16 @@ def tour_video_render(tour_id):
     except OSError as e:
         app.logger.warning(f'Video-Sperre {lock_path}: {e}')
 
+    # Build av (Audit 5): Sperre während des Renderns frisch halten – seit ar gilt
+    # eine Sperre nach 4 min als verwaist; ein legitimer langer Render hätte sie
+    # sonst nicht erneuert und ein zweiter Klick hätte parallel gerendert.
+    def _keep_lock():
+        try:
+            os.utime(lock_path, None)
+        except OSError:
+            pass
+    _keep_lock()
+
     # Build ar: Ueberreste abgestuerzter Renders aufraeumen (aelter als 2 h),
     # damit /tmp nicht volllaeuft und Folge-Renders an vollem Datentraeger scheitern
     try:
@@ -4564,6 +4574,7 @@ def tour_video_render(tour_id):
                     continue
                 oriented = os.path.join(tmpdir, f'oriented_{i:04d}.jpg')
                 auto_orient(src, oriented)
+                _keep_lock()   # B1/Sperre frisch halten (Render kann Minuten dauern)
                 # Build ap: Effekt pro Foto variieren – Hochkant ohne vertikale Fahrten,
                 # Startpunkt der Effekt-Reihe pro Tour versetzt (tour.id)
                 try:
@@ -4646,6 +4657,7 @@ def tour_video_render(tour_id):
                     '-vf', vf, '-r', str(fps)]
                    + codec_opts
                    + ['-movflags', '+faststart', output_path])
+        _keep_lock()   # B1: Sperre frisch halten fürs lange Final-Rendering
         try:
             result = subprocess.run(cmd, capture_output=True, timeout=300)
         except subprocess.TimeoutExpired:

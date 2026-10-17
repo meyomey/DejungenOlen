@@ -48,6 +48,7 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 - Manuelle Positions-Korrektur per Kartenklick
 - Fotos ohne Standort (Galerie-Upload vom Handy) werden anhand der Aufnahmezeit auf der GPX-Aufzeichnung platziert – automatisch beim Hochladen, nachträglich per Knopf mit Zeitkorrektur; geschätzte Positionen sind markiert (Build ac); ohne GPX-Zeiten springt die Live-Aufzeichnung ein (Build af)
 - „📷 Foto unterwegs“ auf dem Handy: Kamera öffnen, Foto wird sofort mit dem aktuellen Handy-Standort hochgeladen (Tourseite und Live-Karte, Build af)
+- „🎬 Videos“: eigene MP4s hochladen oder ein Tour-Video aus den Fotos erstellen lassen – zehn sanfte Ken-Burns-Effekte (Vorschau im Browser zeigt dieselben wie das MP4), Musik, Formate für Reels/Shorts/Feed/quadratisch/16:9, Mini-Karte auf GPS-Fotos; Video-Anzahl neben der Foto-Anzahl (Build ap–at)
 - Lightbox mit Swipe/Keyboard-Navigation
 - Beschriftung direkt in der Lightbox (AJAX, kein Reload)
 - Bulk-Auswahl und Löschung

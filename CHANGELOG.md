@@ -2,6 +2,14 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-17 (Build av) – Audit 5: Lock-Race behoben, Video-Doku ergänzt
+
+Fünftes Komplett-Audit (Zuwachs aj–au), Bericht in `docs/AUDIT_BERICHT.md`. Umgesetzt aus dem Audit:
+
+- **Lock-Race bei langen Video-Renders behoben (B1):** Seit ar gilt eine Render-Sperre nach 4 min als verwaist – ein legitimer langer Render erneuerte sie aber nicht, ein zweiter Klick hätte einen parallelen ffmpeg gestartet. Die Sperre wird jetzt während des Renderns regelmäßig „angefasst“ (je Foto + vor dem Final-Render); nur wirklich tote Sperren verfallen nach 4 min.
+- **Doku-Lücke geschlossen (B2):** Hilfe → Fotos um „🎬 Videos zur Tour“ ergänzt (die Video-Seite ist für alle Mitglieder), README-Foto-Kapitel um die Video-Erstellung ergänzt. Pakete-Admin/Python-3.11-Themen waren bereits in README + INSTALLATION dokumentiert.
+- 204 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-15 (Build au) – Doku: Pakete-Admin im README
 
 - README (Deployment-Kurzfassung) um einen Absatz ergänzt: Admin → „Pakete installieren“ prüft und repariert Python-Pakete ohne SSH – inkl. Hinweis auf den funktionalen Pillow-Test, der nach Python-Updates des Hostings (3.9 → 3.11) alte, nicht mehr ladende Paket-Builds zuverlässig erkennt. Reine Dokumentation, keine Code-Änderung.

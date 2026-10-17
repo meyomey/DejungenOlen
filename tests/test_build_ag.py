@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 au')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 av')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,17 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_av_lock_keepalive_and_docs(self):
+        src = self._app_src()
+        self.assertIn('def _keep_lock():', src)                     # B1: Sperre frisch halten
+        self.assertIn('os.utime(lock_path, None)', src)
+        self.assertGreaterEqual(src.count('_keep_lock()'), 3)       # Start + Fotos + Final-Render
+        hilfe = open(os.path.join(ROOT, 'templates', 'hilfe.html'), encoding='utf-8').read()
+        self.assertIn('Videos zur Tour', hilfe)                     # B2: Doku-Lücke geschlossen
+        readme = open(os.path.join(ROOT, 'README.md'), encoding='utf-8').read()
+        self.assertIn('Ken-Burns-Effekte', readme)
+        self.assertIn('eigene MP4s hochladen', readme)
 
     def test_at_minimap_aligned_with_caption_bar(self):
         src = self._app_src()
