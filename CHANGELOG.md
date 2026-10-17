@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-17 (Build aw) – Vorschau zeigt die Foto-Uhrzeit wie das MP4
+
+- Die **Browser-Vorschau** der Video-Seite zeichnet in der Unterschrift-Leiste jetzt dieselbe **gelbe Uhrzeit über dem Text** wie der fertige MP4-Export (bislang zeigte sie nur Text bzw. Datum – deshalb wirkte die Uhrzeit im MP4-Abgleich als „verschwunden“; das MP4 selbst war zu jeder Zeit korrekt).
+- Der Gruppenname rechts unten weicht der Mini-Karte aus, statt von ihr überdeckt zu werden.
+- 205 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-17 (Build av) – Audit 5: Lock-Race behoben, Video-Doku ergänzt
 
 Fünftes Komplett-Audit (Zuwachs aj–au), Bericht in `docs/AUDIT_BERICHT.md`. Umgesetzt aus dem Audit:

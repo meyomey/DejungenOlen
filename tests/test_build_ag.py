@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 av')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 aw')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,13 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_aw_preview_shows_time_like_mp4(self):
+        html = open(os.path.join(ROOT, 'templates', 'touren', 'video.html'), encoding='utf-8').read()
+        self.assertIn("strftime('%H:%M Uhr') if p.taken_at", html)   # Zeit im Foto-JSON (nur taken_at)
+        self.assertIn("const when = (photo && photo.time) ? photo.time : '';", html)
+        self.assertIn('#ffd26e', html)                              # gelbe Uhrzeit wie im MP4
+        self.assertIn('when && caption', html)                      # Zeit über Text
 
     def test_av_lock_keepalive_and_docs(self):
         src = self._app_src()

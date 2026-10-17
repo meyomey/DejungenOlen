@@ -270,6 +270,7 @@ const PHOTOS   = [
   {% for p in photos %}
   { src: "{{ url_for('serve_photo', filename=p.filename) }}",
     cap: {{ (p.caption or '')|tojson }},
+    time: "{{ p.taken_at.strftime('%H:%M Uhr') if p.taken_at else '' }}",
     date: "{{ (p.taken_at or p.created_at).strftime('%d.%m.%Y') }}",
     lat: {{ p.lat if p.lat else 'null' }},
     lng: {{ p.lng if p.lng else 'null' }} },
@@ -456,14 +457,27 @@ function drawPhotoFrame(img, caption, dateStr, alpha=1, progress=0, effect='zoom
   const ox = fx*(W-cw), oy = fy*(H-ch);
   ctx.drawImage(img, (bx-ox)*zoom, (by-oy)*zoom, bw*zoom, bh*zoom);
 
-  // Bottom bar
+  // Bottom bar – Build aw: gleiche Darstellung wie im MP4 (gelbe Uhrzeit über dem Text)
   ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(0, H-70, W, 70);
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 22px sans-serif';
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillText(caption || dateStr || '', 20, H-35);
+  const when = (photo && photo.time) ? photo.time : '';
+  if (when && caption) {
+    ctx.fillStyle = '#ffd26e'; ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(when, 20, H-50);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 22px sans-serif';
+    ctx.fillText(caption, 20, H-24);
+  } else if (when) {
+    ctx.fillStyle = '#ffd26e'; ctx.font = 'bold 22px sans-serif';
+    ctx.fillText(when, 20, H-35);
+  } else {
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 22px sans-serif';
+    ctx.fillText(caption || dateStr || '', 20, H-35);
+  }
   ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.font = '18px sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText(GROUP_NAME, W-20, H-35);
+  const _mm2 = miniTrack();
+  const _hasMM2 = _mm2 && photo && photoOnMap(photo, _mm2.b);   // Gruppenname nicht unter die Mini-Karte
+  ctx.fillText(GROUP_NAME, W - 20 - (_hasMM2 ? mmSide : 0), H-35);
   // Build o: Mini-Karte unten rechts über der Fußleiste (nur Fotos mit GPS)
   const mmSide = Math.round(Math.min(W, H) * 0.22);
   drawMiniMap(photo, W - 20 - mmSide, H - 6, mmSide);   // Build at: Unterkante auf Leisten-Höhe
