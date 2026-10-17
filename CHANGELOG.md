@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-15 (Build at) – Mini-Karte auf Höhe von Uhrzeit und Text
+
+- Die 🗺️-Mini-Karte auf den Fotos hat jetzt dieselbe Unterkante wie die Unterschrift-Leiste – sie liegt also genau auf Höhe von Uhrzeit und Text (vorher schwebte sie eine Kartenhöhe darüber). Gilt für MP4 und Vorschau.
+- Die Unterschrift-Leiste weicht dem Karten-Kasten rechts aus (Text-Umbruch und Leistenbreite passend), damit kein Text unter der Karte liegt.
+- 203 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-15 (Build as) – Mini-Karte tiefer, Fahrten wieder ruhiger
 
 - **Mini-Karte auf Fotos weiter unten:** Der 🗺️-Kartenausschnitt saß zu weit im Bild – jetzt liegt er knapp über der Unterschrift-Leiste (bzw. nah an der Unterkante), im MP4 und in der Vorschau.

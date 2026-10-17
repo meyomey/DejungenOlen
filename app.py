@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-15 as'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-15 at'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3576,15 +3576,15 @@ def tour_video_render(tour_id):
 
         def _draw_mini_map(layer, photo, bar_top=None):
             """Build o: Mini-Karte unten rechts auf dem Foto – Track-Umriss, bis zum Aufnahmeort
-            orange, Marker am Aufnahmeort, km-Stand. Sitzt über der Unterschrift-Leiste (bar_top),
+            orange, Marker am Aufnahmeort, km-Stand. Unterkante auf Höhe der Unterschrift-Leiste (Uhrzeit/Text),
             falls es eine gibt. Rein gezeichnet (keine Kacheln) – schnell und klein gut lesbar."""
             mt = _mini_track
             side = int(min(W, H) * 0.22)
             m = SAFE + 24
             x0 = W - m - side
-            # Build as: Kasten weiter unten – knapp über der Unterschrift-Leiste
-            # bzw. nah an der Unterkante, statt deutlich ins Bild gerückt
-            y1 = (bar_top - 6) if bar_top else (H - SAFE - 8)
+            # Build at: Unterkante des Kastens = Unterkante der Unterschrift-Leiste
+            # (H - m) – der Kasten liegt damit genau auf Höhe von Uhrzeit und Text
+            y1 = H - m
             y0 = y1 - side
             draw = _ID_MOD.Draw(layer)
             draw.rounded_rectangle([x0, y0, x0 + side, y1], radius=18, fill=(0, 0, 0, 140),
@@ -3634,14 +3634,17 @@ def tour_video_render(tour_id):
                     cap_font  = _pil_font(min(34, int(W / 30)))
                     time_font = _pil_font(22, bold=False)
                     pad, m = 26, SAFE + 24
-                    max_w = W - 2 * m - 2 * pad
+                    # Build at: Leiste/Text weichen rechts der Mini-Karte aus,
+                    # damit kein Text unter dem Kasten liegt
+                    _mm = int(min(W, H) * 0.22) if has_map else 0
+                    max_w = W - 2 * m - 2 * pad - (_mm + 12 if _mm else 0)
                     lines = _wrap_text(draw, caption, cap_font, max_w, 2) if caption else []
                     line_h = int(cap_font.size * 1.3)
                     bar_h = 2 * pad + (30 if when else 0) + len(lines) * line_h - (6 if (when and lines) else 0)
                     # Leiste nur so breit wie der Text (mind. 1/3 der Breite), links ausgerichtet
                     text_w = max([draw.textlength(l_, font=cap_font) for l_ in lines] +
                                  ([draw.textlength(when, font=time_font)] if when else [0]))
-                    bar_w = int(min(W - 2 * m, max(W / 3, text_w + 2 * pad)))
+                    bar_w = int(min(W - 2 * m - (_mm + 12 if _mm else 0), max(W / 3, text_w + 2 * pad)))
                     y0 = H - m - bar_h
                     bar_top = y0
                     draw.rounded_rectangle([m, y0, m + bar_w, y0 + bar_h], radius=18, fill=(0, 0, 0, 150))

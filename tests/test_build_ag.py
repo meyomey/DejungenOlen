@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 as')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 at')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -485,11 +485,18 @@ class VideoSmoothTest(AppTestCase):
 
     def test_as_minimap_lower_and_motion_smoothing(self):
         src = self._app_src()
-        self.assertIn("y1 = (bar_top - 6) if bar_top else (H - SAFE - 8)", src)   # MP4: Kasten tiefer
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_at_minimap_aligned_with_caption_bar(self):
+        src = self._app_src()
+        self.assertIn('y1 = H - m', src)                            # Karte auf Leisten-Unterkante
+        self.assertNotIn('y1 = (bar_top - 6)', src)                 # alte Höhe weg
+        self.assertIn('_mm = int(min(W, H) * 0.22) if has_map else 0', src)
+        self.assertIn('max_w = W - 2 * m - 2 * pad - (_mm + 12 if _mm else 0)', src)   # Text weicht aus
+        self.assertIn('min(W - 2 * m - (_mm + 12 if _mm else 0)', src)                 # Leistenbreite ebenso
         html = open(os.path.join(ROOT, 'templates', 'touren', 'video.html'), encoding='utf-8').read()
-        self.assertIn('H - 70 - 5, mmSide', html)                   # Vorschau: ebenso tiefer
+        self.assertIn('H - 6, mmSide', html)                        # Vorschau: gleiche Unterkante
 
     def test_ar_lighter_zoompan_and_cleanup(self):
         src = self._app_src()
