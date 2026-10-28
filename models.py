@@ -119,6 +119,10 @@ class Tour(db.Model):
     gpx_preview  = db.Column(db.Text, nullable=True)        # Build w: Mini-Streckenvorschau 'B,H|x,y …' (NULL = nicht berechnet)
     gastro_spot_id = db.Column(db.Integer, db.ForeignKey('gastro_spots.id'), nullable=True)  # Build x: geplante Einkehr
     einkehr_text   = db.Column(db.String(200), nullable=True)               # Build x: Einkehr als Freitext
+    einkehr2_spot_id = db.Column(db.Integer, nullable=True)               # Build bh: weiterer Stopp 2 (Gastro-Eintrag)
+    einkehr2_text    = db.Column(db.String(200), nullable=True)           # Build bh: Stopp 2 Freitext
+    einkehr3_spot_id = db.Column(db.Integer, nullable=True)               # Build bh: weiterer Stopp 3 (Gastro-Eintrag)
+    einkehr3_text    = db.Column(db.String(200), nullable=True)           # Build bh: Stopp 3 Freitext
     attendance_reminded_at = db.Column(db.DateTime, nullable=True)          # Build x: Abend-Push „Wer war dabei?“ verschickt
     cancel_reason  = db.Column(db.String(200), nullable=True)               # Build ab: Grund der Absage
     einkehr_spot   = db.relationship('GastroSpot', foreign_keys=[gastro_spot_id])

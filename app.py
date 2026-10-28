@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-28 bg'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-28 bh'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2170,9 +2170,10 @@ def _tour_read_aloud_text(tour, attending_n):
                      f'insgesamt {pm} Minuten.')
     parts.append(f'{attending_n} Fahrer angemeldet.')
     try:
-        ek = _einkehr_info(tour)
-        if ek and ek.get('name'):
-            parts.append(f'Einkehr bei {ek["name"]}.')
+        for _i, ek in enumerate(_einkehr_infos(tour)):     # Build bh: alle Stopps vorlesen
+            if ek and ek.get('name'):
+                parts.append(f'Einkehr bei {ek["name"]}.' if _i == 0
+                             else f'Später außerdem Einkehr bei {ek["name"]}.')
     except Exception:
         pass
     return ' '.join(parts)
@@ -4532,9 +4533,10 @@ def tour_video_render(tour_id):
         if show_gastro and _gpx_points:
             _near_spots = gastro_near_track(_gpx_points)
         if show_gastro:                                   # Build x: geplante Einkehr immer zuerst
-            _planned = _planned_einkehr_entry(tour, _gpx_points)
-            if _planned:
-                _near_spots = [_planned] + [sp for sp in _near_spots if sp.get('id') != _planned['id']]
+            _planned_list = _planned_einkehr_entries(tour, _gpx_points)   # Build bh: bis zu 3 Stopps
+            if _planned_list:
+                _planned_ids = {e['id'] for e in _planned_list}
+                _near_spots = _planned_list + [sp for sp in _near_spots if sp.get('id') not in _planned_ids]
         if len(_gpx_points) >= 2:   # Build o: Track-Umriss + km-Stände für die Mini-Karte auf den Fotos
             try:
                 import math as _m
@@ -7993,27 +7995,29 @@ def _ics_event_lines(tour, stamp):
 
 
 def _tour_einkehr_text(tour):
-    """Build x: geplante Einkehr als Kurztext (Erinnerung, ICS, tour.txt, Teilen) – '' wenn keine."""
-    info = _einkehr_info(tour)
-    if not info:
-        return ''
-    if info['spot']:
-        parts = [info['name']]
-        if info['type_label']:
-            parts.append(info['type_label'])
-        if info['hours']:
-            parts.append(info['hours'])
-        if info.get('lunch') == 'yes':                     # Build z
-            parts.append(info['lunch_label'].replace('🍽️ ', '', 1))
-        txt = ' · '.join(parts)
-        if info['warn']:
-            txt += ' – Achtung: am Tourtag Ruhetag?'
-        elif info.get('noon_warn'):
-            txt += ' – Achtung: am Tourtag mittags geschlossen?'
-        if info['text']:
-            txt += f' ({info["text"]})'
-        return txt
-    return info['text']
+    """Build x: geplante Einkehr als Kurztext (Erinnerung, ICS, tour.txt, Teilen) – '' wenn keine.
+    Build bh: bis zu drei Stopps, getrennt mit „ → “."""
+    texts = []
+    for info in _einkehr_infos(tour):
+        if info['spot']:
+            parts = [info['name']]
+            if info['type_label']:
+                parts.append(info['type_label'])
+            if info['hours']:
+                parts.append(info['hours'])
+            if info.get('lunch') == 'yes':                 # Build z
+                parts.append(info['lunch_label'].replace('🍽️ ', '', 1))
+            txt = ' · '.join(parts)
+            if info['warn']:
+                txt += ' – Achtung: am Tourtag Ruhetag?'
+            elif info.get('noon_warn'):
+                txt += ' – Achtung: am Tourtag mittags geschlossen?'
+            if info['text']:
+                txt += f' ({info["text"]})'
+        else:
+            txt = info['text']
+        texts.append(txt)
+    return ' → '.join(texts)
 
 
 def _calendar_urls(user):
@@ -8094,7 +8098,8 @@ def tour_repeat(tour_id):
         status='planned', created_by=current_user.id,
         group_id=src.group_id or (grp.id if grp else None),
     )
-    for col in ('gastro_spot_id', 'einkehr_text'):          # Build x: geplante Einkehr mitnehmen
+    for col in ('gastro_spot_id', 'einkehr_text', 'einkehr2_spot_id', 'einkehr2_text',
+                'einkehr3_spot_id', 'einkehr3_text'):      # Build x/bh: geplante Einkehr mitnehmen
         if hasattr(Tour, col):
             setattr(tour, col, getattr(src, col))
     db.session.add(tour)
@@ -8109,14 +8114,21 @@ GASTRO_TYPE_LABELS = {'cafe': 'Café', 'kneipe': 'Kneipe/Gasthaus', 'baeckerei':
                       'restaurant': 'Restaurant', 'imbiss': 'Imbiss', 'other': 'Einkehr'}
 
 
-def _einkehr_info(tour, today=None):
-    """Geplante Einkehr einer Tour als Dict für Templates/Texte oder None.
+def _einkehr_pairs(tour):
+    """Build bh: alle Einkehr-Stopp-Paare (spot_id, Freitext) einer Tour – bis zu drei, in Reihenfolge."""
+    return [(getattr(tour, 'gastro_spot_id', None), (getattr(tour, 'einkehr_text', None) or '').strip()),
+            (getattr(tour, 'einkehr2_spot_id', None), (getattr(tour, 'einkehr2_text', None) or '').strip()),
+            (getattr(tour, 'einkehr3_spot_id', None), (getattr(tour, 'einkehr3_text', None) or '').strip())]
+
+
+def _einkehr_info_pair(tour, spot_id, text, today=None):
+    """EIN Einkehr-Stopp als Dict für Templates/Texte oder None.
     Felder: spot (GastroSpot|None), name, type_label, hours, closed_days, warn (Tourtag = Ruhetag),
     url, lat, lng, address, text (Freitext)."""
     spot = None
-    if getattr(tour, 'gastro_spot_id', None):
-        spot = db.session.get(GastroSpot, tour.gastro_spot_id)
-    text = (getattr(tour, 'einkehr_text', None) or '').strip()
+    if spot_id:
+        spot = db.session.get(GastroSpot, spot_id)
+    text = (text or '').strip()
     if not spot and not text:
         return None
     if not spot:
@@ -8145,6 +8157,29 @@ def _einkehr_info(tour, today=None):
             'lunch': lunch['status'], 'lunch_label': lunch['label'], 'noon_warn': noon_warn}
 
 
+def _einkehr_info(tour, today=None):
+    """Erster Einkehr-Stopp (Haupt-Einkehr) – für Live-Karte und Tour-Karten-Marker.
+    Build bh: alle Stopps liefert _einkehr_infos()."""
+    for spot_id, text in _einkehr_pairs(tour):
+        info = _einkehr_info_pair(tour, spot_id, text, today)
+        if info:
+            return info
+    return None
+
+
+def _einkehr_infos(tour):
+    """Build bh: ALLE geplanten Einkehr-Stopps (bis zu drei) als Dict-Liste, in Reihenfolge."""
+    out = []
+    for spot_id, text in _einkehr_pairs(tour):
+        info = _einkehr_info_pair(tour, spot_id, text)
+        if info:
+            out.append(info)
+    return out
+
+
+app.jinja_env.globals['einkehr_infos'] = _einkehr_infos
+
+
 def gastro_spot_choices():
     """Auswahlliste für die Tour-Formulare (alle Gastro-Einträge, alphabetisch)."""
     try:
@@ -8161,44 +8196,57 @@ app.jinja_env.globals['gastro_spot_choices'] = gastro_spot_choices
 
 
 def _apply_einkehr_form(tour):
-    """Formularfelder gastro_spot_id / einkehr_text (Tour anlegen/bearbeiten) auf die Tour schreiben."""
+    """Formularfelder gastro_spot_id / einkehr_text (Tour anlegen/bearbeiten) auf die Tour schreiben.
+    Build bh: zusätzlich die Stopps 2 und 3 (einkehr2_/einkehr3_)."""
     raw = (request.form.get('gastro_spot_id') or '').strip()
     spot_id = int(raw) if raw.isdigit() else None
     if spot_id and not db.session.get(GastroSpot, spot_id):
         spot_id = None
     tour.gastro_spot_id = spot_id
     tour.einkehr_text = (request.form.get('einkehr_text') or '').strip()[:200] or None
+    for nr in (2, 3):                                      # Build bh
+        raw = (request.form.get(f'einkehr{nr}_spot_id') or '').strip()
+        sid = int(raw) if raw.isdigit() else None
+        if sid and not db.session.get(GastroSpot, sid):
+            sid = None
+        setattr(tour, f'einkehr{nr}_spot_id', sid)
+        setattr(tour, f'einkehr{nr}_text', (request.form.get(f'einkehr{nr}_text') or '').strip()[:200] or None)
 
 
-def _planned_einkehr_entry(tour, points):
-    """Video (Build j-Folie): geplante Einkehr als erste Zeile – mit km/Abstand, wenn ein Track da ist."""
-    info = _einkehr_info(tour)
-    if not info or not info['spot']:
-        return None
-    sp = info['spot']
-    entry = {'id': sp.id, 'name': sp.name, 'spot_type': sp.spot_type, 'type_label': info['type_label'],
-             'lat': sp.lat, 'lng': sp.lng, 'dist_m': 0, 'km': 0.0, 'frac': 0.0,
-             'opens_at': sp.opens_at or '', 'hours': info['hours'], 'closed_days': info['closed_days'],
-             'lunch_status': info.get('lunch'), 'lunch_label': info.get('lunch_label', ''),
-             'planned': True, 'km_known': False}
-    try:
-        import math as _m
-        pts = [pt for pt in points if pt.get('lat') is not None and pt.get('lng') is not None]
-        if len(pts) >= 2:
-            m_lat = 111_320.0
-            m_lng = 111_320.0 * _m.cos(_m.radians(pts[0]['lat']))
-            cum, best_d, best_i = [0.0], 1e12, 0
-            for a, b in zip(pts, pts[1:]):
-                cum.append(cum[-1] + _m.hypot((b['lat'] - a['lat']) * m_lat, (b['lng'] - a['lng']) * m_lng))
-            for i, pt in enumerate(pts):
-                d = _m.hypot((pt['lat'] - sp.lat) * m_lat, (pt['lng'] - sp.lng) * m_lng)
-                if d < best_d:
-                    best_d, best_i = d, i
-            entry.update({'dist_m': int(round(best_d)), 'km': round(cum[best_i] / 1000, 1),
-                          'frac': best_i / max(1, len(pts) - 1), 'km_known': True})
-    except Exception:
-        pass
-    return entry
+def _planned_einkehr_entries(tour, points):
+    """Video (Build j-Folie): geplante Einkehr-Stopps als Einträge – mit km/Abstand, wenn ein Track da ist.
+    Build bh: bis zu drei Stopps in Reihenfolge; reine Freitext-Stopps (ohne Position) fehlen hier."""
+    import math as _m
+    pts = [pt for pt in points if pt.get('lat') is not None and pt.get('lng') is not None]
+
+    def _km(sp):
+        if len(pts) < 2:
+            return {'dist_m': 0, 'km': 0.0, 'frac': 0.0, 'km_known': False}
+        m_lat = 111_320.0
+        m_lng = 111_320.0 * _m.cos(_m.radians(pts[0]['lat']))
+        cum, best_d, best_i = [0.0], 1e12, 0
+        for a, b in zip(pts, pts[1:]):
+            cum.append(cum[-1] + _m.hypot((b['lat'] - a['lat']) * m_lat, (b['lng'] - a['lng']) * m_lng))
+        for i, pt in enumerate(pts):
+            d = _m.hypot((pt['lat'] - sp.lat) * m_lat, (pt['lng'] - sp.lng) * m_lng)
+            if d < best_d:
+                best_d, best_i = d, i
+        return {'dist_m': int(round(best_d)), 'km': round(cum[best_i] / 1000, 1),
+                'frac': best_i / max(1, len(pts) - 1), 'km_known': True}
+
+    entries = []
+    for info in _einkehr_infos(tour):
+        if not info or not info['spot']:
+            continue
+        sp = info['spot']
+        entry = {'id': sp.id, 'name': sp.name, 'spot_type': sp.spot_type, 'type_label': info['type_label'],
+                 'lat': sp.lat, 'lng': sp.lng,
+                 'opens_at': sp.opens_at or '', 'hours': info['hours'], 'closed_days': info['closed_days'],
+                 'lunch_status': info.get('lunch'), 'lunch_label': info.get('lunch_label', ''),
+                 'planned': True}
+        entry.update(_km(sp))
+        entries.append(entry)
+    return entries
 
 
 def _can_manage_tour(tour):
@@ -10482,7 +10530,11 @@ def migrate_db():
     add_column('tours', 'gpx_preview',    'TEXT')          # Build w: Mini-Streckenvorschau (NULL = noch nicht berechnet)
     add_column('users', 'calendar_token', 'VARCHAR(40)')   # Build w: Kalender-Abo
     add_column('users', 'large_text', 'BOOLEAN DEFAULT 0') # Build x: Großschrift-Modus
-    add_column('tours', 'gastro_spot_id', 'INTEGER')       # Build x: geplante Einkehr (Gastro-Eintrag)
+    add_column('tours', 'gastro_spot_id', 'INTEGER')
+    add_column('tours', 'einkehr2_spot_id', 'INTEGER')     # Build bh: weiterer Einkehr-Stopp 2 (Gastro)
+    add_column('tours', 'einkehr2_text',   'VARCHAR(200)') # Build bh: Stopp 2 Freitext
+    add_column('tours', 'einkehr3_spot_id', 'INTEGER')     # Build bh: weiterer Einkehr-Stopp 3 (Gastro)
+    add_column('tours', 'einkehr3_text',   'VARCHAR(200)') # Build bh: Stopp 3 Freitext       # Build x: geplante Einkehr (Gastro-Eintrag)
     add_column('tours', 'einkehr_text', 'VARCHAR(200)')    # Build x: geplante Einkehr (Freitext)
     add_column('tours', 'attendance_reminded_at', 'DATETIME')  # Build x: Abend-Erinnerung „Wer war dabei?“
     add_column('invite_tokens', 'label',  'VARCHAR(100)')

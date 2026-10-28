@@ -52,12 +52,13 @@
       {% if tour.cancel_reason %} Grund: {{ tour.cancel_reason }}{% endif %}
     </div>
     {% endif %}
-    {# Build x: geplante Einkehr #}
-    {% set ek = einkehr_info(tour) %}
+    {# Build x/bh: geplante Einkehr – bis zu drei Stopps #}
+    {% set eks = einkehr_infos(tour) %}
     {% set can_manage = current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
-    {% if ek %}
+    {% if eks %}
     <div class="mt-1 d-flex align-items-center flex-wrap gap-1" id="einkehr-zeile">
       <span>☕ <strong>Einkehr:</strong>
+        {% set ek = eks[0] %}
         {% if ek.url %}<a href="{{ ek.url }}" class="fw-semibold">{{ ek.name }}</a>{% else %}{{ ek.name }}{% endif %}
         {% if ek.type_label %}<span class="text-muted">· {{ ek.type_label }}</span>{% endif %}
         {% if ek.hours %}<span class="text-muted">· 🕐 {{ ek.hours }}</span>{% endif %}
@@ -75,6 +76,21 @@
       </form>
       {% endif %}
     </div>
+    {% for ek in eks[1:] %}
+    <div class="mt-1 d-flex align-items-center flex-wrap gap-1 small" id="einkehr-zeile{{ loop.index + 1 }}">
+      <span>☕ <strong>{{ loop.index + 1 }}. Stopp:</strong>
+        {% if ek.url %}<a href="{{ ek.url }}">{{ ek.name }}</a>{% else %}{{ ek.name }}{% endif %}
+        {% if ek.type_label %}<span class="text-muted">· {{ ek.type_label }}</span>{% endif %}
+        {% if ek.hours %}<span class="text-muted">· 🕐 {{ ek.hours }}</span>{% endif %}
+        {% if ek.spot and ek.text %}<span class="text-muted">· {{ ek.text }}</span>{% endif %}
+      </span>
+      {% if ek.warn %}<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Ruhetag am Tourtag?</span>{% endif %}
+      {% if ek.lunch == 'yes' %}<span class="badge bg-warning text-dark" title="{{ ek.lunch_label }}">🍽️ Mittagstisch</span>
+      {% elif ek.noon_warn %}<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle" title="laut Öffnungszeiten am Tourtag zwischen 12 und 14 Uhr nicht geöffnet">mittags geschlossen am Tourtag?</span>
+      {% elif ek.lunch == 'noon' %}<span class="badge bg-success-subtle text-success border border-success-subtle" title="{{ ek.lunch_label }}">🕛 mittags geöffnet</span>{% endif %}
+      {% if can_manage %}<a class="small text-muted" href="{{ url_for('tour_edit', tour_id=tour.id) }}#einkehr">ändern</a>{% endif %}
+    </div>
+    {% endfor %}
     {% elif can_manage and tour.status == 'planned' %}
     <div class="mt-1 small text-muted" id="einkehr-zeile">☕ Noch keine Einkehr geplant –
       <a href="{{ url_for('tour_edit', tour_id=tour.id) }}#einkehr">im Formular wählen</a>

@@ -232,15 +232,15 @@ ca. {{ prefill.approx_km|int }} km{% endif %}{% if prefill.link %}
 {{ prefill.link }}{% endif %}{% endif %}</textarea>
               </div>
 
-              {# Build x: geplante Einkehr (Gastro-Eintrag und/oder Freitext) #}
+              {# Build x/bh: geplante Einkehr – bis zu drei Stopps (Gastro-Eintrag und/oder Freitext) #}
               <div class="mb-3">
-                <label class="form-label fw-semibold">☕ Geplante Einkehr <span class="text-muted fw-normal">(optional)</span></label>
+                <label class="form-label fw-semibold">☕ Geplante Einkehr <span class="text-muted fw-normal">(optional, bis zu 3 Stopps)</span></label>
                 <div class="row g-2">
                   <div class="col-md-6">
                     <select name="gastro_spot_id" class="form-select">
                       <option value="">– aus der Gastro-Liste wählen –</option>
                       {% for sid, sname, stype in gastro_spot_choices() %}
-                      <option value="{{ sid }}" {% if none == sid %}selected{% endif %}>{{ sname }} ({{ stype }})</option>
+                      <option value="{{ sid }}">{{ sname }} ({{ stype }})</option>
                       {% endfor %}
                     </select>
                   </div>
@@ -250,8 +250,35 @@ ca. {{ prefill.approx_km|int }} km{% endif %}{% if prefill.link %}
                            value="{{ prefill.einkehr_text if prefill and prefill.einkehr_text else '' }}">
                   </div>
                 </div>
-                <div class="form-text">Steht dann im Tour-Kopf, in der Tourtag-Erinnerung, im Kalender-Eintrag und in der Druckansicht.
-                  Auf der Tour-Seite lässt sich die Einkehr auch direkt aus der Karte („Als Einkehr festlegen“) setzen.</div>
+                {% for nr in (2, 3) %}
+                <div class="row g-2 mt-1 js-einkehr-extra d-none">
+                  <div class="col-md-6">
+                    <select name="einkehr{{ nr }}_spot_id" class="form-select" aria-label="{{ nr }}. Stopp aus der Gastro-Liste">
+                      <option value="">– {{ nr }}. Stopp aus der Gastro-Liste –</option>
+                      {% for sid, sname, stype in gastro_spot_choices() %}
+                      <option value="{{ sid }}">{{ sname }} ({{ stype }})</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <input type="text" name="einkehr{{ nr }}_text" class="form-control" maxlength="200"
+                           placeholder="oder frei, z. B. {{ 'Eisdiele unterwegs' if nr == 2 else 'Abschluss im Café' }}">
+                  </div>
+                </div>
+                {% endfor %}
+                <button type="button" id="btn-einkehr-add" class="btn btn-sm btn-outline-secondary mt-2" onclick="addEinkehrRow()">➕ Weiteren Stopp hinzufügen</button>
+                <div class="form-text">Bis zu drei Stopps – sie stehen im Tour-Kopf, in der Tourtag-Erinnerung, im Kalender-Eintrag und in der Druckansicht.
+                  Auf der Tour-Seite lässt sich die Haupt-Einkehr auch direkt aus der Karte („Als Einkehr festlegen“) setzen.</div>
+                <script>
+                  function addEinkehrRow() {
+                    const hidden = document.querySelectorAll('.js-einkehr-extra.d-none');
+                    if (hidden.length) hidden[0].classList.remove('d-none');
+                    if (!document.querySelectorAll('.js-einkehr-extra.d-none').length) {
+                      const b = document.getElementById('btn-einkehr-add');
+                      if (b) b.classList.add('d-none');
+                    }
+                  }
+                </script>
               </div>
 
             </div>

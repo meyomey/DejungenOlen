@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bg')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bh')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,60 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_bh_multi_einkehr(self):
+        self.login_org()
+        spot = M.GastroSpot(name='Café Windbruch', spot_type='cafe', lat=53.5, lng=9.9, added_by=self.org_id)
+        db.session.add(spot)
+        db.session.commit()
+        t = M.Tour.query.get(self.t_plan_id)
+        base = {'title': t.title, 'tour_date': t.tour_date.isoformat()}
+        # Stopps 1–3 setzen (1 = Gastro + Freitext, 2 = nur Freitext, 3 = nur Gastro)
+        self.client.post(f'/touren/{self.t_plan_id}/bearbeiten',
+                         data={**base, 'gastro_spot_id': str(spot.id), 'einkehr_text': 'Hauptstopp',
+                               'einkehr2_text': 'Picknick am Deich',
+                               'einkehr3_spot_id': str(spot.id)},
+                         follow_redirects=True)
+        t = M.Tour.query.get(self.t_plan_id)
+        self.assertEqual(t.einkehr3_spot_id, spot.id)
+        self.assertEqual(t.einkehr2_text, 'Picknick am Deich')
+        # Tour-Seite: Kopfzeile zeigt alle drei in Reihenfolge
+        html = self.client.get(f'/touren/{self.t_plan_id}').get_data(as_text=True)
+        i1, i2, i3 = html.find('Einkehr:</strong>'), html.find('2. Stopp:'), html.find('3. Stopp:')
+        self.assertTrue(0 < i1 < i2 < i3, 'Reihenfolge Einkehr → 2. Stopp → 3. Stopp')
+        self.assertIn('Picknick am Deich', html)
+        # Bearbeiten-Formular: Zeilen vorhanden, beide Stopps belegt → kein Hinzufügen-Knopf
+        edit_html = self.client.get(f'/touren/{self.t_plan_id}/bearbeiten').get_data(as_text=True)
+        self.assertIn('js-einkehr-extra', edit_html)
+        self.assertIn('name="einkehr3_spot_id"', edit_html)
+        self.assertNotIn('id="btn-einkehr-add"', edit_html)
+        # Kurztext (Erinnerung/ICS/Kalender): alle Stopps, getrennt mit „ → “
+        txt = appmod._tour_einkehr_text(M.Tour.query.get(self.t_plan_id))
+        self.assertIn('Hauptstopp', txt)
+        self.assertIn('Picknick am Deich', txt)
+        self.assertIn(' → ', txt)
+        self.assertLess(txt.find('Picknick'), txt.rfind('Café Windbruch'))
+        # Video: Gastro-Stopps in Reihenfolge (Freitext ohne Position fehlt), ohne Track ohne km
+        entries = appmod._planned_einkehr_entries(M.Tour.query.get(self.t_plan_id), [])
+        self.assertEqual([e['name'] for e in entries], ['Café Windbruch', 'Café Windbruch'])
+        self.assertFalse(entries[0]['km_known'])
+        # Vorlesen: Haupt-Einkehr + weitere Stopps
+        ra = appmod._tour_read_aloud_text(M.Tour.query.get(self.t_plan_id), 2)
+        self.assertIn('Einkehr bei Café Windbruch', ra)
+        self.assertIn('Später außerdem Einkehr bei', ra)
+        # Druckansicht: alle Stopps
+        pr = self.client.get(f'/touren/{self.t_plan_id}/drucken').get_data(as_text=True)
+        self.assertIn('2. Stopp', pr)
+        self.assertIn('Picknick am Deich', pr)
+        # Aufräumen: Zeilen leer lassen → alle Stopps weg
+        self.client.post(f'/touren/{self.t_plan_id}/bearbeiten', data=base, follow_redirects=True)
+        t = M.Tour.query.get(self.t_plan_id)
+        self.assertIsNone(t.einkehr2_spot_id)
+        self.assertIsNone(t.einkehr3_text)
+        self.assertEqual(appmod._tour_einkehr_text(t), '')
+        # … und der Hinzufügen-Knopf ist wieder da
+        edit_html = self.client.get(f'/touren/{self.t_plan_id}/bearbeiten').get_data(as_text=True)
+        self.assertIn('id="btn-einkehr-add"', edit_html)
 
     def test_bf_gastro_sort_options(self):
         # Menschliche A–Z-Sortierung: Ä wie A, Ö wie O, Ü wie U

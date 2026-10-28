@@ -2,6 +2,16 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-28 (Build bh) – Bis zu drei Einkehr-Stopps pro Tour
+
+Bisher konnte eine Tour nur EINE geplante Einkehr haben. Jetzt:
+
+- **Tour anlegen/bearbeiten:** Nach der ersten Einkehr-Zeile erscheint der Knopf **„➕ Weiteren Stopp hinzufügen“** – bis zu **drei Stopps**, jeder wahlweise aus der Gastro-Liste oder als Freitext.
+- **Anzeige überall in Reihenfolge:** Tour-Kopf („Einkehr: … · 2. Stopp: … · 3. Stopp: …“ mit allen Warnungen je Stopp), Druckansicht, Tourtag-Erinnerung, Kalender-Eintrag und Vorlesen („Einkehr bei …, später außerdem Einkehr bei …“).
+- **Video:** Alle Gastro-Stopps mit Streckenkilometer in der Einkehr-Folie (Freitext-Stopps ohne Position erscheinen dort nicht).
+- **Tour „nochmal fahren“** übernimmt alle drei Stopps. Die Karte („Als Einkehr festlegen“) setzt weiterhin die Haupt-Einkehr; Stopps 2/3 ändern sich im Formular.
+- 213 Tests, py_compile OK, Template-Checks OK.
+
 ## 1.4.0 – 2026-10-28 (Build bg) – Einkehr-Auswahl alphabetisch (Ä/Ö/Ü richtig)
 
 - Das Dropdown **„Geplante Einkehr“** in den Tour-Formularen (Anlegen/Bearbeiten) nutzt jetzt dieselbe menschliche A–Z-Sortierung wie die Gastroliste (Build bf) – vorher hingen Namen mit Ä/Ö/Ü hinten.
