@@ -2,6 +2,15 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-28 (Build be) – Fahrzeit manuell nachtragen
+
+Touren, deren GPX keine Zeitstempel hat (z. B. gezeichnete/geplante Route oder aufgenommener Track ohne Uhrzeit), zeigten bei ⏱ nur „–“ – Fahrzeit und Ø-Tempo waren nicht nachträglich korrigierbar. Jetzt:
+
+- **Tour bearbeiten** hat ein Feld **„Fahrzeit (manuell)“** (Stunden:Minuten, z. B. 3:30). Die App trägt die Fahrzeit ein und rechnet das **Ø-Tempo** automatisch aus der Strecke.
+- Zeigt die Formular-Hilfe den aktuell automatisch ermittelten Wert an (falls vorhanden). Feld **leeren** = Wert wird automatisch neu aus dem GPX ermittelt.
+- Das Admin-„GPX-Kennzahlen nachrechnen“ überschreibt manuelle Zeiten nicht mehr.
+- 211 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-28 (Build bd) – Orte-Formular mobil: Karte zuerst
 
 - Wie beim Gastro-Formular: Auf dem Smartphone erscheint die **Position auf Karte** zuerst, die Eingabe-Felder danach. Desktop unverändert (Details links, Karte rechts).

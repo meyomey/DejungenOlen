@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bd')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 be')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,30 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_be_manual_moving_time(self):
+        self.login_org()
+        # Grunddaten mitschicken, damit die Tour unverändert bleibt (nur Fahrzeit)
+        t = M.Tour.query.get(self.t_plan_id)
+        base = {'title': t.title, 'tour_date': t.tour_date.isoformat()}
+        # 1) manuell setzen (Touren-Bearbeiten) → Zeit + Ø erscheinen, Detail zeigt „3:30“
+        r = self.client.post(f'/touren/{self.t_plan_id}/bearbeiten',
+                             data={**base, 'moving_time': '3:30'}, follow_redirects=True)
+        self.assertIn('Tour aktualisiert', r.get_data(as_text=True))
+        t = M.Tour.query.get(self.t_plan_id)
+        self.assertEqual(t.gpx_moving_s, 3 * 3600 + 30 * 60)
+        self.assertTrue(t.time_manual)
+        self.assertIn('3:30', self.client.get(f'/touren/{self.t_plan_id}').get_data(as_text=True))
+        # 2) ungültiges Format → Meldung, kein 500
+        r = self.client.post(f'/touren/{self.t_plan_id}/bearbeiten',
+                             data={**base, 'moving_time': '3h30'}, follow_redirects=True)
+        self.assertIn('Stunden:Minuten', r.get_data(as_text=True))
+        # 3) Feld leeren → automatisch neu ermitteln (GPX ohne Zeitstempel → wieder „–“)
+        self.client.post(f'/touren/{self.t_plan_id}/bearbeiten',
+                         data={**base, 'moving_time': ''}, follow_redirects=True)
+        t = M.Tour.query.get(self.t_plan_id)
+        self.assertFalse(t.time_manual)
+        self.assertIsNone(t.gpx_moving_s)
 
     def test_bd_orte_form_map_first_on_mobile(self):
         html = open(os.path.join(ROOT, 'templates', 'orte', 'form.html'), encoding='utf-8').read()

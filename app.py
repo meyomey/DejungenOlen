@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-28 bd'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-28 be'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2201,7 +2201,10 @@ def tour_detail(tour_id):
             gpx_data = parse_gpx(gpx_path)
             if gpx_data and tour.gpx_preview is None:      # Build w: Fahrzeit/Vorschau einmalig nachtragen
                 try:
+                    _keep_s = tour.gpx_moving_s if tour.time_manual else None   # Build be: manuelle Zeit nicht überschreiben
                     _tour_apply_gpx_metrics(tour, gpx_data)
+                    if _keep_s is not None:
+                        tour.gpx_moving_s = _keep_s
                     db.session.commit()
                 except Exception as _ex:
                     db.session.rollback()
@@ -2833,6 +2836,32 @@ def tour_edit(tour_id):
         tour.meeting_desc = request.form.get('meeting_desc', '').strip() or None
         tour.meeting_lat  = _parse_float(request.form.get('meeting_lat'))
         tour.meeting_lng  = _parse_float(request.form.get('meeting_lng'))
+
+        # Build be: Fahrzeit manuell ergänzen (GPX ohne Zeitstempel → ⏱ zeigt „–")
+        mt_raw = request.form.get('moving_time', '').strip()
+        if mt_raw:
+            m_mt = re.match(r'^\d{1,3}:[0-5]?\d$', mt_raw)
+            if not m_mt:
+                flash('Fahrzeit bitte als Stunden:Minuten angeben (z. B. 3:30).', 'warning')
+                return redirect(url_for('tour_edit', tour_id=tour.id))
+            _h, _m = mt_raw.split(':')
+            _secs = int(_h) * 3600 + int(_m) * 60
+            tour.gpx_moving_s = _secs
+            tour.gpx_avg_kmh = round(tour.gpx_km / (_secs / 3600.0), 1) if tour.gpx_km else None
+            tour.time_manual = True
+        elif tour.time_manual:
+            # Feld geleert → Wert automatisch neu aus dem GPX bestimmen (falls Zeitstempel)
+            tour.time_manual = False
+            tour.gpx_moving_s = None
+            tour.gpx_avg_kmh = None
+            if tour.gpx_file:
+                try:
+                    _mp = parse_gpx(os.path.join(app.config['UPLOAD_FOLDER_GPX'], tour.gpx_file))
+                    if _mp:
+                        tour.gpx_moving_s = int(_mp['moving_s']) if _mp.get('moving_s') else None
+                        tour.gpx_avg_kmh = float(_mp['avg_kmh']) if _mp.get('avg_kmh') else None
+                except Exception as e:
+                    app.logger.warning(f'Fahrzeit-Reset Tour {tour.id}: {e}')
         _apply_einkehr_form(tour)                      # Build x: geplante Einkehr
         if current_user.is_admin:
             new_status = request.form.get('status', tour.status)
@@ -7861,7 +7890,8 @@ def admin_gpx_metrics():
     (≈20 s pro Klick), bei Bedarf mehrfach klicken."""
     import time as _time
     t0, done, failed = _time.time(), 0, 0
-    pending = (Tour.query.filter(Tour.gpx_file != None, Tour.gpx_preview == None)
+    pending = (Tour.query.filter(Tour.gpx_file != None, Tour.gpx_preview == None,
+                                 db.or_(Tour.time_manual.is_(None), Tour.time_manual == False))   # Build be: manuelle Zeiten nicht überschreiben
                .order_by(Tour.tour_date.desc()).limit(500).all())
     for t in pending:
         if _time.time() - t0 > 20:
@@ -10433,6 +10463,7 @@ def migrate_db():
     add_column('tours', 'external_link',  'VARCHAR(500)')
     add_column('tours', 'weather_json',   'TEXT')          # Build q: Wetter-Cache für den Tourtag
     add_column('tours', 'gpx_moving_s',   'INTEGER')       # Build w: Fahrzeit aus GPX-Zeitstempeln
+    add_column('tours', 'time_manual',    'BOOLEAN DEFAULT 0')  # Build be: Fahrzeit manuell gesetzt
     add_column('tours', 'gpx_pauses_n',   'INTEGER')       # Build aj: Anzahl Pausen (NULL = nicht berechnet)
     add_column('tours', 'gpx_pauses_s',   'INTEGER')       # Build aj: Pausen gesamt (Sekunden)
     add_column('tours', 'gpx_avg_kmh',    'FLOAT')         # Build w: Ø-Tempo

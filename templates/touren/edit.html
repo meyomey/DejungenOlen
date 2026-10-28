@@ -111,6 +111,18 @@
                    value="{{ tour.external_link or '' }}">
           </div>
         </div>
+        {# Build be: Fahrzeit manuell – für Touren ohne Zeitstempel im GPX #}
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Fahrzeit <span class="text-muted fw-normal">(manuell, optional – Stunden:Minuten, z. B. 3:30)</span></label>
+          <input type="text" name="moving_time" class="form-control" style="max-width:160px"
+                 placeholder="3:30"
+                 value="{{ '%d:%02d'|format(tour.gpx_moving_s // 3600, (tour.gpx_moving_s % 3600) // 60) if tour.time_manual and tour.gpx_moving_s else '' }}">
+          <div class="form-text">
+            Nur nötig, wenn der GPX-Track keine Zeitstempel hat (in Listen steht bei ⏱ dann „–“).
+            Das Ø-Tempo rechnet die App aus. {% if tour.gpx_moving_s and not tour.time_manual %}Aktuell automatisch ermittelt: <strong>{{ tour.gpx_moving_s|hm }}</strong>.{% endif %}
+            Feld leeren = automatisch neu ermitteln.
+          </div>
+        </div>
         {% if tour.status == 'planned' %}
         {# Build ab: Teilnehmer über geänderte Eckdaten informieren #}
         <div class="form-check mb-3">
