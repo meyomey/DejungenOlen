@@ -108,25 +108,9 @@ function saveState(patch) { try { localStorage.setItem(STORE_KEY, JSON.stringify
 const STATE = loadState();
 
 // ── Karte ─────────────────────────────────────────────────────────────────────
-const isMobile = window.innerWidth < 992;
-const map = L.map('main-map', { dragging: !isMobile, scrollWheelZoom: false });
+// Build bb: Mobiler Kartenschutz zentral (static/js/map-touch.js)
+const map = L.map('main-map', { scrollWheelZoom: false });
 if (HOME) map.setView([HOME.lat, HOME.lng], 11); else map.setView([53.1, 9.1], 10);
-
-if (isMobile) {                                  // Karte erst nach Antippen bewegbar (sonst hakt das Scrollen)
-  const mapEl = document.getElementById('main-map');
-  mapEl.style.position = 'relative';
-  const overlay = document.createElement('div');
-  overlay.innerHTML = '<div style="background:rgba(0,0,0,.45);color:#fff;padding:8px 16px;border-radius:20px;font-size:.85rem;pointer-events:none"><i class="bi bi-hand-index me-1"></i>Tippen zum Aktivieren</div>';
-  overlay.style.cssText = 'position:absolute;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;cursor:pointer';
-  const lockBtn = document.createElement('button');
-  lockBtn.innerHTML = '<i class="bi bi-lock-fill"></i>';
-  lockBtn.title = 'Karte sperren';
-  lockBtn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:1001;background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:6px;width:32px;height:32px;cursor:pointer;font-size:.9rem;display:none';
-  mapEl.appendChild(overlay);
-  mapEl.appendChild(lockBtn);
-  overlay.addEventListener('click', () => { map.dragging.enable(); overlay.style.display = 'none'; lockBtn.style.display = 'block'; });
-  lockBtn.addEventListener('click', () => { map.dragging.disable(); overlay.style.display = 'flex'; lockBtn.style.display = 'none'; });
-}
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19
 }).addTo(map);

@@ -1137,7 +1137,7 @@
             <p class="text-muted small mb-2">
               Klicke auf die Karte oder gib Koordinaten manuell ein. Dann <strong>Speichern</strong>.
             </p>
-            <div id="gps-modal-map" style="height:300px;border-radius:8px;margin-bottom:1rem"></div>
+            <div id="gps-modal-map" data-map-guard-hint="👉 Tippen aktivieren – dann Position klicken" style="height:300px;border-radius:8px;margin-bottom:1rem"></div>
             <form id="gpsModalForm" method="post">
               <div class="row g-2 align-items-end">
                 <div class="col-md-4">
@@ -2385,42 +2385,12 @@ if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length > 0) {
   zoom   = 13;
 }
 
-const isMobile = window.innerWidth < 992;
+// Build bb: Mobiler Kartenschutz zentral (static/js/map-touch.js) – Overlay
+// „Tippen zum Aktivieren", Zwei-Finger-Gesten bleiben jederzeit möglich.
 const map = L.map('tour-map', {
   zoomControl: true,
-  dragging:         !isMobile,
   scrollWheelZoom:  false,
 }).setView(center, zoom);
-
-// Mobile: Karte erst nach Tippen aktivieren
-if (isMobile) {
-  const overlay = document.createElement('div');
-  overlay.id = 'map-touch-overlay';
-  overlay.innerHTML = '<div style="background:rgba(0,0,0,.45);color:#fff;padding:8px 16px;border-radius:20px;font-size:.85rem;pointer-events:none"><i class="bi bi-hand-index me-1"></i>Tippen zum Aktivieren</div>';
-  overlay.style.cssText = 'position:absolute;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:inherit';
-  const lockBtn = document.createElement('button');
-  lockBtn.innerHTML = '<i class="bi bi-lock-fill"></i>';
-  lockBtn.title = 'Karte sperren';
-  lockBtn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:1001;background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:6px;width:32px;height:32px;cursor:pointer;font-size:.9rem;display:none';
-  document.getElementById('tour-map').appendChild(lockBtn);
-
-  function activateMap() {
-    map.dragging.enable();
-    map.tap && map.tap.enable();
-    overlay.style.display = 'none';
-    lockBtn.style.display = 'block';
-  }
-  function deactivateMap() {
-    map.dragging.disable();
-    map.tap && map.tap.disable();
-    overlay.style.display = 'flex';
-    lockBtn.style.display = 'none';
-  }
-  overlay.addEventListener('click', activateMap);
-  lockBtn.addEventListener('click', deactivateMap);
-  document.getElementById('tour-map').style.position = 'relative';
-  document.getElementById('tour-map').appendChild(overlay);
-}
 
 // Fix Leaflet sizing: force re-render after Bootstrap grid settles
 // Multiple delays to catch different rendering phases

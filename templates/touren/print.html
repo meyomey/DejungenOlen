@@ -251,7 +251,7 @@ if (mapEl) {
   } else if (MEET_LAT) {
     center = [MEET_LAT, MEET_LNG]; zoom = 13;
   }
-  const map = L.map('print-map', {zoomControl:false, attributionControl:false}).setView(center, zoom);
+  const map = L.map('print-map', {zoomControl:false, attributionControl:false, mobileGuard:false}).setView(center, zoom);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
   if (GPX_DATA && GPX_DATA.points.length) {

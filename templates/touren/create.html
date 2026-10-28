@@ -268,7 +268,7 @@ ca. {{ prefill.approx_km|int }} km{% endif %}{% if prefill.link %}
               <p class="text-muted small mb-1">
                 Karte anklicken oder GPX hochladen – der Startpunkt wird automatisch übernommen.
               </p>
-              <div id="meeting-map" style="height:240px;border-radius:6px;flex-shrink:0"></div>
+              <div id="meeting-map" data-map-guard-hint="👉 Tippen aktivieren – dann klicken setzt den Treffpunkt" style="height:240px;border-radius:6px;flex-shrink:0"></div>
               <input type="hidden" name="meeting_lat" id="meeting_lat">
               <input type="hidden" name="meeting_lng" id="meeting_lng">
               <div id="coord-display" class="text-muted small"></div>

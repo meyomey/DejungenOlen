@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-28 ba')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bb')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,25 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_bb_unified_mobile_map_guard(self):
+        js = open(os.path.join(ROOT, 'static', 'js', 'map-touch.js'), encoding='utf-8').read()
+        self.assertIn('L.Map.addInitHook', js)                    # automatisch für jede Karte
+        self.assertIn("mergeOptions({ mobileGuard: true })", js)
+        self.assertIn('Tippen zum Aktivieren', js)
+        self.assertIn("data-map-guard-hint", js)                  # eigener Text je Karte
+        self.assertIn("mapGuard === 'off'", js)                   # Opt-out (data-map-guard="off")
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertIn('js/map-touch.js', base)                    # zentral geladen (nach Leaflet)
+        detail = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertNotIn('map-touch-overlay', detail)             # Inline-Duplikat entfernt
+        self.assertNotIn('const isMobile', detail)
+        karte = open(os.path.join(ROOT, 'templates', 'karte.html'), encoding='utf-8').read()
+        self.assertNotIn('Tippen zum Aktivieren', karte)          # Inline-Duplikat entfernt
+        gastro = open(os.path.join(ROOT, 'templates', 'gastro', 'form.html'), encoding='utf-8').read()
+        self.assertIn('data-map-guard-hint', gastro)              # Picker-Hinweis
+        printv = open(os.path.join(ROOT, 'templates', 'touren', 'print.html'), encoding='utf-8').read()
+        self.assertIn('mobileGuard:false', printv)                # Druckansicht ohne Schutz
 
     def test_az_deploy_date_freshness(self):
         self.assertTrue(appmod.APP_BUILD.startswith('2026-'), 'Build trägt ein 2026er Datum')

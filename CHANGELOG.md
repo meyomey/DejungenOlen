@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-28 (Build bb) – Einheitlicher mobiler Kartenschutz auf allen Seiten
+
+- **Problem:** Sofort aktive Karten fingen auf dem Handy das Wischen ab (ein Finger = Karte ziehen statt Seite scrollen). Nur Touren und Gruppen-Karte hatten einen Schutz – Gastro, Orte, Startseite, Live und Formulare nicht.
+- **Lösung (Standard-Muster, wie Google-Maps-Embeds/Leaflet.GestureHandling):** Neues zentrales `static/js/map-touch.js`, das sich automatisch in **jede** Leaflet-Karte einklinkt: Karte startet mobil ohne Ein-Finger-Ziehen mit Overlay „Tippen zum Aktivieren“, 🔒-Knopf sperrt wieder, **zwei Finger funktionieren jederzeit**. Desktop unverändert.
+- Die beiden bisherigen Inline-Umsetzungen (Tourseite, Gruppen-Karte) entfernt – ein Code für alle: Touren-Detail, Start-/Touren-/Archiv-Mini-Karten, Gruppen-Karte, Erkundung, Gastro (Liste/Detail/Formular), Orte, Tour-Formular, Live, Admin, GPX-Modal. Positionierer-Formulare zeigen einen eigenen Hinweis („Tippen aktivieren – dann klicken setzt die Position“); die Druckansicht ist ausgenommen.
+- 209 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-28 (Build ba) – Gastro-Suchkarte: doppelte Lupe, richtige Weg-Beschreibung
 
 - **Doppelte Lupe behoben:** Der Karten-Kopf trug dieselbe Such-Lupe wie der Suchknopf darunter – der Kopf hat jetzt ein „Import“-Symbol (Wolke mit Pfeil), die Lupe gehört allein zum Suchknopf.

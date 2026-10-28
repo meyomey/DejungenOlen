@@ -31,6 +31,7 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 - Druckbare Teilnehmerliste mit Telefon und Notfallkontakt (nur Tourleitung/Admin)
 
 ### 🗺️ Karte & GPX
+- Mobil: Karten stören das Seitenscrollen nicht – ein Tipp auf „Tippen zum Aktivieren" macht die Karte beweglich, zwei Finger zoomen/verschieben jederzeit; einheitlich auf allen Kartenseiten (Touren, Start, Gastro, Orte, Gruppen-Karte, Live, Formulare)
 - GPX-Upload mit automatischer Streckenberechnung (km, Höhenmeter)
 - Leaflet/OSM-Karte mit GPX-Track, Start/Ziel-Marker, Treffpunkt
 - Höhenprofil (Chart.js)
