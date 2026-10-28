@@ -22,8 +22,9 @@
     </h2>
 
     <div class="row g-4">
+      <!-- Build bc: mobil Karte + Suche zuerst, Formular danach (order-*); Desktop md+ unverändert -->
       <!-- Form -->
-      <div class="col-12 col-md-6">
+      <div class="col-12 col-md-6 order-2 order-md-1">
         <div class="card">
           <div class="card-header card-header-djo">
             <i class="bi bi-pencil me-1"></i>{{ 'Daten' if spot else 'Manuelle Eingabe' }}
@@ -138,8 +139,8 @@
         </div>
       </div>
 
-      <!-- Map + Suche -->
-      <div class="col-12 col-md-6">
+      <!-- Map + Suche (mobil zuerst) -->
+      <div class="col-12 col-md-6 order-1 order-md-2">
         <div class="card mb-3">
           <div class="card-header card-header-djo">
             <i class="bi bi-map me-1"></i>Position auf Karte markieren

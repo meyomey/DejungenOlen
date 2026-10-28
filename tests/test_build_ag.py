@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bb')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bc')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -524,6 +524,8 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('auf der Karte direkt darüber', html)      # ba: korrekte Weg-Beschreibung
         self.assertNotIn('links auf die Karte', html)            # ba: „links“ war falsch
         self.assertIn('bi-cloud-download', html)                 # ba: keine zweite Such-Lupe im Kopf
+        self.assertIn('order-2 order-md-1', html)                # bc: mobil Karte+Suche zuerst
+        self.assertIn('order-1 order-md-2', html)                # (Anzeige-Reihenfolge regeln die order-Klassen)
         self.assertIn('id="fill-note"', html)                    # Rückmelde-Stelle am Formular
         self.assertIn('function flashFormFilled()', html)        # global (onclick-Regel)
         self.assertIn('flashFormFilled();', html)                # Aufruf aus fillForm

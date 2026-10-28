@@ -2,6 +2,11 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-28 (Build bc) – Gastro-Formular mobil: Karte + Suche zuerst
+
+- Auf dem Smartphone erscheinen jetzt **Position auf Karte** und **Eintrag suchen & importieren** zuerst, die manuelle Eingabe danach – passend zum Ablauf „Position/Import → Formular prüfen → Speichern“ (und die Suche nutzt den Kartenausschnitt). Der Übernehmen-Hinweis scrollt zum Formular. Desktop unverändert (Formular links, Karte rechts).
+- 209 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-28 (Build bb) – Einheitlicher mobiler Kartenschutz auf allen Seiten
 
 - **Problem:** Sofort aktive Karten fingen auf dem Handy das Wischen ab (ein Finger = Karte ziehen statt Seite scrollen). Nur Touren und Gruppen-Karte hatten einen Schutz – Gastro, Orte, Startseite, Live und Formulare nicht.
