@@ -178,6 +178,15 @@ def main():
     args = ap.parse_args()
 
     version, build = app_version()
+    # Build az: Die ZIP-Namen und der Seiten-Footer tragen das Build-Datum. Weicht es
+    # vom heutigen Tag ab, wurde APP_BUILD vor dem Zip-Bau nicht auf das Ausliefe-
+    # rungsdatum gesetzt – daran erinnern, statt still alte Daten weiterzugeben.
+    _build_date = (build.split(' ') or [''])[0]
+    _today = datetime.now().strftime('%Y-%m-%d')
+    if _build_date and _build_date != _today and not args.deployed:
+        print(f'HINWEIS: APP_BUILD trägt Datum {_build_date}, heute ist {_today}. '
+              f'Bitte APP_BUILD in app.py vor dem Zip-Bau auf das aktuelle Datum setzen '
+              f'(z. B. \'{_today} <Buchstabe>\').')
     DEPLOY_DIR.mkdir(exist_ok=True)
 
     if args.deployed:

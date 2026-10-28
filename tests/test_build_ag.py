@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ay')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 az')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,14 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_az_deploy_date_freshness(self):
+        self.assertTrue(appmod.APP_BUILD.startswith('2026-'), 'Build trägt ein 2026er Datum')
+        script = open(os.path.join(ROOT, 'make_deploy_zip.py'), encoding='utf-8').read()
+        self.assertIn('heute ist', script)                       # Frischewarnung im Zip-Bau
+        self.assertIn('APP_BUILD trägt Datum', script)
+        readme = open(os.path.join(ROOT, 'README.md'), encoding='utf-8').read()
+        self.assertIn('warnt, wenn das Build-Datum', readme)     # Doku-Hinweis
 
     def test_ay_gastro_form_umlaut_and_guidance(self):
         html = open(os.path.join(ROOT, 'templates', 'gastro', 'form.html'), encoding='utf-8').read()

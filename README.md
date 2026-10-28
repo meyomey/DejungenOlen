@@ -258,6 +258,8 @@ Nach jeder Änderung liegen in `deploy/` zwei fertige Pakete (erzeugt mit `pytho
 
 ZIP entpacken, Inhalt mit gleicher Ordnerstruktur per FTP in den App-Ordner kopieren, Passenger neu starten. Die `_DEPLOY_HINWEISE.txt` in jeder ZIP listet die Dateien, ggf. auf dem Server zu löschende Dateien und die Schritte nach dem Upload.
 
+Die Build-Kennung (`APP_BUILD` in `app.py`) trägt **Datum + Buchstabe** und erscheint in den ZIP-Namen sowie im Footer – vor jedem Zip-Bau auf das aktuelle Datum setzen (neuer Tag = wieder bei „a“ beginnen). `make_deploy_zip.py` warnt, wenn das Build-Datum nicht dem heutigen Tag entspricht.
+
 ---
 
 ## Konfiguration

@@ -2,6 +2,11 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-28 (Build az) – Deploy-Datum aktuell halten
+
+- Die Deploy-ZIPs und der Footer trugen weiter das Datum alter Builds (2026-10-15), weil `APP_BUILD` bei neueren Auslieferungen nicht mitgezogen hatte. Das Datum ist jetzt aktuell (2026-10-28), und `make_deploy_zip.py` **warnt künftig**, wenn das Build-Datum nicht dem heutigen Tag entspricht – so bleibt jedes Paket sofort am Namen als „frisch“ erkennbar. README-Abschnitt „Auslieferung per FTP“ um den Hinweis ergänzt (neuer Tag = wieder bei „a“ beginnen).
+- 208 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-17 (Build ay) – Gastro-Formular: Umlaut-Fehler und Führung
 
 - **Fehler behoben:** Die Suchkarte zeigte „Eintrag suchen &amp;amp; importieren“ – ein `&amp;` im Jinja-Ausdruck wurde doppelt maskiert. Jetzt korrekt „Eintrag suchen & importieren“.
