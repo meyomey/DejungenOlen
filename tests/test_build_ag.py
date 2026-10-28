@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bf')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bg')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -510,6 +510,12 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('id="btn-sort-name" class="js-sort btn btn-djo btn-sm"', html)
         self.assertIn('data-rating=', html)
         self.assertIn('data-created=', html)
+        # bg: Einkehr-Dropdown im Tour-Formular ebenfalls menschlich sortiert
+        choices = [name for _sid, name, _t in appmod.gastro_spot_choices()]
+        self.assertLess(choices.index('Altes Fischerhaus'), choices.index('Bistro Seefeld'))
+        self.assertLess(choices.index('Bistro Seefeld'), choices.index('Über den Deich'))
+        create_html = self.client.get('/touren/neu').get_data(as_text=True)
+        self.assertLess(create_html.find('Altes Fischerhaus'), create_html.find('Über den Deich'))
 
     def test_be_manual_moving_time(self):
         self.login_org()

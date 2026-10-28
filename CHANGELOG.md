@@ -2,6 +2,11 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-28 (Build bg) – Einkehr-Auswahl alphabetisch (Ä/Ö/Ü richtig)
+
+- Das Dropdown **„Geplante Einkehr“** in den Tour-Formularen (Anlegen/Bearbeiten) nutzt jetzt dieselbe menschliche A–Z-Sortierung wie die Gastroliste (Build bf) – vorher hingen Namen mit Ä/Ö/Ü hinten.
+- 212 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-28 (Build bf) – Gastroliste: echte A–Z-Sortierung + Sortierung auswählbar
 
 Die Liste war technisch, nicht menschlich sortiert: SQLite hängt Namen mit Ä/Ö/Ü am Anfang (und Kleinbuchstaben) hinter „Z“ – deshalb wirkte sie nicht mehr alphabetisch. Jetzt:

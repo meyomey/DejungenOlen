@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-28 bf'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-28 bg'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -8148,8 +8148,10 @@ def _einkehr_info(tour, today=None):
 def gastro_spot_choices():
     """Auswahlliste für die Tour-Formulare (alle Gastro-Einträge, alphabetisch)."""
     try:
-        return [(sp.id, sp.name, GASTRO_TYPE_LABELS.get(sp.spot_type, 'Einkehr'))
-                for sp in GastroSpot.query.order_by(GastroSpot.name).all()]
+        _rows = [(sp.id, sp.name, GASTRO_TYPE_LABELS.get(sp.spot_type, 'Einkehr'))
+                 for sp in GastroSpot.query.all()]
+        _rows.sort(key=lambda r: _de_name_key(r[1]))   # Build bg: Ä/Ö/Ü richtig einsortiert
+        return _rows
     except Exception:
         return []
 
