@@ -153,15 +153,16 @@
         <!-- Multi-Source Search -->
         <div class="card">
           <div class="card-header card-header-djo">
-            <i class="bi bi-search me-1"></i>{# Build ay: '&' hier roh – Jinja maskiert selbst (vorher stand die Entity doppelt maskiert im Header) #}
-            <i class="bi bi-search me-1"></i>{{ 'Daten aus OpenStreetMap nachladen' if spot else 'Eintrag suchen & importieren' }}
+            {# Build ay: '&' hier roh – Jinja maskiert selbst (vorher stand die Entity doppelt maskiert im Header) #}
+            {# Build ba: eigene Ikonik statt Such-Lupe – die Lupe gehört nur zum Suchknopf #}
+            <i class="bi bi-cloud-download me-1"></i>{{ 'Daten aus OpenStreetMap nachladen' if spot else 'Eintrag suchen & importieren' }}
           </div>
           <div class="card-body">
 
             <div class="form-text mb-2">
-              <strong>So geht's:</strong> ① hier suchen <em>oder</em> links auf die Karte klicken
-              → ② Name, Adresse, Öffnungszeiten &amp; Position werden übernommen
-              → ③ im Formular prüfen und <strong>Speichern</strong>.
+              <strong>So geht's:</strong> ① hier suchen <em>oder</em> auf der Karte direkt darüber
+              die Position anklicken → ② Name, Adresse, Öffnungszeiten &amp; Position werden
+              übernommen → ③ im Formular prüfen und <strong>Speichern</strong>.
             </div>
 
             <!-- Tab buttons -->

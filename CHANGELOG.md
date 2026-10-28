@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-28 (Build ba) – Gastro-Suchkarte: doppelte Lupe, richtige Weg-Beschreibung
+
+- **Doppelte Lupe behoben:** Der Karten-Kopf trug dieselbe Such-Lupe wie der Suchknopf darunter – der Kopf hat jetzt ein „Import“-Symbol (Wolke mit Pfeil), die Lupe gehört allein zum Suchknopf.
+- **Anleitung korrigiert:** „links auf die Karte klicken“ stimmte in keinem Layout – die Karte liegt (Handy wie Desktop) **direkt über der Suchkarte**; der Hinweis sagt das jetzt korrekt.
+- 208 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-28 (Build az) – Deploy-Datum aktuell halten
 
 - Die Deploy-ZIPs und der Footer trugen weiter das Datum alter Builds (2026-10-15), weil `APP_BUILD` bei neueren Auslieferungen nicht mitgezogen hatte. Das Datum ist jetzt aktuell (2026-10-28), und `make_deploy_zip.py` **warnt künftig**, wenn das Build-Datum nicht dem heutigen Tag entspricht – so bleibt jedes Paket sofort am Namen als „frisch“ erkennbar. README-Abschnitt „Auslieferung per FTP“ um den Hinweis ergänzt (neuer Tag = wieder bei „a“ beginnen).

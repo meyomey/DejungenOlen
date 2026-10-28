@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-28 az')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 ba')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -502,6 +502,9 @@ class VideoSmoothTest(AppTestCase):
         self.assertNotIn('suchen &amp;amp; importieren', html)   # doppelte Maskierung weg
         self.assertNotIn('&amp;amp;', html)                       # nirgends doppelt maskiert
         self.assertIn("So geht's:", html)                        # 3-Schritte-Hinweis
+        self.assertIn('auf der Karte direkt darüber', html)      # ba: korrekte Weg-Beschreibung
+        self.assertNotIn('links auf die Karte', html)            # ba: „links“ war falsch
+        self.assertIn('bi-cloud-download', html)                 # ba: keine zweite Such-Lupe im Kopf
         self.assertIn('id="fill-note"', html)                    # Rückmelde-Stelle am Formular
         self.assertIn('function flashFormFilled()', html)        # global (onclick-Regel)
         self.assertIn('flashFormFilled();', html)                # Aufruf aus fillForm
