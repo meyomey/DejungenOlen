@@ -60,17 +60,24 @@
   <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
     <span class="small text-muted" id="count-info"></span>
     <span class="ms-auto d-flex gap-1">
-      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="sortByLocation()" title="Nach Entfernung von meinem Standort sortieren">
+      {# Build bf: Sortierung auswählbar – aktiver Knopf ist dunkel #}
+      <button type="button" id="btn-sort-name" class="js-sort btn btn-djo btn-sm" aria-pressed="true" onclick="sortByName()">
+        🔤 A–Z
+      </button>
+      <button type="button" id="btn-sort-rating" class="js-sort btn btn-outline-secondary btn-sm" aria-pressed="false" onclick="sortByRating()" title="Beste Bewertung zuerst">
+        ⭐ Bewertung
+      </button>
+      <button type="button" id="btn-sort-new" class="js-sort btn btn-outline-secondary btn-sm" aria-pressed="false" onclick="sortByNewest()" title="Neueste Einträge zuerst">
+        🆕 Neueste
+      </button>
+      <button type="button" id="btn-sort-dist-me" class="js-sort btn btn-outline-secondary btn-sm" onclick="sortByLocation()" title="Nach Entfernung von meinem Standort sortieren">
         📍 Nähe zu mir
       </button>
       {% if meeting %}
-      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="sortByMeeting()" title="{{ meeting.desc }}">
+      <button type="button" id="btn-sort-dist-meeting" class="js-sort btn btn-outline-secondary btn-sm" onclick="sortByMeeting()" title="{{ meeting.desc }}">
         🏁 Nähe zum Treffpunkt
       </button>
       {% endif %}
-      <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="btn-sort-name" onclick="sortByName()">
-        🔤 A–Z
-      </button>
     </span>
   </div>
 </form>
@@ -100,6 +107,8 @@
   {% set ruhetage = s.hours_text|closed_days %}
   {% set li = lunch_by_id[s.id] %}
   <div class="col-12 col-md-6 col-xl-4 spot-card" data-id="{{ s.id }}" data-type="{{ s.spot_type }}"
+       data-rating="{{ s._avg_rating if s._avg_rating is not none else '' }}"
+       data-created="{{ s.created_at.strftime('%Y%m%d%H%M') if s.created_at else '' }}"
        data-morning="{{ 1 if s.is_morning_friendly else 0 }}" data-name="{{ s.name|lower }}"
        data-lunch="{{ li.status or '' }}" data-noon="{{ li.days|join(',') }}"
        data-text="{{ (s.name ~ ' ' ~ (s.address or '') ~ ' ' ~ (s.notes or '') ~ ' ' ~ s.type_label ~ ' ' ~ li.short ~ ' ' ~ li.text)|lower }}">
@@ -309,9 +318,39 @@ function focusSpot(id) {
   else { map.setView(markers[id].getLatLng(), 16); markers[id].openPopup(); }
 }
 
-// ── Sortierung nach Entfernung ────────────────────────────────────────────────
+// ── Sortierung (Build bf): A–Z · Bewertung · Neueste · Entfernung ────────────
 function fmtKm(m) { return m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',') + ' km'; }
-function sortByPoint(lat, lng, label) {
+function setSortActive(id) {
+  document.querySelectorAll('.js-sort').forEach(b => {
+    const on = b.id === id;
+    b.classList.toggle('btn-djo', on);
+    b.classList.toggle('btn-outline-secondary', !on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+function reorderCards(cmp) {
+  const wrap = document.getElementById('spot-cards');
+  [...wrap.querySelectorAll('.spot-card')].sort(cmp).forEach(c => {
+    wrap.appendChild(c);
+    const b = c.querySelector('.dist-badge'); if (b) b.classList.add('d-none');
+  });
+}
+function sortByName() {
+  reorderCards((a, b) => a.dataset.name.localeCompare(b.dataset.name, 'de'));
+  setSortActive('btn-sort-name');
+}
+function sortByRating() {
+  reorderCards((a, b) => ((b.dataset.rating === '' ? -1 : parseFloat(b.dataset.rating))
+                        - (a.dataset.rating === '' ? -1 : parseFloat(a.dataset.rating)))
+                     || a.dataset.name.localeCompare(b.dataset.name, 'de'));
+  setSortActive('btn-sort-rating');
+}
+function sortByNewest() {
+  reorderCards((a, b) => (b.dataset.created || '').localeCompare(a.dataset.created || '')
+                       || a.dataset.name.localeCompare(b.dataset.name, 'de'));
+  setSortActive('btn-sort-new');
+}
+function sortByPoint(lat, lng, label, btnId) {
   const dist = {};
   SPOTS.forEach(s => { dist[s.id] = map ? map.distance([lat, lng], [s.lat, s.lng]) : Math.hypot((lat - s.lat) * 111320, (lng - s.lng) * 68000); });
   const wrap = document.getElementById('spot-cards');
@@ -321,21 +360,13 @@ function sortByPoint(lat, lng, label) {
     const b = c.querySelector('.dist-badge');
     if (b) { b.textContent = fmtKm(dist[c.dataset.id]) + ' ' + label; b.classList.remove('d-none'); }
   });
-  document.getElementById('btn-sort-name').classList.remove('d-none');
+  setSortActive(btnId || '');
 }
-function sortByName() {
-  const wrap = document.getElementById('spot-cards');
-  [...wrap.querySelectorAll('.spot-card')].sort((a, b) => a.dataset.name.localeCompare(b.dataset.name, 'de')).forEach(c => {
-    wrap.appendChild(c);
-    const b = c.querySelector('.dist-badge'); if (b) b.classList.add('d-none');
-  });
-  document.getElementById('btn-sort-name').classList.add('d-none');
-}
-function sortByMeeting() { if (MEETING) sortByPoint(MEETING.lat, MEETING.lng, '🏁'); }
+function sortByMeeting() { if (MEETING) sortByPoint(MEETING.lat, MEETING.lng, '🏁', 'btn-sort-dist-meeting'); }
 function sortByLocation() {
   if (!navigator.geolocation) { alert('Standort wird von diesem Browser nicht unterstützt.'); return; }
   navigator.geolocation.getCurrentPosition(
-    p => sortByPoint(p.coords.latitude, p.coords.longitude, '📍'),
+    p => sortByPoint(p.coords.latitude, p.coords.longitude, '📍', 'btn-sort-dist-me'),
     () => alert('Standort nicht verfügbar – bitte Standortfreigabe erlauben.'),
     {enableHighAccuracy: false, timeout: 8000, maximumAge: 60000});
 }

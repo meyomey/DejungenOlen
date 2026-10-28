@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-28 be'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-28 bf'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -6753,6 +6753,15 @@ def gastro_delete_photo(photo_id):
     return redirect(url_for('gastro_detail', spot_id=spot_id) + '#fotos')
 
 
+def _de_name_key(name):
+    """Build bf: Sortierung wie im Telefonbuch – Ä wie A, Ö wie O, Ü wie U, ß wie ss,
+    Groß-/Kleinschreibung egal. (SQLites Standard-Sortierung hängt Ä/Ö/Ü hinten an.)"""
+    s = (name or '').lower()
+    for um, base in (('ä', 'a'), ('ö', 'o'), ('ü', 'u'), ('ß', 'ss')):
+        s = s.replace(um, base)
+    return s
+
+
 @app.route('/gastro')
 @login_required
 def gastro_list():
@@ -6786,7 +6795,8 @@ def gastro_list():
             GastroSpot.opens_at != None,
             GastroSpot.opens_at <= morning_threshold
         )
-    spots = spots.order_by(GastroSpot.name).all()
+    spots = spots.all()                                    # Build bf: menschliche A–Z-Sortierung (Umlaute richtig)
+    spots.sort(key=lambda sp: _de_name_key(sp.name))
     lunch_by_id = {sp.id: lunch_info(sp) for sp in spots}            # Build z: Mittagstisch je Eintrag
     if mittag:
         spots = [sp for sp in spots

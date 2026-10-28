@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-28 be')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bf')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,29 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_bf_gastro_sort_options(self):
+        # Menschliche A–Z-Sortierung: Ä wie A, Ö wie O, Ü wie U
+        self.assertEqual(appmod._de_name_key('Über den Deich'), 'uber den deich')
+        self.assertLess(appmod._de_name_key('Altes Fischerhaus'), appmod._de_name_key('änder disse'))
+        self.assertLess(appmod._de_name_key('Örtlicher Hof'), appmod._de_name_key('Zoo'))
+        # Server-Listenreihenfolge: Umlaute nicht mehr hinten
+        self.login_org()
+        db.session.add_all([
+            M.GastroSpot(name='Über den Deich', spot_type='restaurant', lat=53.5, lng=9.9, added_by=self.org_id),
+            M.GastroSpot(name='Bistro Seefeld', spot_type='restaurant', lat=53.5, lng=9.9, added_by=self.org_id),
+            M.GastroSpot(name='Altes Fischerhaus', spot_type='restaurant', lat=53.5, lng=9.9, added_by=self.org_id),
+        ])
+        db.session.commit()
+        html = self.client.get('/gastro').get_data(as_text=True)
+        self.assertLess(html.find('Altes Fischerhaus'), html.find('Bistro Seefeld'))
+        self.assertLess(html.find('Bistro Seefeld'), html.find('Über den Deich'))
+        # Sortierknöpfe vorhanden, A–Z ist Standard aktiv, Karten tragen Sortier-Daten
+        self.assertIn('sortByRating', html)
+        self.assertIn('sortByNewest', html)
+        self.assertIn('id="btn-sort-name" class="js-sort btn btn-djo btn-sm"', html)
+        self.assertIn('data-rating=', html)
+        self.assertIn('data-created=', html)
 
     def test_be_manual_moving_time(self):
         self.login_org()

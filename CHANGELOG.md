@@ -2,6 +2,14 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-28 (Build bf) – Gastroliste: echte A–Z-Sortierung + Sortierung auswählbar
+
+Die Liste war technisch, nicht menschlich sortiert: SQLite hängt Namen mit Ä/Ö/Ü am Anfang (und Kleinbuchstaben) hinter „Z“ – deshalb wirkte sie nicht mehr alphabetisch. Jetzt:
+
+- **A–Z wie im Telefonbuch:** Ä wie A, Ö wie O, Ü wie U, ß wie ss, Groß-/Kleinschreibung egal (Standard, auch ohne JavaScript).
+- **Sortierung auswählbar** über Knöpfe über der Liste (aktiver Knopf ist dunkel): 🔤 **A–Z** · ⭐ **Bewertung** (beste zuerst, ohne Wert hinten) · 🆕 **Neueste** (zuletzt hinzugefügt zuerst) · 📍 **Nähe zu mir** · 🏁 **Nähe zum Treffpunkt** (wie bisher).
+- 212 Tests, py_compile OK, Sortier-JS mit Runtime-Smoke geprüft.
+
 ## 1.4.0 – 2026-10-28 (Build be) – Fahrzeit manuell nachtragen
 
 Touren, deren GPX keine Zeitstempel hat (z. B. gezeichnete/geplante Route oder aufgenommener Track ohne Uhrzeit), zeigten bei ⏱ nur „–“ – Fahrzeit und Ø-Tempo waren nicht nachträglich korrigierbar. Jetzt:
