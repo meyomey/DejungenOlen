@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ax')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-15 ay')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,17 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_ay_gastro_form_umlaut_and_guidance(self):
+        html = open(os.path.join(ROOT, 'templates', 'gastro', 'form.html'), encoding='utf-8').read()
+        self.assertIn("'Eintrag suchen & importieren'", html)     # roh im Jinja-Ausdruck
+        self.assertNotIn('suchen &amp;amp; importieren', html)   # doppelte Maskierung weg
+        self.assertNotIn('&amp;amp;', html)                       # nirgends doppelt maskiert
+        self.assertIn("So geht's:", html)                        # 3-Schritte-Hinweis
+        self.assertIn('id="fill-note"', html)                    # Rückmelde-Stelle am Formular
+        self.assertIn('function flashFormFilled()', html)        # global (onclick-Regel)
+        self.assertIn('flashFormFilled();', html)                # Aufruf aus fillForm
+        self.assertIn("matchMedia('(max-width: 767.98px)')", html)
 
     def test_ax_preview_no_tdz_and_visible_errors(self):
         html = open(os.path.join(ROOT, 'templates', 'touren', 'video.html'), encoding='utf-8').read()

@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-17 (Build ay) – Gastro-Formular: Umlaut-Fehler und Führung
+
+- **Fehler behoben:** Die Suchkarte zeigte „Eintrag suchen &amp;amp; importieren“ – ein `&amp;` im Jinja-Ausdruck wurde doppelt maskiert. Jetzt korrekt „Eintrag suchen & importieren“.
+- **Bedienung intuitiver:** Die Suchkarte erklärt den Ablauf in drei Schritten (suchen oder Karte klicken → Felder werden übernommen → prüfen & speichern). Nach dem Übernehmen eines Treffers erscheint die Erfolgsmeldung jetzt auch direkt über dem Speichern-Knopf, auf dem Handy scrollt die Seite automatisch zum Formular und das Namensfeld grünt kurz.
+- 207 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-17 (Build ax) – Vorschau-Abbruch nach der Statistikfolie behoben
 
 - **Fehler behoben (Build-aw-Nachzieher):** Die neue Uhrzeit-Leiste nutzte die Variable `mmSide` (Mini-Karten-Breite), bevor sie deklariert wurde – JavaScript wirft dafür einen Referenzfehler, die Browser-Vorschau frozte daraufhin nach der Statistikfolie (direkt vor den Fotos), die Musik lief weiter. Die Deklaration steht jetzt vor der ersten Nutzung.

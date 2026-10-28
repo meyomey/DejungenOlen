@@ -128,6 +128,7 @@
                 </label>
               </div>
               {% endif %}
+              <div id="fill-note" class="mb-2"></div>
               <button type="submit" class="btn btn-djo w-100"
                       onclick="return document.getElementById('hlat').value !== '' || alert('Bitte Ort auf der Karte markieren!')">
                 <i class="bi bi-check-lg me-1"></i>{{ 'Änderungen speichern' if spot else 'Speichern' }}
@@ -152,9 +153,16 @@
         <!-- Multi-Source Search -->
         <div class="card">
           <div class="card-header card-header-djo">
-            <i class="bi bi-search me-1"></i>{{ 'Daten aus OpenStreetMap nachladen' if spot else 'Eintrag suchen &amp; importieren' }}
+            <i class="bi bi-search me-1"></i>{# Build ay: '&' hier roh – Jinja maskiert selbst (vorher stand die Entity doppelt maskiert im Header) #}
+            <i class="bi bi-search me-1"></i>{{ 'Daten aus OpenStreetMap nachladen' if spot else 'Eintrag suchen & importieren' }}
           </div>
           <div class="card-body">
+
+            <div class="form-text mb-2">
+              <strong>So geht's:</strong> ① hier suchen <em>oder</em> links auf die Karte klicken
+              → ② Name, Adresse, Öffnungszeiten &amp; Position werden übernommen
+              → ③ im Formular prüfen und <strong>Speichern</strong>.
+            </div>
 
             <!-- Tab buttons -->
             <div class="d-flex gap-1 mb-3 flex-wrap">
@@ -426,6 +434,21 @@ function fillForm(r) {
     map.setView([r.lat, r.lng], 16);
   }
   document.getElementById('osm-results').innerHTML = '<div class="alert alert-success py-1 small">✓ Daten übernommen – bitte prüfen und speichern!</div>';
+  flashFormFilled();   // Build ay: Rückmeldung direkt am Formular (Handy: dorthin scrollen)
+}
+
+// Build ay: Übernahme sichtbar machen – Hinweis über dem Speichern-Knopf, auf dem
+// Handy zum Formular scrollen (dort steht es über der Suche), Namensfeld kurz grün.
+function flashFormFilled() {
+  const note = document.getElementById('fill-note');
+  if (note) note.innerHTML = '<div class="alert alert-success py-1 mb-0 small">' +
+    '<i class="bi bi-check-circle me-1"></i>Felder übernommen – bitte prüfen und speichern!</div>';
+  if (window.matchMedia && window.matchMedia('(max-width: 767.98px)').matches) {
+    const form = document.getElementById('gastroForm');
+    if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  const fn = document.getElementById('fname');
+  if (fn) { fn.classList.add('border-success', 'border-2'); setTimeout(function () { fn.classList.remove('border-success', 'border-2'); }, 2500); }
 }
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
