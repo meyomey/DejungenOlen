@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bh')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bi')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,42 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_bi_photo_delete_no_nested_forms(self):
+        # Build bi: Das Bulk-Formular darf die Foto-Karten NICHT umschließen –
+        # verschachtelte <form>-Tags verwirft der Browser, dann tut der Papierkorb nichts.
+        from html.parser import HTMLParser
+
+        class FormDepth(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.depth = 0
+                self.max_depth = 0
+            def handle_starttag(self, tag, attrs):
+                if tag == 'form':
+                    self.depth += 1
+                    self.max_depth = max(self.max_depth, self.depth)
+            def handle_endtag(self, tag):
+                if tag == 'form':
+                    self.depth -= 1
+
+        self.login_org()
+        import os as _os
+        from PIL import Image as _Img
+        t = M.Tour.query.get(self.t_done_id)
+        fn = 'dbg_bi.jpg'
+        _Img.new('RGB', (4, 4), 'blue').save(_os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], fn))
+        db.session.add(M.TourPhoto(tour_id=t.id, user_id=self.org_id, filename=fn))
+        db.session.commit()
+        html = self.client.get(f'/touren/{self.t_done_id}').get_data(as_text=True)
+        p = FormDepth()
+        p.feed(html)
+        self.assertEqual(p.max_depth, 1, 'Kein Formular darf in einem anderen liegen')
+        self.assertEqual(p.depth, 0)
+        # Lösch-Formular je Foto vorhanden und Checkbox an bulk-form angebunden
+        self.assertIn("confirm('Foto löschen?')", html)
+        self.assertIn('form="bulk-form"', html)
+        self.assertIn('id="bulk-form"', html)
 
     def test_bh_multi_einkehr(self):
         self.login_org()

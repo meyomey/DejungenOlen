@@ -999,9 +999,10 @@
 
         <!-- Photo grid -->
         {% if photos %}
-        <!-- Bulk controls -->
-        <form method="post" action="{{ url_for('photos_bulk_delete', tour_id=tour.id) }}"
-              id="bulk-form" onsubmit="return confirmBulkDelete()">
+        <!-- Bulk controls (Build bi: bulk-form ist jetzt ein LEERES Formular – vorher umschloss es
+             das ganze Foto-Raster, und die Einzel-Löschen-/GPS-Formulare steckten verschachtelt darin.
+             Browser verwerfen verschachtelte <form>-Tags → Papierkorb- und GPS-✕-Klick taten NICHTS.
+             Verknüpfung jetzt über form="bulk-form" auf Checkbox und Löschen-Knopf) -->
         <div class="d-flex gap-2 mb-2 flex-wrap align-items-center">
           <button type="button" class="btn btn-sm btn-outline-secondary py-0"
                   onclick="toggleAllPhotos(true)">
@@ -1011,12 +1012,14 @@
                   onclick="toggleAllPhotos(false)">
             Keine
           </button>
-          <button type="submit" id="bulk-delete-btn"
+          <button type="submit" form="bulk-form" id="bulk-delete-btn"
                   class="btn btn-sm btn-outline-danger py-0" style="display:none">
             <i class="bi bi-trash me-1"></i>Löschen
             (<span id="bulk-count">0</span>)
           </button>
         </div>
+        <form method="post" action="{{ url_for('photos_bulk_delete', tour_id=tour.id) }}"
+              id="bulk-form" onsubmit="return confirmBulkDelete()"></form>
         <!-- Photo grid (same layout on all screens, swipe only in lightbox) -->
         <div class="row g-2" id="photo-grid">
           {% for p in photos %}
@@ -1033,7 +1036,7 @@
                    onmouseleave="unhighlightMarker({{ p.id }})"
                    {% endif %}>
                 <!-- Checkbox for bulk select -->
-                <input type="checkbox" name="photo_ids" value="{{ p.id }}"
+                <input type="checkbox" name="photo_ids" value="{{ p.id }}" form="bulk-form"
                        class="photo-checkbox form-check-input position-absolute"
                        style="top:6px;left:6px;z-index:10;width:18px;height:18px;cursor:pointer"
                        onchange="updateBulkCount()">
@@ -1075,7 +1078,7 @@
                            data-photo-id="{{ p.id }}"
                            style="font-size:.7rem"
                            onkeydown="if(event.key==='Enter'){event.preventDefault();saveCaption(this)}">
-                    <button class="btn btn-outline-secondary py-0"
+                    <button type="button" class="btn btn-outline-secondary py-0"
                             onclick="saveCaption(this.previousElementSibling)"
                             title="Speichern">✓</button>
                   </div>
@@ -1128,12 +1131,9 @@
           </div>
           {% endfor %}
         </div><!-- end photo-grid -->
-        </form>
         {% else %}
         <p class="text-muted small mb-0">Noch keine Fotos hochgeladen.</p>
         {% endif %}
-        </div><!-- end photo-grid -->
-        {% if photos %}</form>{% endif %}
       </div>
     </div>
 

@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-28 (Build bi) – Fotolöschen repariert (Papierkorb tat nichts)
+
+- **Fehler:** Auf der Tour-Seite löschte der Papierkorb-Knopf (🗑) am Foto nichts – ebenso das GPS-✕. Ursache: Das Sammel-Löschen-Formular („Löschen (n)“) umschloss das gesamte Foto-Raster; die Einzel-Formulare steckten dadurch **verschachtelt** darin. HTML erlaubt das nicht – der Browser verwirft die inneren Formulare stillschweigend, die Knöpfe hingen in keinem Formular mehr.
+- **Fix:** Das Bulk-Formular ist jetzt ein leeres Formular über der Liste; Foto-Checkboxen und der Sammel-Löschen-Knopf sind über `form="bulk-form"` damit verknüpft (Standard-HTML-Mechanismus). Die Einzel-Knöpfe 🗑 / GPS-✕ liegen in ihren eigenen, nicht mehr verschachtelten Formularen. Zwei alte doppelte Restzeilen im Template entfernt. Sammel-Löschen und Auswahl („Alle/Keine“) funktionieren unverändert.
+- 214 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-28 (Build bh) – Bis zu drei Einkehr-Stopps pro Tour
 
 Bisher konnte eine Tour nur EINE geplante Einkehr haben. Jetzt:
