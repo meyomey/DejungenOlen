@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bc')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bd')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,11 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_bd_orte_form_map_first_on_mobile(self):
+        html = open(os.path.join(ROOT, 'templates', 'orte', 'form.html'), encoding='utf-8').read()
+        self.assertIn('order-2 order-md-1', html)                 # Formular mobil danach
+        self.assertIn('order-1 order-md-2', html)                 # Karte mobil zuerst
 
     def test_bb_unified_mobile_map_guard(self):
         js = open(os.path.join(ROOT, 'static', 'js', 'map-touch.js'), encoding='utf-8').read()
