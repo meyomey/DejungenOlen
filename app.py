@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-28 bj'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-28 bk'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -4562,12 +4562,12 @@ def tour_video_render(tour_id):
         _photos_with_gps = [{'filename': p.filename, 'lat': p.lat, 'lng': p.lng}
                             for p in photos if p.lat and p.lng]
 
-        wrote_any = False   # Build bj: das erste geschriebene Segment startet OHNE Schwarz-Einblendung
+        wrote_any = False   # Build bj/bk: das erste Segment startet OHNE Schwarz-Einblendung
         with open(concat_file, 'w') as cf:
             # 1. Titelfolie (3s) – als Video-Segment
             title_frame = os.path.join(tmpdir, 'slide_title.jpg')
             title_seg   = os.path.join(tmpdir, 'seg_title.mp4')
-            if make_title_frame(title_frame) and image_to_segment(title_frame, title_seg, 3, fade_in=not wrote_any):
+            if make_title_frame(title_frame) and image_to_segment(title_frame, title_seg, 3, fade_in=wrote_any):
                 cf.write(f"file '{title_seg}'\n")
                 wrote_any = True
                 _slide_secs += 3
@@ -4578,7 +4578,7 @@ def tour_video_render(tour_id):
                 if track_frames:
                     track_seg = os.path.join(tmpdir, 'seg_track.mp4')
                     track_dur = sum(d for _, d in track_frames)
-                    if frames_to_segment(track_frames, track_seg, fade_in=not wrote_any):
+                    if frames_to_segment(track_frames, track_seg, fade_in=wrote_any):
                         cf.write(f"file '{track_seg}'\n")
                         wrote_any = True
                         _slide_secs += track_dur
@@ -4588,7 +4588,7 @@ def tour_video_render(tour_id):
                 gastro_frames = build_gastro_frames(_near_spots)
                 if gastro_frames:
                     gastro_seg = os.path.join(tmpdir, 'seg_gastro.mp4')
-                    if frames_to_segment(gastro_frames, gastro_seg, fade_in=not wrote_any):
+                    if frames_to_segment(gastro_frames, gastro_seg, fade_in=wrote_any):
                         cf.write(f"file '{gastro_seg}'\n")
                         wrote_any = True
                         _slide_secs += sum(d for _, d in gastro_frames)
@@ -4598,14 +4598,14 @@ def tour_video_render(tour_id):
             if show_stats:
                 stats_seg = os.path.join(tmpdir, 'seg_stats.mp4')
                 stats_frames = build_stats_frames(_attending_count, _weather, _attending_users)
-                if stats_frames and frames_to_segment(stats_frames, stats_seg, fade_in=not wrote_any):
+                if stats_frames and frames_to_segment(stats_frames, stats_seg, fade_in=wrote_any):
                     cf.write(f"file '{stats_seg}'\n")
                     wrote_any = True
                     _slide_secs += sum(d for _, d in stats_frames)
                 else:
                     stats_frame = os.path.join(tmpdir, 'slide_stats.jpg')
                     if make_stats_frame(stats_frame, _attending_count, _weather, _attending_users) and \
-                       image_to_segment(stats_frame, stats_seg, 4, fade_in=not wrote_any):
+                       image_to_segment(stats_frame, stats_seg, 4, fade_in=wrote_any):
                         cf.write(f"file '{stats_seg}'\n")
                         wrote_any = True
                         _slide_secs += 4
@@ -4635,7 +4635,7 @@ def tour_video_render(tour_id):
                     overlay_png = None
                 segment_path = os.path.join(tmpdir, f'photo_{i:04d}.mp4')
                 if make_photo_zoom_segment(oriented, segment_path, photo_dur, effect=_kb_effect,
-                                           overlay_png=overlay_png, fade_in=not wrote_any):
+                                           overlay_png=overlay_png, fade_in=wrote_any):
                     cf.write(f"file '{segment_path}'\n")
                     wrote_any = True
                     _slide_secs += photo_dur
@@ -4645,7 +4645,7 @@ def tour_video_render(tour_id):
                     frame = os.path.join(tmpdir, f'frame_{i:04d}.jpg')
                     fallback_seg = os.path.join(tmpdir, f'photo_fallback_{i:04d}.mp4')
                     make_frame(oriented, frame, overlay_png)
-                    if image_to_segment(frame, fallback_seg, photo_dur, fade_in=not wrote_any):
+                    if image_to_segment(frame, fallback_seg, photo_dur, fade_in=wrote_any):
                         cf.write(f"file '{fallback_seg}'\n")
                         wrote_any = True
                         _slide_secs += photo_dur
@@ -4656,7 +4656,7 @@ def tour_video_render(tour_id):
                 prof_frames = build_profile_frames(_gpx_points)
                 if prof_frames:
                     prof_seg = os.path.join(tmpdir, 'seg_profile.mp4')
-                    if frames_to_segment(prof_frames, prof_seg, fade_in=not wrote_any):
+                    if frames_to_segment(prof_frames, prof_seg, fade_in=wrote_any):
                         cf.write(f"file '{prof_seg}'\n")
                         wrote_any = True
                         _slide_secs += sum(d for _, d in prof_frames)
@@ -4665,7 +4665,7 @@ def tour_video_render(tour_id):
             outro_frame = os.path.join(tmpdir, 'slide_outro.jpg')
             outro_seg   = os.path.join(tmpdir, 'seg_outro.mp4')
             OUTRO_DUR = 6
-            if make_outro_frame(outro_frame, _group_name) and image_to_segment(outro_frame, outro_seg, OUTRO_DUR, fade_in=not wrote_any):
+            if make_outro_frame(outro_frame, _group_name) and image_to_segment(outro_frame, outro_seg, OUTRO_DUR, fade_in=wrote_any):
                 cf.write(f"file '{outro_seg}'\n")
                 wrote_any = True
                 _slide_secs += OUTRO_DUR

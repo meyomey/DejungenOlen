@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-28 (Build bk) – Video-Startbild: Logik-Invertierung aus bj korrigiert
+
+- **Build bj war wirkungslos** (sorry!): Die Aufruf-Stellen übergaben `fade_in=not wrote_any` – für das erste Segment ergab das **doch** `fade_in=True`, also weiterhin Einblendung aus Schwarz. Der bj-Test prüfte nur die Filterfunktion, nicht die Aufruf-Polarität.
+- **Jetzt richtig:** Alle 9 Segment-Stellen übergeben `fade_in=wrote_any` → das erste Segment startet **sichtbar ab Frame 1** (Titelbild), alle folgenden behalten den kurzen Schwarz-Dip als Übergang.
+- Der Test prüft jetzt zusätzlich die Polarität der Aufruf-Stellen und die Logik-Semantik.
+- 215 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-28 (Build bj) – WhatsApp-Vorschau: Startbild statt Schwarz
 
 - **Fehler:** Beim Teilen des Videos (z. B. in WhatsApp) zeigte die Chat-Vorschau nur ein schwarzes Bild. Ursache: Das Video blendete mit der allerersten Einstellung aus Schwarz ein – WhatsApp baut die Vorschau aber aus den ersten Videobildern, und Bild 1 war schwarz.

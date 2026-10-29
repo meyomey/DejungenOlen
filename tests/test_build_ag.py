@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bj')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bk')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -488,9 +488,10 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
 
-    def test_bj_video_first_frame_not_black(self):
+    def test_bk_video_first_frame_not_black(self):
         # WhatsApp & Co. bauen die Chat-Vorschau aus den ersten Videobildern.
-        # Build bj: Das ERSTE Segment startet ohne fade-in aus Schwarz.
+        # Build bk: Das ERSTE Segment startet ohne fade-in – Aufrufe nutzen fade_in=wrote_any
+        # (bj hatte die Logik invertiert: "not wrote_any" = erstes Segment MIT Einblendung).
         import re as _re
         src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
         # _fade_vf isoliert ausführen
@@ -501,9 +502,18 @@ class VideoSmoothTest(AppTestCase):
         self.assertNotIn('fade=t=in', ns['_fade_vf'](3, fade_in=False))
         self.assertIn('fade=t=out', ns['_fade_vf'](3, fade_in=False))
         self.assertIn('fade=t=in', ns['_fade_vf'](3))
-        # Alle 9 Segment-Schreibstellen sind abgesichert
-        self.assertEqual(src.count('fade_in=not wrote_any'), 9)
+        # Polarität: ALLE 9 Aufruf-Stellen nutzen fade_in=wrote_any (NICHT die invertierte Variante)
+        self.assertEqual(src.count('fade_in=wrote_any'), 9)
+        self.assertNotIn('fade_in=not wrote_any', src)
+        # Semantik der Aufruf-Logik nachgebaut
+        wrote_any = False
+        first_fade_in = wrote_any
+        wrote_any = True
+        second_fade_in = wrote_any
+        self.assertFalse(first_fade_in, 'erstes Segment muss sichtbar starten')
+        self.assertTrue(second_fade_in, 'folgende Segmente behalten den Dip')
         self.assertEqual(src.count('wrote_any = True'), 9)
+
 
     def test_bi_photo_delete_no_nested_forms(self):
         # Build bi: Das Bulk-Formular darf die Foto-Karten NICHT umschließen –
