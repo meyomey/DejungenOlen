@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bi')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-28 bj')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,23 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_bj_video_first_frame_not_black(self):
+        # WhatsApp & Co. bauen die Chat-Vorschau aus den ersten Videobildern.
+        # Build bj: Das ERSTE Segment startet ohne fade-in aus Schwarz.
+        import re as _re
+        src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        # _fade_vf isoliert ausführen
+        m = _re.search(r"def _fade_vf\(duration, fade_in=True\):\n(?:\s+.*\n)+?\s+return .+\.join\(parts\)", src)
+        self.assertIsNotNone(m, '_fade_vf hat keinen fade_in-Parameter')
+        ns = {'FADE_IN': 0.25, 'FADE_OUT': 0.35}
+        exec(m.group(0).replace('        def', 'def'), ns)
+        self.assertNotIn('fade=t=in', ns['_fade_vf'](3, fade_in=False))
+        self.assertIn('fade=t=out', ns['_fade_vf'](3, fade_in=False))
+        self.assertIn('fade=t=in', ns['_fade_vf'](3))
+        # Alle 9 Segment-Schreibstellen sind abgesichert
+        self.assertEqual(src.count('fade_in=not wrote_any'), 9)
+        self.assertEqual(src.count('wrote_any = True'), 9)
 
     def test_bi_photo_delete_no_nested_forms(self):
         # Build bi: Das Bulk-Formular darf die Foto-Karten NICHT umschließen –

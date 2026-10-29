@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-28 (Build bj) – WhatsApp-Vorschau: Startbild statt Schwarz
+
+- **Fehler:** Beim Teilen des Videos (z. B. in WhatsApp) zeigte die Chat-Vorschau nur ein schwarzes Bild. Ursache: Das Video blendete mit der allerersten Einstellung aus Schwarz ein – WhatsApp baut die Vorschau aber aus den ersten Videobildern, und Bild 1 war schwarz.
+- **Fix:** Das **erste Segment** (Titelfolie) startet jetzt **ohne Schwarz-Einblendung** – Bild 1 zeigt sofort das Titelbild. Alle übergänge zwischen den Folien (dip to black) und das Ausblenden am Ende bleiben unverändert. Die Regel greift robust an allen 9 Segment-Stellen (Titel, Karte, Einkehr, Statistik, Fotos inkl. Fallback, Höhenprofil, Outro): welches Segment auch immer zuerst kommt, es startet sichtbar.
+- 215 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-28 (Build bi) – Fotolöschen repariert (Papierkorb tat nichts)
 
 - **Fehler:** Auf der Tour-Seite löschte der Papierkorb-Knopf (🗑) am Foto nichts – ebenso das GPS-✕. Ursache: Das Sammel-Löschen-Formular („Löschen (n)“) umschloss das gesamte Foto-Raster; die Einzel-Formulare steckten dadurch **verschachtelt** darin. HTML erlaubt das nicht – der Browser verwirft die inneren Formulare stillschweigend, die Knöpfe hingen in keinem Formular mehr.
