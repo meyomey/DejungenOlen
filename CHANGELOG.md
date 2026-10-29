@@ -2,6 +2,10 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-29 (Build a) – Nur Build-Datum korrigiert
+
+- Die Deploy-Builds bc–bk trugen noch das Datum des Vortags (2026-10-28) – die Session lief über Mitternacht. `APP_BUILD` jetzt auf **2026-10-29 a**, Fußzeile entsprechend. Keine Funktionsänderung.
+
 ## 1.4.0 – 2026-10-28 (Build bk) – Video-Startbild: Logik-Invertierung aus bj korrigiert
 
 - **Build bj war wirkungslos** (sorry!): Die Aufruf-Stellen übergaben `fade_in=not wrote_any` – für das erste Segment ergab das **doch** `fade_in=True`, also weiterhin Einblendung aus Schwarz. Der bj-Test prüfte nur die Filterfunktion, nicht die Aufruf-Polarität.
