@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build o) – „Fahrt läuft“/„Fahren“ auf der Tourseite aktualisiert sich selbst
+
+- **Kein Widerspruch mehr nach dem Fahr-Ende:** Blieb die Tourseite offen, zeigte sie weiter „Fahrt läuft“, während die Live-Karte längst „Fahrt starten“ zeigte – die Tourseite musste neu geladen werden. Jetzt schaltet das 30-Sekunden-Polling (wie beim roten Navbar-Punkt) den Knopf selbst um.
+- **Technik:** Beide Zustände werden serverseitig gerendert (einer versteckt), der Hook `djoLiveNowUpdate` blendet beim Poll alle 30 s den passenden ein – inklusive frischer Zahlen im Tooltip.
+- 227 Tests, py_compile OK.
+
+
 ## 1.4.0 – 2026-11-04 (Build n) – Fix: „Fahrt beenden“ wirklich nicht mehr abgeschnitten
 
 - **Build m war wirkungslos (CSS-Spezifität):** Die Zweizeilig-Regel `#btn-share { white-space: normal }` verlor gegen `#live-bar .btn { white-space: nowrap }` (ID + Klasse schlägt bloße ID) – der Knopf blieb abgeschnitten. Der Selektor heißt jetzt `#live-bar #btn-share` und gewinnt.

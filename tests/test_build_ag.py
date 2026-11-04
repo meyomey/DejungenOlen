@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 n')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 o')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -513,7 +513,9 @@ class VideoSmoothTest(AppTestCase):
         # 3) Tour-Seite: „Fahren“ deaktiviert als „Fahrt läuft“, KEIN zweiter roter Badge
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
         self.assertIn('<span class="lbl">Fahrt läuft</span>', det)
-        self.assertIn('disabled\n            title="Auf dieser Tour läuft gerade eine Fahrt', det)
+        self.assertIn('id="fahren-running"', det)                        # Build o: laufende Fahrt sichtbar
+        self.assertNotIn('id="fahren-running" class="d-none"', det)      # … und nicht versteckt
+        self.assertIn('title="Auf dieser Tour läuft gerade eine Fahrt', det)
         self.assertNotIn('🔴 {{', det)
         self.assertNotIn('>🔴 ', det)
         self.assertNotIn('href="{{ url_for(\'tour_live\', tour_id=tour.id) }}" class="btn btn-sm btn-danger"', det)
@@ -522,7 +524,21 @@ class VideoSmoothTest(AppTestCase):
         db.session.commit()
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
         self.assertIn('<span class="lbl">Fahren</span>', det)
-        self.assertNotIn('<span class="lbl">Fahrt läuft</span>', det)
+        self.assertIn('id="fahren-running" class="d-none"', det)     # Build o: Variante verborgen statt entfernt
+
+    def test_o_fahren_button_updates_itself(self):
+        # Build o (2026-11-04): „Fahren“/„Fahrt läuft“ auf der Tourseite hält sich selbst
+        # aktuell – base.html pollt /api/live/now und ruft den Hook djoLiveNowUpdate, der
+        # zwischen den beiden serverseitig gerenderten Varianten (eine d-none) umschaltet.
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertIn('if (window.djoLiveNowUpdate)', base)
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertIn('id="fahren-host"', det)
+        self.assertIn('id="fahren-running"', det)
+        self.assertIn('id="fahren-normal"', det)
+        self.assertIn('window.djoLiveNowUpdate = function (lv)', det)
+        self.assertIn("run.classList.toggle('d-none', !active)", det)
+        self.assertIn("nor.classList.toggle('d-none', active)", det)
 
     def test_i_stop_button_clearly_named(self):
         # Build i (2026-11-04): Der Stopp-Knopf auf der Live-Karte heißt klar „⏹ Fahrt beenden“

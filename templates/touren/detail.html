@@ -102,18 +102,24 @@
     {# Build b/h: Direkt zur Fahrt – läuft hier schon eine Fahrt, ist „Fahren“ deaktiviert
        (der zentrale rote Punkt in der Navbar ist DIE eine Live-Anzeige) #}
     {% if tour.status == 'planned' %}
-    {% if live_now and live_now.tour_id == tour.id %}
-    <button type="button" class="btn btn-sm btn-danger" disabled
-            title="Auf dieser Tour läuft gerade eine Fahrt ({{ live_now.n }} unterwegs{% if live_now.recording %} · Aufzeichnung läuft{% endif %}) – der rote Punkt oben führt zur Live-Karte">
-      <i class="bi bi-record-circle me-1"></i><span class="lbl">Fahrt läuft</span>
-    </button>
-    {% else %}
-    <a href="{{ url_for('tour_live', tour_id=tour.id) }}?share=1"
-       class="btn btn-sm {% if live_can_share %}btn-success{% else %}btn-outline-secondary{% endif %}"
-       {% if not live_can_share %}title="{{ live_share_hint }}"{% endif %}>
-      <i class="bi bi-record-circle me-1"></i><span class="lbl">Fahren</span>
-    </a>
-    {% endif %}
+    {# Build o: Beide Zustände sind gerendert (einer verborgen); das Polling aus base.html
+       (alle 30 s) schaltet per Hook um – „Fahrt läuft“/„Fahren“ passt sich selbst an,
+       ohne dass man die Tourseite neu laden muss. #}
+    <span id="fahren-host">
+      <span id="fahren-running" {% if not (live_now and live_now.tour_id == tour.id) %}class="d-none"{% endif %}>
+        <button type="button" class="btn btn-sm btn-danger" disabled
+                title="Auf dieser Tour läuft gerade eine Fahrt ({{ live_now.n if live_now else 0 }} unterwegs{% if live_now and live_now.recording %} · Aufzeichnung läuft{% endif %}) – der rote Punkt oben führt zur Live-Karte">
+          <i class="bi bi-record-circle me-1"></i><span class="lbl">Fahrt läuft</span>
+        </button>
+      </span>
+      <span id="fahren-normal" {% if live_now and live_now.tour_id == tour.id %}class="d-none"{% endif %}>
+        <a href="{{ url_for('tour_live', tour_id=tour.id) }}?share=1"
+           class="btn btn-sm {% if live_can_share %}btn-success{% else %}btn-outline-secondary{% endif %}"
+           {% if not live_can_share %}title="{{ live_share_hint }}"{% endif %}>
+          <i class="bi bi-record-circle me-1"></i><span class="lbl">Fahren</span>
+        </a>
+      </span>
+    </span>
     {% endif %}
     <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-read-aloud"
             onclick="toggleReadAloud()" aria-label="Tourdetails vorlesen">
@@ -1527,6 +1533,23 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+// Build o (2026-11-04): „Fahren“/„Fahrt läuft“ aktualisiert sich selbst – base.html pollt
+// /api/live/now alle 30 s und ruft diesen Hook; die Tourseite muss dafür nicht neu geladen werden.
+window.djoLiveNowUpdate = function (lv) {
+  const run = document.getElementById('fahren-running');
+  const nor = document.getElementById('fahren-normal');
+  if (!run || !nor) return;
+  const active = !!(lv && lv.tour_id === {{ tour.id }});
+  run.classList.toggle('d-none', !active);
+  nor.classList.toggle('d-none', active);
+  if (active && lv) {
+    const b = run.querySelector('button');
+    if (b) b.title = 'Auf dieser Tour läuft gerade eine Fahrt (' + lv.n + ' unterwegs' +
+                      (lv.recording ? ' · Aufzeichnung läuft' : '') + ') – der rote Punkt oben führt zur Live-Karte';
+  }
+};
+</script>
 <script src="{{ url_for('static', filename='js/osm_gastro.js') }}?v={{ app_build|urlencode }}"></script>
 <script>
 // ── Reply toggle ─────────────────────────────────────────────────────────────

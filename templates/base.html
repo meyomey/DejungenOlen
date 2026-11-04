@@ -522,6 +522,7 @@ updateDarkUI();
   // Build h: Navbar-Live-Punkt live halten – erscheint/verschwindet OHNE Seitenwechsel
   const badgeHost = document.getElementById('live-now-host');
   function applyLive(lv) {
+    if (window.djoLiveNowUpdate) { try { window.djoLiveNowUpdate(lv); } catch (e) {} }   // Build o: Tourseite schaltet „Fahren“/„Fahrt läuft“ selbst um
     if (!badgeHost) return;
     if (!lv) { badgeHost.innerHTML = ''; return; }
     badgeHost.innerHTML =
