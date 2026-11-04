@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 p')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 q')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -525,6 +525,31 @@ class VideoSmoothTest(AppTestCase):
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
         self.assertIn('<span class="lbl">Fahren</span>', det)
         self.assertIn('id="fahren-running" class="d-none"', det)     # Build o: Variante verborgen statt entfernt
+
+    def test_q_rec_hint_after_stop(self):
+        # Build q (2026-11-04): Nach „⏹ Fahrt beenden“ erscheint direkt eine deutliche
+        # Rückfrage zur Aufzeichnung – sonst wird das Sichern vergessen. Tourleitung:
+        # „✓ Als GPX übernehmen“ (linkt auf #live-aufzeichnung); Mitglieder:
+        # „⬇ GPX speichern“ (eigene Aufzeichnung herunterladen). Fehlerpfade (403,
+        # GPS verweigert) fragen nicht – da kam keine Fahrt zustande.
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('id="rec-hint"', live)
+        self.assertIn('function showRecHint()', live)
+        self.assertIn('function hideRecHint()', live)
+        self.assertIn('function stopShare(viaBeacon, withHint)', live)
+        self.assertIn('if (withHint) { showRecHint(); }', live)
+        self.assertEqual(live.count('stopShare(false, false)'), 2)   # 403 + GPS verweigert
+        self.assertIn('hideRecHint();', live)                        # Start räumt alte Rückfrage weg
+        self.assertIn('const CAN_TAKEOVER = ', live)
+        # dynamisch: Tourleitung sieht Übernahme, Mitglied den Download
+        self.login_org()
+        orga = self.client.get(f'/touren/{self.t_plan_id}/live').get_data(as_text=True)
+        self.assertIn('⏹ Fahrt beendet – was passiert jetzt mit der Aufzeichnung?', orga)
+        self.assertIn('✓ Als GPX übernehmen</a>', orga)
+        self.login_member()
+        mem = self.client.get(f'/touren/{self.t_plan_id}/live').get_data(as_text=True)
+        self.assertIn('⬇ GPX speichern</a>', mem)
+        self.assertNotIn('✓ Als GPX übernehmen</a>', mem)
 
     def test_p_audit_group_scope_and_overflow(self):
         # Build p / Audit 6 (2026-11-04): Zwei Befunde behoben –

@@ -1,3 +1,13 @@
+# Changelog – De jungen Olen
+
+Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
+
+## 1.4.0 – 2026-11-04 (Build q) – Nach dem Beenden direkt nach der Aufzeichnung fragen
+
+- **Kein Vergessen mehr:** Nach „⏹ Fahrt beenden“ erscheint sofort eine deutliche gelbe Rückfrage „Was passiert jetzt mit der Aufzeichnung?“ – mit Knöpfen direkt auf der Live-Karte (und sanftem Scrollen dorthin). Tourleitung/Orga: „✓ Als GPX übernehmen“ (springt zur Übernahme auf der Tourseite); Mitglieder: „⬇ GPX speichern“ (lädt die eigene Aufzeichnung als GPX-Datei) plus Hinweis auf die Tourleitung. „Später“ blendet die Rückfrage weg.
+- **Rollen-passend:** Auch der Text in der Status-Leiste passt sich jetzt der Rolle an (Übernehmen vs. GPX speichern). Fehlerfälle ohne Fahrt (Zeitfenster abgelaufen, GPS verweigert) zeigen die Rückfrage nicht.
+- 229 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-04 (Build p) – Audit 6: Live-Status gruppenscharf, 500er-Fix, Doku
 
 - **Audit 6** (Komplett-Audit über die 34 Commits seit Audit 5): Zwei selbst gefundene Befunde behoben –
@@ -7,10 +17,6 @@
 - **Doku:** README + Hilfe beschreiben jetzt Fahrmodus, Auto-Pause, Blitzstart `/fahren` und den
   app-weiten „Fahrt läuft“-Zustand; die veraltete Aussage „endet beim Schließen der Seite“ ist korrigiert.
 - 228 Tests, py_compile OK. Vollständiger Bericht: `docs/AUDIT_BERICHT.md` (Audit 6).
-
-# Changelog – De jungen Olen
-
-Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
 ## 1.4.0 – 2026-11-04 (Build o) – „Fahrt läuft“/„Fahren“ auf der Tourseite aktualisiert sich selbst
 

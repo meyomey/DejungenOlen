@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-04 p'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-04 q'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5222,7 +5222,7 @@ def tour_live(tour_id):
                            einkehr_json=_json_for_script(einkehr), me_json=_json_for_script(me),
                            locations_json=_json_for_script(_live_locations_payload(tour.id)),
                            trails_json=_json_for_script(_live_trails_payload(tour.id)),   # Build af
-                           can_share=can_share, share_hint=share_hint,
+                           can_share=can_share, share_hint=share_hint, can_takeover=_can_manage_tour(tour),
                            stale_s=LIVE_STALE_S, fresh_s=LIVE_FRESH_S, keep_days=LIVE_TRACK_KEEP_DAYS)
 
 

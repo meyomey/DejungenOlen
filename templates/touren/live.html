@@ -100,6 +100,22 @@
 {% endif %}
 <div id="live-status" class="mb-2">Du schaust nur zu – Standorte werden alle 15 Sekunden aktualisiert.</div>
 
+{# Build q (2026-11-04): Nach dem Beenden direkt an die Aufzeichnung erinnern – sonst wird das
+   Sichern leicht vergessen. Tourleitung: Übernahme als GPX-Track; Mitglieder: eigener GPX-Download. #}
+<div id="rec-hint" class="alert alert-warning py-2 px-3 mb-2 d-none" role="alert">
+  <div class="fw-semibold">⏹ Fahrt beendet – was passiert jetzt mit der Aufzeichnung?</div>
+  <div class="small mt-1">Dein Weg ist gespeichert, wird aber nach {{ keep_days }} Tagen automatisch gelöscht.
+    {% if can_takeover %}Übernimm ihn am besten jetzt als GPX-Track der Tour – dann bleibt er dauerhaft erhalten.{% else %}Sichere ihn dir als GPX-Datei oder sprich deine Tourleitung an, ihn als Track der Tour zu übernehmen.{% endif %}</div>
+  <div class="d-flex gap-2 flex-wrap mt-2">
+    {% if can_takeover %}
+    <a class="btn btn-sm btn-success" href="{{ url_for('tour_detail', tour_id=tour.id) }}#live-aufzeichnung">✓ Als GPX übernehmen</a>
+    {% else %}
+    <a class="btn btn-sm btn-success" href="{{ url_for('tour_live_recording_download', tour_id=tour.id, user_id=current_user.id) }}">⬇ GPX speichern</a>
+    {% endif %}
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideRecHint()">Später</button>
+  </div>
+</div>
+
 <div class="row g-3">
   <div class="col-12 col-lg-8">
     <div id="live-wrap">
@@ -148,6 +164,8 @@ const MEETING   = {{ meeting_json|safe }};
 const EINKEHR   = {{ einkehr_json|safe }};
 const ME        = {{ me_json|safe }};
 const CAN_SHARE = {{ 'true' if can_share else 'false' }};
+const DL_URL = {{ url_for('tour_live_recording_download', tour_id=tour.id, user_id=current_user.id)|tojson }};   // Build q: eigene Aufzeichnung als GPX
+const CAN_TAKEOVER = {{ 'true' if can_takeover else 'false' }};   // Build q: darf dieser Nutzer als GPX-Track übernehmen?
 const FRESH_S   = {{ fresh_s }};
 const INITIAL   = {{ locations_json|safe }};
 const TRAILS    = {{ trails_json|safe }};        // Build af: {user_id: [[lat, lng, ts], …]} – Aufzeichnung der letzten 12 h
@@ -358,6 +376,7 @@ function startShare() {
   if (!CAN_SHARE) return;
   if (!navigator.geolocation) { setStatus('Dieses Gerät oder dieser Browser kann keinen Standort ermitteln.', 'danger'); return; }
   sharing = true; lastSent = 0; sentCount = 0;
+  hideRecHint();   // Build q: alte Übernahme-Rückfrage weg, wenn wieder gestartet wird
   // Build g: Fahrt über Seitenwechsel hinweg merken – Startzeit behalten, wenn man zurückkommt
   const _prev = window.djoFahren && djoFahren.state();
   shareStart = (_prev && _prev.tour_id === TOUR_ID) ? _prev.started : Date.now();
@@ -368,7 +387,18 @@ function startShare() {
   ensureWatch();
   requestWakeLock();
 }
-function stopShare(viaBeacon) {
+function showRecHint() {   // Build q: Rückfrage deutlichsichtbar machen
+  const el = document.getElementById('rec-hint');
+  if (!el) return;
+  el.classList.remove('d-none');
+  try { el.scrollIntoView({behavior: 'smooth', block: 'center'}); } catch (e) { el.scrollIntoView(); }
+}
+function hideRecHint() {
+  const el = document.getElementById('rec-hint');
+  if (el) el.classList.add('d-none');
+}
+function stopShare(viaBeacon, withHint) {
+  if (withHint === undefined) { withHint = true; }   // Build q: nach normalem Beenden erinnern, nach Fehlern nicht
   const was = sharing;
   sharing = false;
   updateShareBtn();
@@ -379,8 +409,13 @@ function stopShare(viaBeacon) {
     fetch(url, {method: 'POST', keepalive: true}).catch(() => {});
     if (window.djoFahren) djoFahren.clear();          // Build g: Flagge weg → Seitenwechsel-Tracker aus
     if (markers[ME.id]) { map.removeLayer(markers[ME.id]); delete markers[ME.id]; }
-    // Build l: GPX-Übernahme im Beenden-Text ist jetzt ein Link → Aufzeichnungs-Bereich der Tourseite
-    setStatus('⏹ Fahrt beendet – du schaust nur noch zu. Die Aufzeichnung kannst du auf der Tourseite mit <a href="/touren/' + TOUR_ID + '#live-aufzeichnung">Als GPX übernehmen</a> sichern.', '', true);
+    // Build q: Rollen-passender Text – Tourleitung (Übernehmen) vs. Mitglieder (GPX speichern)
+    let _msg = '⏹ Fahrt beendet – du schaust nur noch zu. Die Aufzeichnung kannst du auf der Tourseite mit <a href="/touren/' + TOUR_ID + '#live-aufzeichnung">Als GPX übernehmen</a> sichern.';
+    if (!CAN_TAKEOVER) {
+      _msg = '⏹ Fahrt beendet – du schaust nur noch zu. Deine Aufzeichnung ist gespeichert (<a href="' + DL_URL + '">GPX speichern</a>, {{ keep_days }} Tage) – <a href="/touren/' + TOUR_ID + '#live-aufzeichnung">Tourseite</a>.';
+    }
+    setStatus(_msg, '', true);
+    if (withHint) { showRecHint(); }   // Build q: deutliche Rückfrage – Übernahme nicht vergessen
   }
 }
 function updateShareBtn() {
@@ -463,7 +498,7 @@ function onPos(pos) {
                           since: trailSince || 0})
   }).then(async r => {
     const d = await r.json().catch(() => ({}));
-    if (r.status === 403) { stopShare(false); setStatus(d.error || 'Fahren ist für diese Tour gerade nicht möglich.', 'warning'); return; }
+    if (r.status === 403) { stopShare(false, false); setStatus(d.error || 'Fahren ist für diese Tour gerade nicht möglich.', 'warning'); return; }
     if (!r.ok) { setStatus('Server meldet HTTP ' + r.status + ' – wird weiter versucht.', 'warning'); return; }
     sentCount++;
     if (d.locations) render(d.locations);
@@ -485,7 +520,7 @@ function onGeoErr(err) {
             : err.code === 2 ? 'Standort gerade nicht verfügbar (kein GPS-Empfang?).'
             : 'Standortabfrage dauert zu lange – wird weiter versucht.';
   setStatus(msg, err.code === 1 ? 'danger' : 'warning');
-  if (err.code === 1) { stopShare(false); following = false; updateFollowBtn(); maybeStopWatch(); }
+  if (err.code === 1) { stopShare(false, false); following = false; updateFollowBtn(); maybeStopWatch(); }
 }
 // Build g: Kein Stop mehr beim Seitenwechsel – die Fahrt läuft app-weit weiter
 // (roter „Fahrt läuft“-Punkt unten rechts) und wird über den Knopf beendet.
