@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 j')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 k')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -534,6 +534,17 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('„⏹ Fahrt beenden“', live)                       # Hinweise-Block nennt den Knopf beim Namen
         self.assertIn('Als GPX übernehmen', live)                      # Status nach dem Beenden verrät das Sichern
         self.assertIn('#btn-share { flex: 2.2 1 0; }', live)           # Knopf breit genug für das ganze Wort
+
+    def test_k_photo_status_links_to_photos(self):
+        # Build k (2026-11-04): Nach „Foto gespeichert“ ist „Zur Tour → Fotos“ ein echter
+        # Link, der direkt zum Fotos-Bereich der Tourseite springt (#fotos).
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('function setStatus(text, cls, asHtml)', live)
+        self.assertIn('''. <a href="/touren/' + TOUR_ID + '#fotos">Zur Tour → Fotos</a>''', live)
+        self.assertIn(", 'sharing', true)", live)                      # Foto-Meldung als HTML gerendert
+        self.assertIn('#fotos">Zur Tour → Fotos</a>', live)            # auch im Hinweise-Block verlinkt
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertIn('id="fotos"', det)                               # Anker existiert auf der Tourseite
 
     def test_j_ride_terms_unified(self):
         # Build j (2026-11-04): Einheitliche Begriffe – „Fahren“ (Tourseite/Navigation) und der

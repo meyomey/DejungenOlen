@@ -86,7 +86,7 @@
       als GPX-Track der Tour übernehmen – Fotos ohne Standort landen dann anhand ihrer Aufnahmezeit auf der Strecke.
       Aufzeichnungen werden nach {{ keep_days }} Tagen automatisch gelöscht; auf der Tourseite kannst du deine jederzeit löschen.</div>
     <div><strong>📷 Foto:</strong> Nimmt ein Foto auf und lädt es sofort mit deinem aktuellen Standort zur Tour hoch
-      („Zur Tour“ → Fotos).</div>
+      (<a href="{{ url_for('tour_detail', tour_id=tour.id) }}#fotos">Zur Tour → Fotos</a>).</div>
   </div>
 </details>
 
@@ -225,9 +225,9 @@ function pinIcon(loc, isMe) {
     iconSize: [36, 36], iconAnchor: [18, 18], tooltipAnchor: [0, -18], popupAnchor: [0, -18], className: ''
   });
 }
-function setStatus(text, cls) {
+function setStatus(text, cls, asHtml) {
   const el = document.getElementById('live-status');
-  el.textContent = text;
+  if (asHtml) { el.innerHTML = text; } else { el.textContent = text; }   // Build k: html nur für eigene Link-Meldungen
   el.className = 'mb-2 ' + (cls === 'danger' ? 'danger' : cls === 'warning' ? 'warning' : cls === 'sharing' ? 'sharing' : '');
 }
 
@@ -518,7 +518,8 @@ function livePhoto(input) {
       .then(async r => {
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.ok || !d.count) { setStatus('Foto konnte nicht gespeichert werden' + (r.ok ? ' (Dateityp? Duplikat?)' : ' – HTTP ' + r.status) + '.', 'warning'); return; }
-        setStatus('📷 Foto gespeichert' + (lat != null ? ' – mit deinem Standort' + (acc ? ' (±' + Math.round(acc) + ' m)' : '') : ' – ohne Standort (per ✏️ auf der Tourseite setzbar)') + '. Zu sehen unter „Zur Tour“ → Fotos.', 'sharing');
+        // Build k: „Zur Tour → Fotos“ direkt klickbar – springt zum Fotos-Bereich der Tourseite
+        setStatus('📷 Foto gespeichert' + (lat != null ? ' – mit deinem Standort' + (acc ? ' (±' + Math.round(acc) + ' m)' : '') : ' – ohne Standort (per ✏️ auf der Tourseite setzbar)') + '. <a href="/touren/' + TOUR_ID + '#fotos">Zur Tour → Fotos</a>', 'sharing', true);
       })
       .catch(() => setStatus('Keine Verbindung – Foto bitte später über die Tourseite hochladen.', 'warning'))
       .finally(() => { photoBusy = false; btn.disabled = false; btn.textContent = '📷 Foto'; });

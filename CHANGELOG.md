@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build k) – Foto-Meldung mit direktem Fotos-Link
+
+- **„Zur Tour → Fotos“ ist klickbar:** Nach „📷 Foto gespeichert …“ verlinkt die Status-Leiste jetzt direkt zum Fotos-Bereich der Tourseite (#fotos) – kein Umweg mehr über „Zur Tour“ und Scrollen. Der gleiche Link steht auch im ℹ️-Hinweis „Foto“.
+- 224 Tests, py_compile OK.
+
+
 ## 1.4.0 – 2026-11-04 (Build j) – Einheitliche Begriffe: „Fahrt starten“ statt „Standort teilen“
 
 - **Ein Knopf, ein Begriff:** „Fahren“ (Tourseite/Navigation) und der grüne Live-Knopf sind dasselbe – er heißt jetzt **„▶ Fahrt starten“** (statt „📍 Standort teilen“) und passt damit zum roten **„⏹ Fahrt beenden“**. Der Tooltip erklärt: Dabei wird der Standort für alle geteilt und der Weg aufgezeichnet.
