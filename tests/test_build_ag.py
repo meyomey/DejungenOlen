@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-10-29 a')
+        self.assertEqual(appmod.APP_BUILD, '2026-10-29 b')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,48 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_b_ride_pause_and_fahren_start(self):
+        # Build b: Fahrt starten ab der Tourseite, Auto-/Manuell-Pause stoppt die Aufzeichnung,
+        # Standort bleibt für die anderen sichtbar.
+        self.login_org()
+        t_today = M.Tour(title='Heute-Tour', tour_date=dt.date.today(), status='planned',
+                         created_by=self.org_id)
+        db.session.add(t_today)
+        db.session.commit()
+        # 1) Tourseite: grüner „Fahren“-Knopf mit Deep-Link zur Live-Karte (Auto-Start)
+        html = self.client.get(f'/touren/{t_today.id}').get_data(as_text=True)
+        self.assertIn('<span class="lbl">Fahren</span>', html)
+        self.assertIn('?share=1', html)
+        # 2) Positions-Update ohne paused → Aufzeichnungspunkt
+        pos = {'tour_id': t_today.id, 'lat': 53.10, 'lng': 9.20, 'accuracy': 10}
+        d = self.client.post('/api/location/update', json=pos).get_json()
+        self.assertTrue(d['ok'])
+        self.assertTrue(d['recorded'])
+        # 3) mit paused → LiveLocation bleibt aktualisiert, aber KEIN neuer Spurpunkt
+        pt = M.LiveTrackPoint.query.filter_by(tour_id=t_today.id).order_by(M.LiveTrackPoint.id.desc()).first()
+        pt.recorded_at = pt.recorded_at - dt.timedelta(seconds=10)
+        db.session.commit()
+        d = self.client.post('/api/location/update', json={**pos, 'lat': 53.1001, 'paused': True}).get_json()
+        self.assertFalse(d['recorded'])
+        self.assertEqual(M.LiveTrackPoint.query.filter_by(tour_id=t_today.id).count(), 1)
+        self.assertIsNotNone(M.LiveLocation.query.filter_by(tour_id=t_today.id).first())
+        # 4) paused wieder weg → Aufzeichnung läuft weiter (Auto-Fortsetzung)
+        pt = M.LiveTrackPoint.query.filter_by(tour_id=t_today.id).order_by(M.LiveTrackPoint.id.desc()).first()
+        pt.recorded_at = pt.recorded_at - dt.timedelta(seconds=10)
+        db.session.commit()
+        d = self.client.post('/api/location/update', json={**pos, 'lat': 53.1002}).get_json()
+        self.assertTrue(d['recorded'])
+        # 5) Live-Seite: Pause-Knopf, Auto-Pause-Logik, Auto-Start-Parameter
+        live_src = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('id="btn-pause"', live_src)
+        self.assertIn('togglePause', live_src)
+        self.assertIn('PAUSE_AFTER_S', live_src)
+        self.assertIn("paused: isPaused()", live_src)
+        self.assertIn("get('share')", live_src)
+        # 6) Server-Verzweigung vorhanden
+        app_src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('False if paused else _live_track_add', app_src)
 
     def test_bk_video_first_frame_not_black(self):
         # WhatsApp & Co. bauen die Chat-Vorschau aus den ersten Videobildern.

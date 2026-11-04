@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-10-29 a'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-10-29 b'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2290,6 +2290,8 @@ def tour_detail(tour_id):
                            timed_source=timed_source, gpx_span=gpx_span,
                            live_recs=live_recs,                          # Build af
                            live_rec_mine=any(d['user_id'] == current_user.id for d in live_recs),
+                           live_can_share=_live_share_window(tour)[0],      # Build b: Fahren-Knopf
+                           live_share_hint=_live_share_window(tour)[1],
                            keep_days=LIVE_TRACK_KEEP_DAYS,
                            today=date.today())
 
@@ -5183,6 +5185,7 @@ def location_update():
         return f if lo <= f <= hi and f == f else None
     speed   = _opt_float(data.get('speed'), 0, 60)        # m/s
     heading = _opt_float(data.get('heading'), 0, 360)     # Grad
+    paused  = bool(data.get('paused'))                    # Build b: Pause (Aufzeichnung aus, Karte an)
     tour = _tour_or_404(tour_id)
     ok, hint = _live_share_window(tour)
     if not ok:
@@ -5196,7 +5199,9 @@ def location_update():
     else:
         db.session.add(LiveLocation(tour_id=tour_id, user_id=current_user.id, lat=lat, lng=lng,
                                     accuracy=accuracy, speed=speed, heading=heading, updated_at=now))
-    recorded = _live_track_add(tour_id, current_user.id, lat, lng, accuracy, now)   # Build af: Aufzeichnung
+    # Build af/b: Aufzeichnung – in der Pause (manuell oder automatisch erkannt) keine
+    # Spurpunkte, aber der Standort bleibt für die anderen auf der Live-Karte sichtbar.
+    recorded = False if paused else _live_track_add(tour_id, current_user.id, lat, lng, accuracy, now)
     import random
     if random.random() < 0.05:
         _live_cleanup(now)

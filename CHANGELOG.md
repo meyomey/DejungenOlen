@@ -2,6 +2,17 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-10-29 (Build b) – Fahren-Modus: Direktstart + Pause (auto & manuell)
+
+Gemeinsam fahren, von der Tourseite aus:
+
+- **🚴 „Fahren“-Knopf** auf der Tour-Seite (Aktions-Reihe, bei geplanten Touren): öffnet die Live-Karte und startet **Standort teilen + Aufzeichnung automatisch** (Link `?share=1`).
+- **Auto-Pause:** Steht man ≈ 3 Minuten an derselben Stelle (Bewegung < 25 m – Einkehr, Pause, Schienenaufpassen), pausiert die Aufzeichnung automatisch und setzt beim Weiterfahren automatisch fort. Statuszeile zeigt „⏸ Pause erkannt …“ bzw. „▶ Weiter geht’s …“.
+- **Manueller Pause-Knopf** „⏸ Pause“ / „▶ Weiter“ neben „Standort teilen“ – überschreibt die Auto-Erkennung.
+- Wichtig: In der Pause bleibt der Standort für die anderen **sichtbar**, es werden nur keine Spurpunkte mehr gespeichert (der später übernommene GPX-Track enthält die Pause nicht).
+- Fotos unterwegs: weiterhin der „📷 Foto“-Knopf auf der Live-Karte (sofort mit Standort in der Tour).
+- 216 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-10-29 (Build a) – Nur Build-Datum korrigiert
 
 - Die Deploy-Builds bc–bk trugen noch das Datum des Vortags (2026-10-28) – die Session lief über Mitternacht. `APP_BUILD` jetzt auf **2026-10-29 a**, Fußzeile entsprechend. Keine Funktionsänderung.

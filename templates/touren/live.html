@@ -51,6 +51,8 @@
       <div id="live-bar">
         <button type="button" class="btn btn-success" id="btn-share" onclick="toggleShare()"
                 {% if not can_share %}disabled title="{{ share_hint }}"{% endif %}>📍 Standort teilen</button>
+        <button type="button" class="btn btn-warning d-none" id="btn-pause" onclick="togglePause()"
+                title="Aufzeichnung pausieren (z. B. Pause/Einkehr) – dein Standort bleibt für alle sichtbar">⏸ Pause</button>
         <button type="button" class="btn btn-light" id="btn-follow" onclick="toggleFollow()" title="Karte bleibt auf meiner Position zentriert">🎯 Karte folgt mir</button>
         <button type="button" class="btn btn-light" onclick="showAll()" title="Alle Mitfahrer und die Strecke einpassen">👥 Alle zeigen</button>
         <button type="button" class="btn btn-light" id="btn-photo" onclick="document.getElementById('live-cam').click()"
@@ -100,6 +102,28 @@ const TRAILS    = {{ trails_json|safe }};        // Build af: {user_id: [[lat, l
 const UPLOAD_URL = "{{ url_for('tour_upload_photos', tour_id=tour.id) }}";
 // Zustand (vor allen Funktionen deklariert – onclick-Handler sind global)
 let sharing = false, following = false, watchId = null, lastSent = 0, lastPos = null, shareStart = 0;
+// Build b: Pause – manuell (Knopf) oder automatisch (≈3 Min. kein Standortwechsel > 25 m).
+// In der Pause werden KEINE Spurpunkte mehr gespeichert; der Standort bleibt für die anderen sichtbar.
+let manualPause = false, autoPause = false, moveAnchor = null, moveAnchorAt = 0, pauseSince = 0;
+const PAUSE_DIST_M = 25, PAUSE_AFTER_S = 180;
+function isPaused() { return manualPause || autoPause; }
+function togglePause() {
+  if (!sharing) return;
+  manualPause = !manualPause;
+  if (!manualPause) autoPause = false;
+  moveAnchor = ownLatLng; moveAnchorAt = Date.now();
+  updatePauseBtn();
+  if (manualPause) setStatus('⏸ Aufzeichnung pausiert – dein Standort bleibt für alle sichtbar. Nochmal tippen setzt fort.', 'warning');
+  else setStatus('▶ Aufzeichnung läuft wieder.', 'sharing');
+}
+function updatePauseBtn() {
+  const b = document.getElementById('btn-pause');
+  if (!b) return;
+  b.classList.toggle('d-none', !sharing);
+  b.textContent = isPaused() ? '▶ Weiter' : '⏸ Pause';
+  b.classList.toggle('btn-warning', !isPaused());
+  b.classList.toggle('btn-success', isPaused());
+}
 let ownLatLng = null, ownMarker = null, accCircle = null, wakeLock = null, sentCount = 0;
 let lastOwnAt = 0, ownAcc = null;                 // Build af: für „📷 Foto“ (frische Position ohne neue Abfrage)
 
@@ -281,7 +305,8 @@ function startShare() {
   if (!CAN_SHARE) return;
   if (!navigator.geolocation) { setStatus('Dieses Gerät oder dieser Browser kann keinen Standort ermitteln.', 'danger'); return; }
   sharing = true; shareStart = Date.now(); lastSent = 0; sentCount = 0;
-  updateShareBtn();
+  manualPause = false; autoPause = false; moveAnchor = null; moveAnchorAt = 0;
+  updateShareBtn(); updatePauseBtn();
   setStatus('Standort wird ermittelt …', 'sharing');
   ensureWatch();
   requestWakeLock();
@@ -306,6 +331,7 @@ function updateShareBtn() {
   b.textContent = sharing ? '⏹ Teilen beenden' : '📍 Standort teilen';
   b.classList.toggle('btn-success', !sharing);
   b.classList.toggle('btn-danger', sharing);
+  updatePauseBtn();
 }
 function toggleFollow() {
   following = !following;
@@ -351,8 +377,22 @@ function onPos(pos) {
   if (following) map.panTo(ownLatLng, {animate: true});
   if (!sharing) return;
   if (Date.now() - shareStart > 8 * 3600 * 1000) { stopShare(false); setStatus('Teilen nach 8 Stunden automatisch beendet.'); return; }
-  // Drosselung: höchstens alle 10 s, und ohne Bewegung (< 15 m) nur alle 30 s
+  // Build b: Auto-Pause – Anker bleibt stehen, solange man sich kaum bewegt; nach PAUSE_AFTER_S
+  // ohne ≥ PAUSE_DIST_M Bewegung gilt die Fahrt als unterbrochen (Pause/Einkehr) → Aufzeichnung aus.
   const now = Date.now();
+  if (!moveAnchor) { moveAnchor = ownLatLng; moveAnchorAt = now; }
+  const dAnchor = map.distance(moveAnchor, ownLatLng);
+  if (dAnchor >= PAUSE_DIST_M) {
+    moveAnchor = ownLatLng; moveAnchorAt = now;
+    if (autoPause && !manualPause) {
+      autoPause = false; updatePauseBtn();
+      setStatus('▶ Weiter geht’s – Aufzeichnung läuft wieder.', 'sharing');
+    }
+  } else if (!manualPause && !autoPause && now - moveAnchorAt > PAUSE_AFTER_S * 1000) {
+    autoPause = true; pauseSince = moveAnchorAt; updatePauseBtn();
+    setStatus('⏸ Pause erkannt – Aufzeichnung pausiert (Standort bleibt sichtbar).', 'warning');
+  }
+  // Drosselung: höchstens alle 10 s, und ohne Bewegung (< 15 m) nur alle 30 s
   const moved = lastPos ? map.distance(lastPos, ownLatLng) : Infinity;
   if (now - lastSent < 10000 || (moved < 15 && now - lastSent < 30000)) return;
   lastSent = now; lastPos = ownLatLng;
@@ -361,6 +401,7 @@ function onPos(pos) {
     body: JSON.stringify({tour_id: TOUR_ID, lat: c.latitude, lng: c.longitude, accuracy: c.accuracy,
                           speed: (c.speed != null && !isNaN(c.speed)) ? c.speed : null,
                           heading: (c.heading != null && !isNaN(c.heading)) ? c.heading : null,
+                          paused: isPaused(),
                           since: trailSince || 0})
   }).then(async r => {
     const d = await r.json().catch(() => ({}));
@@ -369,9 +410,16 @@ function onPos(pos) {
     sentCount++;
     if (d.locations) render(d.locations);
     if (d.trails) addTrails(d.trails);
+    if (isPaused()) {
+      const p = new Date(pauseSince || shareStart);
+      setStatus('⏸ Pause seit ' + String(p.getHours()).padStart(2, '0') + ':' + String(p.getMinutes()).padStart(2, '0') +
+                ' Uhr – Aufzeichnung pausiert, Standort bleibt sichtbar.', 'warning');
+      return;
+    }
     const t = new Date(shareStart);
     setStatus('Du teilst deinen Standort seit ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') +
-              ' Uhr · zuletzt gesendet gerade eben' + (c.accuracy ? ' · Genauigkeit ±' + Math.round(c.accuracy) + ' m' : ''), 'sharing');
+              ' Uhr · zuletzt gesendet gerade eben' + (c.accuracy ? ' · Genauigkeit ±' + Math.round(c.accuracy) + ' m' : '') +
+              ' · Aufzeichnung läuft', 'sharing');
   }).catch(() => setStatus('Keine Verbindung – wird beim nächsten Signal erneut versucht.', 'warning'));
 }
 function onGeoErr(err) {
@@ -382,6 +430,11 @@ function onGeoErr(err) {
   if (err.code === 1) { stopShare(false); following = false; updateFollowBtn(); maybeStopWatch(); }
 }
 window.addEventListener('pagehide', () => { if (sharing) stopShare(true); });
+
+// Build b: Direktstart von der Tourseite („🚴 Fahren“) – Teilen + Aufzeichnung sofort starten
+try {
+  if (new URLSearchParams(location.search).get('share') === '1' && CAN_SHARE) startShare();
+} catch (e) { /* alter Browser: Knopf nutzen */ }
 
 // ── Build af (Option C): Foto unterwegs – Kamera, aktueller Standort, sofort hochladen ──────────
 let photoBusy = false;
