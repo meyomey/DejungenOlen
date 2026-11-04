@@ -78,7 +78,8 @@
     <div><strong>👀 Zuschauen &amp; Teilen:</strong> Jeder aus der Gruppe kann zuschauen. Wer „Standort teilen“ einschaltet,
       ist für alle als Punkt sichtbar – Standorte werden alle 15 Sekunden aktualisiert und nach {{ stale_s // 60 }} Minuten
       ohne Signal ausgeblendet. Gesendet wird höchstens alle 10 Sekunden, der Bildschirm bleibt an, solange die Seite offen ist.
-      Teilen endet beim Schließen der Seite, spätestens nach 8 Stunden.</div>
+      Die Fahrt läuft weiter, während du in der App andere Seiten anschaust (roter Punkt unten rechts), und endet
+      über den Knopf „Teilen beenden“ – spätestens nach 8 Stunden.</div>
     <div><strong>⏸ Pause:</strong> Der Pause-Knopf stoppt die Aufzeichnung (z. B. bei der Einkehr); nach rund 3 Minuten
       Stillstand pausiert sie automatisch, beim Weiterfahren geht es automatisch weiter. Dein Standort bleibt dabei für alle sichtbar.</div>
     <div><strong>📝 Aufzeichnung:</strong> Dein Weg wird als dünne Linie aufgezeichnet. Die Tourleitung kann die Aufzeichnung
@@ -351,7 +352,11 @@ function toggleShare() { if (sharing) stopShare(false); else startShare(); }
 function startShare() {
   if (!CAN_SHARE) return;
   if (!navigator.geolocation) { setStatus('Dieses Gerät oder dieser Browser kann keinen Standort ermitteln.', 'danger'); return; }
-  sharing = true; shareStart = Date.now(); lastSent = 0; sentCount = 0;
+  sharing = true; lastSent = 0; sentCount = 0;
+  // Build g: Fahrt über Seitenwechsel hinweg merken – Startzeit behalten, wenn man zurückkommt
+  const _prev = window.djoFahren && djoFahren.state();
+  shareStart = (_prev && _prev.tour_id === TOUR_ID) ? _prev.started : Date.now();
+  if (window.djoFahren) djoFahren.set({tour_id: TOUR_ID, started: shareStart});
   manualPause = false; autoPause = false; moveAnchor = null; moveAnchorAt = 0;
   updateShareBtn(); updatePauseBtn();
   setStatus('Standort wird ermittelt …', 'sharing');
@@ -366,8 +371,8 @@ function stopShare(viaBeacon) {
   if (!following) releaseWakeLock();
   if (was) {
     const url = '/api/location/stop?tour_id=' + TOUR_ID;
-    if (viaBeacon && navigator.sendBeacon) navigator.sendBeacon(url, '');
-    else fetch(url, {method: 'POST', keepalive: true}).catch(() => {});
+    fetch(url, {method: 'POST', keepalive: true}).catch(() => {});
+    if (window.djoFahren) djoFahren.clear();          // Build g: Flagge weg → Seitenwechsel-Tracker aus
     if (markers[ME.id]) { map.removeLayer(markers[ME.id]); delete markers[ME.id]; }
     setStatus('Du teilst deinen Standort nicht mehr – du schaust nur zu.');
   }
@@ -476,11 +481,14 @@ function onGeoErr(err) {
   setStatus(msg, err.code === 1 ? 'danger' : 'warning');
   if (err.code === 1) { stopShare(false); following = false; updateFollowBtn(); maybeStopWatch(); }
 }
-window.addEventListener('pagehide', () => { if (sharing) stopShare(true); });
+// Build g: Kein Stop mehr beim Seitenwechsel – die Fahrt läuft app-weit weiter
+// (roter „Fahrt läuft“-Punkt unten rechts) und wird über den Knopf beendet.
 
 // Build b: Direktstart von der Tourseite („🚴 Fahren“) – Teilen + Aufzeichnung sofort starten
 try {
-  if (new URLSearchParams(location.search).get('share') === '1' && CAN_SHARE) startShare();
+  const _fs = window.djoFahren && djoFahren.state();
+  if (CAN_SHARE && (new URLSearchParams(location.search).get('share') === '1'
+                    || (_fs && _fs.tour_id === TOUR_ID))) startShare();
 } catch (e) { /* alter Browser: Knopf nutzen */ }
 
 // ── Build af (Option C): Foto unterwegs – Kamera, aktueller Standort, sofort hochladen ──────────

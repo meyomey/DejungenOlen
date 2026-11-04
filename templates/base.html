@@ -452,6 +452,77 @@ function updateDarkUI() {
 }
 updateDarkUI();
 </script>
+{% if current_user.is_authenticated %}
+<script>
+/* Build g (2026-11-04): Fahrt läuft seitenübergreifend weiter – der Live-Track startet
+   (live.html, „Fahren“), und dieser kleine Helfer hält ihn auf ALLEN anderen Seiten am Leben:
+   weiter Senden (alle 30 s), roter „Fahrt läuft“-Punkt unten rechts mit Sprung zur Karte
+   und ✕ zum Beenden. Auf der Live-Seite selbst übernimmt sie die volle Steuerung. */
+(function () {
+  const KEY = 'djo_fahren';
+  function state() { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } }
+  window.djoFahren = {
+    state: state,
+    set:   s => localStorage.setItem(KEY, JSON.stringify(s)),
+    clear: () => localStorage.removeItem(KEY)
+  };
+  let watchId = null, lastSent = 0, pill = null;
+
+  function remoteStop(tid) {
+    fetch('/api/location/stop?tour_id=' + tid, {method: 'POST', keepalive: true}).catch(() => {});
+  }
+  function sendPos(pos) {
+    const s = state(); if (!s) return;
+    const now = Date.now();
+    if (now - lastSent < 30000) return;
+    lastSent = now;
+    const c = pos.coords;
+    fetch('/api/location/update', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, keepalive: true,
+      body: JSON.stringify({tour_id: s.tour_id, lat: c.latitude, lng: c.longitude,
+                            accuracy: c.accuracy,
+                            speed: (c.speed != null && !isNaN(c.speed)) ? c.speed : null,
+                            heading: (c.heading != null && !isNaN(c.heading)) ? c.heading : null,
+                            paused: false, since: 0})
+    }).catch(() => {});
+  }
+  function removePill() { if (pill) { pill.remove(); pill = null; } }
+  function makePill(s) {
+    pill = document.createElement('div');
+    pill.className = 'fahrt-pill';
+    pill.innerHTML = '<span class="live-now-dot"></span> Fahrt läuft · ' +
+      '<a href="/touren/' + s.tour_id + '/live?share=1">Zur Karte</a>' +
+      '<button type="button" title="Fahrt beenden">✕</button>';
+    pill.querySelector('button').onclick = () => {
+      if (!confirm('Fahrt beenden? Die Aufzeichnung wird gestoppt (übernehmen kannst du sie auf der Tourseite).')) return;
+      const s2 = state(); if (s2) remoteStop(s2.tour_id);
+      window.djoFahren.clear(); cleanup(); removePill();
+    };
+    document.body.appendChild(pill);
+  }
+  function cleanup() {
+    if (watchId != null && navigator.geolocation) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    lastSent = 0;
+  }
+  function tick() {
+    const s = state();
+    if (!s) { cleanup(); removePill(); return; }
+    if (document.getElementById('btn-share')) { cleanup(); removePill(); return; }  // Live-Seite führt die Fahrt
+    const now = Date.now();
+    if (now - s.started > 8 * 3600 * 1000) {          // hartes Limit wie auf der Live-Seite
+      remoteStop(s.tour_id); window.djoFahren.clear(); cleanup(); removePill(); return;
+    }
+    if (!pill) makePill(s);
+    if (navigator.geolocation && watchId == null) {
+      watchId = navigator.geolocation.watchPosition(sendPos, () => {},
+        {enableHighAccuracy: true, maximumAge: 5000, timeout: 25000});
+    }
+  }
+  setInterval(tick, 10000);
+  tick();
+})();
+</script>
+{% endif %}
 {% block scripts %}{% endblock %}
 
 <!-- ── Logo-Zuschneide-Editor ──────────────────────────────────────────────── -->

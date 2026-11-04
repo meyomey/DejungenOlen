@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build g) – Fahrt bleibt über Seitenwechsel aktiv
+
+- **Vorher:** Ein Tipp auf einen anderen Menüpunkt beendete „Fahren“ still (die Live-Seite schickte beim Verlassen ein „Teilen beenden“).
+- **Jetzt:** Die Fahrt läuft **app-weit weiter** – auf jeder Seite sitzt unten rechts ein roter Punkt **„⏺ Fahrt läuft · Zur Karte · ✕“**: Damit standortet das Handy weiter (alle 30 s), ✕ beendet die Fahrt von überall, „Zur Karte“ springt zurück (die Live-Seite erkennt die laufende Fahrt und macht automatisch weiter). Auf der Live-Seite selbst hat wie gehabt die volle Steuerung Vorrang. Beendet wird nur noch per Knopf (oder automatisch nach 8 Stunden).
+- **Speichern:** Die Aufzeichnung läuft automatisch in der Datenbank weiter (auch bei Seitenwechsel, inkl. Auto-Pause). Zum **Festschreiben als Tour-Track** wählt die Tourleitung auf der Tourseite „Als GPX übernehmen“ – bewusst manuell, damit ein geplanter GPX-Track nicht versehentlich überschrieben wird. Unübernommene Aufzeichnungen löschen sich nach 30 Tagen automatisch.
+- 220 Tests, py_compile OK, Tracker- und Live-JS per node --check geprüft.
+
 ## 1.4.0 – 2026-11-04 (Build f) – Zentraler Live-Punkt + Topo-Karte entfernt
 
 - **Zentraler Live-Punkt:** Läuft gerade eine Fahrt, zeigt die **Navbar auf JEDER Seite** einen roten, pulsierenden Punkt **„N unterwegs · ⏺“** – ein Klick öffnet die Live-Karte. „Unterwegs“ = wer in den letzten 3 Minuten seinen Standort geteilt hat (pausiert zählt mit), **⏺** = es wird gerade aufgezeichnet. Zusätzlich steht auf der betreffenden Tour-Seite neben „Fahren“ ein roter Hinweis **„🔴 N unterwegs · Aufzeichnung läuft“**. Nach 3 Minuten ohne Signal verschwindet der Punkt.

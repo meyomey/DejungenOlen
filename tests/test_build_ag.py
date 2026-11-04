@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 f')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 g')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,27 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_g_ride_survives_page_change(self):
+        # Build g (2026-11-04): „Fahren“ bleibt über Seitenwechsel aktiv –
+        # kein Stop beim Verlassen der Live-Seite, globaler Tracker + Pill, Auto-Resume.
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertNotIn("addEventListener('pagehide'", live)          # Seitenwechsel beendet die Fahrt NICHT mehr
+        self.assertIn('djoFahren.set({tour_id: TOUR_ID', live)         # Start merkt die Fahrt
+        self.assertIn('djoFahren.clear()', live)                       # Beenden räumt auf
+        self.assertIn('_fs.tour_id === TOUR_ID))) startShare();', live)  # Auto-Resume ohne ?share=1
+        self.assertIn('während du in der App andere Seiten anschaust', live)
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertIn("const KEY = 'djo_fahren'", base)                # globaler Tracker
+        self.assertIn('/api/location/update', base)
+        self.assertIn('/api/location/stop?tour_id=', base)
+        self.assertIn("getElementById('btn-share')", base)             # Live-Seite hat Vorrang
+        self.assertIn("8 * 3600 * 1000", base)                         # 8-h-Limit auch im Tracker
+        css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
+        self.assertIn('.fahrt-pill', css)
+        # Tracker-Skript nur für angemeldete Nutzer
+        i_if = base.rfind('{% if current_user.is_authenticated %}', 0, base.find("const KEY = 'djo_fahren'"))
+        self.assertGreater(i_if, -1)
 
     def test_f_live_now_badge_and_no_topo(self):
         # Build f (2026-11-04): zentraler Live-Punkt in der Navbar + Tour-Seite, Topo-Karte entfernt
