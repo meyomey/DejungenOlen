@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 c')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 d')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -493,9 +493,13 @@ class VideoSmoothTest(AppTestCase):
         # Fahrgemeinschaften auf der Tour-Seite eingeklappt.
         self.login_org()
         live = self.client.get(f'/touren/{self.t_plan_id}/live').get_data(as_text=True)
-        # Beschreibung als eingeklapptes <details>
+        # Oben kompakt „Info“, unten EIN strukturierter Einklapp-Block „Hinweise“
         self.assertIn('details class="small text-muted live-info"', live)
-        self.assertIn('Was macht die Live-Karte?', live)
+        self.assertIn('<i class="bi bi-info-circle me-1"></i>Info</summary>', live)
+        self.assertIn('id="live-hinweise"', live)
+        self.assertIn('Aufzeichnung &amp; Foto:', live)
+        self.assertNotIn('id="live-rec-hint"', live)            # alter Zweitblock ist weg
+        self.assertLess(live.find('Aufzeichnung &amp; Foto:'), live.find('📷 Foto</strong>'))
         # Status-Leiste mit klaren Zuständen (CSS) + setStatus nutzt sie
         self.assertIn('#live-status { padding:', live)
         self.assertIn('#live-status.warning { background:', live)

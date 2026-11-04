@@ -50,7 +50,7 @@
     #live-bar .lb-sec .btn { min-height: 40px; font-size: .85rem; }
     #btn-share { flex: 1.7 1 0; }
     #btn-photo { flex: 1.1 1 0; }
-    #live-wrap { margin-bottom: 152px; }   /* Leiste über der Bottom-Nav: Karte frei halten */
+    #live-wrap { margin-bottom: 116px; }   /* exakt Daumenleiste (≈109 px) + Luft – keine Riesenlücke */
   }
 </style>
 {% endblock %}
@@ -62,8 +62,8 @@
     <h2 class="fw-bold mb-0 h4" style="color:var(--djo-navy)">📍 Live-Karte: {{ tour.title }}</h2>
     <div class="text-muted small">{% if datum %}{{ datum }}{% else %}Termin offen{% endif %}{% if tour.start_time %} · Start {{ tour.start_time }} Uhr{% endif %}{% if tour.meeting_desc %} · {{ tour.meeting_desc }}{% endif %}</div>
   </div>
-  <details class="small text-muted live-info">
-    <summary class="fw-semibold" style="color:var(--djo-navy)"><i class="bi bi-info-circle me-1"></i>Was macht die Live-Karte?</summary>
+  <details class="small text-muted live-info" title="Was macht die Live-Karte?">
+    <summary class="fw-semibold" style="color:var(--djo-navy)"><i class="bi bi-info-circle me-1"></i>Info</summary>
     <div class="mt-1" style="max-width:420px">Zuschauen kann jeder aus der Gruppe. Wer <strong>„Standort teilen“</strong> einschaltet,
       ist für die anderen als Punkt zu sehen – praktisch für Nachzügler, Pannen und alle, die wissen wollen, wo die Gruppe gerade ist.</div>
   </details>
@@ -109,17 +109,21 @@
       </div>
       <div class="card-footer small text-muted" id="live-gap">–</div>
     </div>
-    <div class="small text-muted mt-2">
-      Standorte werden alle 15 Sekunden abgerufen und nach {{ stale_s // 60 }} Minuten ohne Signal ausgeblendet.
-      Beim Teilen sendet das Handy höchstens alle 10 Sekunden und der Bildschirm bleibt an, solange die Seite offen ist.
-      Teilen endet beim Schließen der Seite, spätestens nach 8 Stunden.
-    </div>
-    <div class="small text-muted mt-2" id="live-rec-hint">
-      <strong>Aufzeichnung:</strong> Beim Teilen wird dein Weg als dünne Linie aufgezeichnet. Die Tourleitung kann die Aufzeichnung
-      danach als GPX-Track der Tour übernehmen – damit werden auch Fotos ohne Standort anhand ihrer Aufnahmezeit auf der Strecke platziert.
-      Aufzeichnungen werden nach {{ keep_days }} Tagen automatisch gelöscht; auf der Tourseite kannst du deine jederzeit löschen.
-      <strong>📷 Foto</strong> nimmt ein Foto auf und lädt es sofort mit deinem aktuellen Standort zur Tour hoch.
-    </div>
+    <details class="small text-muted live-info mt-2" id="live-hinweise">
+      <summary class="fw-semibold" style="color:var(--djo-navy)"><i class="bi bi-info-circle me-1"></i>Hinweise</summary>
+      <div class="mt-1">
+        <strong>Standorte &amp; Teilen:</strong> Standorte werden alle 15 Sekunden abgerufen und nach
+        {{ stale_s // 60 }} Minuten ohne Signal ausgeblendet. Beim Teilen sendet das Handy höchstens alle 10 Sekunden,
+        der Bildschirm bleibt an, solange die Seite offen ist. Teilen endet beim Schließen der Seite, spätestens nach 8 Stunden.
+      </div>
+      <div class="mt-1">
+        <strong>Aufzeichnung &amp; Foto:</strong> Beim Teilen wird dein Weg als dünne Linie aufgezeichnet – die Tourleitung
+        kann die Aufzeichnung danach als GPX-Track der Tour übernehmen; damit werden auch Fotos ohne Standort anhand ihrer
+        Aufnahmezeit auf der Strecke platziert. Aufzeichnungen werden nach {{ keep_days }} Tagen automatisch gelöscht,
+        auf der Tourseite kannst du deine jederzeit löschen. <strong>📷 Foto</strong> nimmt ein Foto auf und lädt es sofort
+        mit deinem aktuellen Standort zur Tour hoch.
+      </div>
+    </details>
   </div>
 </div>
 {% endblock %}

@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build d) – Live-Karte: Lücke geschlossen, Hinweise als ein Einklapp-Block
+
+- **Lücke gefixt:** Der große Zwischenraum zwischen Karte und „Unterwegs“-Karte auf dem Handy ist weg – der Abstand ist jetzt exakt auf die Daumenleiste bemessen.
+- **Hinweise strukturiert:** Die beiden Textblöcke unterhalb der Karte sind jetzt **ein** einklappbarer Block „ℹ️ Hinweise“ mit zwei klaren Absätzen: „Standorte & Teilen“ und „Aufzeichnung & Foto“ (zusammenhängend, wie gewünscht).
+- **Oben kompakt:** Die Kopf-Beschreibung heißt jetzt nur noch „ℹ️ Info“ (eingeklappt).
+- 218 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-04 (Build c) – Aufgeräumte Live-Karte + Fahrgemeinschaften eingeklappt
 
 - **Live-Karte:** Der Erklärtext („Was macht die Live-Karte?“) ist jetzt **eingeklappt** und öffnet sich per Tipp – die Seite startet kompakt mit Karte und Knöpfen.
