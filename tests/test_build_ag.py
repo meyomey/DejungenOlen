@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 h')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 i')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -523,6 +523,17 @@ class VideoSmoothTest(AppTestCase):
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
         self.assertIn('<span class="lbl">Fahren</span>', det)
         self.assertNotIn('<span class="lbl">Fahrt läuft</span>', det)
+
+    def test_i_stop_button_clearly_named(self):
+        # Build i (2026-11-04): Der Stopp-Knopf auf der Live-Karte heißt klar „⏹ Fahrt beenden“
+        # (hieß „Teilen beenden“ und war in der Daumenleiste abgeschnitten); nach dem Beenden
+        # verrät der Status, wie die Aufzeichnung gesichert wird.
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn("sharing ? '⏹ Fahrt beenden' : '📍 Standort teilen'", live)
+        self.assertNotIn('Teilen beenden', live)                       # alter, abgeschnittener Name weg
+        self.assertIn('„⏹ Fahrt beenden“', live)                       # Hinweise-Block nennt den Knopf beim Namen
+        self.assertIn('Als GPX übernehmen', live)                      # Status nach dem Beenden verrät das Sichern
+        self.assertIn('#btn-share { flex: 2.2 1 0; }', live)           # Knopf breit genug für das ganze Wort
 
     def test_g_ride_survives_page_change(self):
         # Build g (2026-11-04): „Fahren“ bleibt über Seitenwechsel aktiv –

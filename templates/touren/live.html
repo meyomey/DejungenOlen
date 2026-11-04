@@ -51,7 +51,7 @@
     #live-bar .btn { min-height: 50px; font-size: 1rem; flex: 1 1 0; padding: .4rem .3rem;
                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #live-bar .lb-sec .btn { min-height: 40px; font-size: .85rem; }
-    #btn-share { flex: 1.7 1 0; }
+    #btn-share { flex: 2.2 1 0; }  /* Build i: breiter – „⏹ Fahrt beenden“ passt ganz rein */
     #btn-photo { flex: 1.1 1 0; }
     /* Kein Überstand unter der Karte mehr – die Leiste liegt nur beim Scrollen über dem Inhalt;
        am Seitenende sorgt der Laufraum dafür, dass nichts hinter ihr versteckt bleibt. */
@@ -79,7 +79,7 @@
       ist für alle als Punkt sichtbar – Standorte werden alle 15 Sekunden aktualisiert und nach {{ stale_s // 60 }} Minuten
       ohne Signal ausgeblendet. Gesendet wird höchstens alle 10 Sekunden, der Bildschirm bleibt an, solange die Seite offen ist.
       Die Fahrt läuft weiter, während du in der App andere Seiten anschaust (roter Punkt unten rechts), und endet
-      über den Knopf „Teilen beenden“ – spätestens nach 8 Stunden.</div>
+      über den roten Knopf „⏹ Fahrt beenden“ (unten links in der Leiste) – spätestens nach 8 Stunden.</div>
     <div><strong>⏸ Pause:</strong> Der Pause-Knopf stoppt die Aufzeichnung (z. B. bei der Einkehr); nach rund 3 Minuten
       Stillstand pausiert sie automatisch, beim Weiterfahren geht es automatisch weiter. Dein Standort bleibt dabei für alle sichtbar.</div>
     <div><strong>📝 Aufzeichnung:</strong> Dein Weg wird als dünne Linie aufgezeichnet. Die Tourleitung kann die Aufzeichnung
@@ -374,13 +374,13 @@ function stopShare(viaBeacon) {
     fetch(url, {method: 'POST', keepalive: true}).catch(() => {});
     if (window.djoFahren) djoFahren.clear();          // Build g: Flagge weg → Seitenwechsel-Tracker aus
     if (markers[ME.id]) { map.removeLayer(markers[ME.id]); delete markers[ME.id]; }
-    setStatus('Du teilst deinen Standort nicht mehr – du schaust nur zu.');
+    setStatus('⏹ Fahrt beendet – du schaust nur noch zu. Die Aufzeichnung kannst du auf der Tourseite mit „Als GPX übernehmen“ sichern.');
   }
 }
 function updateShareBtn() {
   const b = document.getElementById('btn-share');
   if (!b) return;
-  b.textContent = sharing ? '⏹ Teilen beenden' : '📍 Standort teilen';
+  b.textContent = sharing ? '⏹ Fahrt beenden' : '📍 Standort teilen';
   b.classList.toggle('btn-success', !sharing);
   b.classList.toggle('btn-danger', sharing);
   updatePauseBtn();

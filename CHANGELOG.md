@@ -2,6 +2,14 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build i) – Stopp-Knopf auf der Live-Karte eindeutig benannt
+
+- **„⏹ Fahrt beenden“ statt „Teilen beenden“:** Der rote Knopf unten links auf der Live-Karte heißt jetzt so, wie man denkt – vorher hieß er „Teilen beenden“ und war in der Daumenleiste abgeschnitten („Teilen be…“), sodass man ihn als Fahrt-Stopp nicht erkannt hat.
+- **Knopf breiter:** Die Daumenleiste gibt dem Knopf mehr Platz – die Beschriftung passt ganz hinein.
+- **Hilfestellung nach dem Beenden:** Die Status-Leiste erinnert danach daran, die Aufzeichnung auf der Tourseite mit „Als GPX übernehmen“ zu sichern; auch der Hinweise-Block nennt den Knopf beim Namen.
+- 222 Tests, py_compile OK.
+
+
 ## 1.4.0 – 2026-11-04 (Build h) – Live-Status ohne Seitenwechsel, eine Anzeige statt zweier
 
 - **Live-Punkt aktualisiert sich selbst:** Der rote Navbar-Punkt („N unterwegs · ⏺“) frischt sich jetzt per JS alle 30 Sekunden auf (neuer Endpunkt `/api/live/now`) – er erscheint, während die Fahrt läuft, **ohne** dass man die Seite wechseln muss.
