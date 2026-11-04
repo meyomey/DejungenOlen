@@ -723,10 +723,13 @@
     {# Build ab: Fahrgemeinschaften – Angebote mit freien Plätzen und Mitfahrwünsche #}
     {% if tour.status == 'planned' or rides %}
     <div class="card mb-3" id="fahrgemeinschaft">
-      <div class="card-header card-header-djo d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-car-front me-1"></i>Fahrgemeinschaften</span>
+      <div class="card-header card-header-djo d-flex justify-content-between align-items-center"
+           role="button" data-bs-toggle="collapse" data-bs-target="#rides-body"
+           aria-expanded="false" aria-controls="rides-body" title="Bereich auf-/zuklappen">
+        <span><i class="bi bi-car-front me-1"></i>Fahrgemeinschaften <i class="bi bi-chevron-down small ms-1"></i></span>
         {% if rides %}<span class="badge bg-light text-dark">{{ rides|length }}</span>{% endif %}
       </div>
+      <div class="collapse" id="rides-body">
       <div class="card-body">
         {% set offers = rides|selectattr('kind', 'equalto', 'offer')|list %}
         {% set requests_ = rides|selectattr('kind', 'equalto', 'request')|list %}
@@ -822,6 +825,7 @@
         </details>
         {% endif %}
       </div>
+      </div><!-- /rides-body (Build c: standardmäßig eingeklappt) -->
     </div>
     {% endif %}
 

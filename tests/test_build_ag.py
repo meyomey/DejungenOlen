@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 b')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 c')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,27 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_d_live_infos_collapsed_status_clear_rides_folded(self):
+        # Build c (2026-11-04): Live-Beschreibungen einklappbar, Status deutlich,
+        # Fahrgemeinschaften auf der Tour-Seite eingeklappt.
+        self.login_org()
+        live = self.client.get(f'/touren/{self.t_plan_id}/live').get_data(as_text=True)
+        # Beschreibung als eingeklapptes <details>
+        self.assertIn('details class="small text-muted live-info"', live)
+        self.assertIn('Was macht die Live-Karte?', live)
+        # Status-Leiste mit klaren Zuständen (CSS) + setStatus nutzt sie
+        self.assertIn('#live-status { padding:', live)
+        self.assertIn('#live-status.warning { background:', live)
+        self.assertIn("#live-status.danger  { background:", live)
+        self.assertIn("el.className = 'mb-2 ' + (cls === 'danger' ? 'danger'", live)
+        self.assertNotIn("el.className = 'small mb-2", live)
+        # Fahrgemeinschaften: Header klappt, Body collapse ohne "show" (eingeklappt)
+        html = self.client.get(f'/touren/{self.t_plan_id}').get_data(as_text=True)
+        self.assertIn('data-bs-target="#rides-body"', html)
+        self.assertLess(html.find('data-bs-target="#rides-body"'), html.find('id="rides-body"'))
+        self.assertNotIn('class="collapse show" id="rides-body"', html)
+        self.assertIn('class="collapse" id="rides-body"', html)
 
     def test_c_fahren_shortcut_and_thumb_bar(self):
         # Build b (2026-11-04): Blitzstart /fahren + mobil Daumenleiste + App-Verknüpfungen

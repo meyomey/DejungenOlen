@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build c) – Aufgeräumte Live-Karte + Fahrgemeinschaften eingeklappt
+
+- **Live-Karte:** Der Erklärtext („Was macht die Live-Karte?“) ist jetzt **eingeklappt** und öffnet sich per Tipp – die Seite startet kompakt mit Karte und Knöpfen.
+- **Statusmeldungen deutlich sichtbar:** Die Status-Zeile ist keine Mini-Schrift mehr, sondern eine **farbige Leiste** – grau-blau (Info), **grün** (Teilen läuft/Aufzeichnung), **gelb** (Pause/Warnung), **rot** (Fehler). Zustand sofort erkennbar.
+- **Tour-Seite:** Der Bereich **Fahrgemeinschaften** steht jetzt **eingeklappt** – auf-/zuklappen per Tipp auf die Überschrift (Anzahl-Ernennung als Punkt rechts bleibt sichtbar).
+- 218 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-04 (Build b) – Smartphone-Bedienung: Daumenleiste + Blitzstart „/fahren“
 
 - **Daumenleiste (Live-Karte, Handy):** Die Knöpfe sind jetzt **unten fest** in der Daumenzone – unten (groß): **📍 Standort teilen · ⏸ Pause/▶ Weiter · 📷 Foto**; darüber eine schmale Reihe mit 🎯 Folgen · 👥 Alle · ⛶ Vollbild. Desktop unverändert.
