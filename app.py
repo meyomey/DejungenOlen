@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-04 a'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-04 b'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -1276,6 +1276,31 @@ def api_exif_debug():
     _os.unlink(tmpname)
 
     return jsonify(result)
+
+
+@app.route('/fahren')
+@login_required
+def fahren_start():
+    """Build b (2026-11-04): Blitzstart für unterwegs – findet die passende Tour (heute, bevorzugt
+    mit Anmeldung, sonst die nächste geplante) und öffnet die Live-Karte mit direkt startendem
+    Standort teilen + Aufzeichnung. Als App-Verknüpfung (langer Druck aufs App-Icon) nutzbar."""
+    from datetime import timedelta as _td
+    today = _berlin_today()
+    rows = _gq(Tour).filter(
+        Tour.status == 'planned',
+        Tour.tour_date >= today - _td(days=1),          # auch die gestrige ist noch im Teilen-Fenster
+        Tour.tour_date != date(9999, 12, 31),
+    ).order_by(Tour.tour_date).all()
+    att_ids = {tp.tour_id for tp in TourParticipant.query.filter_by(user_id=current_user.id, status='attending')}
+    # Reihenfolge: heute mit Anmeldung → heute (egal) → mit Anmeldung (früheste) → früheste geplante
+    sel = (next((t for t in rows if t.id in att_ids and t.tour_date == today), None)
+           or next((t for t in rows if t.tour_date == today), None)
+           or next((t for t in rows if t.id in att_ids), None)
+           or (rows[0] if rows else None))
+    if not sel:
+        flash('Keine geplante Tour gefunden – bitte auf der Tour-Seite „Fahren“ nutzen.', 'info')
+        return redirect(url_for('tour_list'))
+    return redirect(url_for('tour_live', tour_id=sel.id) + '?share=1')
 
 
 @app.route('/touren')

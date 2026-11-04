@@ -132,8 +132,8 @@ class LiveTest(AppTestCase):
         self.assertIn('"initials": "HM"', html)
         self.assertIn('Bahnhof, Gleis 1', html)                    # Treffpunkt
         self.assertRegex(html, r'const TRACK\s*=\s*\[\[\d')         # vereinfachter GPX-Track
-        self.assertIn('Karte folgt mir', html)
-        self.assertIn('Alle zeigen', html)
+        self.assertIn('🎯 Folgen', html)                      # Build b: kompakte Sekundär-Reihe
+        self.assertIn('👥 Alle', html)
         # Fremde Tour
         self.assertEqual(self.client.get(f'/touren/{self.t_fremd_id}/live').status_code, 404)
 

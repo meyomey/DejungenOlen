@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build b) – Smartphone-Bedienung: Daumenleiste + Blitzstart „/fahren“
+
+- **Daumenleiste (Live-Karte, Handy):** Die Knöpfe sind jetzt **unten fest** in der Daumenzone – unten (groß): **📍 Standort teilen · ⏸ Pause/▶ Weiter · 📷 Foto**; darüber eine schmale Reihe mit 🎯 Folgen · 👥 Alle · ⛶ Vollbild. Desktop unverändert.
+- **Blitzstart `/fahren`:** Neue Adresse, die automatisch die passende Tour findet (heute zuerst – mit „Dabei“-Anmeldung, sonst die nächste geplante) und die Live-Karte mit direkt startendem Teilen + Aufzeichnung öffnet. Vom Tourenabend an nutzbar, Organisatoren jederzeit.
+- **App-Verknüpfungen („Art Widget“):** Android: App-Icon **lange drücken** → **„Fahren starten“**. iPhone: App-Icon lange drücken → Schnellaktion. Damit ist eine Fahrt von jedem Bildschirm aus mit 2–3 Tippens startbar.
+- 217 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-04 (Build a) – Nur Build-Datum korrigiert
 
 - Der letzte Deploy war am 29.10.; `APP_BUILD` jetzt auf den heutigen Stand **2026-11-04 a** (Nutzer-Hinweis: heute ist der 04.11.2026). Neuer Tag → Buchstabe wieder ab „a“. Keine Funktionsänderung.

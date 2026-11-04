@@ -23,6 +23,28 @@
   .leaflet-tooltip.live-tip { background: rgba(20,30,60,.9); color: #fff; border: 0; border-radius: 6px; font-size: .85rem; }
   .leaflet-tooltip.live-tip::before { border-top-color: rgba(20,30,60,.9); }
   #live-status.sharing { color: #2E7D4F; }
+
+  /* Build b (2026-11-04): Daumenleiste – Desktop unverändert (lb-main/lb-sec lösen sich auf),
+     mobil unten fest ÜBER der App-Bottomnavigation: groß unten Teilen · Pause · Foto,
+     schmale Reihe darüber Folgen · Alle · Vollbild. */
+  #live-bar .lb-main, #live-bar .lb-sec { display: contents; }
+  @media (max-width: 991.98px) {
+    #live-bar {
+      position: fixed; left: 0; right: 0;
+      bottom: calc(58px + env(safe-area-inset-bottom));
+      z-index: 1200; flex-direction: column-reverse; flex-wrap: nowrap; gap: 5px;
+      background: rgba(255, 255, 255, .97); border-radius: 14px 14px 0 0;
+      padding: 7px 8px; box-shadow: 0 -3px 14px rgba(0, 0, 0, .28);
+    }
+    #live-bar .lb-main { display: flex; gap: 6px; }
+    #live-bar .lb-sec  { display: flex; gap: 6px; }
+    #live-bar .btn { min-height: 50px; font-size: 1rem; flex: 1 1 0; padding: .4rem .3rem;
+                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #live-bar .lb-sec .btn { min-height: 40px; font-size: .85rem; }
+    #btn-share { flex: 1.7 1 0; }
+    #btn-photo { flex: 1.1 1 0; }
+    #live-wrap { margin-bottom: 152px; }   /* Leiste über der Bottom-Nav: Karte frei halten */
+  }
 </style>
 {% endblock %}
 
@@ -49,16 +71,22 @@
     <div id="live-wrap">
       <div id="live-map"></div>
       <div id="live-bar">
-        <button type="button" class="btn btn-success" id="btn-share" onclick="toggleShare()"
-                {% if not can_share %}disabled title="{{ share_hint }}"{% endif %}>📍 Standort teilen</button>
-        <button type="button" class="btn btn-warning d-none" id="btn-pause" onclick="togglePause()"
-                title="Aufzeichnung pausieren (z. B. Pause/Einkehr) – dein Standort bleibt für alle sichtbar">⏸ Pause</button>
-        <button type="button" class="btn btn-light" id="btn-follow" onclick="toggleFollow()" title="Karte bleibt auf meiner Position zentriert">🎯 Karte folgt mir</button>
-        <button type="button" class="btn btn-light" onclick="showAll()" title="Alle Mitfahrer und die Strecke einpassen">👥 Alle zeigen</button>
-        <button type="button" class="btn btn-light" id="btn-photo" onclick="document.getElementById('live-cam').click()"
-                title="Foto aufnehmen – wird sofort mit deinem aktuellen Standort zur Tour hochgeladen">📷 Foto</button>
-        <input type="file" id="live-cam" accept="image/*" capture="environment" class="d-none" onchange="livePhoto(this)">
-        <button type="button" class="btn btn-light" id="btn-fs" onclick="toggleFs()" title="Vollbild">⛶</button>
+        {# Build b (2026-11-04): lb-main = die 3 Fahrt-Knöpfe (mobil unten groß in der Daumenzone),
+           lb-sec = Sekundär-Funktionen (mobil eine schmale Reihe darüber) #}
+        <div class="lb-main">
+          <button type="button" class="btn btn-success" id="btn-share" onclick="toggleShare()"
+                  {% if not can_share %}disabled title="{{ share_hint }}"{% endif %}>📍 Standort teilen</button>
+          <button type="button" class="btn btn-warning d-none" id="btn-pause" onclick="togglePause()"
+                  title="Aufzeichnung pausieren (z. B. Pause/Einkehr) – dein Standort bleibt für alle sichtbar">⏸ Pause</button>
+          <button type="button" class="btn btn-light" id="btn-photo" onclick="document.getElementById('live-cam').click()"
+                  title="Foto aufnehmen – wird sofort mit deinem aktuellen Standort zur Tour hochgeladen">📷 Foto</button>
+          <input type="file" id="live-cam" accept="image/*" capture="environment" class="d-none" onchange="livePhoto(this)">
+        </div>
+        <div class="lb-sec">
+          <button type="button" class="btn btn-light" id="btn-follow" onclick="toggleFollow()" title="Karte bleibt auf meiner Position zentriert">🎯 Folgen</button>
+          <button type="button" class="btn btn-light" onclick="showAll()" title="Alle Mitfahrer und die Strecke einpassen">👥 Alle</button>
+          <button type="button" class="btn btn-light" id="btn-fs" onclick="toggleFs()" title="Vollbild">⛶ Vollbild</button>
+        </div>
       </div>
     </div>
   </div>

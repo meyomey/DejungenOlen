@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 a')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 b')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,52 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_c_fahren_shortcut_and_thumb_bar(self):
+        # Build b (2026-11-04): Blitzstart /fahren + mobil Daumenleiste + App-Verknüpfungen
+        self.login_org()
+        # 1) Fixture-Tour (t_plan, geplant) wird gefunden → Live-Karte mit Auto-Start
+        r = self.client.get('/fahren')
+        self.assertEqual(r.status_code, 302)
+        self.assertIn(f'/touren/{self.t_plan_id}/live', r.headers['Location'])
+        self.assertTrue(r.headers['Location'].endswith('?share=1'))
+        # 2) „heute ohne Anmeldung“ schlägt „angemeldet, aber in der Zukunft“
+        _grp = M.Tour.query.get(self.t_plan_id).group_id   # Tests laufen im Gruppen-Kontext
+        t_heute = M.Tour(title='Heute-Fahrt', tour_date=dt.date.today(), status='planned',
+                         created_by=self.org_id, group_id=_grp)
+        t_später = M.Tour(title='Später-Fahrt', tour_date=dt.date.today() + dt.timedelta(days=9),
+                          status='planned', created_by=self.org_id, group_id=_grp)
+        db.session.add_all([t_heute, t_später])
+        db.session.commit()
+        db.session.add(M.TourParticipant(tour_id=t_später.id, user_id=self.org_id, status='attending'))
+        db.session.commit()
+        r = self.client.get('/fahren')
+        self.assertIn(f'/touren/{t_heute.id}/live', r.headers['Location'])
+        # 3) Anmeldung als Gleichstandskriterium: ohne heutige Tour gewinnt die früheste angemeldete
+        db.session.delete(t_heute)
+        db.session.commit()
+        t_att = M.Tour(title='Angemeldet-Fahrt', tour_date=dt.date.today() + dt.timedelta(days=3),
+                       status='planned', created_by=self.org_id, group_id=_grp)
+        db.session.add(t_att)
+        db.session.commit()
+        db.session.add(M.TourParticipant(tour_id=t_att.id, user_id=self.org_id, status='attending'))
+        db.session.commit()
+        r = self.client.get('/fahren')
+        self.assertIn(f'/touren/{t_att.id}/live', r.headers['Location'])
+        # 4) Live-Seite via ?share=1 erreichbar, Daumenleiste-Struktur da
+        html = self.client.get(f'/touren/{t_att.id}/live?share=1').get_data(as_text=True)
+        self.assertIn('id="btn-pause"', html)
+        self.assertIn('class="lb-main"', html)
+        self.assertIn('class="lb-sec"', html)
+        # 5) CSS (Inline in live.html – dort gewinnt es gegen die bestehenden Regeln)
+        live_src = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('flex-direction: column-reverse', live_src)
+        self.assertIn('bottom: calc(58px + env(safe-area-inset-bottom))', live_src)
+        # 6) manifest: App-Verknüpfungen
+        import json as _json
+        man = _json.load(open(os.path.join(ROOT, 'static', 'manifest.json'), encoding='utf-8'))
+        self.assertEqual([s['url'] for s in man['shortcuts']], ['/fahren', '/touren'])
+
 
     def test_b_ride_pause_and_fahren_start(self):
         # Build b: Fahrt starten ab der Tourseite, Auto-/Manuell-Pause stoppt die Aufzeichnung,

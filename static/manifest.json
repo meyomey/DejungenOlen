@@ -20,6 +20,37 @@
       "type": "image/png"
     }
   ],
-  "categories": ["sports", "lifestyle"],
-  "lang": "de"
+  "categories": [
+    "sports",
+    "lifestyle"
+  ],
+  "lang": "de",
+  "shortcuts": [
+    {
+      "name": "Fahren starten",
+      "short_name": "Fahren",
+      "description": "Nächste geplante Tour: Live-Karte öffnen, Standort teilen + Aufzeichnung starten",
+      "url": "/fahren",
+      "icons": [
+        {
+          "src": "/static/logo.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Touren",
+      "short_name": "Touren",
+      "description": "Geplante Touren der Gruppe",
+      "url": "/touren",
+      "icons": [
+        {
+          "src": "/static/logo.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
 }
