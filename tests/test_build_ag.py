@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 i')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 j')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -529,11 +529,26 @@ class VideoSmoothTest(AppTestCase):
         # (hieß „Teilen beenden“ und war in der Daumenleiste abgeschnitten); nach dem Beenden
         # verrät der Status, wie die Aufzeichnung gesichert wird.
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
-        self.assertIn("sharing ? '⏹ Fahrt beenden' : '📍 Standort teilen'", live)
+        self.assertIn("sharing ? '⏹ Fahrt beenden' : '▶ Fahrt starten'", live)
         self.assertNotIn('Teilen beenden', live)                       # alter, abgeschnittener Name weg
         self.assertIn('„⏹ Fahrt beenden“', live)                       # Hinweise-Block nennt den Knopf beim Namen
         self.assertIn('Als GPX übernehmen', live)                      # Status nach dem Beenden verrät das Sichern
         self.assertIn('#btn-share { flex: 2.2 1 0; }', live)           # Knopf breit genug für das ganze Wort
+
+    def test_j_ride_terms_unified(self):
+        # Build j (2026-11-04): Einheitliche Begriffe – „Fahren“ (Tourseite/Navigation) und der
+        # grüne Live-Knopf sind dasselbe: der Knopf heißt jetzt „▶ Fahrt starten“ (statt
+        # „Standort teilen“), der rote „⏹ Fahrt beenden“; auch die Zeitfenster-Hinweise in
+        # app.py sagen „Fahren“ statt „Standort teilen“.
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('>▶ Fahrt starten</button>', live)
+        self.assertNotIn('Standort teilen', live)                  # alter Begriff auf der Live-Seite komplett weg
+        self.assertIn('Wer die Fahrt startet („▶ Fahrt starten“)', live)   # Hinweise-Block gleicher Begriff
+        self.assertIn('Fahrt nach 8 Stunden automatisch beendet', live)
+        self.assertIn('Fahrt starten – dein Standort wird für alle geteilt', live)   # Tooltip erklärt das Teilen
+        app_src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('Fahren ist ab dem Vortag der Tour möglich', app_src)
+        self.assertNotIn('Standort teilen geht', app_src)
 
     def test_g_ride_survives_page_change(self):
         # Build g (2026-11-04): „Fahren“ bleibt über Seitenwechsel aktiv –
@@ -603,7 +618,7 @@ class VideoSmoothTest(AppTestCase):
         self.assertEqual(live.count('details class="small text-muted live-info'), 1)
         self.assertIn('<i class="bi bi-info-circle me-1"></i>Hinweise', live)
         self.assertIn('live-info-grid', live)
-        self.assertIn('👀 Zuschauen &amp; Teilen:</strong>', live)
+        self.assertIn('👀 Zuschauen &amp; Fahren:</strong>', live)   # Build j: ein Begriff für Start/Stop
         self.assertIn('⏸ Pause:</strong>', live)
         self.assertIn('📝 Aufzeichnung:</strong>', live)
         self.assertIn('📷 Foto:</strong>', live)

@@ -35,7 +35,7 @@
   @media (min-width: 992px) { .live-info-grid { grid-template-columns: 1fr 1fr; } }
 
   /* Build b (2026-11-04): Daumenleiste – Desktop unverändert (lb-main/lb-sec lösen sich auf),
-     mobil unten fest ÜBER der App-Bottomnavigation: groß unten Teilen · Pause · Foto,
+     mobil unten fest ÜBER der App-Bottomnavigation: groß unten Fahrt · Pause · Foto,
      schmale Reihe darüber Folgen · Alle · Vollbild. */
   #live-bar .lb-main, #live-bar .lb-sec { display: contents; }
   @media (max-width: 991.98px) {
@@ -75,7 +75,7 @@
   <summary class="fw-semibold" style="color:var(--djo-navy)"><i class="bi bi-info-circle me-1"></i>Hinweise
     <span class="fw-normal">– Zuschauen · Pause · Aufzeichnung · Foto</span></summary>
   <div class="live-info-grid mt-2">
-    <div><strong>👀 Zuschauen &amp; Teilen:</strong> Jeder aus der Gruppe kann zuschauen. Wer „Standort teilen“ einschaltet,
+    <div><strong>👀 Zuschauen &amp; Fahren:</strong> Jeder aus der Gruppe kann zuschauen. Wer die Fahrt startet („▶ Fahrt starten“),
       ist für alle als Punkt sichtbar – Standorte werden alle 15 Sekunden aktualisiert und nach {{ stale_s // 60 }} Minuten
       ohne Signal ausgeblendet. Gesendet wird höchstens alle 10 Sekunden, der Bildschirm bleibt an, solange die Seite offen ist.
       Die Fahrt läuft weiter, während du in der App andere Seiten anschaust (roter Punkt unten rechts), und endet
@@ -104,7 +104,7 @@
            lb-sec = Sekundär-Funktionen (mobil eine schmale Reihe darüber) #}
         <div class="lb-main">
           <button type="button" class="btn btn-success" id="btn-share" onclick="toggleShare()"
-                  {% if not can_share %}disabled title="{{ share_hint }}"{% endif %}>📍 Standort teilen</button>
+                  {% if not can_share %}disabled title="{{ share_hint }}"{% else %}title="Fahrt starten – dein Standort wird für alle geteilt und dein Weg aufgezeichnet"{% endif %}>▶ Fahrt starten</button>
           <button type="button" class="btn btn-warning d-none" id="btn-pause" onclick="togglePause()"
                   title="Aufzeichnung pausieren (z. B. Pause/Einkehr) – dein Standort bleibt für alle sichtbar">⏸ Pause</button>
           <button type="button" class="btn btn-light" id="btn-photo" onclick="document.getElementById('live-cam').click()"
@@ -380,7 +380,7 @@ function stopShare(viaBeacon) {
 function updateShareBtn() {
   const b = document.getElementById('btn-share');
   if (!b) return;
-  b.textContent = sharing ? '⏹ Fahrt beenden' : '📍 Standort teilen';
+  b.textContent = sharing ? '⏹ Fahrt beenden' : '▶ Fahrt starten';
   b.classList.toggle('btn-success', !sharing);
   b.classList.toggle('btn-danger', sharing);
   updatePauseBtn();
@@ -428,7 +428,7 @@ function onPos(pos) {
   drawOwn(c);
   if (following) map.panTo(ownLatLng, {animate: true});
   if (!sharing) return;
-  if (Date.now() - shareStart > 8 * 3600 * 1000) { stopShare(false); setStatus('Teilen nach 8 Stunden automatisch beendet.'); return; }
+  if (Date.now() - shareStart > 8 * 3600 * 1000) { stopShare(false); setStatus('Fahrt nach 8 Stunden automatisch beendet.'); return; }
   // Build b: Auto-Pause – Anker bleibt stehen, solange man sich kaum bewegt; nach PAUSE_AFTER_S
   // ohne ≥ PAUSE_DIST_M Bewegung gilt die Fahrt als unterbrochen (Pause/Einkehr) → Aufzeichnung aus.
   const now = Date.now();
@@ -457,7 +457,7 @@ function onPos(pos) {
                           since: trailSince || 0})
   }).then(async r => {
     const d = await r.json().catch(() => ({}));
-    if (r.status === 403) { stopShare(false); setStatus(d.error || 'Teilen ist für diese Tour gerade nicht möglich.', 'warning'); return; }
+    if (r.status === 403) { stopShare(false); setStatus(d.error || 'Fahren ist für diese Tour gerade nicht möglich.', 'warning'); return; }
     if (!r.ok) { setStatus('Server meldet HTTP ' + r.status + ' – wird weiter versucht.', 'warning'); return; }
     sentCount++;
     if (d.locations) render(d.locations);

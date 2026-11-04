@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build j) – Einheitliche Begriffe: „Fahrt starten“ statt „Standort teilen“
+
+- **Ein Knopf, ein Begriff:** „Fahren“ (Tourseite/Navigation) und der grüne Live-Knopf sind dasselbe – er heißt jetzt **„▶ Fahrt starten“** (statt „📍 Standort teilen“) und passt damit zum roten **„⏹ Fahrt beenden“**. Der Tooltip erklärt: Dabei wird der Standort für alle geteilt und der Weg aufgezeichnet.
+- **Alle Texte im gleichen Wortlaut:** ℹ️-Hinweise, Zeitfenster-Meldungen („Fahren ist ab dem Vortag der Tour möglich …“) und die 8-Stunden-Meldung nutzen denselben Begriff.
+- 223 Tests, py_compile OK.
+
+
 ## 1.4.0 – 2026-11-04 (Build i) – Stopp-Knopf auf der Live-Karte eindeutig benannt
 
 - **„⏹ Fahrt beenden“ statt „Teilen beenden“:** Der rote Knopf unten links auf der Live-Karte heißt jetzt so, wie man denkt – vorher hieß er „Teilen beenden“ und war in der Daumenleiste abgeschnitten („Teilen be…“), sodass man ihn als Fahrt-Stopp nicht erkannt hat.

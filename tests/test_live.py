@@ -127,7 +127,7 @@ class LiveTest(AppTestCase):
         html = self.get_html(f'/touren/{self.t_plan_id}/live')
         self.assertIn('Live-Karte: Deichtour, mit Komma', html)
         self.assertIn('id="btn-share"', html)
-        self.assertIn('disabled title="Standort teilen geht ab dem Vortag', html)
+        self.assertIn('disabled title="Fahren ist ab dem Vortag', html)
         self.assertIn('const CAN_SHARE = false', html)
         self.assertIn('"initials": "HM"', html)
         self.assertIn('Bahnhof, Gleis 1', html)                    # Treffpunkt

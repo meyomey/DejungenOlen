@@ -170,7 +170,7 @@ class RecordingApiTest(AppTestCase):
         d = self.client.get(f'/api/location/tour/{self.t_plan_id}?since=0').get_json()
         self.assertEqual(len(d['trails'][str(self.mem_id)]), 1)
         self.assertEqual(d['trails'][str(self.mem_id)][0][:2], [53.4, 9.8])
-        # Teilen beenden löscht den Standort, nicht die Aufzeichnung
+        # Fahrt beenden löscht den Standort, nicht die Aufzeichnung
         self.login_member()
         self.client.post(f'/api/location/stop?tour_id={self.t_plan_id}', data='')
         self.assertEqual(M.LiveLocation.query.filter_by(tour_id=self.t_plan_id, user_id=self.mem_id).count(), 0)

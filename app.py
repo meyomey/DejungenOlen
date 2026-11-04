@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-04 i'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-04 j'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2758,7 +2758,7 @@ def tour_upload_photos(tour_id):
                     'auf der Karte setzen.')
         elif tour.gpx_file:
             tip += ('Der GPX-Track dieser Tour hat keine Zeitstempel (geplante Route) – mit einer '
-                    'Aufzeichnung (GPX-Gerät oder „Standort teilen“ auf der Live-Karte) würden Fotos '
+                    'Aufzeichnung (GPX-Gerät oder „Fahren“ auf der Live-Karte) würden Fotos '
                     'automatisch per Uhrzeit platziert. Sonst: Position per ✏️ am Foto auf der Karte setzen.')
         else:
             tip += 'Position per ✏️ am Foto auf der Karte setzen.'
@@ -4974,7 +4974,7 @@ def _initials(name):
 
 
 def _live_share_window(tour, user=None, today=None):
-    """(erlaubt, Hinweis): Standort teilen geht vom Vortag bis einen Tag nach dem Tourtag; Organisatoren
+    """(erlaubt, Hinweis): Fahren (Standort teilen) geht vom Vortag bis einen Tag nach dem Tourtag; Organisatoren
     jederzeit (zum Ausprobieren und Vorführen). Zuschauen darf unabhängig davon jeder in der Gruppe."""
     user = user or current_user
     if tour.status == 'cancelled':
@@ -4982,12 +4982,12 @@ def _live_share_window(tour, user=None, today=None):
     if getattr(user, 'is_organizer', False):
         return True, ''
     if tour.is_date_open:
-        return False, 'Die Tour hat noch keinen Termin – Standort teilen geht ab dem Vortag der Tour.'
+        return False, 'Die Tour hat noch keinen Termin – Fahren ist ab dem Vortag der Tour möglich.'
     delta = (tour.tour_date - (today or _berlin_today())).days
     if delta > 1:
-        return False, f'Standort teilen geht ab dem Vortag der Tour (Tourtag: {tour.tour_date.strftime("%d.%m.%Y")}).'
+        return False, f'Fahren ist ab dem Vortag der Tour möglich (Tourtag: {tour.tour_date.strftime("%d.%m.%Y")}).'
     if delta < -1:
-        return False, 'Die Tour liegt zurück – Standort teilen war bis einen Tag danach möglich.'
+        return False, 'Die Tour liegt zurück – Fahren war bis einen Tag danach möglich.'
     return True, ''
 
 
