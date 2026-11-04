@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 k')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 l')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -534,6 +534,20 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('„⏹ Fahrt beenden“', live)                       # Hinweise-Block nennt den Knopf beim Namen
         self.assertIn('Als GPX übernehmen', live)                      # Status nach dem Beenden verrät das Sichern
         self.assertIn('#btn-share { flex: 2.2 1 0; }', live)           # Knopf breit genug für das ganze Wort
+
+    def test_l_stop_status_links_to_recording(self):
+        # Build l (2026-11-04): Auch die Meldung nach „⏹ Fahrt beenden“ verlinkt direkt –
+        # „Als GPX übernehmen“ springt zum Aufzeichnungs-Bereich (#live-aufzeichnung) der
+        # Tourseite. Nachzieher zu Build j: Auch der Aufzeichnungs-Kasten auf der Tourseite
+        # sagt jetzt „Fahren“ statt „Standort teilen“.
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn("#live-aufzeichnung\">Als GPX übernehmen</a>", live)
+        self.assertIn("mit <a href=\"/touren/' + TOUR_ID + '#live-aufzeichnung\"", live)
+        self.assertNotIn('mit „Als GPX übernehmen“', live)             # alte reine-Text-Formulierung weg
+        self.assertIn(", '', true)", live)                             # Meldung als HTML gerendert (neutral eingefärbt)
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertIn('id="live-aufzeichnung"', det)                   # Anker existiert auf der Tourseite
+        self.assertNotIn('„Standort teilen“', det)                     # alter Begriff auch hier vergangen
 
     def test_k_photo_status_links_to_photos(self):
         # Build k (2026-11-04): Nach „Foto gespeichert“ ist „Zur Tour → Fotos“ ein echter

@@ -29,7 +29,7 @@
     {
       "name": "Fahren starten",
       "short_name": "Fahren",
-      "description": "Nächste geplante Tour: Live-Karte öffnen, Standort teilen + Aufzeichnung starten",
+      "description": "Nächste geplante Tour: Live-Karte öffnen, Fahrt starten + Aufzeichnung",
       "url": "/fahren",
       "icons": [
         {

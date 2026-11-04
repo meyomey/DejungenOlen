@@ -2,6 +2,14 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build l) – „Als GPX übernehmen“ in der Beenden-Meldung klickbar
+
+- **Direkt zum Sichern:** Die Status-Leiste nach „⏹ Fahrt beenden“ verlinkt jetzt ebenfalls – „Als GPX übernehmen“ springt direkt zum Aufzeichnungs-Bereich (#live-aufzeichnung) der Tourseite.
+- **Nachzieher zu Build j:** Auch der Aufzeichnungs-Kasten auf der Tourseite heißt jetzt „(„Fahren“ auf der Live-Karte)“ statt „(„Standort teilen“ …)“.
+- **Begriffs-Reste:** Auch Datenschutz-Seite, Hilfe, Tour-Seite (Tooltips/Foto-Hinweis) und das App-Manifest sagen jetzt „Fahrt starten“/„Fahren“ statt „Standort teilen“.
+- 225 Tests, py_compile OK.
+
+
 ## 1.4.0 – 2026-11-04 (Build k) – Foto-Meldung mit direktem Fotos-Link
 
 - **„Zur Tour → Fotos“ ist klickbar:** Nach „📷 Foto gespeichert …“ verlinkt die Status-Leiste jetzt direkt zum Fotos-Bereich der Tourseite (#fotos) – kein Umweg mehr über „Zur Tour“ und Scrollen. Der gleiche Link steht auch im ℹ️-Hinweis „Foto“.

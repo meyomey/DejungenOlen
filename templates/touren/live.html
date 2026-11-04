@@ -374,7 +374,8 @@ function stopShare(viaBeacon) {
     fetch(url, {method: 'POST', keepalive: true}).catch(() => {});
     if (window.djoFahren) djoFahren.clear();          // Build g: Flagge weg → Seitenwechsel-Tracker aus
     if (markers[ME.id]) { map.removeLayer(markers[ME.id]); delete markers[ME.id]; }
-    setStatus('⏹ Fahrt beendet – du schaust nur noch zu. Die Aufzeichnung kannst du auf der Tourseite mit „Als GPX übernehmen“ sichern.');
+    // Build l: GPX-Übernahme im Beenden-Text ist jetzt ein Link → Aufzeichnungs-Bereich der Tourseite
+    setStatus('⏹ Fahrt beendet – du schaust nur noch zu. Die Aufzeichnung kannst du auf der Tourseite mit <a href="/touren/' + TOUR_ID + '#live-aufzeichnung">Als GPX übernehmen</a> sichern.', '', true);
   }
 }
 function updateShareBtn() {
