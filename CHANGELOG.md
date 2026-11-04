@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build e) – Live-Karte: EIN Hinweis-Block + Lücke endgültig geschlossen
+
+- **Ein Block statt zwei:** „ℹ️ Info“ oben und „ℹ️ Hinweise“ unten sind zusammengelegt zu **einem** einklappbaren Block direkt unter dem Titel – „Hinweise – Zuschauen · Pause · Aufzeichnung · Foto“ – mit vier klar getrennten, benannten Absätzen (auf dem Desktop zweispaltig). Die Karte ist damit der erste Inhalt auf der Seite.
+- **Lücke endgültig weg:** Der Überstand unter der Karte ist entfernt (er erzeugte den leeren Bereich zwischen Karte und „Unterwegs“). Die Daumenleiste liegt jetzt nur noch beim Scrollen über dem Inhalt; am Seitenende sorgt ein Laufraum dafür, dass nichts hinter der Leiste versteckt bleibt.
+- 218 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-04 (Build d) – Live-Karte: Lücke geschlossen, Hinweise als ein Einklapp-Block
 
 - **Lücke gefixt:** Der große Zwischenraum zwischen Karte und „Unterwegs“-Karte auf dem Handy ist weg – der Abstand ist jetzt exakt auf die Daumenleiste bemessen.

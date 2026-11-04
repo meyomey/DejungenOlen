@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 d')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 e')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -493,13 +493,20 @@ class VideoSmoothTest(AppTestCase):
         # Fahrgemeinschaften auf der Tour-Seite eingeklappt.
         self.login_org()
         live = self.client.get(f'/touren/{self.t_plan_id}/live').get_data(as_text=True)
-        # Oben kompakt „Info“, unten EIN strukturierter Einklapp-Block „Hinweise“
-        self.assertIn('details class="small text-muted live-info"', live)
-        self.assertIn('<i class="bi bi-info-circle me-1"></i>Info</summary>', live)
-        self.assertIn('id="live-hinweise"', live)
-        self.assertIn('Aufzeichnung &amp; Foto:', live)
-        self.assertNotIn('id="live-rec-hint"', live)            # alter Zweitblock ist weg
-        self.assertLess(live.find('Aufzeichnung &amp; Foto:'), live.find('📷 Foto</strong>'))
+        # Genau EIN kombinierter Hinweis-Block, schön strukturiert
+        self.assertEqual(live.count('details class="small text-muted live-info'), 1)
+        self.assertIn('<i class="bi bi-info-circle me-1"></i>Hinweise', live)
+        self.assertIn('live-info-grid', live)
+        self.assertIn('👀 Zuschauen &amp; Teilen:</strong>', live)
+        self.assertIn('⏸ Pause:</strong>', live)
+        self.assertIn('📝 Aufzeichnung:</strong>', live)
+        self.assertIn('📷 Foto:</strong>', live)
+        self.assertNotIn('id="live-rec-hint"', live)
+        self.assertNotIn('id="live-hinweise"', live)
+        # Lücke weg: kein Karten-Überstand, Laufraum am Seitenende
+        self.assertNotIn('margin-bottom: 116px', live)
+        self.assertNotIn('margin-bottom: 152px', live)
+        self.assertIn('body { padding-bottom: calc(174px', live)
         # Status-Leiste mit klaren Zuständen (CSS) + setStatus nutzt sie
         self.assertIn('#live-status { padding:', live)
         self.assertIn('#live-status.warning { background:', live)

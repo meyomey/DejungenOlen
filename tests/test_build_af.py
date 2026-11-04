@@ -348,7 +348,7 @@ class PagesTest(AppTestCase):
         self.assertRegex(html, r'const TRAILS\s*=\s*\{"%d": \[\[53\.4' % self.mem_id)
         self.assertIn('function addTrails', html)
         self.assertIn("'?since=' + trailSince", html)
-        self.assertIn('id="live-hinweise"', html)            # Build d: ein Einklapp-Block
+        self.assertIn('Dein Weg wird als dünne Linie aufgezeichnet', html)   # Build e: im einen Hinweis-Block
         self.assertIn('nach 30 Tagen automatisch gelöscht', html)
 
     def test_help_and_privacy(self):
