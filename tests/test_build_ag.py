@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 l')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 m')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -533,7 +533,15 @@ class VideoSmoothTest(AppTestCase):
         self.assertNotIn('Teilen beenden', live)                       # alter, abgeschnittener Name weg
         self.assertIn('„⏹ Fahrt beenden“', live)                       # Hinweise-Block nennt den Knopf beim Namen
         self.assertIn('Als GPX übernehmen', live)                      # Status nach dem Beenden verrät das Sichern
-        self.assertIn('#btn-share { flex: 2.2 1 0; }', live)           # Knopf breit genug für das ganze Wort
+        self.assertIn('#btn-share { flex: 2.2 1 0;', live)             # Knopf breit genug für das ganze Wort
+
+    def test_m_stop_button_wraps_not_truncates(self):
+        # Build m (2026-11-04): „⏹ Fahrt beenden“ wird in der Daumenleiste nicht mehr mit
+        # „Fahrt bee…“ abgeschnitten – der Knopf darf zweizeilig werden; auf sehr schmalen
+        # Displays wird die Schrift der Fahrt-Knöpfe leicht verkleinert.
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('#btn-share { flex: 2.2 1 0; white-space: normal; line-height: 1.15; text-overflow: clip; }', live)
+        self.assertIn('@media (max-width: 374.98px) { #live-bar .lb-main .btn { font-size: .9rem; } }', live)
 
     def test_l_stop_status_links_to_recording(self):
         # Build l (2026-11-04): Auch die Meldung nach „⏹ Fahrt beenden“ verlinkt direkt –

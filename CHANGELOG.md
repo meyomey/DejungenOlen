@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build m) – „Fahrt beenden“ wieder komplett lesbar
+
+- **Kein „Fahrt bee…“ mehr:** Der rote Knopf darf in der Daumenleiste zweizeilig werden, statt abgeschnitten zu werden (schmale Displays, Großschrift-Modus). Bei sehr schmalen Screens wird die Schrift der Fahrt-Knöpfe zusätzlich leicht verkleinert.
+- 226 Tests, py_compile OK.
+
+
 ## 1.4.0 – 2026-11-04 (Build l) – „Als GPX übernehmen“ in der Beenden-Meldung klickbar
 
 - **Direkt zum Sichern:** Die Status-Leiste nach „⏹ Fahrt beenden“ verlinkt jetzt ebenfalls – „Als GPX übernehmen“ springt direkt zum Aufzeichnungs-Bereich (#live-aufzeichnung) der Tourseite.
