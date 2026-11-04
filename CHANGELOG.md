@@ -2,9 +2,9 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
-## 1.4.0 – 2026-11-04 (Build c) – Nur Build-Datum korrigiert
+## 1.4.0 – 2026-11-04 (Build a) – Nur Build-Datum korrigiert
 
-- Die Builds vom 29.10. waren der letzte Eintrag; `APP_BUILD` jetzt auf den heutigen Stand **2026-11-04 c** gesetzt (Nutzer-Hinweis: heute ist der 04.11.2026). Keine Funktionsänderung.
+- Der letzte Deploy war am 29.10.; `APP_BUILD` jetzt auf den heutigen Stand **2026-11-04 a** (Nutzer-Hinweis: heute ist der 04.11.2026). Neuer Tag → Buchstabe wieder ab „a“. Keine Funktionsänderung.
 
 ## 1.4.0 – 2026-10-29 (Build b) – Fahren-Modus: Direktstart + Pause (auto & manuell)
 
