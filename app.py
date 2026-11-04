@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-04 e'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-04 f'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -4999,6 +4999,38 @@ def _haversine_m(lat1, lng1, lat2, lng2):
     dp, dl = math.radians(lat2 - lat1), math.radians(lng2 - lng1)
     h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
     return 2 * r * math.asin(min(1.0, math.sqrt(h)))
+
+
+def _live_activity():
+    """Build f (2026-11-04): zentrale Live-Anzeige – läuft gerade eine Fahrt?
+    Liefert None oder {'tour_id', 'title', 'n', 'recording'}:
+    'n' = Anzahl derer, die in den letzten 3 Minuten ihren Standort geteilt haben
+    (auch pausiert zählt als unterwegs), 'recording' = in den letzten 3 Minuten
+    kam ein Aufzeichnungspunkt. Für die Navbar und die Tour-Seite."""
+    cutoff = datetime.utcnow() - timedelta(minutes=3)
+    rows = (db.session.query(LiveLocation, Tour)
+            .join(Tour, Tour.id == LiveLocation.tour_id)
+            .filter(LiveLocation.updated_at >= cutoff, Tour.status == 'planned')
+            .order_by(LiveLocation.updated_at.desc()).all())
+    if not rows:
+        return None
+    _loc, tour = rows[0]
+    users = {loc.user_id for loc, t in rows if t.id == tour.id}
+    recording = db.session.query(LiveTrackPoint.id).filter(
+        LiveTrackPoint.tour_id == tour.id,
+        LiveTrackPoint.recorded_at >= cutoff).first() is not None
+    return {'tour_id': tour.id, 'title': tour.title, 'n': len(users), 'recording': recording}
+
+
+@app.context_processor
+def _inject_live_now():
+    """Build f: live_now in ALLEN Templates – die Navbar zeigt den zentralen Live-Punkt."""
+    if not current_user.is_authenticated:
+        return {'live_now': None}
+    try:
+        return {'live_now': _live_activity()}
+    except Exception:
+        return {'live_now': None}
 
 
 def _live_track_add(tour_id, user_id, lat, lng, accuracy, now):

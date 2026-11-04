@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 e')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 f')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -487,6 +487,44 @@ class VideoSmoothTest(AppTestCase):
         src = self._app_src()
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
+
+    def test_f_live_now_badge_and_no_topo(self):
+        # Build f (2026-11-04): zentraler Live-Punkt in der Navbar + Tour-Seite, Topo-Karte entfernt
+        self.login_org()
+        _grp = M.Tour.query.get(self.t_plan_id).group_id
+        t = M.Tour(title='Live-Jetzt', tour_date=dt.date.today(), status='planned',
+                   created_by=self.org_id, group_id=_grp)
+        db.session.add(t)
+        db.session.commit()
+        # frische Position mit Aufzeichnung (ohne paused)
+        d = self.client.post('/api/location/update',
+                             json={'tour_id': t.id, 'lat': 53.10, 'lng': 9.20, 'accuracy': 10}).get_json()
+        self.assertTrue(d['recorded'])
+        # 1) Navbar: roter Live-Punkt mit Anzahl + Aufzeichnung, verlinkt auf die Live-Karte
+        home = self.client.get('/').get_data(as_text=True)
+        self.assertIn('live-now-badge', home)
+        self.assertIn('1 unterwegs', home)
+        self.assertIn('Aufzeichnung läuft', home)
+        # 2) Tour-Seite: Live-Badge neben „Fahren“ (diese Tour ist aktiv)
+        det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
+        self.assertIn('🔴 1 unterwegs · Aufzeichnung läuft', det)
+        # 3) nach 10 Minuten Funkstille: kein Live-Punkt mehr (rohes SQL – updated_at
+        # hat einen onupdate-Hook, der jedes ORM-Update auf „jetzt“ zurücksetzt)
+        db.session.execute(db.text(
+            "UPDATE live_locations SET updated_at = datetime('now', '-10 minutes')"))   # ALLE Zeilen – frühere Tests haben evtl. eigene frische hinterlassen
+        db.session.execute(db.text(
+            "UPDATE live_track_points SET recorded_at = datetime('now', '-10 minutes')"))
+        db.session.commit()
+        home = self.client.get('/').get_data(as_text=True)
+        self.assertNotIn('live-now-badge', home)
+        det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
+        self.assertNotIn('unterwegs · Aufzeichnung läuft', det)
+        # 4) Topo-Karte weg: weder Knopf noch Layer, OSM/Sat bleiben
+        self.assertNotIn('btn-topo', det)
+        self.assertNotIn('opentopomap', det)
+        self.assertIn('btn-osm', det)
+        self.assertIn('btn-sat', det)
+        self.assertIn("#btn-osm,#btn-sat'", det)
 
     def test_d_live_infos_collapsed_status_clear_rides_folded(self):
         # Build c (2026-11-04): Live-Beschreibungen einklappbar, Status deutlich,

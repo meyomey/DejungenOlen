@@ -50,6 +50,14 @@
       {% endif %}
       <span class="nav-label">{{ current_group.name if current_group else 'De jungen Olen' }}</span>
     </a>
+    {# Build f: zentraler Live-Punkt – leuchtet (gepulst), sobald eine Fahrt läuft; Klick öffnet die Live-Karte #}
+    {% if live_now %}
+    <a class="badge rounded-pill bg-danger live-now-badge"
+       href="{{ url_for('tour_live', tour_id=live_now.tour_id) }}"
+       title="Fahrt läuft: {{ live_now.n }} unterwegs{% if live_now.recording %} · Aufzeichnung läuft{% endif %} – Live-Karte öffnen">
+      <span class="live-now-dot"></span>{{ live_now.n }} unterwegs{% if live_now.recording %} · ⏺{% endif %}
+    </a>
+    {% endif %}
 
     <!-- ── Mobile: immer sichtbare Aktions-Buttons rechts vom Hamburger ──── -->
     <div class="d-flex align-items-center gap-1 d-lg-none ms-auto me-1">

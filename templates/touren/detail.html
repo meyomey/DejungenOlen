@@ -106,6 +106,11 @@
        {% if not live_can_share %}title="{{ live_share_hint }}"{% endif %}>
       <i class="bi bi-record-circle me-1"></i><span class="lbl">Fahren</span>
     </a>
+    {# Build f: läuft auf DIESER Tour gerade eine Fahrt? → deutlicher Live-Hinweis #}
+    {% if live_now and live_now.tour_id == tour.id %}
+    <a href="{{ url_for('tour_live', tour_id=tour.id) }}" class="btn btn-sm btn-danger"
+       title="Fahrt läuft – Live-Karte öffnen">🔴 {{ live_now.n }} unterwegs{% if live_now.recording %} · Aufzeichnung läuft{% endif %}</a>
+    {% endif %}
     {% endif %}
     <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-read-aloud"
             onclick="toggleReadAloud()" aria-label="Tourdetails vorlesen">
@@ -305,10 +310,6 @@
           <button class="btn btn-sm btn-outline-light py-0 px-2" id="btn-sat"
                   onclick="switchLayer('sat',this)" title="Satellit">
             🛰️
-          </button>
-          <button class="btn btn-sm btn-outline-light py-0 px-2" id="btn-topo"
-                  onclick="switchLayer('topo',this)" title="Topographie">
-            📐
           </button>
           {% if gpx_data != 'null' %}
           <button class="btn btn-sm btn-outline-light py-0 px-2" id="btn-elev"
@@ -2437,10 +2438,6 @@ const tileLayers = {
   sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: '© Esri – Source: Esri, DigitalGlobe, USDA FSA',
     maxZoom: 19
-  }),
-  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>',
-    maxZoom: 17
   })
 };
 tileLayers.osm.addTo(map);
@@ -2451,7 +2448,7 @@ function switchLayer(name, btn) {
   map.removeLayer(tileLayers[activeLayer]);
   tileLayers[name].addTo(map);
   activeLayer = name;
-  document.querySelectorAll('#btn-osm,#btn-sat,#btn-topo').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#btn-osm,#btn-sat').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 }
 

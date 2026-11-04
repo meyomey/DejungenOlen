@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build f) – Zentraler Live-Punkt + Topo-Karte entfernt
+
+- **Zentraler Live-Punkt:** Läuft gerade eine Fahrt, zeigt die **Navbar auf JEDER Seite** einen roten, pulsierenden Punkt **„N unterwegs · ⏺“** – ein Klick öffnet die Live-Karte. „Unterwegs“ = wer in den letzten 3 Minuten seinen Standort geteilt hat (pausiert zählt mit), **⏺** = es wird gerade aufgezeichnet. Zusätzlich steht auf der betreffenden Tour-Seite neben „Fahren“ ein roter Hinweis **„🔴 N unterwegs · Aufzeichnung läuft“**. Nach 3 Minuten ohne Signal verschwindet der Punkt.
+- **Topographische Karte entfernt:** Die Karten-Auswahl auf der Tour-Seite hat nur noch **🗺️ Karte** und **🛰️ Satellit** (der 📐-Knopf war kaum nutzbar und lud langsam).
+- 219 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-04 (Build e) – Live-Karte: EIN Hinweis-Block + Lücke endgültig geschlossen
 
 - **Ein Block statt zwei:** „ℹ️ Info“ oben und „ℹ️ Hinweise“ unten sind zusammengelegt zu **einem** einklappbaren Block direkt unter dem Titel – „Hinweise – Zuschauen · Pause · Aufzeichnung · Foto“ – mit vier klar getrennten, benannten Absätzen (auf dem Desktop zweispaltig). Die Karte ist damit der erste Inhalt auf der Seite.

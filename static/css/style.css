@@ -459,3 +459,11 @@ footer {
   html:not(.big-text) #tour-actions .btn i { margin-right: .1rem !important; }
 }
 
+
+
+/* Build f (2026-11-04): zentraler Live-Punkt in der Navbar – weißer Dot pulsiert,
+   solange eine Fahrt läuft; der Punkt verlinkt direkt auf die Live-Karte. */
+.live-now-badge { display: inline-flex; align-items: center; gap: .4rem; font-size: .78rem; padding: .35rem .6rem; }
+.live-now-dot { width: .55rem; height: .55rem; border-radius: 50%; background: #fff; display: inline-block;
+                animation: livepulse 1.3s ease-in-out infinite; }
+@keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
