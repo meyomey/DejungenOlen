@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-04 g'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-04 h'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5020,6 +5020,14 @@ def _live_activity():
         LiveTrackPoint.tour_id == tour.id,
         LiveTrackPoint.recorded_at >= cutoff).first() is not None
     return {'tour_id': tour.id, 'title': tour.title, 'n': len(users), 'recording': recording}
+
+
+@app.route('/api/live/now')
+@login_required
+def api_live_now():
+    """Build h (2026-11-04): minimaler Live-Status für die Navbar – die rote Anzeige
+    aktualisiert sich per JS alle 30 s, OHNE dass man die Seite wechseln muss."""
+    return jsonify({'live': _live_activity()})
 
 
 @app.context_processor

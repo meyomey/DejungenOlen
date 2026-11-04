@@ -99,17 +99,20 @@
   </div>
   {# Build aj: Vorlesen für alle · Build ak: ALLE Aktionen in einer kompakten Reihe #}
   <div class="d-flex gap-2 flex-wrap" id="tour-actions">
-    {# Build b: Direkt zur Fahrt – Live-Karte öffnen und Standort teilen + Aufzeichnung automatisch starten #}
+    {# Build b/h: Direkt zur Fahrt – läuft hier schon eine Fahrt, ist „Fahren“ deaktiviert
+       (der zentrale rote Punkt in der Navbar ist DIE eine Live-Anzeige) #}
     {% if tour.status == 'planned' %}
+    {% if live_now and live_now.tour_id == tour.id %}
+    <button type="button" class="btn btn-sm btn-danger" disabled
+            title="Auf dieser Tour läuft gerade eine Fahrt ({{ live_now.n }} unterwegs{% if live_now.recording %} · Aufzeichnung läuft{% endif %}) – der rote Punkt oben führt zur Live-Karte">
+      <i class="bi bi-record-circle me-1"></i><span class="lbl">Fahrt läuft</span>
+    </button>
+    {% else %}
     <a href="{{ url_for('tour_live', tour_id=tour.id) }}?share=1"
        class="btn btn-sm {% if live_can_share %}btn-success{% else %}btn-outline-secondary{% endif %}"
        {% if not live_can_share %}title="{{ live_share_hint }}"{% endif %}>
       <i class="bi bi-record-circle me-1"></i><span class="lbl">Fahren</span>
     </a>
-    {# Build f: läuft auf DIESER Tour gerade eine Fahrt? → deutlicher Live-Hinweis #}
-    {% if live_now and live_now.tour_id == tour.id %}
-    <a href="{{ url_for('tour_live', tour_id=tour.id) }}" class="btn btn-sm btn-danger"
-       title="Fahrt läuft – Live-Karte öffnen">🔴 {{ live_now.n }} unterwegs{% if live_now.recording %} · Aufzeichnung läuft{% endif %}</a>
     {% endif %}
     {% endif %}
     <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-read-aloud"

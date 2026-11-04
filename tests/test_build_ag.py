@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 g')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 h')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -488,6 +488,42 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn("' tmix ' in _flt.stdout", src)               # tmix-Verfügbarkeit wird geprüft
         self.assertIn("'tmix=frames=2,' if _tmix_ok else ''", src)  # Motion-Blur nur wenn verfügbar
 
+    def test_h_live_status_endpoint_and_single_indicator(self):
+        # Build h (2026-11-04): Live-Status ohne Seitenwechsel, EINE zentrale Anzeige,
+        # „Fahren“ deaktiviert während der Fahrt.
+        self.login_org()
+        _grp = M.Tour.query.get(self.t_plan_id).group_id
+        t = M.Tour(title='Fahrt-Läuft', tour_date=dt.date.today(), status='planned',
+                   created_by=self.org_id, group_id=_grp)
+        db.session.add(t)
+        db.session.commit()
+        self.client.post('/api/location/update',
+                         json={'tour_id': t.id, 'lat': 53.10, 'lng': 9.20, 'accuracy': 10})
+        # 1) Endpunkt liefert den Status fürs JS-Polling
+        d = self.client.get('/api/live/now').get_json()
+        self.assertTrue(d['live'])
+        self.assertEqual(d['live']['tour_id'], t.id)
+        self.assertEqual(d['live']['n'], 1)
+        self.assertTrue(d['live']['recording'])
+        # 2) Navbar: Host-Span + Polling-JS (Status erscheint ohne Menüwechsel)
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertIn('id="live-now-host"', base)
+        self.assertIn("fetch('/api/live/now'", base)
+        self.assertIn('setInterval(pollLive, 30000)', base)
+        # 3) Tour-Seite: „Fahren“ deaktiviert als „Fahrt läuft“, KEIN zweiter roter Badge
+        det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
+        self.assertIn('<span class="lbl">Fahrt läuft</span>', det)
+        self.assertIn('disabled\n            title="Auf dieser Tour läuft gerade eine Fahrt', det)
+        self.assertNotIn('🔴 {{', det)
+        self.assertNotIn('>🔴 ', det)
+        self.assertNotIn('href="{{ url_for(\'tour_live\', tour_id=tour.id) }}" class="btn btn-sm btn-danger"', det)
+        # 4) ohne laufende Fahrt: normaler Fahren-Knopf
+        db.session.execute(db.text("UPDATE live_locations SET updated_at = datetime('now', '-10 minutes')"))
+        db.session.commit()
+        det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
+        self.assertIn('<span class="lbl">Fahren</span>', det)
+        self.assertNotIn('<span class="lbl">Fahrt läuft</span>', det)
+
     def test_g_ride_survives_page_change(self):
         # Build g (2026-11-04): „Fahren“ bleibt über Seitenwechsel aktiv –
         # kein Stop beim Verlassen der Live-Seite, globaler Tracker + Pill, Auto-Resume.
@@ -526,9 +562,9 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('live-now-badge', home)
         self.assertIn('1 unterwegs', home)
         self.assertIn('Aufzeichnung läuft', home)
-        # 2) Tour-Seite: Live-Badge neben „Fahren“ (diese Tour ist aktiv)
+        # 2) Tour-Seite: KEIN eigener roter Badge mehr (Build h: die Navbar-Anzeige ist DIE eine)
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
-        self.assertIn('🔴 1 unterwegs · Aufzeichnung läuft', det)
+        self.assertNotIn('>🔴 ', det)
         # 3) nach 10 Minuten Funkstille: kein Live-Punkt mehr (rohes SQL – updated_at
         # hat einen onupdate-Hook, der jedes ORM-Update auf „jetzt“ zurücksetzt)
         db.session.execute(db.text(

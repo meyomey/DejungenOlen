@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build h) – Live-Status ohne Seitenwechsel, eine Anzeige statt zweier
+
+- **Live-Punkt aktualisiert sich selbst:** Der rote Navbar-Punkt („N unterwegs · ⏺“) frischt sich jetzt per JS alle 30 Sekunden auf (neuer Endpunkt `/api/live/now`) – er erscheint, während die Fahrt läuft, **ohne** dass man die Seite wechseln muss.
+- **Eine Anzeige statt zweier:** Der zusätzliche rote Hinweis neben „Fahren“ auf der Tour-Seite ist entfernt – der zentrale Navbar-Punkt ist die eine Live-Anzeige (die „Fahrt läuft“-Pill unten rechts bleibt als Fernbedienung auf anderen Seiten).
+- **„Fahren“ deaktiviert während der Fahrt:** Läuft auf der angeschauten Tour gerade eine Fahrt, zeigt die Tour-Seite statt des grünen „Fahren“-Knopfes einen deaktivierten roten Knopf **„⏺ Fahrt läuft“**.
+- 221 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-04 (Build g) – Fahrt bleibt über Seitenwechsel aktiv
 
 - **Vorher:** Ein Tipp auf einen anderen Menüpunkt beendete „Fahren“ still (die Live-Seite schickte beim Verlassen ein „Teilen beenden“).
