@@ -573,7 +573,7 @@ class VideoSmoothTest(AppTestCase):
             "UPDATE live_track_points SET recorded_at = datetime('now', '-10 minutes')"))
         db.session.commit()
         home = self.client.get('/').get_data(as_text=True)
-        self.assertNotIn('live-now-badge', home)
+        self.assertIn('<span id="live-now-host"></span>', home)   # Host leer = keine Fahrt aktiv
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
         self.assertNotIn('unterwegs · Aufzeichnung läuft', det)
         # 4) Topo-Karte weg: weder Knopf noch Layer, OSM/Sat bleiben
