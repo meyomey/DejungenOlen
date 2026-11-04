@@ -38,6 +38,8 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 - Kartenvorschau auf Tourenkarten (lazy-loading Leaflet Mini-Maps)
 - Live-Karte je Tour (`/touren/<id>/live`): zuschauen oder Standort teilen, Mitfahrer mit Initialen, Streckenkilometer, Vollbild, Wake Lock
 - Live-Karte als Aufzeichnung (Build af): geteilte Positionen bleiben als Spur erhalten; Tourleitung übernimmt sie als GPX-Track der Tour (mit Zeitstempeln) oder lädt sie herunter, jeder kann seine eigene löschen, automatische Löschung nach 30 Tagen
+- Fahrmodus (2026-11-04): „Fahren“ auf der Tourseite oder der Blitzstart `/fahren` (auch als App-Verknüpfung) öffnet die Live-Karte mit direkt startender Fahrt; Pause per Knopf oder automatisch nach ~3 min Stillstand, Weiterfahren setzt sie selbst fort; einheitliche Begriffe „Fahrt starten“/„⏹ Fahrt beenden“, Beenden spätestens nach 8 Stunden
+- Fahrt bleibt app-weit aktiv (2026-11-04): Seitenwechsel beendet sie nicht – roter „Fahrt läuft“-Punkt unten rechts mit „Zur Karte“/„✕“; der pulsierende Live-Punkt in der Navbar („N unterwegs · ⏺“) und der Zustand auf der Tourseite („Fahrt läuft“/„Fahren“) aktualisieren sich selbst alle 30 s
 - Gruppen-Karte: Gastro (mit Öffnungszeiten, Ruhetag, Mittagstisch, „jetzt geöffnet“, Filter, Clustering), Orte, Treffpunkte
 - Offline-Kartenkacheln cachen (Service Worker)
 - Kartensperre auf Mobile (Tippen zum Aktivieren)
@@ -150,7 +152,7 @@ keine Netzverbindungen auf (Push, Telegram, E-Mail, Overpass und Wetter sind dur
 
 ```bash
 # im Projektordner, mit aktivierter virtueller Umgebung
-python -m unittest                      # alle Tests (~35 s)
+python -m unittest                      # alle Tests (~60 s)
 python -m unittest -v tests.test_touren # ein Modul, ausführlich
 python -m unittest tests.test_routes.RoutesTest.test_all_get_routes_member
 ```

@@ -1,3 +1,13 @@
+## 1.4.0 – 2026-11-04 (Build p) – Audit 6: Live-Status gruppenscharf, 500er-Fix, Doku
+
+- **Audit 6** (Komplett-Audit über die 34 Commits seit Audit 5): Zwei selbst gefundene Befunde behoben –
+  ① Der zentrale Live-Status (roter Navbar-Punkt, `/api/live/now`) zeigte auch Mitgliedern **fremder
+  Gruppen** Aktivität und Titelanfang; er ist jetzt gruppenscharf wie alle Live-Seiten (Admins sehen alle).
+  ② Ein Extremwert als Tour-ID (1e309) lieferte HTTP 500 statt einer sauberen 400-Antwort.
+- **Doku:** README + Hilfe beschreiben jetzt Fahrmodus, Auto-Pause, Blitzstart `/fahren` und den
+  app-weiten „Fahrt läuft“-Zustand; die veraltete Aussage „endet beim Schließen der Seite“ ist korrigiert.
+- 228 Tests, py_compile OK. Vollständiger Bericht: `docs/AUDIT_BERICHT.md` (Audit 6).
+
 # Changelog – De jungen Olen
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.

@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 o')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 p')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -525,6 +525,32 @@ class VideoSmoothTest(AppTestCase):
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
         self.assertIn('<span class="lbl">Fahren</span>', det)
         self.assertIn('id="fahren-running" class="d-none"', det)     # Build o: Variante verborgen statt entfernt
+
+    def test_p_audit_group_scope_and_overflow(self):
+        # Build p / Audit 6 (2026-11-04): Zwei Befunde behoben –
+        # B1: Der Live-Status (Navbar-Punkt, /api/live/now) war NICHT gruppenscharf –
+        #     Mitglieder fremder Gruppen sahen Titelanfang + Aktivität. Jetzt filtert
+        #     _live_activity auf die eigene Gruppe (Admins: alle, wie _tour_or_404).
+        # B2: tour_id=1e309 lieferte HTTP 500 (OverflowError bei int()); jetzt 400.
+        src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('def _live_activity(user=None):', src)
+        self.assertIn('Tour.group_id == user.group_id', src)
+        self.assertIn('except (TypeError, ValueError, OverflowError):', src)
+        # dynamisch: eigene Gruppe sieht die Fahrt, fremde Gruppe sieht NICHTS
+        self.login_org()
+        r = self.client.post('/api/location/update',
+                             json={'tour_id': self.t_plan_id, 'lat': 52.9, 'lng': 9.1, 'accuracy': 10})
+        self.assertEqual(r.status_code, 200)
+        d = self.client.get('/api/live/now').get_json()
+        self.assertIsNotNone(d['live'])
+        self.assertEqual(d['live']['tour_id'], self.t_plan_id)
+        self.login('fremd@test.de')
+        d = self.client.get('/api/live/now').get_json()
+        self.assertIsNone(d['live'])                      # <- vor Audit 6: Leak mit Titel
+        # B2: Overlauf-Wert -> 400 statt 500
+        r = self.client.post('/api/location/update',
+                             json={'tour_id': 1e309, 'lat': 52.9, 'lng': 9.1})
+        self.assertEqual(r.status_code, 400)
 
     def test_o_fahren_button_updates_itself(self):
         # Build o (2026-11-04): „Fahren“/„Fahrt läuft“ auf der Tourseite hält sich selbst

@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-04 o'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-04 p'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5001,17 +5001,22 @@ def _haversine_m(lat1, lng1, lat2, lng2):
     return 2 * r * math.asin(min(1.0, math.sqrt(h)))
 
 
-def _live_activity():
+def _live_activity(user=None):
     """Build f (2026-11-04): zentrale Live-Anzeige – läuft gerade eine Fahrt?
     Liefert None oder {'tour_id', 'title', 'n', 'recording'}:
     'n' = Anzahl derer, die in den letzten 3 Minuten ihren Standort geteilt haben
     (auch pausiert zählt als unterwegs), 'recording' = in den letzten 3 Minuten
-    kam ein Aufzeichnungspunkt. Für die Navbar und die Tour-Seite."""
+    kam ein Aufzeichnungspunkt. Für die Navbar und die Tour-Seite.
+    Audit 6 (Build p): gruppenscharf – andere Gruppen sehen die Fahrt nicht
+    (wie überall in _tour_or_404); Admins sehen alle Gruppen."""
+    user = user or current_user
     cutoff = datetime.utcnow() - timedelta(minutes=3)
-    rows = (db.session.query(LiveLocation, Tour)
-            .join(Tour, Tour.id == LiveLocation.tour_id)
-            .filter(LiveLocation.updated_at >= cutoff, Tour.status == 'planned')
-            .order_by(LiveLocation.updated_at.desc()).all())
+    q = (db.session.query(LiveLocation, Tour)
+         .join(Tour, Tour.id == LiveLocation.tour_id)
+         .filter(LiveLocation.updated_at >= cutoff, Tour.status == 'planned'))
+    if not getattr(user, 'is_admin', False):
+        q = q.filter(Tour.group_id == user.group_id)
+    rows = q.order_by(LiveLocation.updated_at.desc()).all()
     if not rows:
         return None
     _loc, tour = rows[0]
@@ -5237,7 +5242,7 @@ def location_update():
         tour_id  = int(tour_id)
         lat, lng = float(lat), float(lng)
         accuracy = float(accuracy) if accuracy is not None else None
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):        # Audit 6: 1e309 -> OverflowError, nicht 500
         return jsonify({'error': 'invalid data'}), 400
     if not (-90 <= lat <= 90 and -180 <= lng <= 180):
         return jsonify({'error': 'invalid coordinates'}), 400

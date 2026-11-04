@@ -1,3 +1,66 @@
+# Audit-Bericht – De jungen Olen, Audit 6 (Version 1.4.0, Build p, 04.11.2026)
+
+Sechstes Komplett-Audit, Stand Build o. Scope: der Zuwachs seit Audit 5 (Build av, 17.10.2026) –
+34 Commits, 29 Dateien, ~1.700 Zeilen: Video-Vorschau (aw–ax), Gastro-Formular/-Suchkarte mobil
+(ay, ba–bc), einheitlicher mobiler Kartenschutz `map-touch.js` (bb), Orte-Formular (bd), Fahrmodus
+mit Auto-/Manuell-Pause (29b) und die Smartphone-Bedienung der Live-Karte (11-04 a–o: Daumenleiste,
+Blitzstart `/fahren`, Status-Leiste, EIN Hinweis-Block, zentraler Live-Punkt mit Selbstaktualisierung,
+„Fahrt läuft“ über Seitenwechsel, einheitliche Fahren-Begriffe, Links in Foto-/Beenden-Meldung,
+Selbstumschaltung „Fahrt läuft“/„Fahren“ auf der Tourseite).
+Ergebnis im Satz: **keine Sicherheitslücke in den neuen UI-Umbauten; zwei selbst gefundene Befunde
+behoben (Live-Status war nicht gruppenscharf; ein Overlauf-Wert lieferte HTTP 500) und Doku-Lücken
+(README/Hilfe: Fahrmodus) geschlossen.**
+
+## Vorgehen
+- **Statisch:** compileall über app/models/config/tests (pyflakes in dieser Umgebung nicht verfügbar –
+  ersetzt durch py_compile + vollen Suite-Lauf); Diff-Review `2e54e71..4fecab8`: keine neuen
+  `os.system`/`shell=True`/`eval`/`exec`-Muster; nur zwei neue Routen (`/fahren` und `/api/live/now`,
+  beide `@login_required`); Review der neuen Live-Kette (`_live_activity`, `/api/location/update`,
+  globaler Tracker in base.html, `djoFahren`-Pill, Hook `djoLiveNowUpdate`): localStorage
+  `djo_fahren` enthält nur `{tour_id, started}` (keine Standorte); `innerHTML` nur in `applyLive`
+  (ausschließlich Zahlen/IDs aus dem Server-JSON) und `setStatus(…, true)` (nur eigene
+  Meldungs-Strings, `TOUR_ID` serverseitig als Zahl eingebettet)
+- **Dynamisch** (Test-DB): `node --check` über ALLE Inline-Skripte von 7 gerenderten Seiten
+  (Start, Touren, Tourseite, Live-Karte, Archiv, Hilfe, Profil) → sauber; SQL-Zähler 8–25 je Seite
+  (flach, kein N+1); XSS-Probe mit Tour-Titel `<img src=x onerror=alert(1)>…` → 0 rohe Vorkommen,
+  alles escaped (Navbar-Badge zeigt nur Zahlen, nie den Titel); Mandanten-Probe: fremde Gruppe auf
+  Live-Seite/Spur-API/Update → 404 (korrekt), ABER `/api/live/now` + Navbar-Badge leakten (→ B1);
+  Fuzzing `/api/location/update` (`''`, `'x'`, `<script>`, ±999, None, dict, 50 Zeichen, NaN, 1e309):
+  alles < 500 außer B2 (1e309 → 500); lat/lng außerhalb des Bereichs → 400; `/fahren` ausgeloggt →
+  302 auf Login; 228 Tests grün
+- **Doku:** README und Hilfe kannten den Fahrmodus nicht; Hilfe behauptete zudem veraltet
+  „endet automatisch beim Schließen der Seite“ (seit Build g falsch)
+
+## Befunde
+
+| Nr. | Schwere | Befund | Status (Build p) |
+|---|---|---|---|
+| B1 | **Mittel** (Datenschutz) | `_live_activity()` filterte nicht nach Gruppe: Mitglieder **anderer** Gruppen sahen im Navbar-Punkt und via `/api/live/now` Tour-ID, Titelanfang und Aktivitätszähler fremder Gruppen (die Live-Seite selbst war korrekt 404) | **behoben:** Gruppensperre wie in `_tour_or_404` – nur eigene Gruppe, Admins alle; Test: Fremd-Login sieht `live: None` |
+| B2 | Niedrig (Stabilität) | `tour_id=1e309` → `OverflowError` bei `int()` → HTTP 500 (Fehler-Handler griff, aber 500 statt 400) | **behoben:** `except` um `OverflowError` erweitert → 400 `invalid data` |
+| B3 | Info | SQL-Zähler konstant (Start 20, Tourseite 25, Live 11, Archiv 16, Hilfe 8) | ohne Handlungsbedarf |
+| B4 | Niedrig (Doku) | README ohne Fahrmodus-Abschnitt, Tests-Dauer „~35 s“ veraltet; Hilfe mit veralteter „endet beim Schließen“-Aussage, ohne Auto-Pause und `/fahren` | **behoben:** README-Bullets + „~60 s“, Hilfe-Fahrmodus-/Pause-Abschnitt, veraltete Aussage korrigiert |
+
+## Prozess-Hinweis (kein Code-Befund)
+- Am 04.11. wurde versehentlich der stale-Zweig `main` (Stand af, 15.10.) auf den Server kopiert –
+  „Live-Karte weg“. Mit dem Komplettpaket Build o wiederhergestellt; `deploy/LAST_DEPLOY.txt` ist
+  jetzt wieder auf den echten Server-Stand gesetzt. **Empfehlung:** `main` per Pull Request auf den
+  aktuellen Stand bringen (oder künftig ausschließlich den Arena-Zweig deployen), damit der
+  Versehentlich-Fall sich nicht wiederholt.
+
+## Bestätigt (ohne Handlungsbedarf)
+- Neue Endpunkte minimal und abgesichert: `/fahren` (Login-Gate, wählt Touren nur der eigenen Gruppe,
+  endet auf `?share=1`), `/api/live/now` (Login-Gate, jetzt gruppenscharf)
+- `/api/location/update` erzwingt Zahlen (jetzt inkl. Overflow-Schutz), Bereichsprüfung lat/lng,
+  NaN-sichere Sanitisierung von speed (0–60 m/s) / heading (0–360°), Zeitfenster-Gate 403, Fremd-Tour 404
+- App-weiter Tracker: 8-h-Hartlimit doppelt (Live-Seite + Tracker), Senden max. alle 30 s, Standorte
+  gehen nie in localStorage; Beenden räumt Marker, Watch und Wake-Lock auf
+- Keine neuen rohen SQL-Strings im geprüften Diff; alle Abfragen ORM/gebundene Parameter
+- Build n (CSS-Spezifität) und Build o (Selbstumschaltung) sind rein präsentational
+
+Die Berichte zu Audit 1–5 stehen unten.
+
+---
+
 # Audit-Bericht – De jungen Olen, Audit 5 (Version 1.4.0, Build av, 17.10.2026)
 
 Fünftes Komplett-Audit, Stand Build au. Scope: der Zuwachs seit Audit 4 – Vorlesen-Knopf und
