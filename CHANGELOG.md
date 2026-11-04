@@ -2,6 +2,12 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-04 (Build n) – Fix: „Fahrt beenden“ wirklich nicht mehr abgeschnitten
+
+- **Build m war wirkungslos (CSS-Spezifität):** Die Zweizeilig-Regel `#btn-share { white-space: normal }` verlor gegen `#live-bar .btn { white-space: nowrap }` (ID + Klasse schlägt bloße ID) – der Knopf blieb abgeschnitten. Der Selektor heißt jetzt `#live-bar #btn-share` und gewinnt.
+- 226 Tests, py_compile OK.
+
+
 ## 1.4.0 – 2026-11-04 (Build m) – „Fahrt beenden“ wieder komplett lesbar
 
 - **Kein „Fahrt bee…“ mehr:** Der rote Knopf darf in der Daumenleiste zweizeilig werden, statt abgeschnitten zu werden (schmale Displays, Großschrift-Modus). Bei sehr schmalen Screens wird die Schrift der Fahrt-Knöpfe zusätzlich leicht verkleinert.

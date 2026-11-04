@@ -51,9 +51,11 @@
     #live-bar .btn { min-height: 50px; font-size: 1rem; flex: 1 1 0; padding: .4rem .3rem;
                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #live-bar .lb-sec .btn { min-height: 40px; font-size: .85rem; }
-    /* Build m: Lange Beschriftung komplett lesbar – der Knopf darf zweizeilig werden,
-       statt mit „Fahrt bee…“ abgeschnitten zu werden (schmale Displays, Großschrift-Modus). */
-    #btn-share { flex: 2.2 1 0; white-space: normal; line-height: 1.15; text-overflow: clip; }
+    /* Build m/n: Lange Beschriftung komplett lesbar – der Knopf darf zweizeilig werden,
+       statt mit „Fahrt bee…“ abgeschnitten zu werden (schmale Displays, Großschrift-Modus).
+       Build n: Selektor mit #live-bar davor – sonst gewinnt das white-space:nowrap aus
+       „#live-bar .btn“ (ID + Klasse schlägt bloße ID) und es wird weiterhin abgeschnitten. */
+    #live-bar #btn-share { flex: 2.2 1 0; white-space: normal; line-height: 1.15; text-overflow: clip; }
     @media (max-width: 374.98px) { #live-bar .lb-main .btn { font-size: .9rem; } }
     #btn-photo { flex: 1.1 1 0; }
     /* Kein Überstand unter der Karte mehr – die Leiste liegt nur beim Scrollen über dem Inhalt;

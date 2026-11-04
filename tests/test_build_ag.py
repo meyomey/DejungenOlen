@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 m')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-04 n')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -540,7 +540,7 @@ class VideoSmoothTest(AppTestCase):
         # „Fahrt bee…“ abgeschnitten – der Knopf darf zweizeilig werden; auf sehr schmalen
         # Displays wird die Schrift der Fahrt-Knöpfe leicht verkleinert.
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
-        self.assertIn('#btn-share { flex: 2.2 1 0; white-space: normal; line-height: 1.15; text-overflow: clip; }', live)
+        self.assertIn('#live-bar #btn-share { flex: 2.2 1 0; white-space: normal; line-height: 1.15; text-overflow: clip; }', live)  # Build n: hoeher spezifisch – nowrap aus '#live-bar .btn' darf nicht gewinnen
         self.assertIn('@media (max-width: 374.98px) { #live-bar .lb-main .btn { font-size: .9rem; } }', live)
 
     def test_l_stop_status_links_to_recording(self):
