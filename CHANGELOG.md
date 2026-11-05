@@ -1,5 +1,11 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-05 (Build i) – Bestätigt-Badge zählt Gäste mit
+
+- Das Badge neben „Anwesenheit bestätigen“ zählte nur die bestätigten **Mitglieder** – die Häkchen-Liste darunter führt aber Mitglieder **und** Gäste. Beispiel: 1 Mitglied + 1 Gast bestätigt → Badge zeigte „1 ✓“, obwohl zwei Häkchen gesetzt waren. Das Badge zählt jetzt beide (grüner Wert = Anzahl bestätigter Häkchen).
+- „offen“-Badge und automatisch aufgeklappte Bestätigungs-Box berücksichtigen jetzt auch reine Gäste-Touren.
+- 237 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-05 (Build h) – Archiv zählt Personen richtig
 
 - **Archiv-Liste (Tabelle, Karten und Suche):** Die Personen-Spalte 👥 zählte vorher nur die **bestätigten Mitglieder** – Gäste fehlten komplett, angemeldete (aber nicht bestätigte) Mitglieder auch. Jetzt zählt das Archiv exakt wie die Tour-Seite: **angemeldete Mitglieder + Gäste**.

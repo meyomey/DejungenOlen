@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 h')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 i')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1448,4 +1448,29 @@ class ArchiveHeadcountTest(AppTestCase):
             db.session.execute(db.text(
                 "DELETE FROM tour_participants WHERE user_id = %d AND tour_id = %d"
                 % (self.mem2_id, self.t_done_id)))
+            db.session.commit()
+
+
+class ConfirmBadgeTest(AppTestCase):
+    """Build 2026-11-05i: Das „Anwesenheit bestätigen“-Badge zählt Mitglieder UND
+    Gäste (die Häkchen-Liste führt beide). Vorher stand dort nur die Zahl der
+    bestätigten Mitglieder – 2 Haken zeigten „1 ✓“."""
+
+    def test_i_confirm_badge_counts_guests(self):
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertIn("guests | selectattr('confirmed_present')", det)
+        self.assertIn('(attending or guests)', det)
+        # dynamisch: 1 bestätigtes Mitglied + 1 bestätigter Gast → Badge „2 ✓“
+        self.ensure_participant(self.t_done_id, self.mem_id, status='attending', confirmed=True)
+        with app.app_context():
+            g = M.TourGuest(tour_id=self.t_done_id, name='Bruno Bestaetigt',
+                            confirmed_present=True, created_by=self.org_id)
+            db.session.add(g)
+            db.session.commit()
+            gid = g.id
+        self.login_org()
+        html = self.get_html(f'/touren/{self.t_done_id}')
+        self.assertIn('>2 ✓</span>', html)
+        with app.app_context():                       # Aufräumen (sonst sieht das Archiv ihn)
+            db.session.execute(db.text(f'DELETE FROM tour_guests WHERE id = {gid}'))
             db.session.commit()
