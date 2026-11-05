@@ -1,5 +1,12 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-05 (Build j) – Rangliste sortiert richtig, Gästeverzeichnis aufräumbar, Gast → Mitglied
+
+- **Ranglisten-Sortierung korrigiert:** Gäste wurden erst NACH dem Sortieren in die Liste gehängt – sie klebten dadurch immer am Ende der Gesamt-Liste (konnten nie aufs Podium) und fehlten im Tab „Dieses Jahr“ komplett. Jetzt werden sie vor dem Sortieren mitgemischt und erscheinen überall an ihrem richtigen Platz.
+- **Gästeverzeichnis aufräumen:** Auf der Tour-Seite gibt es unter „Wieder dabei“ jetzt „Gästeverzeichnis (N) verwalten“ – Tippfehler lassen sich per 🗑 aus der Vorschlagsliste entfernen (nur Tourleitung; vergangene Tour-Einträge bleiben unverändert).
+- **Gast ist jetzt Mitglied:** Meldet sich ein ehemaliger Gast mit dem gleichen Namen als Mitglied an, sieht die Tourleitung auf seinem Profil einen Hinweis („fuhr früher als Gast mit …“) und kann die Gast-Einträge per Klick übernehmen: Die Touren zählen künftig fürs Mitglied (inkl. Bestätigung, Kilometer und Badges), die Gast-Zeile in der Rangliste und die Verzeichnis-Vorschläge verschwinden. Namensgleichheit (Groß-/Kleinschreibung egal) innerhalb der Gruppe ist die Bedingung.
+- 238 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-05 (Build i) – Bestätigt-Badge zählt Gäste mit
 
 - Das Badge neben „Anwesenheit bestätigen“ zählte nur die bestätigten **Mitglieder** – die Häkchen-Liste darunter führt aber Mitglieder **und** Gäste. Beispiel: 1 Mitglied + 1 Gast bestätigt → Badge zeigte „1 ✓“, obwohl zwei Häkchen gesetzt waren. Das Badge zählt jetzt beide (grüner Wert = Anzahl bestätigter Häkchen).

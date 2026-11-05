@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 i')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 j')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1473,4 +1473,93 @@ class ConfirmBadgeTest(AppTestCase):
         self.assertIn('>2 ✓</span>', html)
         with app.app_context():                       # Aufräumen (sonst sieht das Archiv ihn)
             db.session.execute(db.text(f'DELETE FROM tour_guests WHERE id = {gid}'))
+            db.session.commit()
+
+
+class GuestMergeAndSortTest(AppTestCase):
+    """Build 2026-11-05j: (1) Rangliste sortiert Gäste RICHTIG mit – vorher klebten sie
+    am Ende der Gesamt-Liste (nie aufs Podium) und fehlten im Jahr-Tab komplett.
+    (2) Verzeichnis-Vorschläge („Wieder dabei“) sind löschbar (Tippfehler).
+    (3) Ein Gast, der sich als Mitglied anmeldet, kann per Klick übernommen werden."""
+
+    def test_j_sort_directory_delete_and_merge(self):
+        # ── (1) Sortierung: Gast mit 2 Touren steht VOR dem 1-Tour-Mitglied und
+        #     erscheint im Jahr-Tab ──
+        with app.app_context():
+            t2 = M.Tour(title='Noch eine Alte', tour_date=dt.date.today() - dt.timedelta(days=1),
+                        status='completed', group_id=self.g1_id, created_by=self.org_id)
+            db.session.add(t2)
+            db.session.flush()
+            t2_id = t2.id
+            db.session.add_all([
+                M.TourGuest(tour_id=self.t_done_id, name='Amanda Vorn', confirmed_present=True,
+                            created_by=self.org_id),
+                M.TourGuest(tour_id=t2_id, name='Amanda Vorn', confirmed_present=True,
+                            created_by=self.org_id),
+            ])
+            db.session.commit()
+        self.ensure_participant(self.t_done_id, self.mem_id, status='attending', confirmed=True)
+        self.login_org()
+        html = self.get_html('/rangliste')
+        self.assertLess(html.index('Amanda Vorn'), html.index('Hein Mück'),
+                        'Gast mit 2 Touren soll vor dem 1-Tour-Mitglied sortiert sein')
+        jahr = html[html.find('id="panel-jahr"'):html.find('id="panel-km"')]
+        self.assertIn('Amanda Vorn', jahr)               # Jahr-Tab: Gast war vorher gar nicht drin
+
+        # ── (2) Tippfehler aus dem Gästeverzeichnis löschen ──
+        self.client.post(f'/touren/{self.t_plan_id}/gaeste', data={'name': 'Zack Tippfehler'})
+        with app.app_context():
+            entry = M.Guest.query.filter_by(group_id=self.g1_id, name='Zack Tippfehler').first()
+            self.assertIsNotNone(entry)
+            eid = entry.id
+        self.login_member()                              # Mitglied darf nicht
+        self.assertEqual(self.client.post(
+            f'/touren/{self.t_plan_id}/gast-verzeichnis/{eid}/loeschen').status_code, 403)
+        self.login_org()
+        html = self.client.post(f'/touren/{self.t_plan_id}/gast-verzeichnis/{eid}/loeschen',
+                                follow_redirects=True).get_data(as_text=True)
+        self.assertIn('aus dem Gästeverzeichnis entfernt', html)
+        with app.app_context():
+            self.assertIsNone(M.Guest.query.filter_by(name='Zack Tippfehler').first())
+
+        # ── (3) Gast meldet sich als Mitglied an → Übernahme ──
+        with app.app_context():
+            u = M.User(name='Ecki Werder', email='ecki@test.de', role='member', group_id=self.g1_id)
+            u.set_password('x')
+            db.session.add(u)
+            db.session.flush()
+            ecki_id = u.id
+            db.session.add_all([
+                M.TourGuest(tour_id=self.t_done_id, name='Ecki Werder', confirmed_present=True,
+                            created_by=self.org_id),
+                M.TourGuest(tour_id=t2_id, name='Ecki Werder', confirmed_present=True,
+                            created_by=self.org_id),
+                M.Guest(group_id=self.g1_id, name='Ecki Werder', phone='0500 1',
+                        created_by=self.org_id),
+            ])
+            db.session.commit()
+            self.assertEqual(appmod.user_stats(db.session.get(M.User, ecki_id))['tour_count'], 0)
+        html = self.get_html(f'/profil/{ecki_id}')
+        self.assertIn('fuhr früher als', html)          # Template Umbruch tolerant prüfen
+        self.assertIn('<strong>Gast</strong> mit', html)
+        self.assertIn('Gast-Einträge übernehmen', html)
+        html = self.client.post(f'/profil/{ecki_id}/gast-uebernehmen',
+                                follow_redirects=True).get_data(as_text=True)
+        self.assertIn('Gast-Einträge übernommen', html)
+        with app.app_context():
+            ecki = db.session.get(M.User, ecki_id)
+            self.assertEqual(appmod.user_stats(ecki)['tour_count'], 2)      # beide Touren zählen jetzt
+            self.assertEqual(M.TourGuest.query.filter_by(name='Ecki Werder').count(), 0)
+            self.assertIsNone(M.Guest.query.filter_by(name='Ecki Werder').first())
+        html = self.get_html(f'/profil/{ecki_id}')
+        self.assertNotIn('fuhr früher als', html)        # Box ist weg – nichts mehr zu holen
+
+        # ── Aufräumen, damit andere Tests unverändert bleiben ──
+        with app.app_context():
+            db.session.execute(db.text(f'DELETE FROM tour_guests WHERE tour_id = {t2_id}'))
+            db.session.execute(db.text(f'DELETE FROM tour_participants WHERE tour_id = {t2_id}'))
+            db.session.execute(db.text(f'DELETE FROM tours WHERE id = {t2_id}'))
+            db.session.execute(db.text("DELETE FROM tour_guests WHERE name = 'Amanda Vorn'"))
+            db.session.execute(db.text(f'DELETE FROM tour_participants WHERE user_id = {ecki_id}'))
+            db.session.execute(db.text(f'DELETE FROM users WHERE id = {ecki_id}'))
             db.session.commit()

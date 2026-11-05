@@ -722,6 +722,27 @@
           </button>
         </form>
         {% endif %}
+        {# Build 11-05j: Verzeichnis verwalten – Tippfehler aus der Vorschlagsliste entfernen #}
+        {% if group_guests %}
+        <details class="mb-2">
+          <summary class="small text-muted cursor-pointer">
+            <i class="bi bi-book me-1"></i>Gästeverzeichnis ({{ group_guests|length }}) verwalten
+          </summary>
+          {% for dg in group_guests %}
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="small">{{ dg.name }}{% if dg.phone %} <span class="text-muted">· ☎</span>{% endif %}</span>
+            <form method="post" action="{{ url_for('tour_delete_dir_guest', tour_id=tour.id, guest_id=dg.id) }}"
+                  onsubmit="return confirm('„{{ dg.name }}“ aus dem Gästeverzeichnis löschen? Nur der Vorschlag verschwindet – vergangene Touren bleiben unverändert.')"
+                  style="display:inline">
+              <button type="submit" class="btn btn-sm py-0 px-1 text-muted"
+                      title="Aus dem Verzeichnis löschen" style="font-size:.7rem">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </div>
+          {% endfor %}
+        </details>
+        {% endif %}
         <form method="post" action="{{ url_for('tour_add_guest', tour_id=tour.id) }}"
               class="d-flex align-items-center gap-2 flex-wrap">
           <input name="name" class="form-control form-control-sm" style="max-width:170px"

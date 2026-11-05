@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-05 i'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-05 j'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2312,6 +2312,8 @@ def tour_detail(tour_id):
                            participant_ids=participant_ids,
                            guests=tour.guests.order_by(TourGuest.name).all(),   # Build 11-05c
                            known_guests=_known_guests_for(tour),                      # Build 11-05d
+                           group_guests=(Guest.query.filter_by(group_id=tour.group_id)
+                                         .order_by(Guest.name).all() if tour.group_id else []),   # Build 11-05j
                            rides=rides, my_ride=my_ride,                 # Build ab
                            gpx_timed=bool(timed_source),                 # Build ac/af: Zeiten vorhanden (GPX oder Live-Aufzeichnung)?
                            timed_source=timed_source, gpx_span=gpx_span,
@@ -2847,6 +2849,25 @@ def _guest_dir_upsert(group_id, name, phone='', user_id=None):
                              created_by=user_id or current_user.id))
     elif phone and not entry.phone:
         entry.phone = phone
+
+
+@app.route('/touren/<int:tour_id>/gast-verzeichnis/<int:guest_id>/loeschen', methods=['POST'])
+@login_required
+def tour_delete_dir_guest(tour_id, guest_id):
+    """Build 11-05j: Eintrag aus dem Gruppen-Gästeverzeichnis löschen (z. B. Tippfehler) –
+    er verschwindet aus der „Wieder dabei“-Auswahl. Schon eingetragene Tour-Gäste
+    (vergangene Touren) bleiben unverändert."""
+    tour = _tour_or_404(tour_id)
+    if not _can_manage_tour(tour):
+        abort(403)
+    entry = Guest.query.get_or_404(guest_id)
+    if tour.group_id and entry.group_id != tour.group_id:
+        abort(404)
+    name = entry.name
+    db.session.delete(entry)
+    db.session.commit()
+    flash(f'„{name}“ aus dem Gästeverzeichnis entfernt – erscheint nicht mehr als Vorschlag.', 'success')
+    return redirect(url_for('tour_detail', tour_id=tour_id) + '#teilnehmer')
 
 
 @app.route('/touren/<int:tour_id>/gast-verzeichnis', methods=['POST'])
@@ -7983,6 +8004,16 @@ def profil(user_id):
     stats  = user_stats(user)
     badges = compute_badges(user)
 
+    # Build 11-05j: Passt ein Gast-Eintrag zu diesem Mitglied (gleicher Name, gleiche
+    # Gruppe)? Dann kann die Tourleitung die Einträge ins Profil übernehmen.
+    guest_merge_count = 0
+    if ((current_user.is_organizer or current_user.is_admin) and user.group_id
+            and user.group_id == current_user.group_id):
+        guest_merge_count = (TourGuest.query.join(Tour)
+                             .filter(Tour.group_id == user.group_id,
+                                     db.func.lower(db.func.trim(TourGuest.name))
+                                     == (user.name or '').strip().lower()).count())
+
     from sqlalchemy.orm import contains_eager
     participations = (
         TourParticipant.query
@@ -7994,13 +8025,64 @@ def profil(user_id):
         participations = participations.filter(Tour.group_id == _gid)
     participations = participations.order_by(Tour.tour_date.desc()).all()
     return render_template('profil.html', member=user, stats=stats,
-                           badges=badges, participations=participations)
+                           badges=badges, participations=participations,
+                           guest_merge_count=guest_merge_count)
 
 
 @app.route('/profil')
 @login_required
 def my_profil():
     return redirect(url_for('profil', user_id=current_user.id))
+
+
+@app.route('/profil/<int:user_id>/gast-uebernehmen', methods=['POST'])
+@login_required
+def profil_guest_merge(user_id):
+    """Build 11-05j: Ein früherer Gast hat sich als Mitglied angemeldet – die Tourleitung
+    kann seine Gast-Einträge (gleicher Name, gleiche Gruppe) ins Profil übernehmen:
+    Die Touren zählen künftig für das Mitglied, die Gast-Zeilen in der Rangliste und
+    die Verzeichnis-Vorschläge verschwinden."""
+    user = User.query.get_or_404(user_id)
+    if not (current_user.is_organizer or current_user.is_admin):
+        abort(403)
+    if user.group_id and current_user.group_id and user.group_id != current_user.group_id:
+        abort(404)
+    from flask import g as _g
+    grp = getattr(_g, 'group', None)
+    gid = user.group_id or (grp.id if grp else None)
+    if not gid:
+        flash('Kein Gruppenkontext – Übernahme nicht möglich.', 'warning')
+        return redirect(url_for('profil', user_id=user_id))
+    name = (user.name or '').strip().lower()
+    rows = (TourGuest.query.join(Tour)
+            .filter(Tour.group_id == gid,
+                    db.func.lower(db.func.trim(TourGuest.name)) == name).all())
+    added, confirmed_now = 0, 0
+    for tg in rows:
+        part = TourParticipant.query.filter_by(tour_id=tg.tour_id, user_id=user.id).first()
+        if part:
+            if tg.confirmed_present and not part.confirmed_present:
+                part.confirmed_present = True
+                confirmed_now += 1
+        else:
+            db.session.add(TourParticipant(tour_id=tg.tour_id, user_id=user.id,
+                                           status='attending',
+                                           confirmed_present=bool(tg.confirmed_present)))
+            added += 1
+        db.session.delete(tg)
+    deleted_dir = 0
+    for dg in Guest.query.filter_by(group_id=gid).all():
+        if (dg.name or '').strip().lower() == name:
+            db.session.delete(dg)
+            deleted_dir += 1
+    db.session.commit()
+    if not rows and not deleted_dir:
+        flash('Keine Gast-Einträge mit diesem Namen gefunden.', 'info')
+    else:
+        flash(f'Gast-Einträge übernommen: {len(rows)} Tour-Eintrag/-einträge '
+              f'({added} neu angelegt, {confirmed_now} bestätigt), '
+              f'{deleted_dir} Verzeichnis-Vorschlag/-vorschläge entfernt.', 'success')
+    return redirect(url_for('profil', user_id=user_id))
 
 
 # ─── Phase 3: Rangliste ───────────────────────────────────────────────────────
@@ -8051,11 +8133,10 @@ def rangliste():
         ranking.append({'user': u, **s,
                         'badges': compute_badges(u, stats=(user_tours[uid], user_km[uid]))})   # Build ab: keine Extra-Abfragen
 
-    ranking.sort(key=lambda r: (r['tour_count'], r['total_km']), reverse=True)
-    annual = sorted(ranking, key=lambda r: r['tours_by_year'].get(year, 0), reverse=True)
-
-    # Build 11-05e: Gäste sind jetzt EIGENE Einträge in der Rangliste – pro Name aggregiert
-    # (über alle bestätigten Touren der Gruppe), markiert mit „Gast“.
+    # Build 11-05e/11-05j: Gäste sind EIGENE Einträge in der Rangliste – pro Name aggregiert
+    # (über alle bestätigten Touren der Gruppe), markiert mit „Gast“. Build 11-05j: Gäste
+    # werden VOR dem Sortieren gemischt – sonst klebten sie am Ende der Gesamt-Liste
+    # (nie aufs Podium) und fehlten im Jahr-Tab komplett.
     guest_rows = (db.session.query(TourGuest, Tour)
                   .join(Tour, Tour.id == TourGuest.tour_id)
                   .filter(Tour.status == 'completed',
@@ -8079,6 +8160,9 @@ def rangliste():
                         'tour_count': g_tours[key], 'total_km': round(g_km[key], 1),
                         'rsvp_count': g_tours[key], 'tours_by_year': dict(g_year[key]),
                         'badges': []})
+
+    ranking.sort(key=lambda r: (r['tour_count'], r['total_km']), reverse=True)
+    annual = sorted(ranking, key=lambda r: r['tours_by_year'].get(year, 0), reverse=True)
     return render_template('rangliste.html', ranking=ranking, annual=annual,
                            year=year)
 

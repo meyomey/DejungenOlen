@@ -35,6 +35,21 @@
           </span>
         </div>
 
+        {% if guest_merge_count %}{# Build 11-05j: Ehemaliger Gast ist jetzt Mitglied #}
+        <div class="alert alert-info small mt-3 mb-0">
+          <i class="bi bi-person-badge me-1"></i>{{ member.display_name }} fuhr früher als
+          <strong>Gast</strong> mit ({{ guest_merge_count }} Eintrag{{ 'e' if guest_merge_count != 1 }}).
+          Übernehmen, damit alles unter diesem Profil zählt?
+          <form method="post" class="mt-2"
+                action="{{ url_for('profil_guest_merge', user_id=member.id) }}"
+                onsubmit="return confirm('Gast-Einträge in dieses Profil übernehmen? Die Gast-Zeile in der Rangliste verschwindet dafür.')">
+            <button type="submit" class="btn btn-sm btn-djo">
+              <i class="bi bi-box-arrow-in-down me-1"></i>Gast-Einträge übernehmen
+            </button>
+          </form>
+        </div>
+        {% endif %}
+
         <div class="text-muted small mt-2">
           <i class="bi bi-calendar3 me-1"></i>Dabei seit {{ member.created_at.strftime('%B %Y') }}
           {% if member.id == current_user.id and member.last_login %}
