@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-05 (Build a) – Tourenliste: Löschen auf Termin-losen Karten + kompakte Leere
+
+- **Löschen fehlte:** Termin-lose Tour-Karten hatten nur Details/Uhr/Bearbeiten – Löschen gab es dort nicht. Jetzt wie bei geplanten Touren ein 🗑-Knopf (Admin/Ersteller) mit Rückfrage.
+- **Zwischenraum weg:** Der Leer-Zustand („Keine Touren geplant.“) war mit riesigem Icon und viel Polsterung mehrere Bildzeilen hoch – jetzt kompakt in einer Zeile, klarer formuliert („Keine Touren **mit Termin** geplant.“) mit „Tour erstellen“-Knopf direkt daneben.
+- 230 Tests, py_compile OK.
+
+
 ## 1.4.0 – 2026-11-04 (Build q) – Nach dem Beenden direkt nach der Aufzeichnung fragen
 
 - **Kein Vergessen mehr:** Nach „⏹ Fahrt beenden“ erscheint sofort eine deutliche gelbe Rückfrage „Was passiert jetzt mit der Aufzeichnung?“ – mit Knöpfen direkt auf der Live-Karte (und sanftem Scrollen dorthin). Tourleitung/Orga: „✓ Als GPX übernehmen“ (springt zur Übernahme auf der Tourseite); Mitglieder: „⬇ GPX speichern“ (lädt die eigene Aufzeichnung als GPX-Datei) plus Hinweis auf die Tourleitung. „Später“ blendet die Rückfrage weg.

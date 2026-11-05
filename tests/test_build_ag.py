@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-04 q')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 a')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -525,6 +525,51 @@ class VideoSmoothTest(AppTestCase):
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
         self.assertIn('<span class="lbl">Fahren</span>', det)
         self.assertIn('id="fahren-running" class="d-none"', det)     # Build o: Variante verborgen statt entfernt
+
+    def test_a_touren_list_delete_and_compact_empty(self):
+        # Build 11-05a (2026-11-05): Tourenliste – ① Löschen auch auf Termin-losen Karten
+        # (Admin/Ersteller, mit Rückfrage – vorher nur Details/Uhr/Stift), ② kompakter
+        # Leer-Zustand statt der hohen Leere (py-5 + 3rem-Icon wirkte wie ein Fehler).
+        lst = open(os.path.join(ROOT, 'templates', 'touren', 'list.html'), encoding='utf-8').read()
+        self.assertIn('Keine Touren mit Termin geplant.', lst)
+        self.assertNotIn('py-5 text-muted mb-4', lst)
+        self.assertEqual(lst.count("confirm('Tour löschen?')"), 2)   # geplante + termin-lose Karte
+        from tests.base import FAR_FUTURE
+        # dynamisch: Admin sieht beide Löschen-Formen und kann tatsächlich löschen,
+        # Mitglied sieht keine (Fremd-Erstellung). Für den Leer-Zustand bekommt t_plan
+        # kurzzeitig „Datum offen“ (wird im finally zurückgesetzt).
+        self.login_admin()
+        with app.app_context():
+            tp = M.Tour.query.get(self.t_plan_id)
+            real_date = tp.tour_date
+            tp.tour_date = FAR_FUTURE
+            db.session.commit()
+        try:
+            html = self.client.get('/touren').get_data(as_text=True)
+            self.assertIn('Keine Touren mit Termin geplant.', html)       # kompakte Leere sichtbar
+            self.assertNotIn('py-5 text-muted mb-4', html)
+            self.assertEqual(html.count("confirm('Tour löschen?')"), 2)  # t_plan + t_open (terminlos)
+        finally:
+            with app.app_context():
+                tp = M.Tour.query.get(self.t_plan_id)
+                tp.tour_date = real_date
+                db.session.commit()
+        html = self.client.get('/touren').get_data(as_text=True)
+        self.assertEqual(html.count("confirm('Tour löschen?')"), 2)      # t_plan (geplant) + t_open
+        with app.app_context():
+            t = M.Tour(title='Lösch-Probe offen', tour_date=FAR_FUTURE,
+                       group_id=self.g1_id, created_by=self.org_id)
+            db.session.add(t)
+            db.session.commit()
+            tid = t.id
+        r = self.client.post(f'/touren/{tid}/loeschen', follow_redirects=True)
+        self.assertEqual(r.status_code, 200)
+        html = r.get_data(as_text=True)
+        self.assertIn('wurde gelöscht', html)                 # Flash bestätigt die Löschung
+        self.assertEqual(html.count('Lösch-Probe offen'), 1)  # nur noch im Flash-Text, keine Karte mehr
+        self.login_member()
+        html = self.client.get('/touren').get_data(as_text=True)
+        self.assertEqual(html.count("confirm('Tour löschen?')"), 0)
 
     def test_q_rec_hint_after_stop(self):
         # Build q (2026-11-04): Nach „⏹ Fahrt beenden“ erscheint direkt eine deutliche
