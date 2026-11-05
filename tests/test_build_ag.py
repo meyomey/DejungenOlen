@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 n')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 o')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1678,7 +1678,7 @@ class RueckblickExtrasTest(AppTestCase):
             self.assertIn('9 h Sonne', html)
             self.assertIn('0</strong> von <strong>1</strong>', html)  # Regen-Zeile
             self.assertIn('Café Deichblick', html)                  # Lieblings-Einkehr
-            self.assertIn('1× eingekehrt', html)
+            self.assertIn('>1×</span>', html)              # Einkehr-Zähler (Listen-Format seit 11-05o)
             self.assertIn('Hein Mück</a>', html)                    # Fotograf:in
             self.assertIn('1 Foto</span>', html)
             self.assertIn('/fotos/img/rueckblick_test.jpg', html)  # Mini-Vorschau
@@ -1687,4 +1687,48 @@ class RueckblickExtrasTest(AppTestCase):
                 t = db.session.get(M.Tour, self.t_done_id)
                 t.weather_json, t.gastro_spot_id = orig_w, orig_s
                 db.session.query(M.TourPhoto).filter_by(filename='rueckblick_test.jpg').delete()
+                db.session.commit()
+
+
+class RueckblickAllStopsTest(AppTestCase):
+    """Build 2026-11-05o: Die Einkehr-Bilanz zählt ALLE Stopps (1.–3. Stopp,
+    Gastro-Verknüpfung oder Freitext) und zeigt die TOP 3 – bei Gleichstand
+    stehen mehrere gleichauf, nicht mehr nur ein zufälliger Sieger."""
+
+    def test_o_all_einkehr_stops_top3(self):
+        with app.app_context():
+            t = db.session.get(M.Tour, self.t_done_id)
+            orig_spot = t.gastro_spot_id
+            t.gastro_spot_id = self.spot_id          # Stopp 1 = Café Deichblick
+            tA = M.Tour(title='Einkehr-Tour A', tour_date=dt.date.today() - dt.timedelta(days=1),
+                        status='completed', group_id=self.g1_id, created_by=self.org_id,
+                        gastro_spot_id=self.spot2_id, einkehr2_spot_id=self.spot_id)
+            tB = M.Tour(title='Einkehr-Tour B', tour_date=dt.date.today() - dt.timedelta(days=2),
+                        status='completed', group_id=self.g1_id, created_by=self.org_id,
+                        einkehr2_text='Zum Adligen Holz', einkehr3_text='Dillertal')
+            tC = M.Tour(title='Einkehr-Tour C', tour_date=dt.date.today() - dt.timedelta(days=3),
+                        status='completed', group_id=self.g1_id, created_by=self.org_id,
+                        einkehr2_text='zum adligen holz')     # Groß-/Kleinschreibung egal
+            db.session.add_all([tA, tB, tC])
+            db.session.commit()
+            tA_id, tB_id, tC_id = tA.id, tB.id, tC.id
+        try:
+            self.login_member()
+            html = self.get_html('/rueckblick')
+            seg = html[html.index('Lieblings-Einkehr'):html.index('Fun Facts')]
+            # Erwartung: Deichblick 2×, Zum Adligen Holz 2×, Dillertal 1× –
+            # „Zur alten Mühle“ (1×) fällt als 4. aus den Top 3 raus
+            for n in ('Café Deichblick', 'Zum Adligen Holz', 'Dillertal'):
+                self.assertIn(n, seg)
+            self.assertNotIn('Zur alten Mühle', seg)
+            self.assertEqual(seg.count('>2×</span>'), 2)      # Gleichstand sichtbar
+            self.assertIn('>1×</span>', seg)
+            self.assertLess(seg.index('Café Deichblick'), seg.index('Zum Adligen Holz'))
+            self.assertLess(seg.index('Zum Adligen Holz'), seg.index('Dillertal'))
+        finally:
+            with app.app_context():
+                t = db.session.get(M.Tour, self.t_done_id)
+                t.gastro_spot_id = orig_spot
+                for tid in (tA_id, tB_id, tC_id):
+                    db.session.execute(db.text(f'DELETE FROM tours WHERE id = {tid}'))
                 db.session.commit()

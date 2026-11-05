@@ -163,15 +163,22 @@
     </div>
     {% endif %}
 
-    {% if fav_spot %}
+    {% if fav_spots %}{# Build 11-05o: Top 3 inkl. 2./3. Stopp, Gleichstände sichtbar #}
     <div class="card mb-3">
       <div class="card-header card-header-djo">
         <i class="bi bi-cup-hot me-1"></i>Lieblings-Einkehr {{ year }}
       </div>
-      <div class="card-body text-center">
-        <h5 class="fw-bold mb-1">{{ fav_spot.name }}</h5>
-        <span class="badge bg-primary">{{ fav_spot.count }}× eingekehrt</span>
-      </div>
+      <ul class="list-group list-group-flush">
+        {% for s in fav_spots %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <div>
+            <span class="me-2">{% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% else %}🥉{% endif %}</span>
+            {{ s.name }}
+          </div>
+          <span class="badge bg-primary rounded-pill">{{ s.count }}×</span>
+        </li>
+        {% endfor %}
+      </ul>
     </div>
     {% endif %}
 

@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-05 n'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-05 o'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -9828,21 +9828,40 @@ def rueckblick(year=None):
         weather = {'tours': w_tours, 'rain': w_rain, 'avg': round(w_sum / w_tours),
                    'sun': round(w_sun), 'warm': w_max}
 
-    fav_spot = None
-    spot_counts = dict(db.session.query(Tour.gastro_spot_id, db.func.count(Tour.id))
-                       .filter(Tour.id.in_(tour_ids), Tour.gastro_spot_id.isnot(None))
-                       .group_by(Tour.gastro_spot_id).all()) if tour_ids else {}
-    if spot_counts:
-        _sp = GastroSpot.query.get(max(spot_counts, key=spot_counts.get))
-        if _sp:
-            fav_spot = {'name': _sp.name, 'count': spot_counts[_sp.id]}
-    else:
-        _texts = [(t.einkehr_text or '').strip() for t in tours
-                  if (t.einkehr_text or '').strip()]
-        if _texts:
-            from collections import Counter as _Counter
-            _top, _n = _Counter(s.lower() for s in _texts).most_common(1)[0]
-            fav_spot = {'name': next(s for s in _texts if s.lower() == _top), 'count': _n}
+    # Build 11-05o: ALLE Einkehr-Stopps zählen (bis zu 3 je Tour – Gastro-Verknüpfung
+    # oder Freitext, Stopps 2 und 3 hatten vorher gar nicht mitgezählt). Top 3 mit
+    # Gleichstand; Freitext wird groß-/kleinschreibungsunabhängig zusammengezogen.
+    _stops = []
+    for t in tours:
+        _stops.append((t.gastro_spot_id, (t.einkehr_text or '').strip()))
+        _stops.append((getattr(t, 'einkehr2_spot_id', None),
+                       (getattr(t, 'einkehr2_text', None) or '').strip()))
+        _stops.append((getattr(t, 'einkehr3_spot_id', None),
+                       (getattr(t, 'einkehr3_text', None) or '').strip()))
+    _spot_ids = {sid for sid, _ in _stops if sid}
+    _spot_names = {s.id: s.name for s in (GastroSpot.query.filter(GastroSpot.id.in_(_spot_ids)).all()
+                                          if _spot_ids else [])}
+    _e_count, _e_name = {}, {}
+    for sid, txt in _stops:
+        _name = _spot_names.get(sid)
+        _cands = []
+        if _name and _name.strip():
+            _cands.append(_name.strip())
+        if txt:
+            for part in re.split(r'[;\n]+', txt):    # ein Feld = ein Stopp; ; / Zeilenumbruch erlauben
+                part = part.strip(' .-–')
+                if len(part) >= 3 and part.lower() != (_name or '').strip().lower():
+                    _cands.append(part)               # Freitext = derselbe Stopp wie die Verknüpfung → nicht doppelt
+        for c in _cands:
+            k = c.lower()
+            _e_count[k] = _e_count.get(k, 0) + 1
+            if k not in _e_name:
+                _e_name[k] = c
+            elif _e_name[k] == k and c != k:
+                _e_name[k] = c          # Schreibweise mit Großbuchstaben bevorzugen
+    fav_spots = [{'name': _e_name[k], 'count': c}
+                 for k, c in sorted(_e_count.items(),
+                                    key=lambda kv: (-kv[1], _e_name[kv[0]].lower()))[:3]]
 
     top_photogs = []
     if tour_ids:
@@ -9884,7 +9903,7 @@ def rueckblick(year=None):
                            attend_counts=attend_counts,
                            available_years=available_years,
                            richtung=richtung,
-                           weather=weather, fav_spot=fav_spot, top_photogs=top_photogs)
+                           weather=weather, fav_spots=fav_spots, top_photogs=top_photogs)
 
 
 # ─── Phase 4: Profil bearbeiten ───────────────────────────────────────────────

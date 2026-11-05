@@ -1,5 +1,10 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-05 (Build o) – Lieblings-Einkehr: alle Stopps, Top 3
+
+- Die Einkehr-Bilanz im Jahresrückblick zählte nur den 1. Stopp und zeigte bei Gleichstand einen zufälligen Einstieg. Jetzt zählen **alle Stopps einer Tour** (1.–3. Stopp, Gastro-Verknüpfung oder Freitext), und die Karte zeigt die **Top 3** mit Zähler – Gleichstände (z. B. dreimal 2×) sind jetzt alle sichtbar. Freitext-Namen werden groß-/kleinschreibungsunabhängig zusammengezogen; wer denselben Stopp als Freitext und Verknüpfung einträgt, wird nicht doppelt gezählt.
+- 242 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-05 (Build n) – Jahresrückblick: Wetter, Lieblings-Einkehr, Fotograf:innen
 
 - **Wetter-Bilanz:** Wie viele Touren waren Regen-/Schneetouren, wie war die wärmste Tour (mit Link), Ø-Temperatur und Sonnenstunden. Wird ausschließlich aus dem gespeicherten Wetter-Cache gelesen (keine API-Aufrufe) – die Karte erscheint, sobald Touren Wetterdaten haben.
