@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-05 d'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-05 e'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -8015,14 +8015,33 @@ def rangliste():
     ranking.sort(key=lambda r: (r['tour_count'], r['total_km']), reverse=True)
     annual = sorted(ranking, key=lambda r: r['tours_by_year'].get(year, 0), reverse=True)
 
-    guest_total = (db.session.query(TourGuest.id)                    # Build 11-05c: Gäste-Summe
-                   .join(Tour, Tour.id == TourGuest.tour_id)
-                   .filter(Tour.status == 'completed',
-                           TourGuest.confirmed_present == True,      # noqa: E712
-                           Tour.id.in_(_gq(Tour).with_entities(Tour.id)))
-                   .count())
+    # Build 11-05e: Gäste sind jetzt EIGENE Einträge in der Rangliste – pro Name aggregiert
+    # (über alle bestätigten Touren der Gruppe), markiert mit „Gast“.
+    guest_rows = (db.session.query(TourGuest, Tour)
+                  .join(Tour, Tour.id == TourGuest.tour_id)
+                  .filter(Tour.status == 'completed',
+                          TourGuest.confirmed_present == True,       # noqa: E712
+                          Tour.id.in_(_gq(Tour).with_entities(Tour.id)))
+                  .all())
+    g_tours, g_km = defaultdict(int), defaultdict(float)
+    g_year = defaultdict(lambda: defaultdict(int))
+    g_name = {}
+    for tg, t in guest_rows:
+        key = (tg.name or '').strip().lower()
+        if not key:
+            continue
+        g_name.setdefault(key, tg.name.strip())
+        g_tours[key] += 1
+        if t.gpx_km:
+            g_km[key] += t.gpx_km
+        g_year[key][t.tour_date.year if t.tour_date else 0] += 1
+    for key, name in g_name.items():
+        ranking.append({'guest': True, 'user': None, 'gname': name,
+                        'tour_count': g_tours[key], 'total_km': round(g_km[key], 1),
+                        'rsvp_count': g_tours[key], 'tours_by_year': dict(g_year[key]),
+                        'badges': []})
     return render_template('rangliste.html', ranking=ranking, annual=annual,
-                           year=year, guest_total=guest_total)
+                           year=year)
 
 
 # ─── Build w: Fahrzeit/Streckenvorschau, Kalender-Abo, „Nochmal fahren“ ──────

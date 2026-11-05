@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-05 (Build e) – Gäste in der Rangliste
+
+- **Gäste als eigene Einträge:** Bestätigte Gäste erscheinen jetzt in allen drei Ranglisten-Tabs (Gesamt, Kilometer, Dieses Jahr) als eigene Zeile mit grauem Avatar, Name und „Gast“-Badge – aggregiert über alle bestätigten Touren (Anzahl, Kilometer, Jahre). Sie können damit auch das Podest erreichen; auf Profilen verlinkt wird bei Gästen natürlich nicht.
+- Die Summenzeile aus Build c („Dazu kamen N Gäste …“) ist damit überflüssig und entfällt.
+- 233 Tests, py_compile OK.
+
+
 ## 1.4.0 – 2026-11-05 (Build d) – Gästeverzeichnis: Wiederkehrer ohne App-Konto nicht neu tippen
 
 - **Einmal erfassen, immer wieder wählbar:** Beim Anlegen eines Gastes wird er automatisch im Gruppen-**Gästeverzeichnis** gespeichert. Auf jeder anderen Tour erscheint er in der Auswahl „Wieder dabei (bekannter Gast)…“ und wird mit Name und gespeicherter Telefonnummer eingetragen – ein Klick genügt.

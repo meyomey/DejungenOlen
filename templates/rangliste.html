@@ -5,10 +5,7 @@
 <h2 class="fw-bold mb-1" style="color:var(--djo-navy)">
   <i class="bi bi-trophy-fill me-2" style="color:#f0a500"></i>Rangliste
 </h2>
-<p class="text-muted small mb-{{ '2' if guest_total else '4' }}">Alle Zeiten – nur bestätigte Fahrten</p>
-{% if guest_total %}{# Build 11-05c: Gäste ohne App-Konto mitgezählt #}
-<p class="small mb-4"><i class="bi bi-person-badge me-1 text-secondary"></i>Dabei waren zusätzlich {{ guest_total }} Gast{{ 'e' if guest_total != 1 }} ohne App-Konto.</p>
-{% endif %}
+<p class="text-muted small mb-4">Alle Zeiten – nur bestätigte Fahrten. Gäste (ohne App-Konto) sind mit dem Badge „Gast“ markiert.</p>
 
 <!-- ── Tabs ──────────────────────────────────────────────────────────────────── -->
 <ul class="nav nav-pills mb-4 gap-2">
@@ -35,6 +32,15 @@
 <div class="d-flex justify-content-center align-items-end gap-3 mb-4" style="min-height:120px">
   <!-- 2. Platz -->
   <div class="text-center" style="flex:1;max-width:110px">
+    {% if items[1].guest %}{# Build 11-05e: Gast auf dem Podest #}
+    <div style="width:52px;height:52px;border-radius:50%;background:#aaa;
+                display:inline-flex;align-items:center;justify-content:center;
+                color:#fff;font-weight:700;font-size:1.1rem;border:3px solid #aaa">
+      {{ items[1].gname[:1].upper() }}
+    </div>
+    <div class="fw-semibold small mt-1" style="color:var(--djo-navy)">{{ items[1].gname.split()[0] }} <span class="badge bg-secondary" style="font-size:.55rem">Gast</span></div>
+    <div class="text-muted" style="font-size:.75rem">{{ items[1][key] }} {{ 'km' if key=='total_km' else 'Touren' }}</div>
+    {% else %}
     {% set u2 = items[1].user %}
     {% if u2.avatar %}
     <img src="{{ url_for('static', filename='uploads/avatars/' + u2.avatar) }}"
@@ -50,9 +56,19 @@
     <div class="text-muted" style="font-size:.75rem">{{ items[1][key] }} {{ 'km' if key=='total_km' else 'Touren' }}</div>
     <div style="background:#aaa;color:#fff;border-radius:8px 8px 0 0;padding:6px 0;margin-top:4px;font-size:1.2rem">🥈</div>
     <div style="background:#aaa;height:50px;border-radius:0"></div>
+    {% endif %}
   </div>
   <!-- 1. Platz -->
   <div class="text-center" style="flex:1;max-width:120px">
+    {% if items[0].guest %}{# Build 11-05e: Gast auf dem Podest #}
+    <div style="width:62px;height:62px;border-radius:50%;background:#f0a500;
+                display:inline-flex;align-items:center;justify-content:center;
+                color:#fff;font-weight:700;font-size:1.3rem;border:3px solid #f0a500">
+      {{ items[0].gname[:1].upper() }}
+    </div>
+    <div class="fw-bold mt-1" style="color:var(--djo-navy)">{{ items[0].gname.split()[0] }} <span class="badge bg-secondary" style="font-size:.55rem">Gast</span></div>
+    <div class="text-muted" style="font-size:.75rem">{{ items[0][key] }} {{ 'km' if key=='total_km' else 'Touren' }}</div>
+    {% else %}
     {% set u1 = items[0].user %}
     {% if u1.avatar %}
     <img src="{{ url_for('static', filename='uploads/avatars/' + u1.avatar) }}"
@@ -68,9 +84,19 @@
     <div class="text-muted" style="font-size:.75rem">{{ items[0][key] }} {{ 'km' if key=='total_km' else 'Touren' }}</div>
     <div style="background:#f0a500;color:#fff;border-radius:8px 8px 0 0;padding:8px 0;margin-top:4px;font-size:1.4rem">🥇</div>
     <div style="background:#f0a500;height:80px;border-radius:0"></div>
+    {% endif %}
   </div>
   <!-- 3. Platz -->
   <div class="text-center" style="flex:1;max-width:110px">
+    {% if items[2].guest %}{# Build 11-05e: Gast auf dem Podest #}
+    <div style="width:48px;height:48px;border-radius:50%;background:#cd7f32;
+                display:inline-flex;align-items:center;justify-content:center;
+                color:#fff;font-weight:700;border:3px solid #cd7f32">
+      {{ items[2].gname[:1].upper() }}
+    </div>
+    <div class="fw-semibold small mt-1" style="color:var(--djo-navy)">{{ items[2].gname.split()[0] }} <span class="badge bg-secondary" style="font-size:.55rem">Gast</span></div>
+    <div class="text-muted" style="font-size:.75rem">{{ items[2][key] }} {{ 'km' if key=='total_km' else 'Touren' }}</div>
+    {% else %}
     {% set u3 = items[2].user %}
     {% if u3.avatar %}
     <img src="{{ url_for('static', filename='uploads/avatars/' + u3.avatar) }}"
@@ -86,6 +112,7 @@
     <div class="text-muted" style="font-size:.75rem">{{ items[2][key] }} {{ 'km' if key=='total_km' else 'Touren' }}</div>
     <div style="background:#cd7f32;color:#fff;border-radius:8px 8px 0 0;padding:6px 0;margin-top:4px;font-size:1.1rem">🥉</div>
     <div style="background:#cd7f32;height:35px;border-radius:0"></div>
+    {% endif %}
   </div>
 </div>
 {% endif %}
@@ -110,7 +137,13 @@
         </div>
         <!-- Avatar -->
         <div style="flex-shrink:0">
-          {% if r.user.avatar %}
+          {% if r.guest %}{# Build 11-05e #}
+          <div style="width:36px;height:36px;border-radius:50%;background:#6c757d;
+                      display:flex;align-items:center;justify-content:center;
+                      color:#fff;font-weight:700;font-size:.85rem">
+            {{ r.gname[:1].upper() }}
+          </div>
+          {% elif r.user.avatar %}
           <img src="{{ url_for('static', filename='uploads/avatars/' + r.user.avatar) }}"
                style="width:36px;height:36px;border-radius:50%;object-fit:cover">
           {% else %}
@@ -123,10 +156,15 @@
         </div>
         <!-- Name + Badges -->
         <div class="flex-grow-1">
+          {% if r.guest %}{# Build 11-05e #}
+          <span class="fw-semibold" style="color:var(--djo-navy)">{{ r.gname }}</span>
+          <span class="badge bg-secondary" style="font-size:.6rem">Gast</span>
+          {% else %}
           <a href="{{ url_for('profil', user_id=r.user.id) }}"
              class="fw-semibold text-decoration-none" style="color:var(--djo-navy)">
             {{ r.user.display_name }}
           </a>
+          {% endif %}
           {% if r.badges %}
           <div>
             {% for b in r.badges[:3] %}
@@ -179,7 +217,13 @@
           {% endif %}
         </div>
         <div style="flex-shrink:0">
-          {% if r.user.avatar %}
+          {% if r.guest %}{# Build 11-05e #}
+          <div style="width:36px;height:36px;border-radius:50%;background:#6c757d;
+                      display:flex;align-items:center;justify-content:center;
+                      color:#fff;font-weight:700;font-size:.85rem">
+            {{ r.gname[:1].upper() }}
+          </div>
+          {% elif r.user.avatar %}
           <img src="{{ url_for('static', filename='uploads/avatars/' + r.user.avatar) }}"
                style="width:36px;height:36px;border-radius:50%;object-fit:cover">
           {% else %}
@@ -191,10 +235,15 @@
           {% endif %}
         </div>
         <div class="flex-grow-1">
+          {% if r.guest %}{# Build 11-05e #}
+          <span class="fw-semibold" style="color:var(--djo-navy)">{{ r.gname }}</span>
+          <span class="badge bg-secondary" style="font-size:.6rem">Gast</span>
+          {% else %}
           <a href="{{ url_for('profil', user_id=r.user.id) }}"
              class="fw-semibold text-decoration-none" style="color:var(--djo-navy)">
             {{ r.user.display_name }}
           </a>
+          {% endif %}
         </div>
         <div class="fw-bold" style="color:var(--djo-navy)">{{ year_count }} Touren</div>
       </div>
@@ -224,7 +273,13 @@
           {% endif %}
         </div>
         <div style="flex-shrink:0">
-          {% if r.user.avatar %}
+          {% if r.guest %}{# Build 11-05e #}
+          <div style="width:36px;height:36px;border-radius:50%;background:#6c757d;
+                      display:flex;align-items:center;justify-content:center;
+                      color:#fff;font-weight:700;font-size:.85rem">
+            {{ r.gname[:1].upper() }}
+          </div>
+          {% elif r.user.avatar %}
           <img src="{{ url_for('static', filename='uploads/avatars/' + r.user.avatar) }}"
                style="width:36px;height:36px;border-radius:50%;object-fit:cover">
           {% else %}
@@ -236,10 +291,15 @@
           {% endif %}
         </div>
         <div class="flex-grow-1">
+          {% if r.guest %}{# Build 11-05e #}
+          <span class="fw-semibold" style="color:var(--djo-navy)">{{ r.gname }}</span>
+          <span class="badge bg-secondary" style="font-size:.6rem">Gast</span>
+          {% else %}
           <a href="{{ url_for('profil', user_id=r.user.id) }}"
              class="fw-semibold text-decoration-none" style="color:var(--djo-navy)">
             {{ r.user.display_name }}
           </a>
+          {% endif %}
           <div style="background:#e9ecef;border-radius:4px;height:5px;margin-top:3px;max-width:200px">
             <div style="width:{{ (r.total_km / km_ranking[0].total_km * 100)|int if km_ranking[0].total_km else 0 }}%;
                         background:#f0a500;height:5px;border-radius:4px"></div>

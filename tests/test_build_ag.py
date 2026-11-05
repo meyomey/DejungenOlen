@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 d')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 e')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -607,7 +607,7 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('attending|length + guests|length', det)
         self.assertIn('{% for g in guest_rows %}',
                       open(os.path.join(ROOT, 'templates', 'touren', 'teilnehmerliste.html'), encoding='utf-8').read())
-        self.assertIn('guest_total',
+        self.assertIn('{% if r.guest %}',                       # Build 11-05e: gast-sichere Zeilen
                       open(os.path.join(ROOT, 'templates', 'rangliste.html'), encoding='utf-8').read())
         # ── dynamisch ──
         self.login_org()
@@ -639,13 +639,20 @@ class VideoSmoothTest(AppTestCase):
         pr = self.client.get(f'/touren/{self.t_plan_id}/teilnehmerliste').get_data(as_text=True)
         self.assertIn('Gast George', pr)
         self.assertIn('0123 456789', pr)                               # Telefon auf der Druckerliste
-        # Rangliste: Tour abschließen → Gäste-Summe sichtbar (Status danach zurücksetzen)
+        # Rangliste (Build 11-05e): Tour abschließen → George erscheint als EIGENE Zeile
+        # mit „Gast“-Badge (Summenzeile aus 11-05c entfällt); Status danach zurücksetzen
         with app.app_context():
             t = db.session.get(M.Tour, self.t_plan_id)
             t.status = 'completed'
             db.session.commit()
         html = self.get_html('/rangliste')
-        self.assertIn('zusätzlich 1 Gast ohne App-Konto', html)
+        self.assertIn('Gast George', html)                        # eigene Zeile in der Gesamt-Liste
+        self.assertIn('>Gast</span>', html)                       # mit Gäste-Badge
+        self.assertIn('Hein Mück', html)                          # Mitglieder sind weiterhin drin
+        self.assertNotIn('zusätzlich', html)                      # alte Summenzeile weg
+        rl = open(os.path.join(ROOT, 'templates', 'rangliste.html'), encoding='utf-8').read()
+        self.assertIn('{% if r.guest %}', rl)                     # Zeilen + Podest gast-sicher
+        self.assertIn('{% if items[0].guest %}', rl)
         with app.app_context():
             t = db.session.get(M.Tour, self.t_plan_id)
             t.status = 'planned'
