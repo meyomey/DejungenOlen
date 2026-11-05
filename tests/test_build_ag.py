@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 e')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 f')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1309,3 +1309,74 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('const cw = W/zoom', html)                    # Fenster-Modell in der Vorschau
         self.assertNotIn('dw > W + 1', html)                        # alte „tote Achse“-Bedingung weg
         self.assertIn('z: 1.06 + .14*t', html)                      # gleiche Amplituden wie MP4
+
+
+class GroupSeparationTest(AppTestCase):
+    """Build 2026-11-05f: Gruppen bleiben IMMER getrennt – Kilometer und Tourzahlen
+    werden nie über Gruppen hinweg summiert. Rangliste war schon gruppenscharf;
+    Profil-Statistik, Badges, Mitgliederliste und Logbuch sind es jetzt auch."""
+
+    def test_f_groups_stay_separate(self):
+        # Aufbau: dieselbe Person (mem) und dieselbe Gast-Namen sind in BEIDEN Gruppen
+        # auf abgeschlossenen Touren bestätigt – alte, „verwachsene" Daten simulieren.
+        with app.app_context():
+            g1 = db.session.get(M.Group, self.g1_id)
+            g2 = db.session.get(M.Group, self.g2_id)
+            tdone = db.session.get(M.Tour, self.t_done_id)
+            base_km = float(tdone.gpx_km or tdone.approx_km or 0)
+            tA = M.Tour(title='Gruppe-A-Tour', tour_date=dt.date.today() - dt.timedelta(days=1),
+                        status='completed', group_id=g1.id, created_by=self.org_id, gpx_km=40.0)
+            tB = M.Tour(title='Fremd-Gruppen-Tour', tour_date=dt.date.today() - dt.timedelta(days=2),
+                        status='completed', group_id=g2.id, created_by=self.org_id, gpx_km=200.0)
+            db.session.add_all([tA, tB])
+            db.session.flush()
+            db.session.add_all([
+                M.TourParticipant(tour_id=tA.id, user_id=self.mem_id, status='attending',
+                                  confirmed_present=True),
+                M.TourParticipant(tour_id=tB.id, user_id=self.mem_id, status='attending',
+                                  confirmed_present=True),          # Cross-Group-Altlast
+                M.TourGuest(tour_id=tA.id, name='Gina Gast', confirmed_present=True,
+                            created_by=self.org_id),
+                M.TourGuest(tour_id=tB.id, name='Gina Gast', confirmed_present=True,
+                            created_by=self.org_id),                # gleicher Name, andere Gruppe
+            ])
+            db.session.commit()
+            mem_u = db.session.get(M.User, self.mem_id)
+
+            # 1) Profil-Statistik: nur die eigene Gruppe (t_done + tA), tB zählt NICHT
+            st = appmod.user_stats(mem_u)
+            self.assertEqual(st['tour_count'], 2)
+            self.assertAlmostEqual(st['total_km'], round(base_km + 40.0, 1))
+
+            # 2) Badge-Statistik gruppengetrennt
+            bs1 = appmod.badge_stats_bulk([self.mem_id], group_id=g1.id)[self.mem_id]
+            bs2 = appmod.badge_stats_bulk([self.mem_id], group_id=g2.id)[self.mem_id]
+            self.assertEqual(bs1[0], 2)
+            self.assertAlmostEqual(bs1[1], round(base_km + 40.0, 1))
+            self.assertEqual(bs2, (1, 200.0))
+            self.assertEqual(appmod.badge_stats_bulk([self.mem_id])[self.mem_id][0], 3)   # ungefiltert = Altlast
+
+            # 3) Badges über Profil-Pfad nutzen denselben Gruppenfilter
+            self.assertEqual(appmod.compute_badges(mem_u),
+                             appmod.compute_badges(mem_u, stats=bs1))
+
+        # 4) Logbuch des Mitglieds: Fremd-Gruppen-Tour erscheint nicht
+        self.login_org()
+        html = self.get_html(f'/profil/{self.mem_id}')
+        self.assertIn('Alte Marschtour', html)
+        self.assertNotIn('Fremd-Gruppen-Tour', html)
+
+        # 5) Rangliste Gruppe A (Olen): Gast Gina nur mit IHREN Gruppe-A-Werten
+        html = self.get_html('/rangliste')
+        self.assertIn('Gina Gast', html)
+        self.assertIn('40.0 km', html)
+        self.assertNotIn('200.0 km', html)
+        self.assertNotIn('240.0 km', html)          # nichts über Gruppen summiert
+
+        # 6) Rangliste Gruppe B: dieselbe Gästin, nur Gruppe-B-Werte
+        self.login('fremd@test.de')
+        html = self.get_html('/rangliste')
+        self.assertIn('Gina Gast', html)
+        self.assertIn('200.0 km', html)
+        self.assertNotIn('40.0 km', html)
+        self.assertNotIn('240.0 km', html)

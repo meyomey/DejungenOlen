@@ -1,5 +1,11 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-05 (Build f) – Gruppen immer getrennt, keine km-Summen über Gruppen
+
+- **Gruppen bleiben garantiert getrennt:** Kilometer- und Tourzahlen werden nirgends mehr über Gruppen hinweg summiert. Die Rangliste (Mitglieder wie Gäste) war schon gruppenscharf – jetzt sind es auch die **Profil-Statistik**, das **Logbuch**, die **Badges** (inkl. Mitgliederliste). Wer (z. B. durch frühere Daten oder Admin-Gruppenwechsel) in zwei Gruppen gefahren ist, sieht pro Gruppe nur die Werte dieser Gruppe.
+- Neuer Helfer `_stats_group_id()` (eigene Gruppe, sonst aktive Gruppe); `badge_stats_bulk()` hat einen optionalen Gruppenfilter.
+- 234 Tests, py_compile OK.
+
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
 ## 1.4.0 – 2026-11-05 (Build e) – Gäste in der Rangliste

@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-05 e'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-05 f'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -7866,19 +7866,36 @@ BADGE_DEFINITIONS = [
     ('km_2500',      '🛸', '2.500 km',           '2.500 km Gesamtstrecke',                  lambda c,km: km >= 2500),
 ]
 
-def badge_stats_bulk(user_ids):
+def badge_stats_bulk(user_ids, group_id=None):
     """Build ab: {user_id: (touren_mitgefahren, km_gesamt)} in EINER Abfrage statt
-    je Nutzer eine – für Mitgliederliste, Rangliste und Rückblick."""
+    je Nutzer eine – für Mitgliederliste, Rangliste und Rückblick.
+    Build 11-05f: optionaler Gruppenfilter – Gruppen bleiben getrennt, Kilometer
+    werden nie über Gruppen hinweg summiert."""
     if not user_ids:
         return {}
-    rows = (db.session.query(TourParticipant.user_id,
-                             db.func.count(TourParticipant.id),
-                             db.func.coalesce(db.func.sum(Tour.gpx_km), 0.0))
-            .join(Tour, Tour.id == TourParticipant.tour_id)
-            .filter(TourParticipant.user_id.in_(list(user_ids)),
-                    TourParticipant.confirmed_present == True)                # noqa: E712
-            .group_by(TourParticipant.user_id).all())
+    q = (db.session.query(TourParticipant.user_id,
+                          db.func.count(TourParticipant.id),
+                          db.func.coalesce(db.func.sum(Tour.gpx_km), 0.0))
+         .join(Tour, Tour.id == TourParticipant.tour_id)
+         .filter(TourParticipant.user_id.in_(list(user_ids)),
+                 TourParticipant.confirmed_present == True))                  # noqa: E712
+    if group_id:                          # Build 11-05f: nur Touren dieser Gruppe
+        q = q.filter(Tour.group_id == group_id)
+    rows = q.group_by(TourParticipant.user_id).all()
     return {uid: (int(cnt or 0), float(km or 0.0)) for uid, cnt, km in rows}
+
+
+def _stats_group_id(user):
+    """Build 11-05f: Gruppe, auf die persönliche Statistiken begrenzt werden.
+    Gruppen bleiben immer getrennt – Kilometer und Tourzahlen werden NIE über
+    Gruppen hinweg summiert. Eigene Gruppe des Nutzers, sonst die aktive Gruppe;
+    None = kein Gruppenkontext (ungefiltert, betrifft nur Daten ohne group_id)."""
+    gid = getattr(user, 'group_id', None)
+    if not gid:
+        from flask import g as _g
+        grp = getattr(_g, 'group', None)
+        gid = grp.id if grp else None
+    return gid
 
 
 def compute_badges(user, stats=None):
@@ -7886,7 +7903,8 @@ def compute_badges(user, stats=None):
     Build ab: optional stats=(tour_count, total_km) aus badge_stats_bulk(), sonst eine
     Aggregat-Abfrage statt einer Abfrage pro Teilnahme."""
     if stats is None:
-        stats = badge_stats_bulk([user.id]).get(user.id, (0, 0.0))
+        stats = badge_stats_bulk([user.id],
+                                 group_id=_stats_group_id(user)).get(user.id, (0, 0.0))   # Build 11-05f
     tour_count, total_km = stats
     earned = []
     for bid, icon, label, desc, check in BADGE_DEFINITIONS:
@@ -7901,8 +7919,12 @@ def user_stats(user):
     from datetime import datetime as _dt
     all_part = (TourParticipant.query
                 .filter_by(user_id=user.id, status='attending')
-                .options(joinedload(TourParticipant.tour))
-                .all())
+                .join(Tour)
+                .options(joinedload(TourParticipant.tour)))
+    _gid = _stats_group_id(user)
+    if _gid:                              # Build 11-05f: Gruppen bleiben getrennt
+        all_part = all_part.filter(Tour.group_id == _gid)
+    all_part = all_part.all()
     confirmed    = [p for p in all_part if p.confirmed_present and p.tour
                     and p.tour.tour_date and not p.tour.is_date_open]
     this_year    = _dt.now().year
@@ -7950,10 +7972,11 @@ def profil(user_id):
         TourParticipant.query
         .filter_by(user_id=user_id, confirmed_present=True)
         .join(Tour)
-        .options(contains_eager(TourParticipant.tour))     # Build ab: Tour gleich mitladen (kein N+1)
-        .order_by(Tour.tour_date.desc())
-        .all()
-    )
+        .options(contains_eager(TourParticipant.tour)))    # Build ab: Tour gleich mitladen (kein N+1)
+    _gid = _stats_group_id(user)
+    if _gid:                              # Build 11-05f: Logbuch gruppengetrennt
+        participations = participations.filter(Tour.group_id == _gid)
+    participations = participations.order_by(Tour.tour_date.desc()).all()
     return render_template('profil.html', member=user, stats=stats,
                            badges=badges, participations=participations)
 
@@ -11257,7 +11280,9 @@ def tour_ical(tour_id):
 def mitglieder():
     users = _gq(User).filter_by(is_active=True).order_by(User.name).all()
     # Build ab: Statistik für alle Mitglieder in einer Abfrage (vorher ~2 Abfragen je Mitglied)
-    stats = badge_stats_bulk([u.id for u in users])
+    from flask import g as _g
+    stats = badge_stats_bulk([u.id for u in users],                      # Build 11-05f: nur aktive Gruppe
+                             group_id=(_g.group.id if _g.group else None))
     members_data = []
     for u in users:
         st = stats.get(u.id, (0, 0.0))
