@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 c')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 d')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -525,6 +525,68 @@ class VideoSmoothTest(AppTestCase):
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
         self.assertIn('<span class="lbl">Fahren</span>', det)
         self.assertIn('id="fahren-running" class="d-none"', det)     # Build o: Variante verborgen statt entfernt
+
+    def test_d_guest_directory(self):
+        # Build 2026-11-05d: Gruppen-Gästeverzeichnis – Gäste, die öfter mitfahren, werden
+        # einmal erfasst und können auf jeder Tour der Gruppe wieder ausgewählt werden
+        # („Wieder dabei“-Auswahl, Name+Telefon werden übernommen). Beim Anlegen eines
+        # Tour-Gastes wird das Verzeichnis mitgepflegt; migrate_db übernimmt Bestand.
+        src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('def _guest_dir_upsert(', src)
+        self.assertIn('def _known_guests_for(', src)
+        self.assertIn('def tour_add_known_guest(', src)
+        self.assertIn('Gruppen-Gästeverzeichnis übernehmen', src)
+        mod = open(os.path.join(ROOT, 'models.py'), encoding='utf-8').read()
+        self.assertIn('class Guest(db.Model):', mod)
+        self.assertIn("__tablename__ = 'guests'", mod)
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertIn('tour_add_known_guest', det)
+        self.assertIn('Wieder dabei (bekannter Gast)…', det)
+        # dynamisch: Gast anlegen → Verzeichnis-Eintrag entsteht
+        self.login_org()
+        self.client.post(f'/touren/{self.t_plan_id}/gaeste', data={'name': 'Walter Wieder', 'phone': '0555 100'})
+        with app.app_context():
+            t_plan = db.session.get(M.Tour, self.t_plan_id)
+            entry = M.Guest.query.filter_by(group_id=t_plan.group_id, name='Walter Wieder').first()
+            self.assertIsNotNone(entry)
+            dir_id = entry.id
+        # Auf einer ANDEREN Tour ist er im „Wieder dabei“-Auswahl wählbar …
+        html = self.get_html(f'/touren/{self.t_open_id}')
+        self.assertIn('Walter Wieder', html)
+        self.assertIn(f'<option value="{dir_id}">Walter Wieder', html)   # in der „Wieder dabei“-Auswahl
+        # … und wird mit gespeichertem Telefon eingetragen
+        self.client.post(f'/touren/{self.t_open_id}/gast-verzeichnis', data={'guest_dir_id': dir_id})
+        html = self.get_html(f'/touren/{self.t_open_id}')
+        self.assertIn('Walter Wieder', html)
+        self.assertIn('Gäste (1)', html)
+        with app.app_context():
+            g = M.TourGuest.query.filter_by(tour_id=self.t_open_id, name='Walter Wieder').first()
+            self.assertIsNotNone(g)
+            self.assertEqual(g.phone, '0555 100')
+            self.assertEqual(M.TourGuest.query.filter_by(tour_id=self.t_open_id, name='Walter Wieder').count(), 1)
+        # Doppel-Eintrag wird abgefangen (Flash erscheint auf der Zielseite)
+        html = self.client.post(f'/touren/{self.t_open_id}/gast-verzeichnis',
+                                data={'guest_dir_id': dir_id}, follow_redirects=True).get_data(as_text=True)
+        self.assertIn('bereits eingetragen', html)
+        self.assertIn('Gäste (1)', html)                               # weiterhin nur einer
+        # Schon-auf-der-Tour-Stehende erscheinen NICHT erneut in der Auswahl
+        # (die Auswahl selbst kann für andere bekannte Gäste weiter bestehen)
+        html = self.get_html(f'/touren/{self.t_open_id}')
+        self.assertNotIn(f'<option value="{dir_id}">Walter Wieder', html)
+        # Gruppentrennung: die fremde Gruppe sieht Walter nicht
+        self.login('fremd@test.de')
+        self.assertNotIn('Walter Wieder', self.get_html(f'/touren/{self.t_fremd_id}'))
+        # migrate_db übernimmt verzeichnislose Alt-Gäste (idempotent)
+        self.login_org()
+        self.client.post(f'/touren/{self.t_plan_id}/gaeste', data={'name': 'Legacy Lotte'})
+        with app.app_context():
+            db.session.execute(db.text("DELETE FROM guests WHERE name = 'Legacy Lotte'"))
+            db.session.commit()
+            appmod.migrate_db()
+            self.assertIsNotNone(M.Guest.query.filter_by(name='Legacy Lotte').first())   # wieder hergestellt
+            db.session.execute(db.text("DELETE FROM tour_guests WHERE name IN ('Walter Wieder', 'Legacy Lotte')"))
+            db.session.execute(db.text("DELETE FROM guests WHERE name IN ('Walter Wieder', 'Legacy Lotte')"))
+            db.session.commit()
 
     def test_c_tour_guests(self):
         # Build 2026-11-05c: Mitfahrer ohne App-Konto (Gäste) – Name + optional Telefon,

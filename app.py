@@ -78,7 +78,7 @@ from werkzeug.utils import secure_filename
 import requests as http_requests
 
 from config import Config
-from models import (db, Group, User, InviteToken, Tour, TourParticipant, TourGuest, TourPhoto, TourVideo,
+from models import (db, Group, User, InviteToken, Tour, TourParticipant, TourGuest, Guest, TourPhoto, TourVideo,
                     GastroPhoto, TimeVote, LiveLocation, LiveTrackPoint, TourRide,
                     PasswordReset, GastroSpot, GastroReview, POI, TourComment, SiteConfig,
                     RouteRating, TourTemplate, PushSubscription, Announcement)
@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-05 c'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-05 d'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2311,6 +2311,7 @@ def tour_detail(tour_id):
                            all_users=all_users,
                            participant_ids=participant_ids,
                            guests=tour.guests.order_by(TourGuest.name).all(),   # Build 11-05c
+                           known_guests=_known_guests_for(tour),                      # Build 11-05d
                            rides=rides, my_ride=my_ride,                 # Build ab
                            gpx_timed=bool(timed_source),                 # Build ac/af: Zeiten vorhanden (GPX oder Live-Aufzeichnung)?
                            timed_source=timed_source, gpx_span=gpx_span,
@@ -2824,6 +2825,53 @@ def tour_complete(tour_id):
     return redirect(url_for('tour_detail', tour_id=tour_id))
 
 
+def _known_guests_for(tour):
+    """Build 11-05d: Verzeichnis-Einträge der Tour-Gruppe, die noch NICHT auf dieser
+    Tour stehen – für die „Wieder dabei“-Auswahl."""
+    if not tour.group_id:
+        return []
+    on_tour = {g.name.strip().lower() for g in tour.guests}
+    all_known = Guest.query.filter_by(group_id=tour.group_id).order_by(Guest.name).all()
+    return [g for g in all_known if g.name.strip().lower() not in on_tour]
+
+
+def _guest_dir_upsert(group_id, name, phone='', user_id=None):
+    """Build 11-05d: Gästeverzeichnis der Gruppe pflegen – Namen wiederfinden (ohne
+    Groß-/Kleinschreibung), Telefon nachtragen, wenn dort noch keins steht."""
+    if not group_id or not name:
+        return
+    entry = Guest.query.filter(db.func.lower(Guest.name) == name.lower(),
+                               Guest.group_id == group_id).first()
+    if entry is None:
+        db.session.add(Guest(group_id=group_id, name=name, phone=phone or '',
+                             created_by=user_id or current_user.id))
+    elif phone and not entry.phone:
+        entry.phone = phone
+
+
+@app.route('/touren/<int:tour_id>/gast-verzeichnis', methods=['POST'])
+@login_required
+def tour_add_known_guest(tour_id):
+    """Build 11-05d: Gast aus dem Gruppen-Verzeichnis erneut eintragen (Wiederkehrer) –
+    Name und Telefon werden übernommen, ohne alles neu zu tippen."""
+    tour = _tour_or_404(tour_id)
+    if not _can_manage_tour(tour):
+        abort(403)
+    entry = Guest.query.get_or_404(request.form.get('guest_dir_id', type=int))
+    if tour.group_id and entry.group_id != tour.group_id:
+        abort(404)                                     # fremde Gruppe
+    if TourGuest.query.filter(db.func.lower(TourGuest.name) == entry.name.lower(),
+                              TourGuest.tour_id == tour_id).first():
+        flash(f'{entry.name} ist auf dieser Tour bereits eingetragen.', 'info')
+        return redirect(url_for('tour_detail', tour_id=tour_id) + '#teilnehmer')
+    db.session.add(TourGuest(tour_id=tour_id, name=entry.name, phone=entry.phone or '',
+                             confirmed_present=request.form.get('confirmed') == '1',
+                             created_by=current_user.id))
+    db.session.commit()
+    flash(f'Gast „{entry.name}“ eingetragen.', 'success')
+    return redirect(url_for('tour_detail', tour_id=tour_id) + '#teilnehmer')
+
+
 @app.route('/touren/<int:tour_id>/gaeste', methods=['POST'])
 @login_required
 def tour_add_guest(tour_id):
@@ -2840,6 +2888,7 @@ def tour_add_guest(tour_id):
     db.session.add(TourGuest(tour_id=tour_id, name=name, phone=phone,
                              confirmed_present=request.form.get('confirmed') == '1',
                              created_by=current_user.id))
+    _guest_dir_upsert(tour.group_id, name, phone)           # Build 11-05d: Verzeichnis mitpflegen
     db.session.commit()
     flash(f'Gast „{name}“ eingetragen.', 'success')
     return redirect(url_for('tour_detail', tour_id=tour_id) + '#teilnehmer')
@@ -10766,6 +10815,21 @@ def migrate_db():
 
 
 # ─── Archiv-Suche ─────────────────────────────────────────────────────────────
+
+    # Build 11-05d: Bestehende Tour-Gäste einmalig ins Gruppen-Gästeverzeichnis übernehmen
+    try:
+        for _tg in TourGuest.query.all():
+            _gtour = db.session.get(Tour, _tg.tour_id)
+            if not _gtour or not _gtour.group_id or not (_tg.name or '').strip():
+                continue
+            _dup = Guest.query.filter(db.func.lower(Guest.name) == _tg.name.strip().lower(),
+                                      Guest.group_id == _gtour.group_id).first()
+            if not _dup:
+                db.session.add(Guest(group_id=_gtour.group_id, name=_tg.name.strip(),
+                                     phone=_tg.phone or '', created_by=_tg.created_by))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 @app.before_request

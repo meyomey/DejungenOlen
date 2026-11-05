@@ -173,6 +173,19 @@ class TourParticipant(db.Model):
     __table_args__ = (db.UniqueConstraint('tour_id', 'user_id'),)
 
 
+class Guest(db.Model):
+    """Build 11-05d: Gruppen-weites Gästeverzeichnis – Mitfahrer ohne App-Konto, die
+    öfter mitfahren, werden einmal erfasst und können auf jeder Tour wieder ausgewählt
+    werden. Die einzelnen Tour-Einträge bleiben TourGuest."""
+    __tablename__ = 'guests'
+    id       = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('groups.id'), nullable=False, index=True)
+    name     = db.Column(db.String(80), nullable=False)
+    phone    = db.Column(db.String(40), default='')
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class TourGuest(db.Model):
     """Build 11-05c: Mitfahrer ohne App-Konto (Gast) – von der Tourleitung pro Tour
     eingetragen (Name + optional Telefon). Zählt zur Teilnehmerzahl, in der Anwesenheit

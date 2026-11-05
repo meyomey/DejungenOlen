@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-05 (Build d) – Gästeverzeichnis: Wiederkehrer ohne App-Konto nicht neu tippen
+
+- **Einmal erfassen, immer wieder wählbar:** Beim Anlegen eines Gastes wird er automatisch im Gruppen-**Gästeverzeichnis** gespeichert. Auf jeder anderen Tour erscheint er in der Auswahl „Wieder dabei (bekannter Gast)…“ und wird mit Name und gespeicherter Telefonnummer eingetragen – ein Klick genügt.
+- Bestehende Tour-Gäste wurden einmalig ins Verzeichnis übernommen (beim Server-Start); wer schon auf der Tour steht, taucht in der Auswahl nicht erneut auf. Verzeichnis ist gruppenscharf.
+- 233 Tests, py_compile OK.
+
+
 ## 1.4.0 – 2026-11-05 (Build c) – Gast-Teilnehmer: Mitfahrer ohne App-Konto abbilden
 
 - **Wer ohne App mitfährt, ist jetzt abgebildet:** Tourleitung/Orga/Admin tragen pro Tour **Gäste** ein (Name + optionale Telefonnummer, Knopf „+ Gast“ unter dem Teilnehmer-Hinzufügen). Gäste erscheinen mit „Gast“-Marke in der Teilnehmer-Liste, zählen zur Kopfzahl („Dabei“), werden bei der **Anwesenheit** mit abgehakt und stehen auf der **druckbaren Teilnehmerliste** samt Telefon.
