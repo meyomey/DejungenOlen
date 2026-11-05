@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-05 m'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-05 n'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -9802,6 +9802,69 @@ def rueckblick(year=None):
     # Longest tour
     longest = max(tours, key=lambda t: t.gpx_km or 0) if tours else None
 
+    # ── Build 11-05n: Wetter-Bilanz, Lieblings-Einkehr, Fotograf:innen des Jahres ──
+    # Wetter ausschließlich aus dem Cache (tours.weather_json, Build q) – KEINE API-Aufrufe
+    w_tours, w_rain, w_sum, w_sun = 0, 0, 0.0, 0.0
+    w_max = None                                   # (temp_max, Tour)
+    for t in tours:
+        try:
+            wd = (json.loads(t.weather_json or '{}').get('data') or {})
+        except Exception:
+            wd = {}
+        if wd.get('temp_max') is None:
+            continue
+        w_tours += 1
+        w_sum += wd['temp_max']
+        rain = wd.get('rain_mm')
+        if ((rain is not None and rain >= 0.5)
+                or (rain is None and wd.get('kind') in ('rain', 'storm', 'snow'))):
+            w_rain += 1
+        if wd.get('sun_h'):
+            w_sun += wd['sun_h']
+        if w_max is None or wd['temp_max'] > w_max[0]:
+            w_max = (wd['temp_max'], t)
+    weather = None
+    if w_tours:
+        weather = {'tours': w_tours, 'rain': w_rain, 'avg': round(w_sum / w_tours),
+                   'sun': round(w_sun), 'warm': w_max}
+
+    fav_spot = None
+    spot_counts = dict(db.session.query(Tour.gastro_spot_id, db.func.count(Tour.id))
+                       .filter(Tour.id.in_(tour_ids), Tour.gastro_spot_id.isnot(None))
+                       .group_by(Tour.gastro_spot_id).all()) if tour_ids else {}
+    if spot_counts:
+        _sp = GastroSpot.query.get(max(spot_counts, key=spot_counts.get))
+        if _sp:
+            fav_spot = {'name': _sp.name, 'count': spot_counts[_sp.id]}
+    else:
+        _texts = [(t.einkehr_text or '').strip() for t in tours
+                  if (t.einkehr_text or '').strip()]
+        if _texts:
+            from collections import Counter as _Counter
+            _top, _n = _Counter(s.lower() for s in _texts).most_common(1)[0]
+            fav_spot = {'name': next(s for s in _texts if s.lower() == _top), 'count': _n}
+
+    top_photogs = []
+    if tour_ids:
+        p_rows = (db.session.query(TourPhoto.user_id, db.func.count(TourPhoto.id))
+                  .join(Tour, Tour.id == TourPhoto.tour_id)
+                  .filter(Tour.id.in_(tour_ids))
+                  .group_by(TourPhoto.user_id).all())
+        p_users = {u.id: u for u in User.query.filter(User.id.in_([uid for uid, _ in p_rows])).all()} if p_rows else {}
+        top_photogs = [{'user': p_users[uid], 'count': cnt}
+                       for uid, cnt in sorted(p_rows, key=lambda x: x[1], reverse=True)[:3]
+                       if uid in p_users]
+        _tiles = {}
+        _pids = [d['user'].id for d in top_photogs]
+        if _pids:
+            for p in (TourPhoto.query.filter(TourPhoto.user_id.in_(_pids))
+                      .join(Tour, Tour.id == TourPhoto.tour_id)
+                      .filter(Tour.id.in_(tour_ids))
+                      .order_by(TourPhoto.created_at.desc()).all()):
+                _tiles.setdefault(p.user_id, []).append(p.filename)
+        for d in top_photogs:
+            d['tiles'] = _tiles.get(d['user'].id, [])[:3]
+
     available_years = db.session.query(
         db.extract('year', Tour.tour_date)
     ).filter(Tour.status == 'completed').distinct().order_by(
@@ -9820,7 +9883,8 @@ def rueckblick(year=None):
                            longest=longest,
                            attend_counts=attend_counts,
                            available_years=available_years,
-                           richtung=richtung)
+                           richtung=richtung,
+                           weather=weather, fav_spot=fav_spot, top_photogs=top_photogs)
 
 
 # ─── Phase 4: Profil bearbeiten ───────────────────────────────────────────────

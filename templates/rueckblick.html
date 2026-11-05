@@ -146,6 +146,59 @@
 
     {# Build 11-05m: doppelte „Längste Tour“-Karte entfernt – das Banner oben zeigt alles #}
 
+    {# Build 11-05n: Wetter-Bilanz, Lieblings-Einkehr, Fotograf:innen des Jahres #}
+    {% if weather %}
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-cloud-sun me-1"></i>Wetter-Bilanz {{ year }}
+      </div>
+      <div class="card-body small">
+        <p class="mb-2">☔ <strong>{{ weather.rain }}</strong> von <strong>{{ weather.tours }}</strong> Touren mit Wetterdaten waren Regen- oder Schneetouren.</p>
+        {% if weather.warm %}
+        <p class="mb-2">🔥 Wärmste Tour: <strong>{{ weather.warm[0] }} °C</strong> –
+          <a href="{{ url_for('tour_detail', tour_id=weather.warm[1].id) }}" class="text-decoration-none">{{ weather.warm[1].title }}</a></p>
+        {% endif %}
+        <p class="mb-0">🌡️ Ø <strong>{{ weather.avg }} °C</strong>{% if weather.sun %} · ☀️ {{ weather.sun }} h Sonne{% endif %}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if fav_spot %}
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-cup-hot me-1"></i>Lieblings-Einkehr {{ year }}
+      </div>
+      <div class="card-body text-center">
+        <h5 class="fw-bold mb-1">{{ fav_spot.name }}</h5>
+        <span class="badge bg-primary">{{ fav_spot.count }}× eingekehrt</span>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if top_photogs %}
+    <div class="card mb-3">
+      <div class="card-header card-header-djo">
+        <i class="bi bi-camera me-1"></i>Fotograf:innen des Jahres
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for d in top_photogs %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <div>
+            <span class="me-2">{% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% else %}🥉{% endif %}</span>
+            <a href="{{ url_for('profil', user_id=d.user.id) }}"
+               class="text-decoration-none fw-semibold">{{ d.user.display_name }}</a>
+            {% for fn in d.tiles %}
+            <img src="{{ url_for('serve_photo', filename=fn) }}" class="ms-1 rounded"
+                 style="width:28px;height:28px;object-fit:cover" alt="">
+            {% endfor %}
+          </div>
+          <span class="badge bg-primary rounded-pill">{{ d.count }} Foto{{ 's' if d.count != 1 }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
     <!-- Fun facts -->
     <div class="card">
       <div class="card-header card-header-djo">

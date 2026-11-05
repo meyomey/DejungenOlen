@@ -1,5 +1,12 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-05 (Build n) – Jahresrückblick: Wetter, Lieblings-Einkehr, Fotograf:innen
+
+- **Wetter-Bilanz:** Wie viele Touren waren Regen-/Schneetouren, wie war die wärmste Tour (mit Link), Ø-Temperatur und Sonnenstunden. Wird ausschließlich aus dem gespeicherten Wetter-Cache gelesen (keine API-Aufrufe) – die Karte erscheint, sobald Touren Wetterdaten haben.
+- **Lieblings-Einkehr:** Die meist angesteuerte Gaststätte des Jahres (Einkehr-Feld der Touren); ohne verknüpfte Gaststätte zählt der Einkehr-Text.
+- **Fotograf:innen des Jahres:** Top 3 nach hochgeladenen Tour-Fotos mit Mini-Vorschauen der Aufnahmen.
+- 241 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-05 (Build m) – Doppelte „Längste Tour“ entfernt
 
 - Im Jahresrückblick gab es die „Längste Tour“ zweimal: als Banner oben und als Karte in der rechten Spalte. Die rechte Karte ist entfernt – das Banner oben zeigt Titel, km, Anstieg, Datum und Details-Button.

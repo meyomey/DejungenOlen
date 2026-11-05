@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 m')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 n')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1643,3 +1643,48 @@ class RueckblickNoDuplicateLongestTest(AppTestCase):
         self.assertEqual(html.count('Längste Tour'), 1)     # nur das Banner oben
         rb = open(os.path.join(ROOT, 'templates', 'rueckblick.html'), encoding='utf-8').read()
         self.assertIn('doppelte „Längste Tour“-Karte entfernt', rb)
+
+
+class RueckblickExtrasTest(AppTestCase):
+    """Build 2026-11-05n: Drei neue Rückblick-Karten – Wetter-Bilanz (nur aus dem
+    weather_json-Cache, KEINE API-Aufrufe), Lieblings-Einkehr und
+    Fotograf:innen des Jahres (Top 3 mit Mini-Vorschauen)."""
+
+    def test_n_weather_gastro_photogs(self):
+        rb = open(os.path.join(ROOT, 'templates', 'rueckblick.html'), encoding='utf-8').read()
+        self.assertIn('Wetter-Bilanz', rb)
+        self.assertIn('Lieblings-Einkehr', rb)
+        self.assertIn('Fotograf:innen des Jahres', rb)
+        srcapp = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('KEINE API-Aufrufe', srcapp)      # Rueckblick bleibt API-frei
+
+        import json as _json
+        with app.app_context():
+            t = db.session.get(M.Tour, self.t_done_id)
+            orig_w, orig_s = t.weather_json, t.gastro_spot_id
+            t.weather_json = _json.dumps({'key': 'x', 'data': {
+                'temp_max': 28, 'temp_min': 14, 'kind': 'sun', 'icon': '☀️',
+                'label': 'Sonnig', 'rain_mm': 0.0, 'sun_h': 9.0}})
+            t.gastro_spot_id = self.spot_id
+            db.session.add(M.TourPhoto(tour_id=self.t_done_id, user_id=self.mem_id,
+                                       filename='rueckblick_test.jpg'))
+            db.session.commit()
+        try:
+            self.login_member()
+            html = self.get_html('/rueckblick')
+            self.assertIn('Wetter-Bilanz', html)
+            self.assertIn('28 °C', html)                            # wärmste Tour
+            self.assertIn('Ø <strong>28 °C</strong>', html)         # Durchschnitt
+            self.assertIn('9 h Sonne', html)
+            self.assertIn('0</strong> von <strong>1</strong>', html)  # Regen-Zeile
+            self.assertIn('Café Deichblick', html)                  # Lieblings-Einkehr
+            self.assertIn('1× eingekehrt', html)
+            self.assertIn('Hein Mück</a>', html)                    # Fotograf:in
+            self.assertIn('1 Foto</span>', html)
+            self.assertIn('/fotos/img/rueckblick_test.jpg', html)  # Mini-Vorschau
+        finally:                                                    # Zustand zurück
+            with app.app_context():
+                t = db.session.get(M.Tour, self.t_done_id)
+                t.weather_json, t.gastro_spot_id = orig_w, orig_s
+                db.session.query(M.TourPhoto).filter_by(filename='rueckblick_test.jpg').delete()
+                db.session.commit()
