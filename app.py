@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-05 g'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-05 h'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -4947,13 +4947,7 @@ def archiv():
 
     # Teilnehmer- und Fotozahlen in je einer Abfrage (kein N+1)
     tour_ids = [t.id for t in tours]
-    part_counts = dict(db.session.query(
-        TourParticipant.tour_id,
-        db.func.count(TourParticipant.id)
-    ).filter(
-        TourParticipant.tour_id.in_(tour_ids),
-        TourParticipant.confirmed_present == True
-    ).group_by(TourParticipant.tour_id).all()) if tour_ids else {}
+    part_counts = tour_headcounts(tour_ids)     # Build 11-05h: Mitglieder + Gäste (wie überall)
 
     photo_counts = dict(db.session.query(
         TourPhoto.tour_id, db.func.count(TourPhoto.id)
@@ -7903,6 +7897,23 @@ def tour_headcount(tour_id):
     return members + int(guests)
 
 
+def tour_headcounts(tour_ids):
+    """Build 11-05h: Kopfzahlen für MEHRERE Touren in einem Rutsch (Archiv-Listen,
+    Rückblick) – gleiche Semantik wie tour_headcount: angemeldete Mitglieder + Gäste."""
+    tour_ids = [t for t in tour_ids if t is not None]
+    if not tour_ids:
+        return {}
+    counts = dict(db.session.query(TourParticipant.tour_id, db.func.count(TourParticipant.id))
+                  .filter(TourParticipant.tour_id.in_(tour_ids),
+                          TourParticipant.status == 'attending')
+                  .group_by(TourParticipant.tour_id).all())
+    for tid, cnt in (db.session.query(TourGuest.tour_id, db.func.count(TourGuest.id))
+                     .filter(TourGuest.tour_id.in_(tour_ids))
+                     .group_by(TourGuest.tour_id).all()):
+        counts[tid] = counts.get(tid, 0) + int(cnt or 0)
+    return counts
+
+
 def compute_badges(user, stats=None):
     """Return list of earned badge dicts for a user.
     Build ab: optional stats=(tour_count, total_km) aus badge_stats_bulk(), sonst eine
@@ -9687,14 +9698,7 @@ def rueckblick(year=None):
     _users = {u.id: u for u in User.query.filter(User.id.in_([uid for uid, _ in most_active])).all()} if most_active else {}
     most_active = [(_users.get(uid), cnt) for uid, cnt in most_active if _users.get(uid)]
     # Teilnehmerzahl je Tour für die Liste (vorher t.attending_count = eine COUNT-Abfrage je Tour)
-    attend_counts = dict(db.session.query(TourParticipant.tour_id, db.func.count(TourParticipant.id))
-                         .filter(TourParticipant.tour_id.in_(tour_ids), TourParticipant.status == 'attending')
-                         .group_by(TourParticipant.tour_id).all()) if tour_ids else {}
-    if tour_ids:                                       # Build 11-05g: Gäste zählen mit
-        for _tid, _cnt in (db.session.query(TourGuest.tour_id, db.func.count(TourGuest.id))
-                           .filter(TourGuest.tour_id.in_(tour_ids))
-                           .group_by(TourGuest.tour_id).all()):
-            attend_counts[_tid] = attend_counts.get(_tid, 0) + int(_cnt or 0)
+    attend_counts = tour_headcounts(tour_ids)          # Build 11-05h: Mitglieder + Gäste
 
     # Monthly distribution
     monthly = {}
@@ -11084,11 +11088,7 @@ def archiv_suche():
     all_years = _archiv_years()
 
     tour_ids = [t.id for t in tours]
-    part_counts = dict(db.session.query(
-        TourParticipant.tour_id, db.func.count(TourParticipant.id)
-    ).filter(TourParticipant.tour_id.in_(tour_ids),
-             TourParticipant.confirmed_present == True
-    ).group_by(TourParticipant.tour_id).all()) if tour_ids else {}
+    part_counts = tour_headcounts(tour_ids)     # Build 11-05h: Mitglieder + Gäste (wie überall)
     photo_counts = dict(db.session.query(
         TourPhoto.tour_id, db.func.count(TourPhoto.id)
     ).filter(TourPhoto.tour_id.in_(tour_ids))

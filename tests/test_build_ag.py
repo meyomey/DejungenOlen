@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 g')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 h')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1414,3 +1414,38 @@ class GuestCountTest(AppTestCase):
         srcapp = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
         self.assertIn('def tour_headcount(', srcapp)
         self.assertEqual(srcapp.count('tour_headcount('), 4)            # Def + Video + Stats-Frames + CSV
+
+
+class ArchiveHeadcountTest(AppTestCase):
+    """Build 2026-11-05h: Die Archiv-Listen zählen die Personen RICHTIG –
+    angemeldete Mitglieder + Gäste (vorher: nur bestätigte Mitglieder, Gäste
+    fehlten komplett). Tabelle wie Karten-Ansicht nutzen dieselbe Zahl."""
+
+    def test_h_archive_counts_members_and_guests(self):
+        src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('def tour_headcounts(', src)
+        self.assertEqual(src.count('tour_headcounts('), 4)   # Def + Archiv + Suche + Rueckblick
+
+        import re
+        self.ensure_participant(self.t_done_id, self.mem_id, status='attending', confirmed=True)
+        self.login_org()
+        # 1 bestätigtes Mitglied + 1 Gast → 2 (vorher zählte das Archiv nur das Mitglied)
+        self.client.post(f'/touren/{self.t_done_id}/gaeste', data={'name': 'Dora Archiv'})
+        html = self.get_html('/archiv')
+        self.assertTrue(re.search(r'👥\s*2\b', html), 'Archiv soll Mitglied+Gast zeigen (2)')
+        html = self.get_html('/archiv/suche?q=Alte')
+        self.assertTrue(re.search(r'👥\s*2\b', html), 'Archiv-Suche soll Mitglied+Gast zeigen (2)')
+        # Unbestätigt Angemeldetes Mitglied zählt wie auf der Tour-Seite mit → 3
+        with app.app_context():
+            db.session.add(M.TourParticipant(tour_id=self.t_done_id, user_id=self.mem2_id,
+                                             status='attending', confirmed_present=False))
+            db.session.commit()
+        html = self.get_html('/archiv/suche?q=Alte')
+        self.assertTrue(re.search(r'👥\s*3\b', html), 'angemeldete Mitglieder zählen mit (3)')
+        # Aufräumen, damit andere Tests unverändert bleiben
+        with app.app_context():
+            db.session.execute(db.text("DELETE FROM tour_guests WHERE name = 'Dora Archiv'"))
+            db.session.execute(db.text(
+                "DELETE FROM tour_participants WHERE user_id = %d AND tour_id = %d"
+                % (self.mem2_id, self.t_done_id)))
+            db.session.commit()

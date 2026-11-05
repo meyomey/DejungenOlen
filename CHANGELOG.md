@@ -1,5 +1,11 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-05 (Build h) – Archiv zählt Personen richtig
+
+- **Archiv-Liste (Tabelle, Karten und Suche):** Die Personen-Spalte 👥 zählte vorher nur die **bestätigten Mitglieder** – Gäste fehlten komplett, angemeldete (aber nicht bestätigte) Mitglieder auch. Jetzt zählt das Archiv exakt wie die Tour-Seite: **angemeldete Mitglieder + Gäste**.
+- Die Zähllogik liegt einmalig im neuen Helfer `tour_headcounts()` (Mehrfach-Variante von `tour_headcount()` aus Build g) und wird von Archiv, Archiv-Suche und Jahresrückblick genutzt.
+- 236 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-05 (Build g) – Gäste zählen überall mit
 
 - **Teilnehmer-Liste auf der Tour-Seite:** Gäste stehen jetzt MIT in der „Dabei“-Liste (mit „Gast“-Badge und Telefon-Hinweis) und die Kopfzahl zählt sie mit: „Dabei (Mitglieder + Gäste)“. Der separate Gäste-Block darunter ist damit überflüssig und entfällt. Entfernen geht wie bisher per × direkt an der Zeile.
