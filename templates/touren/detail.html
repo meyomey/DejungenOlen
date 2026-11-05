@@ -618,11 +618,12 @@
         {% endif %}
       </div>
       <div class="card-body">
-        {% macro plist(label, icon, color, items) %}
-        {% if items %}
+        {# Build 11-05g: Gäste zählen mit und stehen MIT in der Liste (Standard: dabei) #}
+        {% macro plist(label, icon, color, items, guests=none, manage=false) %}
+        {% if items or guests %}
         <div class="mb-2">
           <div class="text-muted small fw-semibold mb-1">
-            <i class="{{ icon }} me-1 text-{{ color }}"></i>{{ label }} ({{ items|length }})
+            <i class="{{ icon }} me-1 text-{{ color }}"></i>{{ label }} ({{ items|length + (guests|length if guests else 0) }})
           </div>
           {% for p in items %}
           <div class="d-flex align-items-center justify-content-between mb-1">
@@ -645,21 +646,8 @@
             {% endif %}
           </div>
           {% endfor %}
-        </div>
-        {% endif %}
-        {% endmacro %}
-
-        {{ plist('Dabei', 'bi-check-circle-fill', 'success', attending) }}
-        {{ plist('Vielleicht', 'bi-question-circle-fill', 'warning', maybe) }}
-        {{ plist('Abgesagt', 'bi-x-circle-fill', 'danger', declined) }}
-
-        {# Build 11-05c: Mitfahrer ohne App-Konto #}
-        {% if guests %}
-        <div class="mb-2">
-          <div class="text-muted small fw-semibold mb-1">
-            <i class="bi bi-person-badge me-1 text-secondary"></i>Gäste ({{ guests|length }})
-          </div>
-          {% for g in guests %}
+          {% if guests %}
+          {% for g in guests %}{# Build 11-05g #}
           <div class="d-flex align-items-center justify-content-between mb-1">
             <div class="d-flex align-items-center">
               <span class="participant-avatar" style="opacity:.8">{{ g.name[0].upper() }}</span>
@@ -668,7 +656,7 @@
                 {% if g.phone %}<span class="text-muted" title="Telefon hinterlegt">☎</span>{% endif %}
               </span>
             </div>
-            {% if can_manage %}
+            {% if manage %}{# can_manage ist ein Template-set und im Makro unsichtbar – daher als Parameter #}
             <form method="post" action="{{ url_for('tour_remove_guest', tour_id=tour.id, guest_id=g.id) }}"
                   onsubmit="return confirm('Gast „{{ g.name }}“ entfernen?')" style="display:inline">
               <button type="submit" class="btn btn-sm py-0 px-1 text-muted" title="Entfernen" style="font-size:.7rem">
@@ -678,8 +666,14 @@
             {% endif %}
           </div>
           {% endfor %}
+          {% endif %}
         </div>
         {% endif %}
+        {% endmacro %}
+
+        {{ plist('Dabei', 'bi-check-circle-fill', 'success', attending, guests, can_manage) }}
+        {{ plist('Vielleicht', 'bi-question-circle-fill', 'warning', maybe) }}
+        {{ plist('Abgesagt', 'bi-x-circle-fill', 'danger', declined) }}
 
         {% if not attending and not maybe and not declined and not guests %}
         <p class="text-muted small mb-0">Noch niemand angemeldet.</p>

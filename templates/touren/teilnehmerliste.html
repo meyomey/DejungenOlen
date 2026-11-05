@@ -122,7 +122,7 @@
   </div>
 
   <div class="foot">
-    <span>{{ rows|selectattr('status', 'equalto', 'attending')|list|length }} zugesagt{% set m = rows|selectattr('status', 'equalto', 'maybe')|list|length %}{% if m %}, {{ m }} vielleicht{% endif %}
+    <span>{{ rows|selectattr('status', 'equalto', 'attending')|list|length }} zugesagt{% set m = rows|selectattr('status', 'equalto', 'maybe')|list|length %}{% if m %}, {{ m }} vielleicht{% endif %}{% if guest_rows %}, {{ guest_rows|length }} Gast{{ 'e' if guest_rows|length != 1 }}{% endif %}
       · Stand {{ printed_at.strftime('%d.%m.%Y %H:%M') }} Uhr</span>
     <span>{{ current_group.name if current_group else 'De jungen Olen' }} · Notruf 112</span>
   </div>

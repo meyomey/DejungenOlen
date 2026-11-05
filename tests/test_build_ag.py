@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 f')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 g')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -558,7 +558,7 @@ class VideoSmoothTest(AppTestCase):
         self.client.post(f'/touren/{self.t_open_id}/gast-verzeichnis', data={'guest_dir_id': dir_id})
         html = self.get_html(f'/touren/{self.t_open_id}')
         self.assertIn('Walter Wieder', html)
-        self.assertIn('Gäste (1)', html)
+        self.assertIn('Dabei (1)', html)                               # Build 11-05g: Gast zählt MIT
         with app.app_context():
             g = M.TourGuest.query.filter_by(tour_id=self.t_open_id, name='Walter Wieder').first()
             self.assertIsNotNone(g)
@@ -568,7 +568,7 @@ class VideoSmoothTest(AppTestCase):
         html = self.client.post(f'/touren/{self.t_open_id}/gast-verzeichnis',
                                 data={'guest_dir_id': dir_id}, follow_redirects=True).get_data(as_text=True)
         self.assertIn('bereits eingetragen', html)
-        self.assertIn('Gäste (1)', html)                               # weiterhin nur einer
+        self.assertIn('Dabei (1)', html)                               # weiterhin nur einer
         # Schon-auf-der-Tour-Stehende erscheinen NICHT erneut in der Auswahl
         # (die Auswahl selbst kann für andere bekannte Gäste weiter bestehen)
         html = self.get_html(f'/touren/{self.t_open_id}')
@@ -618,7 +618,7 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('Gast „Gast George“ eingetragen', html)
         html = self.get_html(f'/touren/{self.t_plan_id}')
         self.assertIn('Gast George', html)
-        self.assertIn('Gäste (1)', html)
+        self.assertIn('Dabei (1)', html)                               # Build 11-05g: Gast zählt MIT
         # Anwesenheit wird nur bei vergangener Tour angezeigt – kurz dorthin schieben
         import datetime as _dt
         with app.app_context():
@@ -1380,3 +1380,37 @@ class GroupSeparationTest(AppTestCase):
         self.assertIn('200.0 km', html)
         self.assertNotIn('40.0 km', html)
         self.assertNotIn('240.0 km', html)
+
+
+class GuestCountTest(AppTestCase):
+    """Build 2026-11-05g: Gäste zählen ÜBERALL mit – in der Teilnehmer-Liste stehen sie
+    MIT in der „Dabei“-Sektion (Kopfzahl = Mitglieder + Gäste, separater Gäste-Block weg);
+    auch Rückblick, Video-Statistik, druckbare Liste und CSV-Export zählen Gäste."""
+
+    def test_g_guests_counted_everywhere(self):
+        # Mitglied angemeldet + Gast eingetragen → „Dabei (2)“, Gast MIT in der Liste
+        self.ensure_participant(self.t_plan_id, self.mem_id, status='attending', confirmed=True)
+        self.login_org()
+        r = self.client.post(f'/touren/{self.t_plan_id}/gaeste',
+                             data={'name': 'Bea Beispiel', 'phone': '0555 7'})
+        self.assertEqual(r.status_code, 302)
+        html = self.get_html(f'/touren/{self.t_plan_id}')
+        self.assertIn('Dabei (2)', html)                               # 1 Mitglied + 1 Gast
+        self.assertIn('Bea Beispiel', html)
+        self.assertNotIn('Gäste (1)', html)                            # separater Block ist weg
+        with app.app_context():                                        # Entfernen-Button weiter da
+            gid = M.TourGuest.query.filter_by(tour_id=self.t_plan_id, name='Bea Beispiel').first().id
+        self.assertIn(f'/touren/{self.t_plan_id}/gast/{gid}/loeschen', html)
+        # Druckbare Liste: Fußzeile zählt den Gast mit
+        html = self.client.get(f'/touren/{self.t_plan_id}/teilnehmerliste').get_data(as_text=True)
+        self.assertIn('1 zugesagt, 1 Gast', html)             # Fußzeile zählt Gast mit
+        # Rückblick + Video: Kopfzahl enthält den Gast (Tour ist abgeschlossen)
+        self.client.post(f'/touren/{self.t_done_id}/gaeste', data={'name': 'Cleo Mitzaehler'})
+        html = self.get_html('/rueckblick')
+        self.assertIn('bi bi-people me-1"></i>2</div>', html)          # Mitglied + Gast
+        html = self.get_html(f'/touren/{self.t_done_id}/video')
+        self.assertIn('ATTENDING_COUNT = 2', html)                     # Mitglied + Gast
+        # Helfer vorhanden und wird an allen Zählstellen genutzt
+        srcapp = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('def tour_headcount(', srcapp)
+        self.assertEqual(srcapp.count('tour_headcount('), 4)            # Def + Video + Stats-Frames + CSV

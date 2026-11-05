@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-05 f'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-05 g'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3261,9 +3261,7 @@ def tour_video(tour_id):
         if os.path.exists(gpx_path):
             gpx_data = gpx_for_page(gpx_path)          # Build ab: ≤ 2000 Punkte im Seiten-JSON
 
-    attending_count = TourParticipant.query.filter_by(
-        tour_id=tour_id, status='attending'
-    ).count()
+    attending_count = tour_headcount(tour_id)          # Build 11-05g: Gäste zählen mit
     attending_names = [p.user.display_name for p in
                        TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
                        .join(User).order_by(User.name).limit(12).all()]
@@ -4614,9 +4612,7 @@ def tour_video_render(tour_id):
         n_valid = 0
 
         # Zusatzdaten für Stats-Folie (gleiche Werte wie in der Vorschau)
-        _attending_count = TourParticipant.query.filter_by(
-            tour_id=tour_id, status='attending'
-        ).count()
+        _attending_count = tour_headcount(tour_id)     # Build 11-05g: Gäste zählen mit
         _attending_users = [(p.user.display_name, p.user.avatar) for p in
                             TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
                             .join(User).order_by(User.name).limit(12).all()]
@@ -7898,6 +7894,15 @@ def _stats_group_id(user):
     return gid
 
 
+def tour_headcount(tour_id):
+    """Build 11-05g: Kopfzahl einer Tour = angemeldete Mitglieder + Gäste (ohne
+    App-Konto). Gäste zählen überall mit – nirgends wird nur die Mitgliederzahl
+    angezeigt."""
+    guests = db.session.query(db.func.count(TourGuest.id)).filter_by(tour_id=tour_id).scalar() or 0
+    members = TourParticipant.query.filter_by(tour_id=tour_id, status='attending').count()
+    return members + int(guests)
+
+
 def compute_badges(user, stats=None):
     """Return list of earned badge dicts for a user.
     Build ab: optional stats=(tour_count, total_km) aus badge_stats_bulk(), sonst eine
@@ -9685,6 +9690,11 @@ def rueckblick(year=None):
     attend_counts = dict(db.session.query(TourParticipant.tour_id, db.func.count(TourParticipant.id))
                          .filter(TourParticipant.tour_id.in_(tour_ids), TourParticipant.status == 'attending')
                          .group_by(TourParticipant.tour_id).all()) if tour_ids else {}
+    if tour_ids:                                       # Build 11-05g: Gäste zählen mit
+        for _tid, _cnt in (db.session.query(TourGuest.tour_id, db.func.count(TourGuest.id))
+                           .filter(TourGuest.tour_id.in_(tour_ids))
+                           .group_by(TourGuest.tour_id).all()):
+            attend_counts[_tid] = attend_counts.get(_tid, 0) + int(_cnt or 0)
 
     # Monthly distribution
     monthly = {}
@@ -11238,7 +11248,7 @@ def admin_export_tours():
                      'km','Anstieg','Teilnehmer','Fotos'])
     tours = _gq(Tour).order_by(Tour.tour_date.desc()).all()
     for t in tours:
-        attending = TourParticipant.query.filter_by(tour_id=t.id, status='attending').count()
+        attending = tour_headcount(t.id)               # Build 11-05g: Gäste zählen mit
         photos    = TourPhoto.query.filter_by(tour_id=t.id).count()
         writer.writerow([
             t.id, t.title, t.tour_date.isoformat() if t.tour_date else '', t.status, t.difficulty,

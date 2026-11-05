@@ -1,5 +1,11 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-05 (Build g) – Gäste zählen überall mit
+
+- **Teilnehmer-Liste auf der Tour-Seite:** Gäste stehen jetzt MIT in der „Dabei“-Liste (mit „Gast“-Badge und Telefon-Hinweis) und die Kopfzahl zählt sie mit: „Dabei (Mitglieder + Gäste)“. Der separate Gäste-Block darunter ist damit überflüssig und entfällt. Entfernen geht wie bisher per × direkt an der Zeile.
+- **Überall dieselbe Kopfzahl:** Auch Jahresrückblick („👥 N“), Video-Statistik („Dabei gewesen“ / „N dabei“), druckbare Teilnehmerliste (Fußzeile „… zugesagt, … Gäste“) und der Admin-CSV-Export zählen Gäste jetzt mit – vorher zeigten diese Stellen nur die Mitgliederzahl. (Touren-Liste, Startseite und die „Dabei“-Kachel zählten bereits korrekt.)
+- 235 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-05 (Build f) – Gruppen immer getrennt, keine km-Summen über Gruppen
 
 - **Gruppen bleiben garantiert getrennt:** Kilometer- und Tourzahlen werden nirgends mehr über Gruppen hinweg summiert. Die Rangliste (Mitglieder wie Gäste) war schon gruppenscharf – jetzt sind es auch die **Profil-Statistik**, das **Logbuch**, die **Badges** (inkl. Mitgliederliste). Wer (z. B. durch frühere Daten oder Admin-Gruppenwechsel) in zwei Gruppen gefahren ist, sieht pro Gruppe nur die Werte dieser Gruppe.
