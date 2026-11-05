@@ -2,6 +2,13 @@
 
 Neueste Version oben. Die Versionskennung steht in `app.py` (`APP_VERSION`, `APP_BUILD`) und im Footer jeder Seite.
 
+## 1.4.0 – 2026-11-05 (Build c) – Gast-Teilnehmer: Mitfahrer ohne App-Konto abbilden
+
+- **Wer ohne App mitfährt, ist jetzt abgebildet:** Tourleitung/Orga/Admin tragen pro Tour **Gäste** ein (Name + optionale Telefonnummer, Knopf „+ Gast“ unter dem Teilnehmer-Hinzufügen). Gäste erscheinen mit „Gast“-Marke in der Teilnehmer-Liste, zählen zur Kopfzahl („Dabei“), werden bei der **Anwesenheit** mit abgehakt und stehen auf der **druckbaren Teilnehmerliste** samt Telefon.
+- **Rangliste:** Die Rangliste bleibt pro App-Mitglied; darüber steht jetzt, wie viele Gäste insgesamt auf den Touren dabei waren („Dazu kamen N Gäste ohne App-Konto“).
+- 232 Tests, py_compile OK.
+
+
 ## 1.4.0 – 2026-11-05 (Build b) – Auch die manuelle Pause setzt beim Weiterfahren automatisch fort
 
 - **Nichts mehr zum Weiterdrücken:** Vorher galt: manuell pausiert = bleibt pausiert, bis man „▶ Weiter“ tippt (vergessene Pausen ließen Track-Lücken). Jetzt merkt sich die App den Pausenort – entfernt man sich beim Weiterfahren rund 100 m, geht die Aufzeichnung von selbst wieder an. Die automatische Pause (3 min Stillstand) setzt wie bisher schon ab 25 m fort.

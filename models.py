@@ -135,6 +135,8 @@ class Tour(db.Model):
                                    cascade='all, delete-orphan', lazy='dynamic')
     photos       = db.relationship('TourPhoto', back_populates='tour',
                                    cascade='all, delete-orphan', lazy='dynamic')
+    guests       = db.relationship('TourGuest', backref='tour',
+                                   cascade='all, delete-orphan', lazy='dynamic')   # Build 11-05c
 
     @property
     def is_date_open(self):
@@ -144,7 +146,8 @@ class Tour(db.Model):
 
     @property
     def attending_count(self):
-        return self.participants.filter_by(status='attending').count()
+        # Build 11-05c: Gäste (ohne App-Konto) zählen mit
+        return self.participants.filter_by(status='attending').count() + self.guests.count()
 
     @property
     def difficulty_label(self):
@@ -168,6 +171,20 @@ class TourParticipant(db.Model):
     user = db.relationship('User', back_populates='participations')
 
     __table_args__ = (db.UniqueConstraint('tour_id', 'user_id'),)
+
+
+class TourGuest(db.Model):
+    """Build 11-05c: Mitfahrer ohne App-Konto (Gast) – von der Tourleitung pro Tour
+    eingetragen (Name + optional Telefon). Zählt zur Teilnehmerzahl, in der Anwesenheit
+    und auf der druckbaren Teilnehmerliste; in der Rangliste erscheint nur die Summe."""
+    __tablename__ = 'tour_guests'
+    id      = db.Column(db.Integer, primary_key=True)
+    tour_id = db.Column(db.Integer, db.ForeignKey('tours.id'), nullable=False, index=True)
+    name    = db.Column(db.String(80), nullable=False)
+    phone   = db.Column(db.String(40), default='')                # optional
+    confirmed_present = db.Column(db.Boolean, default=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class TourVideo(db.Model):

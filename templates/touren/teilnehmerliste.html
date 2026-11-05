@@ -84,9 +84,20 @@
         <td class="box"><span></span></td>
       </tr>
       {% endfor %}
-      {% for _ in range(3) %}
+      {# Build 11-05c: Gäste (Mitfahrer ohne App-Konto) #}
+      {% for g in guest_rows %}
       <tr>
         <td class="num">{{ rows|length + loop.index }}</td>
+        <td><strong>{{ g.name }}</strong> <span class="badge-maybe">Gast</span></td>
+        <td>{{ g.phone or '–' }}</td>
+        <td><span class="muted">–</span></td>
+        <td class="muted">–</td>
+        <td class="box"><span></span></td>
+      </tr>
+      {% endfor %}
+      {% for _ in range(3) %}
+      <tr>
+        <td class="num">{{ rows|length + guest_rows|length + loop.index }}</td>
         <td>&nbsp;</td><td></td><td></td><td></td>
         <td class="box"><span></span></td>
       </tr>

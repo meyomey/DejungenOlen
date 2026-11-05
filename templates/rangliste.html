@@ -5,7 +5,10 @@
 <h2 class="fw-bold mb-1" style="color:var(--djo-navy)">
   <i class="bi bi-trophy-fill me-2" style="color:#f0a500"></i>Rangliste
 </h2>
-<p class="text-muted small mb-4">Alle Zeiten – nur bestätigte Fahrten</p>
+<p class="text-muted small mb-{{ '2' if guest_total else '4' }}">Alle Zeiten – nur bestätigte Fahrten</p>
+{% if guest_total %}{# Build 11-05c: Gäste ohne App-Konto mitgezählt #}
+<p class="small mb-4"><i class="bi bi-person-badge me-1 text-secondary"></i>Dabei waren zusätzlich {{ guest_total }} Gast{{ 'e' if guest_total != 1 }} ohne App-Konto.</p>
+{% endif %}
 
 <!-- ── Tabs ──────────────────────────────────────────────────────────────────── -->
 <ul class="nav nav-pills mb-4 gap-2">

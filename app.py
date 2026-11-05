@@ -78,7 +78,7 @@ from werkzeug.utils import secure_filename
 import requests as http_requests
 
 from config import Config
-from models import (db, Group, User, InviteToken, Tour, TourParticipant, TourPhoto, TourVideo,
+from models import (db, Group, User, InviteToken, Tour, TourParticipant, TourGuest, TourPhoto, TourVideo,
                     GastroPhoto, TimeVote, LiveLocation, LiveTrackPoint, TourRide,
                     PasswordReset, GastroSpot, GastroReview, POI, TourComment, SiteConfig,
                     RouteRating, TourTemplate, PushSubscription, Announcement)
@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-05 b'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-05 c'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2310,6 +2310,7 @@ def tour_detail(tour_id):
                            comments=comments,
                            all_users=all_users,
                            participant_ids=participant_ids,
+                           guests=tour.guests.order_by(TourGuest.name).all(),   # Build 11-05c
                            rides=rides, my_ride=my_ride,                 # Build ab
                            gpx_timed=bool(timed_source),                 # Build ac/af: Zeiten vorhanden (GPX oder Live-Aufzeichnung)?
                            timed_source=timed_source, gpx_span=gpx_span,
@@ -2420,8 +2421,9 @@ def tour_participants_print(tour_id):
             .options(joinedload(TourParticipant.user)).all())
     rows = [r for r in rows if r.user]
     rows.sort(key=lambda r: (0 if r.status == 'attending' else 1, (r.user.name or '').lower()))
+    guest_rows = TourGuest.query.filter_by(tour_id=tour.id).order_by(TourGuest.name).all()   # Build 11-05c
     rides = TourRide.query.filter_by(tour_id=tour.id).options(joinedload(TourRide.user)).all()
-    return render_template('touren/teilnehmerliste.html', tour=tour, rows=rows, rides=rides,
+    return render_template('touren/teilnehmerliste.html', tour=tour, rows=rows, guest_rows=guest_rows, rides=rides,
                            einkehr=_tour_einkehr_text(tour), printed_at=_berlin_now())
 
 
@@ -2822,6 +2824,41 @@ def tour_complete(tour_id):
     return redirect(url_for('tour_detail', tour_id=tour_id))
 
 
+@app.route('/touren/<int:tour_id>/gaeste', methods=['POST'])
+@login_required
+def tour_add_guest(tour_id):
+    """Build 11-05c: Mitfahrer ohne App-Konto (Gast) eintragen – Name + optional Telefon.
+    Nur Tourleitung/Orga/Admin (wie die Teilnehmer-Verwaltung)."""
+    tour = _tour_or_404(tour_id)
+    if not _can_manage_tour(tour):
+        abort(403)
+    name = (request.form.get('name') or '').strip()[:80]
+    phone = (request.form.get('phone') or '').strip()[:40]
+    if not name:
+        flash('Bitte einen Namen für den Gast angeben.', 'warning')
+        return redirect(url_for('tour_detail', tour_id=tour_id) + '#teilnehmer')
+    db.session.add(TourGuest(tour_id=tour_id, name=name, phone=phone,
+                             confirmed_present=request.form.get('confirmed') == '1',
+                             created_by=current_user.id))
+    db.session.commit()
+    flash(f'Gast „{name}“ eingetragen.', 'success')
+    return redirect(url_for('tour_detail', tour_id=tour_id) + '#teilnehmer')
+
+
+@app.route('/touren/<int:tour_id>/gast/<int:guest_id>/loeschen', methods=['POST'])
+@login_required
+def tour_remove_guest(tour_id, guest_id):
+    """Build 11-05c: Gast wieder von der Tour entfernen (nur Tourleitung)."""
+    tour = _tour_or_404(tour_id)
+    if not _can_manage_tour(tour):
+        abort(403)
+    g = TourGuest.query.filter_by(id=guest_id, tour_id=tour_id).first_or_404()
+    db.session.delete(g)
+    db.session.commit()
+    flash(f'Gast „{g.name}“ entfernt.', 'info')
+    return redirect(url_for('tour_detail', tour_id=tour_id) + '#teilnehmer')
+
+
 @app.route('/touren/<int:tour_id>/bestaetigen', methods=['POST'])
 @login_required
 @organizer_required
@@ -2831,6 +2868,8 @@ def tour_confirm_participants(tour_id):
     confirmed_ids = request.form.getlist('confirmed')
     for p in tour.participants:
         p.confirmed_present = str(p.user_id) in confirmed_ids
+    for g in tour.guests:                                   # Build 11-05c: Gäste mit abhaken
+        g.confirmed_present = ('g%d' % g.id) in confirmed_ids
     db.session.commit()
     flash('Teilnehmer bestätigt.', 'success')
     return redirect(url_for('tour_detail', tour_id=tour_id))
@@ -3070,7 +3109,7 @@ def _delete_tour_dependents(tour_id):
     """Löscht Datensätze ohne DB-Cascade, die sonst als Waisen zurückbleiben
     (Videos, Kommentare, Zeitabstimmung, Bewertungen, Live-Standorte, Fahrgemeinschaften).
     Teilnehmer und Fotos räumt SQLAlchemy über die Relationship-Cascade ab."""
-    for model in (TourVideo, TourComment, TimeVote, RouteRating, LiveLocation, LiveTrackPoint, TourRide):
+    for model in (TourVideo, TourComment, TimeVote, RouteRating, LiveLocation, LiveTrackPoint, TourRide, TourGuest):
         try:
             model.query.filter_by(tour_id=tour_id).delete(synchronize_session=False)
         except Exception as e:
@@ -7927,8 +7966,14 @@ def rangliste():
     ranking.sort(key=lambda r: (r['tour_count'], r['total_km']), reverse=True)
     annual = sorted(ranking, key=lambda r: r['tours_by_year'].get(year, 0), reverse=True)
 
+    guest_total = (db.session.query(TourGuest.id)                    # Build 11-05c: Gäste-Summe
+                   .join(Tour, Tour.id == TourGuest.tour_id)
+                   .filter(Tour.status == 'completed',
+                           TourGuest.confirmed_present == True,      # noqa: E712
+                           Tour.id.in_(_gq(Tour).with_entities(Tour.id)))
+                   .count())
     return render_template('rangliste.html', ranking=ranking, annual=annual,
-                           year=year)
+                           year=year, guest_total=guest_total)
 
 
 # ─── Build w: Fahrzeit/Streckenvorschau, Kalender-Abo, „Nochmal fahren“ ──────
@@ -8425,7 +8470,9 @@ def _attendance_recipients(tour):
 
 
 def _attendance_open(tour):
-    return not any(p.confirmed_present for p in tour.participants)
+    if any(p.confirmed_present for p in tour.participants):
+        return False
+    return not any(g.confirmed_present for g in tour.guests)   # Build 11-05c: Gäste zählen mit
 
 
 def _send_attendance_reminder_for_tour(tour):

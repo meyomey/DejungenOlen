@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 b')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 c')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -525,6 +525,80 @@ class VideoSmoothTest(AppTestCase):
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
         self.assertIn('<span class="lbl">Fahren</span>', det)
         self.assertIn('id="fahren-running" class="d-none"', det)     # Build o: Variante verborgen statt entfernt
+
+    def test_c_tour_guests(self):
+        # Build 2026-11-05c: Mitfahrer ohne App-Konto (Gäste) – Name + optional Telefon,
+        # von der Tourleitung eingetragen. Sie zählen zur Kopfzahl („Dabei“), werden in
+        # der Anwesenheit mit abgehakt (Werte g<id>), stehen auf der druckbaren
+        # Teilnehmerliste mit Telefon, und die Rangliste zeigt die Gäste-Summe.
+        src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('def tour_add_guest(', src)
+        self.assertIn('def tour_remove_guest(', src)
+        self.assertIn("('g%d' % g.id) in confirmed_ids", src)
+        self.assertIn('TourRide, TourGuest):', src)                    # Lösch-Cleanup
+        mod = open(os.path.join(ROOT, 'models.py'), encoding='utf-8').read()
+        self.assertIn('class TourGuest(db.Model):', mod)
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertIn('tour_add_guest', det)
+        self.assertIn('tour_remove_guest', det)
+        self.assertIn('value="g{{ g.id }}"', det)
+        self.assertIn('attending|length + guests|length', det)
+        self.assertIn('{% for g in guest_rows %}',
+                      open(os.path.join(ROOT, 'templates', 'touren', 'teilnehmerliste.html'), encoding='utf-8').read())
+        self.assertIn('guest_total',
+                      open(os.path.join(ROOT, 'templates', 'rangliste.html'), encoding='utf-8').read())
+        # ── dynamisch ──
+        self.login_org()
+        r = self.client.post(f'/touren/{self.t_plan_id}/gaeste',
+                             data={'name': 'Gast George', 'phone': '0123 456789'})
+        self.assertEqual(r.status_code, 302)                          # Flash + Redirect
+        html = self.client.get(f'/touren/{self.t_plan_id}').get_data(as_text=True)
+        self.assertIn('Gast „Gast George“ eingetragen', html)
+        html = self.get_html(f'/touren/{self.t_plan_id}')
+        self.assertIn('Gast George', html)
+        self.assertIn('Gäste (1)', html)
+        # Anwesenheit wird nur bei vergangener Tour angezeigt – kurz dorthin schieben
+        import datetime as _dt
+        with app.app_context():
+            t = db.session.get(M.Tour, self.t_plan_id)
+            _orig_date = t.tour_date
+            t.tour_date = _dt.date.today() - _dt.timedelta(days=1)
+            db.session.commit()
+        html = self.get_html(f'/touren/{self.t_plan_id}')
+        self.assertIn('value="g', html)                                # Anwesenheits-Checkbox für den Gast
+        r = self.client.post(f'/touren/{self.t_plan_id}/gaeste', data={'name': '   '})
+        self.assertEqual(r.status_code, 302)                           # nur Warnung, kein zweiter Datensatz
+        with app.app_context():
+            g = M.TourGuest.query.filter_by(tour_id=self.t_plan_id, name='Gast George').first()
+            gid = g.id
+        self.client.post(f'/touren/{self.t_plan_id}/bestaetigen', data={'confirmed': [f'g{gid}']})
+        with app.app_context():
+            self.assertTrue(db.session.get(M.TourGuest, gid).confirmed_present)
+        pr = self.client.get(f'/touren/{self.t_plan_id}/teilnehmerliste').get_data(as_text=True)
+        self.assertIn('Gast George', pr)
+        self.assertIn('0123 456789', pr)                               # Telefon auf der Druckerliste
+        # Rangliste: Tour abschließen → Gäste-Summe sichtbar (Status danach zurücksetzen)
+        with app.app_context():
+            t = db.session.get(M.Tour, self.t_plan_id)
+            t.status = 'completed'
+            db.session.commit()
+        html = self.get_html('/rangliste')
+        self.assertIn('zusätzlich 1 Gast ohne App-Konto', html)
+        with app.app_context():
+            t = db.session.get(M.Tour, self.t_plan_id)
+            t.status = 'planned'
+            t.tour_date = _orig_date
+            db.session.commit()
+        # Mitglied darf keine Gäste verwalten
+        self.login_member()
+        self.assertEqual(self.client.post(f'/touren/{self.t_plan_id}/gaeste',
+                                          data={'name': 'X'}).status_code, 403)
+        # Entfernen
+        self.login_org()
+        self.assertEqual(self.client.post(f'/touren/{self.t_plan_id}/gast/{gid}/loeschen').status_code, 302)
+        html = self.client.get(f'/touren/{self.t_plan_id}').get_data(as_text=True)
+        self.assertIn('Gast „Gast George“ entfernt', html)            # Flash bestätigt die Entfernung
+        self.assertNotIn('Gäste (1)', html)                           # Gäste-Liste ist leer
 
     def test_b_manual_pause_auto_resume(self):
         # Build 2026-11-05b: Auch die MANUELLE Pause setzt beim Weiterfahren automatisch fort –
