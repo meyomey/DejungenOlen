@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 k')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 l')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1576,6 +1576,10 @@ class RueckblickSortTop5Test(AppTestCase):
         rb = open(os.path.join(ROOT, 'templates', 'rueckblick.html'), encoding='utf-8').read()
         self.assertIn('Älteste zuerst', rb)
         self.assertIn('Neueste zuerst', rb)
+        # Build 11-05l: Sortieren OHNE Seitenneuladen (kein Sprung nach oben)
+        self.assertIn("onclick=\"sortTouren('ab');return false\"", rb)
+        self.assertIn('id="tourliste"', rb)
+        self.assertIn('function sortTouren(', rb)
 
         with app.app_context():
             tB = M.Tour(title='Zweite Rückblickstour', tour_date=dt.date.today() - dt.timedelta(days=1),
@@ -1613,7 +1617,6 @@ class RueckblickSortTop5Test(AppTestCase):
         html = self.get_html('/rueckblick?richtung=ab')
         self.assertGreater(liste(html).index('Alte Marschtour'),
                            liste(html).index('Zweite Rückblickstour'))
-        self.assertIn('richtung=ab', html)
         # Aktivste Mitglieder: alle fünf (inkl. unbestätigtem Klaus), Gleichstand alphabetisch
         seg = html[html.index('Aktivste Mitglieder'):html.index('Highlight: longest tour')]
         for n in ('Admin</a>', 'Fiete</a>', 'Hein Mück</a>', 'Klaus Klar</a>', 'Orga</a>'):

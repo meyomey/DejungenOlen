@@ -1,5 +1,10 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-05 (Build l) – Rückblick: Sortieren ohne Sprung nach oben
+
+- Die Sortier-Buttons („↑ Älteste zuerst“ / „↓ Neueste zuerst“) im Jahresrückblick sind keine Links mehr, die die Seite neu laden (Sprung nach oben). Sie drehen die Liste jetzt direkt im Browser um – sofort, ohne Reload, die Scrollposition bleibt.
+- 239 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-05 (Build k) – Jahresrückblick: Sortierung + fünf Aktivste
 
 - **Touren sortierbar:** Im Karten-Kopf „Alle N Touren“ gibt es jetzt „↑ Älteste zuerst“ / „↓ Neueste zuerst“ (Standard wie gehabt: älteste zuerst).
