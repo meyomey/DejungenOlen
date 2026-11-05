@@ -144,31 +144,7 @@
     </div>
     {% endif %}
 
-    <!-- Highlight: longest tour -->
-    {% if longest and longest.gpx_km %}
-    <div class="card mb-3">
-      <div class="card-header card-header-djo">
-        <i class="bi bi-signpost-split me-1"></i>Längste Tour {{ year }}
-      </div>
-      <div class="card-body">
-        <h5 class="fw-bold">{{ longest.title }}</h5>
-        <div class="d-flex gap-3 flex-wrap">
-          <div>
-            <div class="stat-number" style="font-size:1.8rem">{{ longest.gpx_km }}</div>
-            <div class="stat-label">km</div>
-          </div>
-          {% if longest.gpx_ascent %}
-          <div>
-            <div class="stat-number" style="font-size:1.8rem">{{ longest.gpx_ascent|int }}</div>
-            <div class="stat-label">m Anstieg</div>
-          </div>
-          {% endif %}
-        </div>
-        <a href="{{ url_for('tour_detail', tour_id=longest.id) }}"
-           class="btn btn-sm btn-outline-djo mt-2">Zur Tour</a>
-      </div>
-    </div>
-    {% endif %}
+    {# Build 11-05m: doppelte „Längste Tour“-Karte entfernt – das Banner oben zeigt alles #}
 
     <!-- Fun facts -->
     <div class="card">

@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 l')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 m')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1618,7 +1618,7 @@ class RueckblickSortTop5Test(AppTestCase):
         self.assertGreater(liste(html).index('Alte Marschtour'),
                            liste(html).index('Zweite Rückblickstour'))
         # Aktivste Mitglieder: alle fünf (inkl. unbestätigtem Klaus), Gleichstand alphabetisch
-        seg = html[html.index('Aktivste Mitglieder'):html.index('Highlight: longest tour')]
+        seg = html[html.index('Aktivste Mitglieder'):html.index('Fun Facts')]
         for n in ('Admin</a>', 'Fiete</a>', 'Hein Mück</a>', 'Klaus Klar</a>', 'Orga</a>'):
             self.assertIn(n, seg)
         # Hein Mück hat 2 Touren (Fixture) → Platz 1; der Rest (je 1) alphabetisch
@@ -1631,3 +1631,15 @@ class RueckblickSortTop5Test(AppTestCase):
             db.session.execute(db.text(f'DELETE FROM tours WHERE id = {tB_id}'))
             db.session.execute(db.text(f'DELETE FROM users WHERE id = {klaus_id}'))
             db.session.commit()
+
+
+class RueckblickNoDuplicateLongestTest(AppTestCase):
+    """Build 2026-11-05m: Die „Längste Tour“ gab es doppelt (Banner oben UND Karte
+    rechts) – jetzt nur noch das Banner."""
+
+    def test_m_longest_tour_once(self):
+        self.login_member()
+        html = self.get_html('/rueckblick')
+        self.assertEqual(html.count('Längste Tour'), 1)     # nur das Banner oben
+        rb = open(os.path.join(ROOT, 'templates', 'rueckblick.html'), encoding='utf-8').read()
+        self.assertIn('doppelte „Längste Tour“-Karte entfernt', rb)

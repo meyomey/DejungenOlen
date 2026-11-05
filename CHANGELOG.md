@@ -1,5 +1,10 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-05 (Build m) – Doppelte „Längste Tour“ entfernt
+
+- Im Jahresrückblick gab es die „Längste Tour“ zweimal: als Banner oben und als Karte in der rechten Spalte. Die rechte Karte ist entfernt – das Banner oben zeigt Titel, km, Anstieg, Datum und Details-Button.
+- 240 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-05 (Build l) – Rückblick: Sortieren ohne Sprung nach oben
 
 - Die Sortier-Buttons („↑ Älteste zuerst“ / „↓ Neueste zuerst“) im Jahresrückblick sind keine Links mehr, die die Seite neu laden (Sprung nach oben). Sie drehen die Liste jetzt direkt im Browser um – sofort, ohne Reload, die Scrollposition bleibt.
