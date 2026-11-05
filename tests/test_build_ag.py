@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 j')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 k')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1562,4 +1562,69 @@ class GuestMergeAndSortTest(AppTestCase):
             db.session.execute(db.text("DELETE FROM tour_guests WHERE name = 'Amanda Vorn'"))
             db.session.execute(db.text(f'DELETE FROM tour_participants WHERE user_id = {ecki_id}'))
             db.session.execute(db.text(f'DELETE FROM users WHERE id = {ecki_id}'))
+            db.session.commit()
+
+
+class RueckblickSortTop5Test(AppTestCase):
+    """Build 2026-11-05k: Jahresrückblick – Touren auf-/absteigend sortierbar,
+    „Aktivste Mitglieder“ zeigt (bis zu) FÜNF und zählt angemeldete Mitglieder
+    statt nur bestätigte."""
+
+    def test_k_rueckblick_sort_and_top5(self):
+        srcapp = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn("request.args.get('richtung'", srcapp)
+        rb = open(os.path.join(ROOT, 'templates', 'rueckblick.html'), encoding='utf-8').read()
+        self.assertIn('Älteste zuerst', rb)
+        self.assertIn('Neueste zuerst', rb)
+
+        with app.app_context():
+            tB = M.Tour(title='Zweite Rückblickstour', tour_date=dt.date.today() - dt.timedelta(days=1),
+                        status='completed', group_id=self.g1_id, created_by=self.org_id)
+            db.session.add(tB)
+            db.session.flush()
+            tB_id = tB.id
+            u = M.User(name='Klaus Klar', email='klaus@test.de', role='member', group_id=self.g1_id)
+            u.set_password('x')
+            db.session.add(u)
+            db.session.flush()
+            klaus_id = u.id
+            db.session.add_all([
+                M.TourParticipant(tour_id=tB_id, user_id=self.mem_id, status='attending',
+                                  confirmed_present=True),
+                M.TourParticipant(tour_id=tB_id, user_id=self.mem2_id, status='attending',
+                                  confirmed_present=True),
+                M.TourParticipant(tour_id=tB_id, user_id=self.org_id, status='attending',
+                                  confirmed_present=True),
+                M.TourParticipant(tour_id=tB_id, user_id=self.admin_id, status='attending',
+                                  confirmed_present=True),
+                M.TourParticipant(tour_id=tB_id, user_id=klaus_id, status='attending',
+                                  confirmed_present=False),        # unbestätigt → zählt jetzt MIT
+            ])
+            db.session.commit()
+        self.login_member()
+        # aufsteigend (Standard): ältere „Alte Marschtour“ zuerst – Vergleich im
+        # Tourlisten-Ausschnitt („Alte Marschtour“ steht auch im „Längste Tour“-Banner oben)
+        def liste(h):
+            return h[h.index('Alle 2 Touren'):h.index('Aktivste Mitglieder')]
+        html = self.get_html('/rueckblick')
+        self.assertLess(liste(html).index('Alte Marschtour'),
+                        liste(html).index('Zweite Rückblickstour'))
+        # absteigend: neueste zuerst
+        html = self.get_html('/rueckblick?richtung=ab')
+        self.assertGreater(liste(html).index('Alte Marschtour'),
+                           liste(html).index('Zweite Rückblickstour'))
+        self.assertIn('richtung=ab', html)
+        # Aktivste Mitglieder: alle fünf (inkl. unbestätigtem Klaus), Gleichstand alphabetisch
+        seg = html[html.index('Aktivste Mitglieder'):html.index('Highlight: longest tour')]
+        for n in ('Admin</a>', 'Fiete</a>', 'Hein Mück</a>', 'Klaus Klar</a>', 'Orga</a>'):
+            self.assertIn(n, seg)
+        # Hein Mück hat 2 Touren (Fixture) → Platz 1; der Rest (je 1) alphabetisch
+        order = [seg.index(n) for n in ('Hein Mück</a>', 'Admin</a>', 'Fiete</a>',
+                                        'Klaus Klar</a>', 'Orga</a>')]
+        self.assertEqual(order, sorted(order))
+        # Aufräumen
+        with app.app_context():
+            db.session.execute(db.text(f'DELETE FROM tour_participants WHERE tour_id = {tB_id}'))
+            db.session.execute(db.text(f'DELETE FROM tours WHERE id = {tB_id}'))
+            db.session.execute(db.text(f'DELETE FROM users WHERE id = {klaus_id}'))
             db.session.commit()

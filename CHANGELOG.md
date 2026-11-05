@@ -1,5 +1,11 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-05 (Build k) – Jahresrückblick: Sortierung + fünf Aktivste
+
+- **Touren sortierbar:** Im Karten-Kopf „Alle N Touren“ gibt es jetzt „↑ Älteste zuerst“ / „↓ Neueste zuerst“ (Standard wie gehabt: älteste zuerst).
+- **Aktivste Mitglieder:** Es erscheinen (bis zu) **fünf** – vorher zählte die Box nur **bestätigte** Mitglieder, dadurch wurden oft weniger angezeigt. Jetzt zählt „angemeldet“, wie die Kopfzahlen überall in der App; Gleichstand wird alphabetisch sortiert.
+- 239 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-05 (Build j) – Rangliste sortiert richtig, Gästeverzeichnis aufräumbar, Gast → Mitglied
 
 - **Ranglisten-Sortierung korrigiert:** Gäste wurden erst NACH dem Sortieren in die Liste gehängt – sie klebten dadurch immer am Ende der Gesamt-Liste (konnten nie aufs Podium) und fehlten im Tab „Dieses Jahr“ komplett. Jetzt werden sie vor dem Sortieren mitgemischt und erscheinen überall an ihrem richtigen Platz.

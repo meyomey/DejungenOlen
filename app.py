@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-05 j'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-05 k'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -9753,10 +9753,14 @@ def rueckblick(year=None):
     if year is None:
         year = date.today().year
 
+    # Build 11-05k: auf-/absteigend sortierbar (?richtung=ab = neueste zuerst)
+    richtung = request.args.get('richtung', 'auf')
+    if richtung not in ('auf', 'ab'):
+        richtung = 'auf'
     tours = _gq(Tour).filter(
         db.extract('year', Tour.tour_date) == year,
         Tour.status == 'completed'
-    ).order_by(Tour.tour_date).all()
+    ).order_by(Tour.tour_date.desc() if richtung == 'ab' else Tour.tour_date).all()
 
     total_km      = sum(t.gpx_km for t in tours if t.gpx_km)
     total_ascent  = sum(t.gpx_ascent for t in tours if t.gpx_ascent)
@@ -9773,14 +9777,18 @@ def rueckblick(year=None):
 
     # Participation count per user this year – Build ab: eine Abfrage statt einer je Tour
     tour_ids = [t.id for t in tours]
+    # Build 11-05k: „Aktivste“ zählt angemeldete Mitglieder (wie die Kopfzahlen überall) –
+    # vorher nur BESTÄTIGTE, dadurch erschienen oft weniger als fünf. Gleichstand alphabetisch.
     part_counts = dict(db.session.query(TourParticipant.user_id, db.func.count(TourParticipant.id))
                        .filter(TourParticipant.tour_id.in_(tour_ids),
-                               TourParticipant.confirmed_present == True)          # noqa: E712
+                               TourParticipant.status == 'attending')
                        .group_by(TourParticipant.user_id).all()) if tour_ids else {}
 
-    most_active = sorted(part_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    most_active = sorted(part_counts.items(), key=lambda x: x[1], reverse=True)
     _users = {u.id: u for u in User.query.filter(User.id.in_([uid for uid, _ in most_active])).all()} if most_active else {}
     most_active = [(_users.get(uid), cnt) for uid, cnt in most_active if _users.get(uid)]
+    most_active.sort(key=lambda uc: (-uc[1], (uc[0].display_name or uc[0].name or '').lower()))
+    most_active = most_active[:5]
     # Teilnehmerzahl je Tour für die Liste (vorher t.attending_count = eine COUNT-Abfrage je Tour)
     attend_counts = tour_headcounts(tour_ids)          # Build 11-05h: Mitglieder + Gäste
 
@@ -9811,7 +9819,8 @@ def rueckblick(year=None):
                            monthly_json=monthly_json,
                            longest=longest,
                            attend_counts=attend_counts,
-                           available_years=available_years)
+                           available_years=available_years,
+                           richtung=richtung)
 
 
 # ─── Phase 4: Profil bearbeiten ───────────────────────────────────────────────
