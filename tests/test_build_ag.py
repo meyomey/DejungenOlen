@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 a')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-05 b')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -525,6 +525,17 @@ class VideoSmoothTest(AppTestCase):
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
         self.assertIn('<span class="lbl">Fahren</span>', det)
         self.assertIn('id="fahren-running" class="d-none"', det)     # Build o: Variante verborgen statt entfernt
+
+    def test_b_manual_pause_auto_resume(self):
+        # Build 2026-11-05b: Auch die MANUELLE Pause setzt beim Weiterfahren automatisch fort –
+        # sobald man sich ≥ 100 m (PAUSE_RESUME_M) vom gemerkten Pausenort entfernt hat.
+        # Die automatische Pause bleibt bei ihren 25 m (PAUSE_DIST_M). ℹ️-Hinweis erklärt beide Wege.
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('PAUSE_RESUME_M = 100', live)
+        self.assertIn('pauseLatLng = null;', live)                     # Reset bei Start/Beenden/Weiter
+        self.assertIn("else { pauseLatLng = ownLatLng; }", live)       # Pausenort beim Pausieren merken
+        self.assertIn('(manualPause && away >= PAUSE_RESUME_M) || (autoPause && !manualPause)', live)
+        self.assertIn('auch die\n      manuelle Pause, sobald du dich rund 100 m vom Pausenort entfernt hast', live)
 
     def test_a_touren_list_delete_and_compact_empty(self):
         # Build 11-05a (2026-11-05): Tourenliste – ① Löschen auch auf Termin-losen Karten

@@ -86,7 +86,8 @@
       Die Fahrt läuft weiter, während du in der App andere Seiten anschaust (roter Punkt unten rechts), und endet
       über den roten Knopf „⏹ Fahrt beenden“ (unten links in der Leiste) – spätestens nach 8 Stunden.</div>
     <div><strong>⏸ Pause:</strong> Der Pause-Knopf stoppt die Aufzeichnung (z. B. bei der Einkehr); nach rund 3 Minuten
-      Stillstand pausiert sie automatisch, beim Weiterfahren geht es automatisch weiter. Dein Standort bleibt dabei für alle sichtbar.</div>
+      Stillstand pausiert sie automatisch. Beim Weiterfahren geht es in beiden Fällen automatisch weiter – auch die
+      manuelle Pause, sobald du dich rund 100 m vom Pausenort entfernt hast. Dein Standort bleibt dabei für alle sichtbar.</div>
     <div><strong>📝 Aufzeichnung:</strong> Dein Weg wird als dünne Linie aufgezeichnet. Die Tourleitung kann die Aufzeichnung
       als GPX-Track der Tour übernehmen – Fotos ohne Standort landen dann anhand ihrer Aufnahmezeit auf der Strecke.
       Aufzeichnungen werden nach {{ keep_days }} Tagen automatisch gelöscht; auf der Tourseite kannst du deine jederzeit löschen.</div>
@@ -174,13 +175,14 @@ const UPLOAD_URL = "{{ url_for('tour_upload_photos', tour_id=tour.id) }}";
 let sharing = false, following = false, watchId = null, lastSent = 0, lastPos = null, shareStart = 0;
 // Build b: Pause – manuell (Knopf) oder automatisch (≈3 Min. kein Standortwechsel > 25 m).
 // In der Pause werden KEINE Spurpunkte mehr gespeichert; der Standort bleibt für die anderen sichtbar.
-let manualPause = false, autoPause = false, moveAnchor = null, moveAnchorAt = 0, pauseSince = 0;
-const PAUSE_DIST_M = 25, PAUSE_AFTER_S = 180;
+let manualPause = false, autoPause = false, moveAnchor = null, moveAnchorAt = 0, pauseSince = 0, pauseLatLng = null;
+const PAUSE_DIST_M = 25, PAUSE_AFTER_S = 180, PAUSE_RESUME_M = 100;   // Build 11-05b: manuelle Pause setzt ab ~100 m vom Pausenort automatisch fort
 function isPaused() { return manualPause || autoPause; }
 function togglePause() {
   if (!sharing) return;
   manualPause = !manualPause;
-  if (!manualPause) autoPause = false;
+  if (!manualPause) { autoPause = false; pauseLatLng = null; }
+  else { pauseLatLng = ownLatLng; }   // Build 11-05b: Pausenort für die Auto-Fortsetzung merken
   moveAnchor = ownLatLng; moveAnchorAt = Date.now();
   updatePauseBtn();
   if (manualPause) setStatus('⏸ Aufzeichnung pausiert – dein Standort bleibt für alle sichtbar. Nochmal tippen setzt fort.', 'warning');
@@ -381,7 +383,7 @@ function startShare() {
   const _prev = window.djoFahren && djoFahren.state();
   shareStart = (_prev && _prev.tour_id === TOUR_ID) ? _prev.started : Date.now();
   if (window.djoFahren) djoFahren.set({tour_id: TOUR_ID, started: shareStart});
-  manualPause = false; autoPause = false; moveAnchor = null; moveAnchorAt = 0;
+  manualPause = false; autoPause = false; moveAnchor = null; moveAnchorAt = 0; pauseLatLng = null;
   updateShareBtn(); updatePauseBtn();
   setStatus('Standort wird ermittelt …', 'sharing');
   ensureWatch();
@@ -475,14 +477,18 @@ function onPos(pos) {
   const now = Date.now();
   if (!moveAnchor) { moveAnchor = ownLatLng; moveAnchorAt = now; }
   const dAnchor = map.distance(moveAnchor, ownLatLng);
+  if (isPaused() && !pauseLatLng) pauseLatLng = ownLatLng;   // Build 11-05b: Pausenort nachträglich sichern
   if (dAnchor >= PAUSE_DIST_M) {
     moveAnchor = ownLatLng; moveAnchorAt = now;
-    if (autoPause && !manualPause) {
-      autoPause = false; updatePauseBtn();
-      setStatus('▶ Weiter geht’s – Aufzeichnung läuft wieder.', 'sharing');
+    if (isPaused()) {   // Build 11-05b: weiterfahren setzt IMMER automatisch fort
+      const away = pauseLatLng ? map.distance(pauseLatLng, ownLatLng) : PAUSE_RESUME_M;
+      if ((manualPause && away >= PAUSE_RESUME_M) || (autoPause && !manualPause)) {
+        manualPause = false; autoPause = false; pauseLatLng = null; updatePauseBtn();
+        setStatus('▶ Weiter geht’s – Aufzeichnung läuft wieder.', 'sharing');
+      }
     }
   } else if (!manualPause && !autoPause && now - moveAnchorAt > PAUSE_AFTER_S * 1000) {
-    autoPause = true; pauseSince = moveAnchorAt; updatePauseBtn();
+    autoPause = true; pauseSince = moveAnchorAt; pauseLatLng = ownLatLng; updatePauseBtn();
     setStatus('⏸ Pause erkannt – Aufzeichnung pausiert (Standort bleibt sichtbar).', 'warning');
   }
   // Drosselung: höchstens alle 10 s, und ohne Bewegung (< 15 m) nur alle 30 s
