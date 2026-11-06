@@ -1,5 +1,11 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-06 (Build e) – Aktionsleiste auf der Tour-Seite gestylt
+
+- Die Aktions-Buttons (Vorlesen, Bearbeiten, Vorlage, Nochmal, Löschen, Rückblick & Video, Drucken, iCal, Teilen …) sehen jetzt ruhig und einheitlich aus: gleiche Höhe und Ecken, weiche getönte Flächen statt nackter Outline-Kacheln, dezenter Hub beim Berühren. Grün (Nochmal) und Rot (Löschen) bleiben als Bedeutung erkennbar, „Rückblick & Video“ bleibt der goldene Hingucker – zusammen deutlich ruhiger.
+- Dark Mode berücksichtigt (eigene Töne), die kompakte Handy-Darstellung bleibt unverändert. Der Teilen-Button nutzt jetzt ein passendes Icon statt des ✈️-Emojis.
+- 246 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-06 (Build d) – Kopf-Buttons auf der Touren-Seite einheitlich
 
 - WhatsApp / Kalender / Neue Tour sahen nebeneinander unruhig aus (Icon-Quadrat, umbruchendes „Kalender-Abo“, unterschiedliche Höhen). Die drei Buttons sind jetzt eine einheitliche Reihe: gleiche Höhe, sanft abgerundete Ecken, dezenten Schatten, zentriertes Icon + Text, kein Umbruch. Auf sehr schmalen Handy-Breiten erscheinen nur die Icons (Beschriftung ab 576 px). „Kalender-Abo“ heißt im Kopf jetzt kurz „Kalender“ (Erklärung wie gehabt im Tooltip bzw. Profil).

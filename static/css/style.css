@@ -499,3 +499,63 @@ footer {
   .head-actions .btn { padding: 0; width: 38px; }
   .head-actions .btn .btn-label { display: none; }
 }
+
+
+/* Build 11-06e: Aktionsleiste der Tourseite – ruhige, einheitliche Buttons:
+   gleiche Höhe und Ecken, weiche Flächen statt nackter Outline-Kacheln,
+   dezenter Hub beim Hover. Dark Mode über die vorhandenen --djo-Variablen
+   bzw. eigene Overrides – die kompakte Handy-Variante (unten, data-short)
+   bleibt unangetastet und gewinnt weiter per Spezifität. */
+#tour-actions .btn {
+  min-height: 36px; padding: .3rem .8rem; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  white-space: nowrap; font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+  transition: transform .12s ease, box-shadow .12s ease,
+              background-color .12s ease, border-color .12s ease, color .12s ease;
+}
+#tour-actions .btn:hover, #tour-actions .btn:focus {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .12);
+}
+#tour-actions .btn:active { transform: none; box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
+#tour-actions .btn-outline-secondary {
+  background: var(--djo-light); color: #4a5568; border-color: var(--djo-border);
+}
+#tour-actions .btn-outline-secondary:hover,
+#tour-actions .btn-outline-secondary:focus {
+  background: var(--djo-border); color: var(--djo-navy); border-color: var(--djo-navy);
+}
+#tour-actions .btn-outline-success {
+  background: rgba(21, 115, 71, .08); color: #157347; border-color: rgba(21, 115, 71, .4);
+}
+#tour-actions .btn-outline-success:hover,
+#tour-actions .btn-outline-success:focus {
+  background: #157347; color: #fff; border-color: #157347;
+}
+#tour-actions .btn-outline-danger {
+  background: rgba(192, 57, 43, .08); color: #b02a37; border-color: rgba(192, 57, 43, .4);
+}
+#tour-actions .btn-outline-danger:hover,
+#tour-actions .btn-outline-danger:focus {
+  background: #b02a37; color: #fff; border-color: #b02a37;
+}
+[data-theme="dark"] #tour-actions .btn-outline-secondary {
+  background: #232945; color: #9aaad0; border-color: #3a4070;
+}
+[data-theme="dark"] #tour-actions .btn-outline-secondary:hover,
+[data-theme="dark"] #tour-actions .btn-outline-secondary:focus {
+  background: #2e3555; color: #fff; border-color: #4a5590;
+}
+[data-theme="dark"] #tour-actions .btn-outline-success {
+  background: #0d2a1a; color: #80d4a0; border-color: #2e7d4f;
+}
+[data-theme="dark"] #tour-actions .btn-outline-success:hover {
+  background: #157347; color: #fff; border-color: #157347;
+}
+[data-theme="dark"] #tour-actions .btn-outline-danger {
+  background: #2a1212; color: #e09090; border-color: #7a3030;
+}
+[data-theme="dark"] #tour-actions .btn-outline-danger:hover {
+  background: #b02a37; color: #fff; border-color: #b02a37;
+}

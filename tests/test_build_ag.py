@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 d')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 e')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1852,3 +1852,23 @@ class HeaderButtonsUniformTest(AppTestCase):
                 if sc:
                     sc.value = ''
                     db.session.commit()
+
+
+class TourActionsStyledTest(AppTestCase):
+    """Build 2026-11-06e: Die Aktionsleiste der Tourseite (Vorlesen, Bearbeiten,
+    Nochmal, Löschen, Rückblick, Drucken, iCal, Teilen …) ist ruhig und einheitlich
+    gestylt – weiche Flächen, gleiche Ecken, Hover-Hub, Dark-Mode-fest."""
+
+    def test_e_tour_actions_styled(self):
+        css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
+        self.assertIn('weiche Flächen statt nackter Outline-Kacheln', css)
+        self.assertIn('#tour-actions .btn {', css)
+        self.assertIn('#tour-actions .btn-outline-success', css)
+        self.assertIn('[data-theme="dark"] #tour-actions .btn-outline-secondary', css)
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertIn('bi-send me-1"></i><span class="lbl">Teilen</span>', det)   # statt ✈️
+        self.assertNotIn('✈️ Teilen', det)
+        self.login_org()
+        html = self.get_html(f'/touren/{self.t_plan_id}')
+        self.assertIn('id="tour-actions"', html)
+        self.assertIn('bi-send', html)
