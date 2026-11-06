@@ -22,6 +22,15 @@
                  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .leaflet-tooltip.live-tip { background: rgba(20,30,60,.9); color: #fff; border: 0; border-radius: 6px; font-size: .85rem; }
   .leaflet-tooltip.live-tip::before { border-top-color: rgba(20,30,60,.9); }
+  /* Build 11-06v: Ecken-Guard (Pill oben links unter dem Zoom) + Karten-Toast */
+  #live-guard-pill { position: absolute; top: 56px; left: 8px; z-index: 1100;
+                     background: rgba(20, 30, 60, .88); color: #fff; border: 0; border-radius: 20px;
+                     padding: .45rem .8rem; font-size: .85rem; box-shadow: 0 1px 5px rgba(0,0,0,.35); }
+  .map-toast { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); z-index: 1150;
+               background: rgba(20, 30, 60, .92); color: #fff; border-radius: 20px;
+               padding: .6rem 1rem; font-size: 1rem; font-weight: 600; max-width: 92%;
+               opacity: 0; transition: opacity .25s; pointer-events: none; text-align: center; }
+  .map-toast.on { opacity: 1; }
   /* Build c (2026-11-04): Status klar & deutlich – farbige Leiste statt Mini-Schrift */
   #live-status { padding: .55rem .8rem; border-radius: 10px; font-weight: 600; font-size: 1rem;
                  background: #e9eef7; color: var(--djo-navy); border: 1px solid #d3ddf0; }
@@ -229,6 +238,8 @@ function setTiles(kind) {
   try { localStorage.setItem('djo_live_tiles', kind); } catch (e) {}
   const b = document.getElementById('btn-tiles');
   if (b) { b.classList.toggle('btn-warning', kind === 'cyclosm');
+           b.classList.toggle('btn-light', kind !== 'cyclosm');   // Build 11-06v: vorher blieb btn-light drauf und überdeckte das Gelb
+           b.textContent = kind === 'cyclosm' ? '🚵 Radkarte' : '🚵 Standard';
            b.title = kind === 'cyclosm' ? 'Kartenstil: Radkarte (Wege kräftig) – tippen für Standardkarte'
                                         : 'Kartenstil: Standardkarte – tippen für Radkarte (Wege kräftig)'; }
 }
@@ -409,6 +420,7 @@ function startShare() {
   if (!CAN_SHARE) return;
   if (!navigator.geolocation) { setStatus('Dieses Gerät oder dieser Browser kann keinen Standort ermitteln.', 'danger'); return; }
   sharing = true; lastSent = 0; sentCount = 0;
+  setLiveGuard(false);                     // Build 11-06v: Fahrt läuft → Karte sofort verschiebbar
   hideRecHint();   // Build q: alte Übernahme-Rückfrage weg, wenn wieder gestartet wird
   // Build g: Fahrt über Seitenwechsel hinweg merken – Startzeit behalten, wenn man zurückkommt
   const _prev = window.djoFahren && djoFahren.state();
@@ -432,6 +444,7 @@ function hideRecHint() {
 }
 function stopShare(viaBeacon, withHint) {
   if (saverOn) setSaver(false);   // Build 11-06n: Sparmodus endet mit der Fahrt
+  setLiveGuard(!following && !_fsAn());   // Build 11-06v: zurück in den Scroll-Modus
   if (withHint === undefined) { withHint = true; }   // Build q: nach normalem Beenden erinnern, nach Fehlern nicht
   const was = sharing;
   sharing = false;
@@ -471,6 +484,7 @@ function toggleFollow() {
     maybeStopWatch();
     if (!sharing) releaseWakeLock();
   }
+  setLiveGuard(!(sharing || following) && !_fsAn());   // Build 11-06v
 }
 function updateFollowBtn() {
   const b = document.getElementById('btn-follow');
@@ -486,6 +500,50 @@ function ensureWatch() {
 }
 function maybeStopWatch() {
   if (!sharing && !following && watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+}
+
+// ── Build 11-06v: Ecken-Guard + Karten-Toast ─────────────────────────────────
+// Ohne laufende Fahrt scrollt die Seite wieder normal (Karte sperrt das Wischen nicht) und
+// lässt sich per dezenter PILL OBEN LINKS zum Verschieben freischalten – kein Overlay mehr
+// mitten auf der Karte. Sobald die Fahrt läuft oder Folgen aktiv ist, schaltet der Schutz
+// automatisch ab (Verschieben SOFORT) und kehrt danach zurück. Vollbild zählt als Fahrt.
+function _fsAn() { return document.getElementById('live-wrap').classList.contains('live-fs'); }
+let guardPill = null, guardArmed = false;
+function setLiveGuard(on) {
+  if (window.innerWidth >= 992) return;               // Desktop: wie immer
+  const wrap = document.getElementById('live-wrap');
+  if (on && !guardArmed) {
+    map.dragging.disable();
+    if (!guardPill) {
+      guardPill = document.createElement('button');
+      guardPill.type = 'button';
+      guardPill.id = 'live-guard-pill';
+      guardPill.innerHTML = '<i class="bi bi-hand-index me-1"></i>Zum Verschieben antippen';
+      guardPill.onclick = () => setLiveGuard(false);
+      wrap.appendChild(guardPill);
+    }
+    guardPill.style.display = 'block';
+    guardArmed = true;
+  } else if (!on && guardArmed) {
+    map.dragging.enable();
+    if (guardPill) guardPill.style.display = 'none';
+    guardArmed = false;
+  }
+}
+setLiveGuard(true);                                   // Startzustand: Seite scrollt, Pill bietet Verschieben an
+// Kurze Rückmeldung direkt AUF der Karte (statt nur in der Statuszeile darüber)
+let _toastTimer = null;
+function mapToast(msg) {
+  let t = document.getElementById('map-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'map-toast'; t.className = 'map-toast';
+    document.getElementById('live-wrap').appendChild(t);
+  }
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('on'), 2500);
 }
 function drawOwn(c) {
   const ll = [c.latitude, c.longitude];
@@ -634,11 +692,15 @@ function livePhoto(input) {
 // Bildschirm anlassen (Screen Wake Lock – Android/Chrome, iOS ab 16.4); ohne Unterstützung passiert nichts
 async function requestWakeLock() {
   try {
-    if ('wakeLock' in navigator && !wakeLock && !document.hidden) {
-      wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    if ('wakeLock' in navigator && !document.hidden) {
+      if (!wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      }
+      return true;                            // Build 11-06v: ehrlich melden, ob Wachhalten greift
     }
   } catch (e) { /* z. B. Energiesparmodus */ }
+  return false;
 }
 function releaseWakeLock() {
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
@@ -685,8 +747,8 @@ document.getElementById('live-wrap').addEventListener('touchend', function () {
   const now = Date.now();
   if (now - _lastTapAt < 350) {
     _lastTapAt = 0;
-    requestWakeLock();
-    setStatus('🔆 Bildschirm bleibt an.', 'sharing');
+    requestWakeLock().then(ok => mapToast(ok ? '🔆 Bildschirm bleibt an.'
+                                             : '⚠️ Wachhalten hier nicht möglich (Gerät/Modus) – Display-Zeit-Einstellung prüfen.'));
   } else {
     _lastTapAt = now;
   }
@@ -702,6 +764,7 @@ function toggleFs() {
   document.body.style.overflow = on ? 'hidden' : '';
   document.getElementById('btn-fs').textContent = on ? '✕ Vollbild aus' : '⛶';
   setTimeout(() => map.invalidateSize(), 60);
+  setLiveGuard(!(sharing || following) && !_fsAn());   // Build 11-06v
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('live-wrap').classList.contains('live-fs')) toggleFs(); });
 </script>

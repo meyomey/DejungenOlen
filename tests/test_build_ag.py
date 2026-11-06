@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 u')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 v')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2031,7 +2031,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 u')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 v')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2308,3 +2308,37 @@ class LiveFahrKomfortTest(AppTestCase):
         self.assertIn('let _lastTapAt = 0;', live)
         self.assertIn('🔆 Bildschirm bleibt an.', live)
         self.assertIn("(sharing || following || saverOn) && !document.hidden) requestWakeLock(); }, 60000", live)
+
+
+class LiveFahrKomfort2Test(AppTestCase):
+    """Build 2026-11-06v: Nachjustieren am Fahrmodus – (1) Scrollen wieder leicht:
+    Ecken-Guard (Pill oben links) statt Mittel-Overlay; schaltet bei Fahrt/
+    Folgen/Vollbild automatisch ab und zurueck. (2) Der 🚵-Knopf zeigt sichtbar
+    den aktiven Kartenstil. (3) Doppeltipp-Rueckmeldung als Toast AUF der Karte,
+    mit ehrlicher Warnung, wenn Wachhalten nicht unterstuetzt wird."""
+
+    def test_v_ecken_guard_und_umschaltung(self):
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn("id = 'live-guard-pill'", live)
+        self.assertIn('function setLiveGuard(', live)
+        self.assertIn('function _fsAn()', live)
+        self.assertIn('setLiveGuard(true);', live)                       # Startzustand
+        self.assertIn('sharing = true; lastSent = 0; sentCount = 0;\n  setLiveGuard(false);', live)
+        self.assertIn('setLiveGuard(!following && !_fsAn());', live)     # stopShare
+        self.assertIn('setLiveGuard(!(sharing || following) && !_fsAn());', live)
+        self.assertIn('#live-guard-pill { position: absolute; top: 56px; left: 8px;', live)
+
+    def test_v_karten_toast_ehrlich(self):
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('function mapToast(', live)
+        self.assertIn("mapToast(ok ? '🔆 Bildschirm bleibt an.'", live)
+        self.assertIn('⚠️ Wachhalten hier nicht möglich', live)
+        self.assertIn('.map-toast { position: absolute; top: 60px;', live)
+        # requestWakeLock meldet ehrlich Erfolg/Misserfolg
+        self.assertIn('      return true;', live)
+        self.assertIn('  return false;', live)
+
+    def test_v_kartenstil_knopf_lesbar(self):
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn("b.classList.toggle('btn-light', kind !== 'cyclosm');", live)
+        self.assertIn("b.textContent = kind === 'cyclosm' ? '🚵 Radkarte' : '🚵 Standard';", live)

@@ -1,4 +1,9 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build v) – Live-Karte-Nachjustieren: Scrollen, Knopf-Zustand, ehrlicher Doppeltipp
+- Scrollen wieder leicht: Der Antipp-Schutz kehrt auf der Live-Karte zurück – aber als dezente Pill OBEN LINKS statt als Overlay mitten auf der Karte. Ohne laufende Fahrt scrollt die Seite normal, die Pill schaltet die Karte zum Verschieben frei; sobald Fahrt/Folgen/Vollbild aktiv sind, schaltet der Schutz automatisch ab (sofortiges Verschieben) und kehrt danach zurück.
+- Der 🚵-Knopf zeigt jetzt sichtbar den aktiven Kartenstil („🚵 Standard“ hell / „🚵 Radkarte“ gelb) – vorher blieb die Hell-Färbung drauf und überdeckte die Gelb-Markierung.
+- Doppeltipp-Rückmeldung erscheint als Toast AUF der Karte (vorher nur Statuszeile darüber); unterstützt das Gerät das Bildschirm-Wachhalten nicht (älteres iOS, Akkusparmodus), kommt ein ehrlicher ⚠️-Hinweis statt der Erfolgsmeldung.
+- 277 Tests, py_compile OK.
 ## 1.5.0 – 2026-11-06 (Build u) – Fahrmodus der Live-Karte
 - Kein „Karte zum Verschieben antippen“ mehr auf der Live-Karte: Der Antipp-Schutz bleibt auf allen eingebetteten Karten aktiv, ist auf der Live-Seite aber aus – beim Fahren verschiebt ein Finger SOFORT, nichts überlagert die Kartenmitte.
 - Karte größer auf dem Handy (höhere Mindesthöhe, mehr Bildschirmanteil auf schmalen Displays).
