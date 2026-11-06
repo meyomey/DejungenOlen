@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 w')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 x')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -926,7 +926,7 @@ class VideoSmoothTest(AppTestCase):
         # Lücke weg: kein Karten-Überstand, Laufraum am Seitenende
         self.assertNotIn('margin-bottom: 116px', live)
         self.assertNotIn('margin-bottom: 152px', live)
-        self.assertIn('body { padding-bottom: calc(174px', live)
+        self.assertIn('html body { padding-bottom: calc(222px', live)   # Build x: Spezifität + neue Leistenhöhe
         # Status-Leiste mit klaren Zuständen (CSS) + setStatus nutzt sie
         self.assertIn('#live-status { padding:', live)
         self.assertIn('#live-status.warning { background:', live)
@@ -2031,7 +2031,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 w')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 x')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2329,14 +2329,14 @@ class LiveFahrKomfort2Test(AppTestCase):
         self.assertIn('setLiveGuard();                         // Build 11-06w: liest selbst – zurück in den Scroll-Modus', live)   # stopShare
         self.assertIn('setLiveGuard();                                     // Build 11-06w: liest selbst (Folgen an/aus)', live)
         self.assertIn('setLiveGuard();                                     // Build 11-06w: liest selbst (Vollbild an/aus)', live)
-        self.assertIn('#live-guard-pill { position: absolute; top: 56px; left: 8px;', live)
+        self.assertIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
 
     def test_v_karten_toast_ehrlich(self):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('function mapToast(', live)
         self.assertIn("mapToast(ok ? '🔆 Bildschirm bleibt an.'", live)
         self.assertIn('⚠️ Wachhalten hier nicht möglich', live)
-        self.assertIn('.map-toast { position: absolute; top: 60px;', live)
+        self.assertIn('.map-toast { position: absolute; top: 124px;', live)   # Build x: unter Pill/🔒
         # requestWakeLock meldet ehrlich Erfolg/Misserfolg
         self.assertIn('      return true;', live)
         self.assertIn('  return false;', live)
@@ -2344,7 +2344,7 @@ class LiveFahrKomfort2Test(AppTestCase):
     def test_v_kartenstil_knopf_lesbar(self):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn("b.classList.toggle('btn-light', kind !== 'cyclosm');", live)
-        self.assertIn("b.textContent = kind === 'cyclosm' ? '🚵 Radkarte' : '🚵 Standard';", live)
+        self.assertIn("lbl.textContent = kind === 'cyclosm' ? 'Radkarte' : 'Standard';", live)
 
 
 class LiveGuardSperrenTest(AppTestCase):
@@ -2369,7 +2369,7 @@ class LiveGuardSperrenTest(AppTestCase):
         self.assertIn('let guardPill = null, guardLock = null, guardArmed = true, guardUnlocked = false;', live)
         self.assertIn('function setLiveGuard() {                             // Build 11-06w: Zustand selbst lesen', live)
         # 🔒 sitzt in derselben Ecke wie die Pill
-        self.assertIn('#live-guard-lock { position: absolute; top: 56px; left: 8px;', live)
+        self.assertIn('#live-guard-lock { position: absolute; top: 80px; left: 10px;', live)
 
     def test_w_guard_nur_ohne_fahrt_folgen_vollbild(self):
         live = self._live()
@@ -2385,3 +2385,51 @@ class LiveGuardSperrenTest(AppTestCase):
     def test_w_hilfe_erklaert_sperren(self):
         hilfe = open(os.path.join(ROOT, 'templates', 'hilfe.html'), encoding='utf-8').read()
         self.assertIn('nach dem Freischalten mit 🔒 wieder sperren', hilfe)
+
+
+class LiveKarteLesbarTest(AppTestCase):
+    """Build 2026-11-06x: Handy-Screenshot der Live-Karte – zwei Befunde behoben.
+    (1) Pill und 🔒 lagen auf dem Leaflet-„−“ (der Zoom-Stack ist ≈ 70 px hoch, die Pill
+    begann bei 56 px) – jetzt top: 80 px / left: 10 px, also unter dem Zoom und bündig
+    mit ihm. (2) Die fünf Sekundär-Knöpfe waren mit Ellipse abgeschnitten („Fol…“,
+    „Voll…“, „Sta…“, „Str…“): jetzt 3+2-Raster mit voller Beschriftung. Dazu: der
+    Laufraum unter der Leiste war wirkungslos (base.html setzt body padding-bottom
+    später im Dokument) – korrigiert."""
+
+    def _live(self):
+        return open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+
+    def test_x_guard_unter_dem_zoom(self):
+        live = self._live()
+        self.assertIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
+        self.assertIn('#live-guard-lock { position: absolute; top: 80px; left: 10px;', live)
+        self.assertNotIn('top: 56px; left: 8px;', live)          # die alte, überlappende Ecke ist weg
+        # Toast rutscht mit, damit er nicht auf der Pill sitzt
+        self.assertIn('.map-toast { position: absolute; top: 124px;', live)
+
+    def test_x_sekundaerleiste_volle_beschriftung(self):
+        live = self._live()
+        # 3+2-Raster statt einer gequetschten Fünferspalte
+        self.assertIn('#live-bar .lb-sec { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }', live)
+        self.assertIn('#live-bar .lb-sec .btn.lb-wide { grid-column: span 3; }', live)
+        # Umbruch statt Ellipse in der Sekundärreihe
+        self.assertIn("""    #live-bar .lb-sec .btn { min-height: 40px; font-size: .82rem; padding: .25rem .2rem;
+                             white-space: normal; overflow: visible; text-overflow: clip;""", live)
+        # volle Wörter stehen im Markup
+        for wort in ('>Folgen<', '>Alle<', '>Vollbild</span>', '>Standard</span>', '>Stromspar<'):
+            self.assertIn(wort, live)
+
+    def test_x_beschriftung_bleibt_bei_umschalten(self):
+        live = self._live()
+        # Vollbild: Text im eigenen Span, Icon bleibt (vorher wurde der Knopf zum nackten „⛶“)
+        self.assertIn('<span id="btn-fs-txt">Vollbild</span>', live)
+        self.assertIn("if (fsTxt) fsTxt.textContent = on ? 'Vollbild aus' : 'Vollbild';", live)
+        # Kartenstil: Label im Span, Icon bleibt
+        self.assertIn('<span id="btn-tiles-txt">Standard</span>', live)
+        self.assertIn("const lbl = document.getElementById('btn-tiles-txt');", live)
+
+    def test_x_laufraum_unter_der_leiste(self):
+        live = self._live()
+        # „html body“ (0,0,2) schlägt das spätere „body“ aus base.html (0,0,1)
+        self.assertIn('html body { padding-bottom: calc(222px + env(safe-area-inset-bottom)); }', live)
+        self.assertNotIn('    body { padding-bottom: calc(174px', live)   # der wirkungslose Selektor ist weg

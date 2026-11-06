@@ -1,4 +1,11 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build x) – Live-Karte auf dem Handy lesbar: Guard unter dem Zoom, volle Knopf-Beschriftungen
+- **„Zum Verschieben antippen“ und 🔒 lagen auf dem „−“**: Das Zoom-Bedienfeld von Leaflet beginnt bei 10 px, ist mit zwei Knöpfen ≈ 70 px hoch – die Pill begann bei 56 px und nahm das Herauszoomen weg. Beide sitzen jetzt bei `top: 80px; left: 10px`, also **unter** dem Zoom und bündig mit ihm; der Karten-Toast rutscht mit auf 124 px.
+- **Abgeschnittene Knöpfe („Fol…“, „Voll…“, „Sta…“, „Str…“)**: Die fünf Sekundär-Knöpfe quetschten sich in eine Zeile und wurden mit Ellipse gekürzt. Jetzt ein 3+2-Raster (Folgen · Alle · Vollbild / Standard · Stromspar) mit voller Beschriftung und Umbruch statt Ellipse – die Höhe der Leiste bleibt bei ≈ 155 px.
+- **Beschriftung bleibt beim Umschalten**: Vollbild und Kartenstil tauschen nur noch den Text im Knopf (eigene Spans), das Icon bleibt stehen – vorher wurde der Vollbild-Knopf zum nackten „⛶“.
+- **Nebenbefund, mitbehoben:** Der Laufraum unter der Daumenleiste war wirkungslos – `base.html` setzt sein `body { padding-bottom: 58px }` später im Dokument und gewann bei gleicher Spezifität (58 px statt 174 px), die letzten Inhalte lagen hinter der Leiste. Jetzt `html body { padding-bottom: 222px }` (0,0,2), passend zur neuen Leistenhöhe.
+- 284 Tests, py_compile OK.
+
 ## 1.5.0 – 2026-11-06 (Build w) – Live-Karte wieder sperrbar: 🔒-Knopf nach dem Freischalten
 - Nach dem Freischalten des Ecken-Guards (Pill „Zum Verschieben antippen“ oben links) ließ sich die Karte nicht wieder sperren – die Pill war weg und die Seite scrollte fortan nicht mehr normal. Jetzt erscheint beim Freischalten an derselben Ecke der **🔒-Knopf**: Er sperrt die Karte wieder (Seite scrollt normal, Pill kommt zurück).
 - Der Guard liest seinen Zustand **selbst** (`setLiveGuard()` ohne Argumente, `guardArmed = true` als Startwert): gesperrt = kein Fahrt/Folgen/Vollbild **und** nicht freigetippt. Damit bleibt der Zustand auch nach Fahrtende, Folgen-Aus oder Drehen des Geräts konsistent (Neu-Bewertung zusätzlich bei `resize` und nach dem Ziehen der Karte).

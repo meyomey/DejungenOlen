@@ -23,15 +23,18 @@
   .leaflet-tooltip.live-tip { background: rgba(20,30,60,.9); color: #fff; border: 0; border-radius: 6px; font-size: .85rem; }
   .leaflet-tooltip.live-tip::before { border-top-color: rgba(20,30,60,.9); }
   /* Build 11-06v: Ecken-Guard (Pill oben links unter dem Zoom) + Karten-Toast */
-  #live-guard-pill { position: absolute; top: 56px; left: 8px; z-index: 1100;
+  /* Build 11-06x: Pill und 🔒 rutschen UNTER das Zoom-Bedienfeld. Das beginnt bei 10 px und
+     ist mit zwei 30-px-Knöpfen ≈ 70 px hoch – bei top: 56 px lag die Pill auf dem „−“ und
+     nahm das Herauszoomen weg. left: 10 px = dieselbe Kante wie die Zoom-Knöpfe. */
+  #live-guard-pill { position: absolute; top: 80px; left: 10px; z-index: 1100;
                      background: rgba(20, 30, 60, .88); color: #fff; border: 0; border-radius: 20px;
                      padding: .45rem .8rem; font-size: .85rem; box-shadow: 0 1px 5px rgba(0,0,0,.35); }
   /* Build 11-06w: 🔒 an derselben Ecke – erscheint nach dem Freischalten und sperrt wieder */
-  #live-guard-lock { position: absolute; top: 56px; left: 8px; z-index: 1100;
+  #live-guard-lock { position: absolute; top: 80px; left: 10px; z-index: 1100;
                      background: rgba(20, 30, 60, .88); color: #fff; border: 0; border-radius: 20px;
                      padding: .45rem .7rem; font-size: .95rem; line-height: 1.1;
                      box-shadow: 0 1px 5px rgba(0,0,0,.35); }
-  .map-toast { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); z-index: 1150;
+  .map-toast { position: absolute; top: 124px; left: 50%; transform: translateX(-50%); z-index: 1150;
                background: rgba(20, 30, 60, .92); color: #fff; border-radius: 20px;
                padding: .6rem 1rem; font-size: 1rem; font-weight: 600; max-width: 92%;
                opacity: 0; transition: opacity .25s; pointer-events: none; text-align: center; }
@@ -64,7 +67,14 @@
     #live-bar .lb-sec  { display: flex; gap: 6px; }
     #live-bar .btn { min-height: 50px; font-size: 1rem; flex: 1 1 0; padding: .4rem .3rem;
                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #live-bar .lb-sec .btn { min-height: 40px; font-size: .85rem; }
+    /* Build 11-06x: Sekundär-Reihe war mit fünf Knöpfen zu eng – „Fol…“, „Voll…“, „Sta…“, „Str…“
+       waren auf dem Handy nicht mehr zu verstehen. Jetzt zweizeilig (3 + 2), volle Beschriftung,
+       Umbruch statt Ellipse; die Höhe der Leiste bleibt dabei gleich. */
+    #live-bar .lb-sec { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+    #live-bar .lb-sec .btn { min-height: 40px; font-size: .82rem; padding: .25rem .2rem;
+                             white-space: normal; overflow: visible; text-overflow: clip;
+                             line-height: 1.15; grid-column: span 2; }
+    #live-bar .lb-sec .btn.lb-wide { grid-column: span 3; }   /* Reihe 2: zwei Knöpfe über die volle Breite */
     /* Build m/n: Lange Beschriftung komplett lesbar – der Knopf darf zweizeilig werden,
        statt mit „Fahrt bee…“ abgeschnitten zu werden (schmale Displays, Großschrift-Modus).
        Build n: Selektor mit #live-bar davor – sonst gewinnt das white-space:nowrap aus
@@ -73,9 +83,12 @@
     @media (max-width: 374.98px) { #live-bar .lb-main .btn { font-size: .9rem; } }
     #btn-photo { flex: 1.1 1 0; }
     /* Kein Überstand unter der Karte mehr – die Leiste liegt nur beim Scrollen über dem Inhalt;
-       am Seitenende sorgt der Laufraum dafür, dass nichts hinter ihr versteckt bleibt. */
-    #live-wrap { margin-bottom: 0; }
-    body { padding-bottom: calc(174px + env(safe-area-inset-bottom)); }
+       am Seitenende sorgt der Laufraum dafür, dass nichts hinter ihr versteckt bleibt.
+       Build 11-06x: Selektor mit „html“ davor (Spezifität 0,0,2) – base.html setzt sein
+       `body { padding-bottom: 58px }` SPÄTER im Dokument; bei gleicher Spezifität gewann die
+       spätere Regel und der Laufraum war wirkungslos (58 statt 222 px), die Leiste lag über dem Inhalt.
+       Höhe = Leiste (155 px + 7 px Padding) + Bottom-Nav (58 px). */
+    html body { padding-bottom: calc(222px + env(safe-area-inset-bottom)); }
   }
 </style>
 {% endblock %}
@@ -154,13 +167,13 @@
           <input type="file" id="live-cam" accept="image/*" capture="environment" class="d-none" onchange="livePhoto(this)">
         </div>
         <div class="lb-sec">
-          <button type="button" class="btn btn-light" id="btn-follow" onclick="toggleFollow()" title="Karte bleibt auf meiner Position zentriert">🎯 Folgen</button>
-          <button type="button" class="btn btn-light" onclick="showAll()" title="Alle Mitfahrer und die Strecke einpassen">👥 Alle</button>
-          <button type="button" class="btn btn-light" id="btn-fs" onclick="toggleFs()" title="Vollbild">⛶ Vollbild</button>
-          <button type="button" class="btn btn-light" id="btn-tiles" onclick="toggleTiles()"
-                  title="Kartenstil: Standardkarte – tippen für Radkarte (Wege kräftig)">🚵 Wege</button>
-          <button type="button" class="btn btn-light" id="btn-saver" onclick="setSaver(!saverOn)"
-                  title="Stromspar-Modus: Bildschirm bleibt an, wird aber dunkel – Tippen hellt kurz auf, ✕ beendet">🌙 Stromspar</button>
+          <button type="button" class="btn btn-light" id="btn-follow" onclick="toggleFollow()" title="Karte bleibt auf meiner Position zentriert"><i class="bi bi-crosshair me-1"></i>Folgen</button>
+          <button type="button" class="btn btn-light" onclick="showAll()" title="Alle Mitfahrer und die Strecke einpassen"><i class="bi bi-people-fill me-1"></i>Alle</button>
+          <button type="button" class="btn btn-light" id="btn-fs" onclick="toggleFs()" title="Vollbild"><i class="bi bi-arrows-fullscreen me-1"></i><span id="btn-fs-txt">Vollbild</span></button>
+          <button type="button" class="btn btn-light lb-wide" id="btn-tiles" onclick="toggleTiles()"
+                  title="Kartenstil: Standardkarte – tippen für Radkarte (Wege kräftig)"><i class="bi bi-bicycle me-1"></i><span id="btn-tiles-txt">Standard</span></button>
+          <button type="button" class="btn btn-light lb-wide" id="btn-saver" onclick="setSaver(!saverOn)"
+                  title="Stromspar-Modus: Bildschirm bleibt an, wird aber dunkel – Tippen hellt kurz auf, ✕ beendet"><i class="bi bi-moon-stars me-1"></i>Stromspar</button>
         </div>
       </div>
     </div>
@@ -244,7 +257,8 @@ function setTiles(kind) {
   const b = document.getElementById('btn-tiles');
   if (b) { b.classList.toggle('btn-warning', kind === 'cyclosm');
            b.classList.toggle('btn-light', kind !== 'cyclosm');   // Build 11-06v: vorher blieb btn-light drauf und überdeckte das Gelb
-           b.textContent = kind === 'cyclosm' ? '🚵 Radkarte' : '🚵 Standard';
+           const lbl = document.getElementById('btn-tiles-txt');
+           if (lbl) lbl.textContent = kind === 'cyclosm' ? 'Radkarte' : 'Standard';   // Build 11-06x: Icon bleibt im Knopf
            b.title = kind === 'cyclosm' ? 'Kartenstil: Radkarte (Wege kräftig) – tippen für Standardkarte'
                                         : 'Kartenstil: Standardkarte – tippen für Radkarte (Wege kräftig)'; }
 }
@@ -807,7 +821,10 @@ function toggleFs() {
   const wrap = document.getElementById('live-wrap');
   const on = wrap.classList.toggle('live-fs');
   document.body.style.overflow = on ? 'hidden' : '';
-  document.getElementById('btn-fs').textContent = on ? '✕ Vollbild aus' : '⛶';
+  const fsTxt = document.getElementById('btn-fs-txt');
+  if (fsTxt) fsTxt.textContent = on ? 'Vollbild aus' : 'Vollbild';   // Build 11-06x: Icon bleibt
+  const fsIco = document.querySelector('#btn-fs i');
+  if (fsIco) fsIco.className = on ? 'bi bi-x-lg me-1' : 'bi bi-arrows-fullscreen me-1';
   setTimeout(() => map.invalidateSize(), 60);
   setLiveGuard();                                     // Build 11-06w: liest selbst (Vollbild an/aus)
 }
