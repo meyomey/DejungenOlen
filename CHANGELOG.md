@@ -1,4 +1,7 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build m) – Footer-Link heißt jetzt „Monatsrückblick“
+- Der Footer-Link „Newsletter“ heißt jetzt „Monatsrückblick“ – so nennt sich die Zielseite selbst (Kopf: „Monatsrückblick MM/JJJJ“); auch der Browser-Titel der Seite wurde von „Newsletter MM/JJJJ“ auf „Monatsrückblick MM/JJJJ“ angeglichen. Die Adresse (/newsletter) bleibt unverändert, alte Links/Bookmarks funktionieren weiter.
+- 257 Tests, py_compile OK.
 ## 1.5.0 – 2026-11-06 (Build l) – Footer zentriert
 - Die Footer-Zeile (Gruppenname · Newsletter · Datenschutz) ist jetzt zentriert statt im Breitband-Layout nach links/rechts verteilt – auf schmalen Screens stand bisher alles links, nur die Versionszeile mittig.
 - 255 Tests, py_compile OK.

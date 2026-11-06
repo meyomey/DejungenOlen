@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 l')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 m')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2030,7 +2030,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 l')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 m')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2055,3 +2055,22 @@ class FooterCenteredTest(AppTestCase):
         foot = base.split('<footer')[1].split('</footer>')[0]
         self.assertIn('justify-content-center', foot)
         self.assertNotIn('justify-content-between', foot)
+
+
+class MonatsrueckblickLabelTest(AppTestCase):
+    """Build 2026-11-06m: Der Footer-Link „Newsletter“ heißt jetzt
+    „Monatsrückblick“ – so nennt sich die Zielseite selbst; auch der
+    Browser-Titel der Seite wurde angeglichen. Adresse bleibt /newsletter."""
+
+    def test_m_footer_link_benannt(self):
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertIn('\U0001F4F0 Monatsr\u00fcckblick</a>', base)
+        self.assertNotIn('Newsletter</a>', base)
+
+    def test_m_browser_titel_angeglichen(self):
+        nl = open(os.path.join(ROOT, 'templates', 'newsletter.html'), encoding='utf-8').read()
+        self.assertIn('{% block title %}Monatsr\u00fcckblick {{ month_label }}', nl)
+        self.assertNotIn('{% block title %}Newsletter', nl)
+        # Die URL-Route bleibt unveraendert
+        self.assertIn("url_for('newsletter_current')", base_nl := open(
+            os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read())

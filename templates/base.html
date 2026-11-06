@@ -384,7 +384,7 @@
     <span>🚴 {{ current_group.name if current_group else 'De jungen Olen' }} &mdash; Radgruppe</span>
     {% if current_user.is_authenticated %}
     <span>
-      <a href="{{ url_for('newsletter_current') }}" class="text-white-50 small me-3">📰 Newsletter</a>
+      <a href="{{ url_for('newsletter_current') }}" class="text-white-50 small me-3">📰 Monatsrückblick</a>
       <a href="{{ url_for('datenschutz') }}" class="text-white-50 small">Datenschutz</a>
     </span>
     {% else %}
