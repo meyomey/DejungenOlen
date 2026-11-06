@@ -607,3 +607,41 @@ footer {
 [data-theme="dark"] .btn-outline-danger:focus {
   background: #b02a37; color: #fff; border-color: #b02a37;
 }
+
+
+/* Build 11-06i: Schnell-Buttons der mobilen Kopfzeile in die Button-Familie.
+   Vorher standen hier drei verschiedene Stile nebeneinander (weiße Outline,
+   knallgelbe Signalfarbe, nackter Avatar ohne Rahmen) – jetzt eine ruhige
+   Reihe gleich großer, weicher Kacheln auf Navy; der Plus-CTA bleibt als
+   einziger gelb, aber getönt statt leuchtend. Die Kopfzeile ist in beiden
+   Themes navy, daher keine Dark-Sonderregeln nötig. */
+.navbar-djo .nav-quick {
+  width: 36px; height: 34px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .08);
+  border: 1px solid rgba(255, 255, 255, .34);
+  border-radius: 9px;
+  color: #fff;
+  transition: background-color .12s ease, border-color .12s ease, color .12s ease;
+}
+.navbar-djo .nav-quick:hover,
+.navbar-djo .nav-quick:focus {
+  background: rgba(255, 255, 255, .17);
+  border-color: rgba(255, 255, 255, .6);
+  color: #fff;
+}
+.navbar-djo .nav-quick-cta {
+  background: rgba(255, 193, 7, .15);
+  border-color: rgba(255, 193, 7, .55);
+  color: #ffd668;
+}
+.navbar-djo .nav-quick-cta:hover,
+.navbar-djo .nav-quick-cta:focus {
+  background: rgba(255, 193, 7, .28);
+  border-color: rgba(255, 193, 7, .8);
+  color: #ffe28a;
+}
+/* Zweiter Screenshot-Befund: „Anwenden“ brach auf schmalen Handydisplays
+   mitten im Wort um – Buttons bleiben grundsätzlich in einer Zeile
+   (die Filterzeile size't den Button jetzt zusätzlich auf Inhalt). */
+.btn { white-space: nowrap; }

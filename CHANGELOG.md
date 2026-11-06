@@ -1,4 +1,8 @@
 # Changelog – De jungen Olen
+## 1.4.0 – 2026-11-06 (Build i) – Kopfzeilen- & Filter-Buttons in die Familie
+- Mobile Schnell-Buttons (Touren, Suche, Neue Tour, Profil) sind jetzt eine visuelle Familie: gleich große weiche Kacheln mit Rahmen statt drei gemischter Stile (weiße Outline / knallgelb / nackter Avatar); der Plus-CTA bleibt als einziger gelb, aber getönt.
+- Gastro-Filter: „Anwenden“ bricht nicht mehr mitten im Wort um (Button größt nach Inhalt, Buttons grundsätzlich einzeilig); Sortier-Chips umbrechen statt rechts abgeschnitten zu werden.
+- 251 Tests, py_compile OK.
 
 ## 1.4.0 – 2026-11-06 (Build h) – OSM-Suche: sofort direkt suchen, wenn der Server-Kanal tot ist
 

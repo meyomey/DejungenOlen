@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 h')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 i')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1968,3 +1968,35 @@ class OverpassBreakerTest(AppTestCase):
             appmod._overpass_cache.clear()
             appmod._overpass_down_since = None
             appmod._overpass_down_reason = ''
+
+
+class NavQuickFamilyTest(AppTestCase):
+    """Build 2026-11-06i: Die Schnell-Buttons der mobilen Kopfzeile sind jetzt
+    EINE Familie (weiche, gleich große Kacheln mit Rahmen) statt drei Stile
+    nebeneinander (weiße Outline / knallgelbe Vollfläche / nackter Avatar).
+    Dazu: „Anwenden“ im Gastro-Filter bricht nicht mehr mitten im Wort um,
+    und die Sortier-Chips umbrechen statt abgeschnitten zu werden."""
+
+    def test_i_mobile_quick_buttons_family(self):
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        # Alle vier Schnell-Buttons tragen die gemeinsame Kachel-Klasse
+        self.assertEqual(base.count('nav-quick'), 5)          # 4x Button + 1x CTA-Zusatz
+        self.assertEqual(base.count('nav-quick-cta'), 1)      # nur „Neue Tour“ bleibt gelb
+        # Die alten, gemischten Stile sind aus der Schnellleiste raus
+        self.assertNotIn('btn-outline-light', base.split('d-lg-none ms-auto me-1')[1].split('</div>')[0])
+        self.assertNotIn('btn-warning', base.split('d-lg-none ms-auto me-1')[1].split('</div>')[0])
+        # Der Profil-Button ist now auch eine Kachel (vorher nacktes Bild ohne Rahmen)
+        self.assertIn('class="btn nav-quick"\n         href="{{ url_for(\'my_profil\') }}"', base)
+
+    def test_i_anwenden_bricht_nicht_mehr_um(self):
+        css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
+        self.assertIn('Build 11-06i', css)
+        self.assertIn('.navbar-djo .nav-quick {', css)
+        self.assertIn('.navbar-djo .nav-quick-cta {', css)
+        self.assertIn('.btn { white-space: nowrap; }', css)
+        gl = open(os.path.join(ROOT, 'templates', 'gastro', 'list.html'), encoding='utf-8').read()
+        # Button-Spalte size't nach Inhalt (vorher col-4 erzwang schmale Breite -> „Anwende|n“)
+        self.assertNotIn('col-4 col-sm-2', gl)
+        self.assertIn('col-auto', gl)
+        # Sortier-Chips dürfen umbrechen, statt rechts abgeschnitten zu werden
+        self.assertIn('ms-auto d-flex flex-wrap gap-1', gl)

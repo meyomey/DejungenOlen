@@ -57,11 +57,12 @@
       <span class="live-now-dot"></span>{{ live_now.n }} unterwegs{% if live_now.recording %} · ⏺{% endif %}
     </a>{% endif %}</span>
 
-    <!-- ── Mobile: immer sichtbare Aktions-Buttons rechts vom Hamburger ──── -->
-    <div class="d-flex align-items-center gap-1 d-lg-none ms-auto me-1">
+    <!-- ── Mobile: immer sichtbare Aktions-Buttons (Build 11-06i: eine Familie –
+         weiche, gleich große Kacheln statt gemischter Stile; CTA bleibt gelb-getönt) ──── -->
+    <div class="d-flex align-items-center gap-2 d-lg-none ms-auto me-1">
       <!-- Nächste Touren Badge -->
       {% if upcoming_tours %}
-      <a class="btn btn-sm btn-outline-light position-relative"
+      <a class="btn nav-quick position-relative"
          href="{{ url_for('tour_list') }}" title="Nächste Touren">
         <i class="bi bi-bicycle"></i>
         <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning text-dark"
@@ -69,18 +70,18 @@
       </a>
       {% endif %}
       <!-- Suche -->
-      <button class="btn btn-sm btn-outline-light" onclick="toggleMobileSearch()"
+      <button class="btn nav-quick" onclick="toggleMobileSearch()"
               title="Suchen" id="mobile-search-btn">
         <i class="bi bi-search"></i>
       </button>
       <!-- Neue Tour -->
       {% if current_user.is_organizer %}
-      <a class="btn btn-sm btn-warning text-dark fw-bold" href="{{ url_for('tour_create') }}" title="Neue Tour">
+      <a class="btn nav-quick nav-quick-cta" href="{{ url_for('tour_create') }}" title="Neue Tour">
         <i class="bi bi-plus-lg"></i>
       </a>
       {% endif %}
       <!-- Avatar → Profil -->
-      <a class="btn btn-sm btn-outline-light d-flex align-items-center"
+      <a class="btn nav-quick"
          href="{{ url_for('my_profil') }}" title="Profil">
         {% if current_user.avatar %}
         <img src="{{ url_for('static', filename='uploads/avatars/' + current_user.avatar) }}"
