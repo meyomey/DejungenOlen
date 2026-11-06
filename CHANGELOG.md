@@ -1,5 +1,10 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-06 (Build d) – Kopf-Buttons auf der Touren-Seite einheitlich
+
+- WhatsApp / Kalender / Neue Tour sahen nebeneinander unruhig aus (Icon-Quadrat, umbruchendes „Kalender-Abo“, unterschiedliche Höhen). Die drei Buttons sind jetzt eine einheitliche Reihe: gleiche Höhe, sanft abgerundete Ecken, dezenten Schatten, zentriertes Icon + Text, kein Umbruch. Auf sehr schmalen Handy-Breiten erscheinen nur die Icons (Beschriftung ab 576 px). „Kalender-Abo“ heißt im Kopf jetzt kurz „Kalender“ (Erklärung wie gehabt im Tooltip bzw. Profil).
+- 245 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-06 (Build c) – WhatsApp-Link: ein System, klar verwaltet
 
 - Es gab zwei WhatsApp-Anlaufstellen (die globale Einstellung unter Admin → Einstellungen und den Gruppen-Link aus Build b, der sich versteckt hinter dem Stift-Aufmacher verbarg). Jetzt ist es ein System mit klarer Rolle: **Gruppen-Link (Admin → Gruppen) hat Vorrang, sonst gilt die globale Einstellung (Admin → Einstellungen, dort wo auch Telegram steht)**. Touren-Button und Account-Menü nutzen dieselbe Quelle – kein Doppel-Eintrag mehr.

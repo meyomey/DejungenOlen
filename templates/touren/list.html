@@ -24,23 +24,25 @@
   <h2 class="fw-bold mb-0" style="color:var(--djo-navy)">
     <i class="bi bi-bicycle me-2"></i>Touren
   </h2>
-  <div class="d-flex gap-2">
-    {# Build 11-06b: direkter Sprung in die WhatsApp-Gruppe (Terminabstimmung) #}
+  {# Build 11-06d: einheitliche Kopf-Aktionen – gleiche Höhe, Radius und Schatten
+     (.head-actions in style.css); auf sehr schmalen Screens nur Icons #}
+  <div class="head-actions">
     {% if whatsapp_link %}{# Build 11-06c: Gruppen-Link oder globale Einstellung #}
     <a href="{{ whatsapp_link }}" target="_blank" rel="noopener"
-       class="btn btn-sm" style="background:#25D366;color:#fff"
+       class="btn btn-sm btn-wa"
        title="Zur WhatsApp-Gruppe – Termine abstimmen & kurz Bescheid geben">
-      <i class="bi bi-whatsapp me-1"></i><span class="d-none d-sm-inline">WhatsApp</span>
+      <i class="bi bi-whatsapp"></i><span class="btn-label ms-1">WhatsApp</span>
     </a>
     {% endif %}
     {# Build w: persönlicher Kalender-Feed (Einrichtung im Profil) #}
-    <a href="{{ url_for('profil_edit') }}#kalender" class="btn btn-outline-djo btn-sm"
+    <a href="{{ url_for('profil_edit') }}#kalender" class="btn btn-sm btn-outline-djo"
        title="Alle Touren automatisch im Handy-Kalender – Einrichtung im Profil">
-      <i class="bi bi-calendar-plus me-1"></i>Kalender-Abo
+      <i class="bi bi-calendar-plus"></i><span class="btn-label ms-1">Kalender</span>
     </a>
     {% if current_user.is_organizer %}
-    <a href="{{ url_for('tour_create') }}" class="btn btn-djo btn-sm">
-      <i class="bi bi-plus-lg me-1"></i>Neue Tour
+    <a href="{{ url_for('tour_create') }}" class="btn btn-sm btn-djo"
+       title="Neue Tour anlegen">
+      <i class="bi bi-plus-lg"></i><span class="btn-label ms-1">Neue Tour</span>
     </a>
     {% endif %}
   </div>

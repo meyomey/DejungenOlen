@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 c')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 d')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1813,3 +1813,42 @@ class WhatsAppGroupLinkTest(AppTestCase):
         self.assertNotIn('Grp123', html)
         # Aufräumen
         self._set_global('')
+
+
+class HeaderButtonsUniformTest(AppTestCase):
+    """Build 2026-11-06d: Die drei Kopf-Buttons auf der Touren-Seite (WhatsApp,
+    Kalender, Neue Tour) sind einheitlich gestylt – gleiche Höhe, Radius und
+    Schatten über .head-actions; auf sehr schmalen Screens nur Icons."""
+
+    def test_d_uniform_header_buttons(self):
+        lst = open(os.path.join(ROOT, 'templates', 'touren', 'list.html'), encoding='utf-8').read()
+        self.assertIn('class="head-actions"', lst)
+        self.assertEqual(lst.count('btn-label'), 3)          # WhatsApp/Kalender/Neue Tour
+        self.assertIn('btn-wa', lst)
+        self.assertIn('>Kalender</span>', lst)
+        self.assertNotIn('>Kalender-Abo</span>', lst)
+        css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
+        self.assertIn('.head-actions .btn', css)
+        self.assertIn('.btn-wa', css)
+        self.assertIn('@media (max-width: 575.98px)', css)   # Icon-Modus schmal
+        # dynamisch: mit Link erscheinen alle drei Buttons in der einheitlichen Reihe
+        with app.app_context():
+            sc = appmod.SiteConfig.query.filter_by(key='whatsapp_group_link').first()
+            if sc:
+                sc.value = 'https://chat.whatsapp.com/Uni2'
+            else:
+                db.session.add(appmod.SiteConfig(key='whatsapp_group_link',
+                                                 value='https://chat.whatsapp.com/Uni2'))
+            db.session.commit()
+        try:
+            self.login_org()
+            html = self.get_html('/touren')
+            self.assertIn('head-actions', html)
+            self.assertIn('btn-wa', html)
+            self.assertEqual(html.count('btn-label'), 3)
+        finally:
+            with app.app_context():
+                sc = appmod.SiteConfig.query.filter_by(key='whatsapp_group_link').first()
+                if sc:
+                    sc.value = ''
+                    db.session.commit()

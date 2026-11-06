@@ -481,3 +481,21 @@ footer {
 .fahrt-pill button { background: none; border: 0; color: #fff; cursor: pointer;
                      font-size: 1rem; line-height: 1; padding: 0 .1rem; }
 @media (min-width: 992px) { .fahrt-pill { bottom: 12px; } }
+
+
+/* Build 11-06d: Kopf-Aktionen auf der Touren-Seite – drei gleichförmige Buttons
+   (Höhe, Radius, Schatten) statt unterschiedlich hoher Kacheln; sehr schmale
+   Handy-Breiten zeigen nur die Icons, Beschriftung ab 576 px */
+.head-actions { display: flex; gap: .5rem; align-items: center; }
+.head-actions .btn {
+  height: 38px; min-width: 38px; padding: 0 .8rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  white-space: nowrap; font-weight: 600; border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+}
+.head-actions .btn-wa { background: #25D366; color: #fff; border: none; }
+.head-actions .btn-wa:hover, .head-actions .btn-wa:focus { background: #1fb857; color: #fff; }
+@media (max-width: 575.98px) {
+  .head-actions .btn { padding: 0; width: 38px; }
+  .head-actions .btn .btn-label { display: none; }
+}
