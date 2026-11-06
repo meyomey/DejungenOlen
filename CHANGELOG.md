@@ -1,4 +1,7 @@
 # Changelog – De jungen Olen
+## 1.4.0 – 2026-11-06 (Build j) – Ein Gelbton für alle Plus-Akzente
+- Die getönte Plus-Kachel der mobilen Kopfzeile nutzt jetzt das App-Amber #f0a500 (wie der runde Plus-Button der Bottom-Nav und der aktive Menüpunkt) statt Bootstrap-Gelb #ffc107 – vorher trafen sich auf einem Handy-Screen zwei verschiedene Gelbtöne.
+- 252 Tests, py_compile OK.
 ## 1.4.0 – 2026-11-06 (Build i) – Kopfzeilen- & Filter-Buttons in die Familie
 - Mobile Schnell-Buttons (Touren, Suche, Neue Tour, Profil) sind jetzt eine visuelle Familie: gleich große weiche Kacheln mit Rahmen statt drei gemischter Stile (weiße Outline / knallgelb / nackter Avatar); der Plus-CTA bleibt als einziger gelb, aber getönt.
 - Gastro-Filter: „Anwenden“ bricht nicht mehr mitten im Wort um (Button größt nach Inhalt, Buttons grundsätzlich einzeilig); Sortier-Chips umbrechen statt rechts abgeschnitten zu werden.

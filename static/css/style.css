@@ -630,16 +630,19 @@ footer {
   border-color: rgba(255, 255, 255, .6);
   color: #fff;
 }
+/* Build 11-06j: Ein Gelbton fuer ALLE Plus-Akzente – die CTA-Kachel nutzt jetzt
+   das App-Amber #f0a500 (rgba(240,165,0,…)) wie der runde Plus-Button der
+   Bottom-Nav und der aktive Menuepunkt; vorher Bootstrap-Gelb #ffc107. */
 .navbar-djo .nav-quick-cta {
-  background: rgba(255, 193, 7, .15);
-  border-color: rgba(255, 193, 7, .55);
-  color: #ffd668;
+  background: rgba(240, 165, 0, .16);
+  border-color: rgba(240, 165, 0, .6);
+  color: #ffc95e;
 }
 .navbar-djo .nav-quick-cta:hover,
 .navbar-djo .nav-quick-cta:focus {
-  background: rgba(255, 193, 7, .28);
-  border-color: rgba(255, 193, 7, .8);
-  color: #ffe28a;
+  background: rgba(240, 165, 0, .3);
+  border-color: rgba(240, 165, 0, .85);
+  color: #ffd07e;
 }
 /* Zweiter Screenshot-Befund: „Anwenden“ brach auf schmalen Handydisplays
    mitten im Wort um – Buttons bleiben grundsätzlich in einer Zeile

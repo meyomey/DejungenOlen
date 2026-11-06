@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 i')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 j')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2000,3 +2000,21 @@ class NavQuickFamilyTest(AppTestCase):
         self.assertIn('col-auto', gl)
         # Sortier-Chips dürfen umbrechen, statt rechts abgeschnitten zu werden
         self.assertIn('ms-auto d-flex flex-wrap gap-1', gl)
+
+
+class AmberAccentTest(AppTestCase):
+    """Build 2026-11-06j: Ein Gelbton fuer ALLE Plus-Akzente – die getoente
+    CTA-Kachel der Kopfzeile nutzt jetzt das App-Amber #f0a500 (rgba(240,165,0,…))
+    wie der runde Plus-Button der Bottom-Nav und der aktive Menuepunkt;
+    vorher Bootstrap-Gelb #ffc107 -> zwei Gelbtoene auf einem Screen."""
+
+    def test_j_amber_accent_einheitlich(self):
+        css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
+        self.assertIn('Build 11-06j', css)
+        # Bootstrap-Gelb ist komplett aus dem CSS raus (war nur die CTA-Kachel)
+        self.assertNotIn('rgba(255, 193, 7', css)
+        self.assertIn('.navbar-djo .nav-quick-cta {\n  background: rgba(240, 165, 0, .16);', css)
+        self.assertIn('border-color: rgba(240, 165, 0, .6);', css)
+        # Der Amber-FAB der Bottom-Nav bleibt unangetastet
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertIn('.bottom-nav-create {\n  background: #f0a500;', base)
