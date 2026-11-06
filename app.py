@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-06 g'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-06 h'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -7646,6 +7646,9 @@ OVERPASS_ENDPOINTS = [            # Build r: Reihenfolge nach Verlässlichkeit (
     'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ]
 _overpass_cache: dict = {}        # Cache-Schlüssel → (Zeitstempel, Overpass-Elemente); entlastet die Server, weniger Rate-Limits
+_overpass_down_since = None       # Build 11-06h: Circuit-Breaker – Zeitpunkt des letzten Total-Ausfalls
+_overpass_down_reason = ''
+_OVERPASS_BREAKER_S = 600         # 10 Minuten direkt im Browser suchen, dann wieder am Server testen
 OVERPASS_AMENITY = '"amenity"~"^(cafe|bar|pub|restaurant|fast_food|biergarten|ice_cream)$"'
 OVERPASS_SHOP    = '"shop"~"^(bakery|pastry|ice_cream)$"'
 
@@ -7708,11 +7711,18 @@ def _overpass_fetch(query, cache_key=None, ttl=600, budget_s=40):
     """Build r/s: Overpass-Abfrage mit identifizierendem User-Agent, Ausweich-Servern (18 s je Server
     seit 11-06g, Gesamtbudget budget_s, damit Passenger nicht abbricht) und kleinem In-Memory-Cache.
     Rückgabe (elements, quelle, fehler) – elements ist None, wenn kein Server geantwortet hat."""
+    global _overpass_down_since, _overpass_down_reason
     now = _time.time()
     if cache_key is not None:
         hit = _overpass_cache.get(cache_key)
         if hit and now - hit[0] < ttl:
             return hit[1], 'cache', None
+    # Build 11-06h: War der Server-Kanal gerade komplett tot (z. B. Hoster blockt ausgehende
+    # Verbindungen zu Overpass), nicht jede Suche 40 s warten lassen – sofort an den Browser
+    # übergeben (sucht direkt). Gecachte Suchen sind oben bereits bedient.
+    if _overpass_down_since and now - _overpass_down_since < _OVERPASS_BREAKER_S:
+        return None, None, (f'Overpass war gerade erst nicht erreichbar ({_overpass_down_reason}; '
+                            f'vor {int(now - _overpass_down_since)} s)')
     headers = {'User-Agent': _osm_user_agent(), 'Accept': 'application/json',
                'Referer': request.host_url if request else ''}
     status_hint = {406: 'Anfrage abgelehnt (406, User-Agent)', 429: 'zu viele Anfragen (429)',
@@ -7747,6 +7757,8 @@ def _overpass_fetch(query, cache_key=None, ttl=600, budget_s=40):
                     for old in sorted(_overpass_cache, key=lambda k: _overpass_cache[k][0])[:100]:
                         _overpass_cache.pop(old, None)
                 _overpass_cache[cache_key] = (_time.time(), elements)
+            _overpass_down_since = None                     # Build 11-06h: Server-Kanal lebt wieder
+            _overpass_down_reason = ''
             return elements, host, None
         except http_requests.exceptions.Timeout:
             last_error = f'Zeitüberschreitung bei {host}'
@@ -7754,6 +7766,8 @@ def _overpass_fetch(query, cache_key=None, ttl=600, budget_s=40):
         except Exception as ex:
             last_error = f'{host}: {ex.__class__.__name__}'
             app.logger.error(f'Overpass error ({endpoint}): {ex}')
+    _overpass_down_since = _time.time()                     # Build 11-06h: Ausfall merken
+    _overpass_down_reason = last_error
     return None, None, last_error
 
 

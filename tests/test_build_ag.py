@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 g')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 h')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1925,3 +1925,46 @@ class OverpassFallbackDiagnoseTest(AppTestCase):
         self.assertIn('error', js)
         self.assertIn('query', js)                             # Query für die Direktsuche
         self.assertTrue(js['error'])                           # sprechender Grund vorhanden
+        appmod._overpass_down_since = None                     # Build 11-06h: Breaker räumen
+        appmod._overpass_down_reason = ''
+
+
+class OverpassBreakerTest(AppTestCase):
+    """Build 2026-11-06h: Circuit-Breaker für den Overpass-Server-Kanal – wenn alle
+    Server nicht erreichbar sind (z. B. Hoster blockt ausgehende Verbindungen),
+    springt die Suche sofort zur Browser-Direktsuche statt jede Suche 40 s warten
+    zu lassen. Gecachte Suchen werden weiter vom Server bedient; Erfolg räumt ab."""
+
+    def test_h_overpass_breaker(self):
+        srcapp = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('_OVERPASS_BREAKER_S = 600', srcapp)
+        self.assertIn('Circuit-Breaker', srcapp)
+        self.login_org()
+        appmod._overpass_cache.clear()
+        appmod._overpass_down_since = None
+        appmod._overpass_down_reason = ''
+        bbox = 's=53.31&w=9.71&n=53.39&e=9.79'             # eigener Ausschnitt
+        try:
+            # 1. Aufruf: Server-Kanal wird wirklich probiert (Requests in Tests geblockt) → 502
+            r1 = self.client.get(f'/api/overpass-gastro?{bbox}')
+            self.assertEqual(r1.status_code, 502)
+            self.assertNotIn('gerade erst nicht erreichbar', r1.get_json()['error'])
+            # 2. Aufruf: Breaker greift → sofort 502 mit Breaker-Text (kein Warten)
+            r2 = self.client.get(f'/api/overpass-gastro?{bbox}')
+            self.assertEqual(r2.status_code, 502)
+            self.assertIn('gerade erst nicht erreichbar', r2.get_json()['error'])
+            self.assertIn('query', r2.get_json())          # Browser-Fallback bekommt alles mit
+            # Erfolg räumt den Breaker ab
+            appmod._overpass_down_since = None              # r1/r2 haben ihn scharf gestellt
+            class _R:                                       # Mini-FakeResponse
+                status_code, text = 200, ''
+                @staticmethod
+                def json(): return {'elements': []}
+            with mock.patch.object(appmod.http_requests, 'post', return_value=_R()):
+                r3 = self.client.get(f'/api/overpass-gastro?{bbox}')
+            self.assertEqual(r3.status_code, 200)
+            self.assertIsNone(appmod._overpass_down_since)
+        finally:                                            # Aufräumen für Folgetests
+            appmod._overpass_cache.clear()
+            appmod._overpass_down_since = None
+            appmod._overpass_down_reason = ''

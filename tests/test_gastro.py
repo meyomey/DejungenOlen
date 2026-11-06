@@ -95,6 +95,7 @@ class GastroTest(AppTestCase):
         self.assertEqual(r.status_code, 502)
         self.assertIn('query', r.get_json())
         self.assertEqual(len(calls), len(appmod.OVERPASS_ENDPOINTS))
+        appmod._overpass_down_since = None                # Build 11-06h: Breaker zurücksetzen
         # zu großer Ausschnitt
         self.assertEqual(self.client.get('/api/overpass-gastro?s=53&w=9&n=54&e=10').status_code, 400)
 

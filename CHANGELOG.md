@@ -1,5 +1,11 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-06 (Build h) – OSM-Suche: sofort direkt suchen, wenn der Server-Kanal tot ist
+
+- Diagnose bestätigt: Der Hosting-Server erreicht **keinen** Overpass-Server (Zeitüberschreitung über alle vier hinweg – zuletzt maps.mail.ru), während der Browser direkt problemlos sucht. Es handelt sich um eine Ausgangs-Sperre/-Drossel des Hosters.
+- **Circuit-Breaker:** Nach einem Total-Ausfall des Server-Kanals wartet die App bei den nächsten Suchen **10 Minuten lang nicht mehr** auf den sterbenden Server-Versuch, sondern übergibt sofort an die Browser-Direktsuche (gleiche Ergebnisse). Nach 10 Minuten wird der Server-Kanal wieder einmal probiert; ein Erfolg räumt die Sperre ab. Gecachte Suchen laufen weiterhin über den Server.
+- 249 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-06 (Build g) – OSM-Suche: Ursache sichtbar, Server wartet fair
 
 - Bei „Gaststätten im Kartenbereich suchen“ (und der Strecken-Suche auf der Tour) springt bei Server-Problemen die Direktsuche im Browser ein – das ist als Sicherheitsnetz gebaut. Jetzt wird aber **sichtbar, warum** ausgewichen wurde (z. B. „Zeitüberschreitung bei overpass-api.de“, „zu viele Anfragen (429)“) – sowohl im Hinweis als auch klein neben dem Ergebnis.
