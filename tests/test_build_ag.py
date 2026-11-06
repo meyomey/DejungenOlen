@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 y')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 z')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -901,12 +901,13 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('<span id="live-now-host"></span>', home)   # Host leer = keine Fahrt aktiv
         det = self.client.get(f'/touren/{t.id}').get_data(as_text=True)
         self.assertNotIn('unterwegs · Aufzeichnung läuft', det)
-        # 4) Topo-Karte weg: weder Knopf noch Layer, OSM/Sat bleiben
+        # 4) Topo-Karte bleibt weg (Build 11-06z bringt sie NICHT zurück): weder Knopf noch
+        # Layer – OSM, Radkarte und Satellit sind da
         self.assertNotIn('btn-topo', det)
         self.assertNotIn('opentopomap', det)
         self.assertIn('btn-osm', det)
+        self.assertIn('btn-cyc', det)
         self.assertIn('btn-sat', det)
-        self.assertIn("#btn-osm,#btn-sat'", det)
 
     def test_d_live_infos_collapsed_status_clear_rides_folded(self):
         # Build c (2026-11-04): Live-Beschreibungen einklappbar, Status deutlich,
@@ -2035,7 +2036,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 y')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 z')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2298,11 +2299,14 @@ class LiveFahrKomfortTest(AppTestCase):
         self.assertIn('height: calc(100vh - 230px)', live)
 
     def test_u_wege_knopf_und_fahrzoom(self):
+        # Build 11-06z: Der eigene 🚵-Kachelknopf der Live-Karte ist weg – den Stil
+        # (Standard · Radkarte · Luftbild) schaltet jetzt der zentrale Knopf aus
+        # map-touch.js auf JEDER Karte. Die alte Wahl wird übernommen.
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
-        self.assertIn('id="btn-tiles"', live)
-        self.assertIn('function setTiles(kind)', live)
-        self.assertIn('tile-cyclosm.openstreetmap.fr', live)
-        self.assertIn("localStorage.setItem('djo_live_tiles', kind)", live)
+        self.assertNotIn('id="btn-tiles"', live)
+        self.assertNotIn('function setTiles(kind)', live)
+        self.assertIn("localStorage.getItem('djo_live_tiles')", live)          # Migration
+        self.assertIn("sessionStorage.setItem('djo_map_style', 'cyclosm')", live)
         self.assertIn('if (ownLatLng) map.setView(ownLatLng, Math.max(map.getZoom(), 16));', live)
         self.assertNotIn('setView(ownLatLng, Math.max(map.getZoom(), 15));', live)
 
@@ -2348,9 +2352,14 @@ class LiveFahrKomfort2Test(AppTestCase):
         self.assertIn('  return false;', live)
 
     def test_v_kartenstil_knopf_lesbar(self):
-        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
-        self.assertIn("b.classList.toggle('btn-light', kind !== 'cyclosm');", live)
-        self.assertIn("lbl.textContent = kind === 'cyclosm' ? 'Radkarte' : 'Standard';", live)
+        # Build 11-06z: Die Lesbarkeits-Regel (Icon + Text, aktiver Stil sichtbar) lebt
+        # jetzt im zentralen Knopf weiter: Symbol je Stil, Beschriftung im <span>,
+        # title/aria-label nennen den aktiven Stil. Auf kleinen Karten (< 200 px)
+        # bleibt nur das Symbol, damit nichts die Karte verdeckt.
+        js = open(os.path.join(ROOT, 'static', 'js', 'map-touch.js'), encoding='utf-8').read()
+        self.assertIn("+ (tiny ? '' : '<span>'", js)      # Mini-Karten: nur Symbol
+        self.assertIn("'Kartenstil: ' + st.label", js)
+        self.assertIn("'Kartenstil wechseln, aktuell: ' + st.label", js)
 
 
 class LiveGuardSperrenTest(AppTestCase):
@@ -2422,7 +2431,8 @@ class LiveKarteLesbarTest(AppTestCase):
         self.assertIn("""    #live-bar .lb-sec .btn { min-height: 40px; font-size: .82rem; padding: .25rem .2rem;
                              white-space: normal; overflow: visible; text-overflow: clip;""", live)
         # volle Wörter stehen im Markup
-        for wort in ('>Folgen<', '>Alle<', '>Vollbild</span>', '>Standard</span>', '>Stromspar<'):
+        # Build 11-06z: „Standard" ist aus der Leiste raus (Kartenstil-Knopf sitzt auf der Karte)
+        for wort in ('>Folgen<', '>Alle<', '>Vollbild</span>', '>Stromspar<'):
             self.assertIn(wort, live)
 
     def test_x_beschriftung_bleibt_bei_umschalten(self):
@@ -2430,9 +2440,9 @@ class LiveKarteLesbarTest(AppTestCase):
         # Vollbild: Text im eigenen Span, Icon bleibt (vorher wurde der Knopf zum nackten „⛶“)
         self.assertIn('<span id="btn-fs-txt">Vollbild</span>', live)
         self.assertIn("if (fsTxt) fsTxt.textContent = on ? 'Vollbild aus' : 'Vollbild';", live)
-        # Kartenstil: Label im Span, Icon bleibt
-        self.assertIn('<span id="btn-tiles-txt">Standard</span>', live)
-        self.assertIn("const lbl = document.getElementById('btn-tiles-txt');", live)
+        # Build 11-06z: Der Kartenstil-Knopf ist aus der Leiste verschwunden (er sitzt
+        # jetzt auf der Karte selbst) – dort bleibt es bei Icon + Text im Span.
+        self.assertNotIn('btn-tiles-txt', live)
 
     def test_x_laufraum_unter_der_leiste(self):
         live = self._live()

@@ -178,7 +178,7 @@
 <!-- ── Karte ──────────────────────────────────────────────────────────────────── -->
 {% if gpx_data != 'null' or tour.meeting_lat %}
 <div class="sec"><i class="bi bi-map"></i>Karte</div>
-<div id="print-map"></div>
+<div id="print-map" data-map-style="off"></div>   {# Build 11-06z: Druckansicht ohne Stil-Knopf #}
 {% endif %}
 
 <!-- ── Höhenprofil ────────────────────────────────────────────────────────────── -->

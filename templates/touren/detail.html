@@ -316,11 +316,15 @@
         </div>
         <div class="d-flex gap-1 flex-wrap">
           <button class="btn btn-sm btn-outline-light py-0 px-2 active" id="btn-osm"
-                  onclick="switchLayer('osm',this)" title="Karte">
+                  onclick="switchLayer('osm',this)" title="Standardkarte (OpenStreetMap)">
             🗺️
           </button>
+          <button class="btn btn-sm btn-outline-light py-0 px-2" id="btn-cyc"
+                  onclick="switchLayer('cyclosm',this)" title="Radkarte (CyclOSM) – Feldwege, Radwege und Wege kräftig">
+            🚵
+          </button>
           <button class="btn btn-sm btn-outline-light py-0 px-2" id="btn-sat"
-                  onclick="switchLayer('sat',this)" title="Satellit">
+                  onclick="switchLayer('sat',this)" title="Luftbild (Satellit)">
             🛰️
           </button>
           {% if gpx_data != 'null' %}
@@ -376,7 +380,7 @@
             box-shadow: 0 0 0 3px rgba(192,57,43,.4), 0 2px 6px rgba(0,0,0,.35) !important;
           }
         </style>
-        <div id="tour-map" style="height:460px;display:block;border-radius:0;max-width:100%"></div>
+        <div id="tour-map" data-map-style="own" style="height:460px;display:block;border-radius:0;max-width:100%"></div>
         <!-- Elevation overlay (shown on map when toggled) -->
         <div id="elev-overlay" style="display:none;position:absolute;bottom:0;left:0;right:0;
              height:130px;background:rgba(10,20,50,.72);pointer-events:none;z-index:800;
@@ -1693,10 +1697,14 @@ function openGpsModal(photoId, existingLat, existingLng) {
       const startLat = existingLat || {{ tour.meeting_lat or 53.1 }};
       const startLng = existingLng || {{ tour.meeting_lng or 9.2 }};
 
-      gpsModalMap = L.map('gps-modal-map').setView([startLat, startLng], 14);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-      }).addTo(gpsModalMap);
+      gpsModalMap = L.map('gps-modal-map', {mapStyle: 'own'}).setView([startLat, startLng], 14);
+      // Build 11-06z: derselbe Stil wie die Tour-Karte, aber ohne zweiten Knopf im kleinen Modal
+      if (window.djoMap && window.djoMap.layer) {
+        window.djoMap.layer(window.djoMap.current()).addTo(gpsModalMap);
+      } else {
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    {attribution: '© OpenStreetMap'}).addTo(gpsModalMap);
+      }
 
       gpsModalMap.on('click', function(e) {
         setGpsMarker(e.latlng.lat, e.latlng.lng);
@@ -2575,9 +2583,15 @@ window.addEventListener('load', () => {
 });
 
 // ── Tile layers ───────────────────────────────────────────────────────────────
+// Build 11-06z: Standard · Radkarte (CyclOSM) · Luftbild (Esri)
+// (Geländekarte bleibt draußen – Build f hat sie auf Wunsch entfernt: kaum nutzbar, lud langsam.)
 const tileLayers = {
   osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }),
+  cyclosm: L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap · CyclOSM',
     maxZoom: 19
   }),
   sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -2585,16 +2599,34 @@ const tileLayers = {
     maxZoom: 19
   })
 };
-tileLayers.osm.addTo(map);
-let activeLayer = 'osm';
+// Build 11-06z: Es gibt EINEN Speicher für den Kartenstil (sessionStorage djo_map_style,
+// gesetzt vom zentralen Umschalter in map-touch.js). Die Tourseite hat ihre eigenen Knöpfe –
+// sie liest und schreibt denselben Speicher, damit die Wahl überall gilt (mobil wie am Rechner).
+const _storedStyle = (window.djoMap && window.djoMap.current) ? window.djoMap.current() : 'osm';
+let activeLayer = tileLayers[_storedStyle] ? _storedStyle : 'osm';
+tileLayers[activeLayer].addTo(map);
+
+// Knopf-Zustand an die gespeicherte Wahl angleichen (sonst leuchtet immer 🗺️)
+(function () {
+  var ids = {osm: 'btn-osm', cyclosm: 'btn-cyc', sat: 'btn-sat'};
+  document.querySelectorAll('#btn-osm,#btn-cyc,#btn-sat')
+          .forEach(function (b) { b.classList.remove('active'); });
+  var cur = document.getElementById(ids[activeLayer]);
+  if (cur) cur.classList.add('active');
+})();
 
 function switchLayer(name, btn) {
   if (activeLayer === name) return;
   map.removeLayer(tileLayers[activeLayer]);
   tileLayers[name].addTo(map);
+  if (tileLayers[name].bringToBack) tileLayers[name].bringToBack();   // Track und Marker bleiben oben
   activeLayer = name;
-  document.querySelectorAll('#btn-osm,#btn-sat').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  document.querySelectorAll('#btn-osm,#btn-cyc,#btn-sat').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  // Build 11-06z: weitere Karten der Seite mitziehen (Höhenprofil-Karte, Gastro-Karte)
+  if (window.djoMap && window.djoMap.syncOthers) {
+    try { window.djoMap.syncOthers(name); } catch (e) {}
+  }
 }
 
 // GPX track

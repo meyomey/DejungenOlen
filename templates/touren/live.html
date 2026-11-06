@@ -173,8 +173,6 @@
           <button type="button" class="btn btn-light" id="btn-fs" onclick="toggleFs()" title="Vollbild"><i class="bi bi-arrows-fullscreen me-1"></i><span id="btn-fs-txt">Vollbild</span></button>
           <button type="button" class="btn btn-light lb-full" id="btn-wake" onclick="toggleWake()"
                   title="Bildschirm bleibt an (bis du es beendest) – für unterwegs, ohne laufende Fahrt · Doppeltipp auf die Karte schaltet es auch"><i class="bi bi-brightness-high me-1"></i>Bildschirm an</button>
-          <button type="button" class="btn btn-light lb-wide" id="btn-tiles" onclick="toggleTiles()"
-                  title="Kartenstil: Standardkarte – tippen für Radkarte (Wege kräftig)"><i class="bi bi-bicycle me-1"></i><span id="btn-tiles-txt">Standard</span></button>
           <button type="button" class="btn btn-light lb-wide" id="btn-saver" onclick="setSaver(!saverOn)"
                   title="Stromspar-Modus: Bildschirm bleibt an, wird aber dunkel – Tippen hellt kurz auf, ✕ beendet"><i class="bi bi-moon-stars me-1"></i>Stromspar</button>
         </div>
@@ -244,30 +242,20 @@ let lastOwnAt = 0, ownAcc = null;                 // Build af: für „📷 Foto
 // ── Karte, Strecke, Treffpunkt, Einkehr ──────────────────────────────────────────────────────
 const map = L.map('live-map', {zoomControl: true, attributionControl: false});
 L.control.attribution({position: 'topright'}).addTo(map);   // Build ab: unten verdeckt die Statusleiste den OSM-Hinweis
-// Build 11-06u: Kachelsatz wählbar – Standard-OSM oder CyclOSM (Radkarten-Stil:
-// Feldwege/Tracks, Radwege und Wege werden kräftiger gezeichnet – „wo verläuft der Weg?“).
-// Die Wahl wird gemerkt (localStorage djo_live_tiles).
-const TILES_OSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+// Build 11-06z: Kartenstil kommt jetzt aus dem zentralen Umschalter (map-touch.js) –
+// Standard · Radkarte (CyclOSM) · Luftbild, gemerkt für alle Karten der App.
+// Nur noch der Start-Kachelsatz hier; das Umschalten macht der Knopf oben rechts auf der Karte.
+let curBase = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   {attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19});
-const TILES_CYC = L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
-  {attribution: '&copy; OpenStreetMap · CyclOSM', maxZoom: 19});
-let curBase = null;
-function setTiles(kind) {
-  if (curBase) map.removeLayer(curBase);
-  curBase = (kind === 'cyclosm') ? TILES_CYC : TILES_OSM;
-  curBase.addTo(map);
-  try { localStorage.setItem('djo_live_tiles', kind); } catch (e) {}
-  const b = document.getElementById('btn-tiles');
-  if (b) { b.classList.toggle('btn-warning', kind === 'cyclosm');
-           b.classList.toggle('btn-light', kind !== 'cyclosm');   // Build 11-06v: vorher blieb btn-light drauf und überdeckte das Gelb
-           const lbl = document.getElementById('btn-tiles-txt');
-           if (lbl) lbl.textContent = kind === 'cyclosm' ? 'Radkarte' : 'Standard';   // Build 11-06x: Icon bleibt im Knopf
-           b.title = kind === 'cyclosm' ? 'Kartenstil: Radkarte (Wege kräftig) – tippen für Standardkarte'
-                                        : 'Kartenstil: Standardkarte – tippen für Radkarte (Wege kräftig)'; }
-}
-let _tilesPref = null; try { _tilesPref = localStorage.getItem('djo_live_tiles'); } catch (e) {}
-setTiles(_tilesPref === 'cyclosm' ? 'cyclosm' : 'osm');
-function toggleTiles() { setTiles(curBase === TILES_CYC ? 'osm' : 'cyclosm'); }
+curBase.addTo(map);
+// Alte Merke (localStorage djo_live_tiles) in den neuen Speicher übernehmen, damit niemand
+// nach dem Update plötzlich wieder die Standardkarte bekommt.
+try {
+  const _alt = localStorage.getItem('djo_live_tiles');
+  if (_alt === 'cyclosm' && !sessionStorage.getItem('djo_map_style')) {
+    sessionStorage.setItem('djo_map_style', 'cyclosm');
+  }
+} catch (e) {}
 let trackLine = null;
 const CUM = [];                                    // Streckenkilometer je Stützpunkt
 if (TRACK && TRACK.length > 1) {

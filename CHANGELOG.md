@@ -1,4 +1,19 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build z) – Radkarte (CyclOSM) auf jeder Karte
+- **Wunsch:** „CyclOSM soll auch auf jeder Karte auswählbar sein." Bisher gab es den Radkarten-Stil nur auf der Live-Karte (🚵 Wege, Build 11-06u), auf der Tour-Seite nur als einer von mehreren Knöpfen.
+- **Eine Lösung statt 17 Kopien:** Der Umschalter steckt in `static/js/map-touch.js` – die Datei wird über `base.html` auf jeder Seite geladen. Ein kleiner Knopf auf der Karte schaltet zyklisch **Standard → Radkarte (CyclOSM) → Luftbild**; er erkennt „unsere" Karten an den OSM-Kacheln, tauscht nur den Grund-Kachelsatz (Marker, Track, Overlays bleiben oben) und zieht alle anderen Karten der Seite mit.
+- **Gilt für die ganze Sitzung:** Die Wahl liegt in `sessionStorage` (`djo_map_style`) und wird auf jeder Seite sofort angewandt – einmal Radkarte, überall Radkarte. Die alte Merke der Live-Karte (`localStorage djo_live_tiles`) wird übernommen, damit niemand nach dem Update plötzlich wieder die Standardkarte bekommt.
+- **Live-Karte:** Der eigene 🚵-Kachelknopf ist aus der Leiste verschwunden (dort war ohnehin kein Platz); das Umschalten macht der Knopf auf der Karte. Die Leiste behält alle übrigen Funktionen.
+- **Tour-Seite:** 🗺️ · 🚵 · 🛰️ bleiben im Kartenkopf – sie lesen und schreiben denselben Speicher, der aktive Knopf leuchtet auch nach einem Neuladen richtig. Das GPS-Modal übernimmt den Stil der Tour (eigener Kachelsatz, aber **kein** zweiter Knopf im kleinen Fenster).
+- **Kein Gedränge auf der Karte:** Der Knopf startet oben rechts und weicht automatisch nach unten aus, bis er wirklich frei liegt (Prüfung gegen Leaflet-Bedienelemente und per Trefferprobe). Auf der Live-Karte sitzt er unter dem OSM-Hinweis, mobil nie auf dem 🔒-Knopf des Karten-Guards.
+- **Mini-Karten** (Startseite, Tourenliste) zeigen nur das Symbol – Text würde dort den halben Kartenausschnitt verdecken. Opt-out per `data-map-style="off"` (Druckansicht) bzw. `"own"` (Karten mit eigenem Umschalter).
+- **Geländekarte bleibt draußen** – Build f hat sie auf Wunsch entfernt (kaum nutzbar, lud langsam); sie kommt hier nicht durch die Hintertür zurück.
+- 310 Tests (22 neue in `tests/test_build_z.py`), py_compile OK.
+
+Geänderte Dateien: `static/js/map-touch.js`, `templates/touren/detail.html`, `templates/touren/live.html`,
+`templates/touren/print.html`, `app.py`, `tests/test_build_z.py`, `tests/test_build_ag.py`,
+`CHANGELOG.md`, `templates/hilfe.html`.
+
 ## 1.5.0 – 2026-11-06 (Build y) – „Bildschirm bleibt an“ hält jetzt wirklich an
 - **Fehler:** Nach dem Doppeltipp stand „🔆 Bildschirm bleibt an“, der Bildschirm ging aber trotzdem aus – auch in der Handy-Simulation des Browsers, also kein Geräteproblem. Ursache: Der Wake-Lock wurde **einmal** angefordert und nie wieder. Lässt der Browser ihn fallen (Tab verlassen, Display gesperrt, App-Wechsel, Akkusparmodus – bei jeder Aufnahme des Handys fällt er weg), blieb die Erfolgsmeldung stehen, aber nichts hielt den Bildschirm mehr. Der 60-s-Wächter griff nur bei laufender Fahrt/Folgen/Stromspar – nicht beim reinen Doppeltipp.
 - **Jetzt:** Die Seite merkt sich den **Wunsch** (`wakeWanted`) und holt den Lock bei jeder Rückkehr neu: bei `visibilitychange` (zurück im Tab, entsperrt), bei jedem normalen Tipp und über einen **20-s-Wächter** (vorher 60 s und nur bei Fahrt). Genau so verlangt es der Browser: eine neue Anforderung ist nur bei sichtbarer Seite erlaubt.

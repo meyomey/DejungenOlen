@@ -40,6 +40,7 @@
     lockBtn.innerHTML = '<i class="bi bi-lock-fill"></i>';
     lockBtn.title = 'Karte sperren';
     lockBtn.setAttribute('aria-label', 'Karte sperren');
+    lockBtn.className = 'mt-guard-lock';
     lockBtn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:1001;' +
       'background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:6px;width:32px;height:32px;' +
       'cursor:pointer;font-size:.9rem;display:none';
@@ -66,7 +67,243 @@
 
   if (window.L && window.L.Map) {
     window.L.Map.mergeOptions({ mobileGuard: true });
+    window.L.Map.mergeOptions({ mapStyle: '' });          // 'own'/'off' = kein zentraler Stil-Knopf
     window.L.Map.addInitHook(function () { applyGuard(this); });   // gilt für jede Karte
   }
   window.mobileMapGuard = applyGuard;   // für nachträglich erzeugte Karten
+})();
+
+
+/* Build 11-06z: Kartenstil auf JEDER Karte – Standard · Radkarte (CyclOSM) · Luftbild.
+ *
+ * Vorher hatte nur die Live-Karte einen Stil-Knopf (🚵 Wege, Build 11-06u). Jetzt bekommt
+ * jede Leaflet-Karte der App denselben Umschalter als kleinen Knopf in der Ecke:
+ *   – erkannt wird die Karte am OSM-Kachelsatz (L.Map.addInitHook + Nachlese beim Laden),
+ *   – getauscht wird nur der GRUND-Kachelsatz; Marker, Tracks und Overlays bleiben,
+ *   – die Wahl gilt für die ganze Sitzung (sessionStorage djo_map_style) und für alle Karten
+ *     der Seite, damit man beim Wechsel nicht jedes Mal neu umschalten muss,
+ *   – Ausnahmen: Druckansicht und Seiten mit eigenem Umschalter (data-map-style="off"/"own").
+ *
+ * Neue Stile kommen hinzu, indem hier ein Eintrag ergänzt wird – der Knopf zählt sie mit.
+ */
+(function () {
+  'use strict';
+
+  var STORE = 'djo_map_style';
+  var DEFAULT = 'osm';
+  var ALIASES = {cyclosm: 'cyclosm', 'osm': 'osm'};
+
+  var STYLES = {
+    osm: {
+      label: 'Standard', icon: 'bi-map',
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      options: {maxZoom: 19, attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}
+    },
+    cyclosm: {
+      label: 'Radkarte', icon: 'bi-bicycle',
+      url: 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
+      options: {maxZoom: 19, attribution: '&copy; OpenStreetMap &middot; CyclOSM'}
+    },
+    sat: {
+      label: 'Luftbild', icon: 'bi-globe-americas',
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      options: {maxZoom: 19, attribution: '&copy; Esri &ndash; Source: Esri, DigitalGlobe, USDA FSA, GeoEye, Earthstar Geographics'}
+    }
+  };
+  var ORDER = ['osm', 'cyclosm', 'sat'];
+  var maps = [];          // alle ausgestatteten Karten dieser Seite
+
+  function readStyle() {
+    try {
+      var v = window.sessionStorage.getItem(STORE);
+      if (v && STYLES[v]) return v;
+    } catch (e) { /* privater Modus */ }
+    return DEFAULT;
+  }
+  function writeStyle(name) {
+    try { window.sessionStorage.setItem(STORE, name); } catch (e) {}
+  }
+  function create(name) {
+    var st = STYLES[name] || STYLES[DEFAULT];
+    return window.L.tileLayer(st.url, st.options);
+  }
+  function isOsmBase(layer) {
+    var url = layer && layer._url;
+    return !!url && url.indexOf('tile.openstreetmap.org') !== -1;
+  }
+
+  // Karten untereinander abgleichen: wer die Wahl ändert, zieht die anderen mit.
+  function applyEverywhere(name, source) {
+    writeStyle(name);
+    maps.forEach(function (m) {
+      if (m === source || !m._djoStyleApply) return;
+      m._djoStyleApply(name, true);
+    });
+  }
+
+  function decorate(map) {
+    var L = window.L;
+    if (!L || !map || map._djoStyleDone) return;
+    var box = map.getContainer();
+    if (!box) return;
+    if (box.dataset.mapStyle === 'off' || box.dataset.mapStyle === 'own') return;
+    if (map.options && (map.options.mapStyle === 'off' || map.options.mapStyle === 'own')) return;
+    if (box.querySelector('.mt-style')) { map._djoStyleDone = true; return; }   // schon ausgestattet
+
+    var base = null;
+    map.eachLayer(function (l) { if (!base && isOsmBase(l)) base = l; });
+    if (!base) return;                     // keine OSM-Kacheln → nicht unsere Karte
+    map._djoStyleDone = true;
+    map._djoBase = base;
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mt-style';
+    // Platz: oben rechts. Dort liegt aber oft schon etwas – auf der Live-Karte der
+    // OSM-/CyclOSM-Hinweis (Lizenz, Build ab), mobil der 🔒-Knopf des Karten-Guards
+    // (Build y), auf anderen Karten die Leaflet-Bedienelemente. Deshalb: erst oben rechts,
+    // dann nach unten ausweichen, bis der Knopf wirklich frei liegt (Prüfung mit
+    // elementFromPoint – so werden auch Leisten erkannt, die über der Karte liegen).
+    // Inline-CSS: unabhängig von geladenen Stylesheets (auch im Druck und in Tests)
+    btn.style.cssText = 'position:absolute;z-index:1001;right:8px;top:8px;' +
+      'background:rgba(20,30,60,.88);color:#fff;border:0;border-radius:8px;' +
+      'padding:5px 9px;font-size:.78rem;line-height:1.2;display:inline-flex;align-items:center;gap:4px;' +
+      'cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,.35);font-weight:600;white-space:nowrap;' +
+      'max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;';
+    if (getComputedStyle(box).position === 'static') box.style.position = 'relative';
+
+    // Kleine, nicht bedienbare Vorschaukarten (Mini-Karten in Listen) zeigen nur das Symbol –
+    // ein Textknopf würde dort den halben Kartenausschnitt verdecken.
+    var tiny = (box.offsetHeight || 0) > 0 && box.offsetHeight < 200;
+    function paint() {
+      var st = STYLES[readStyle()] || STYLES[DEFAULT];
+      btn.innerHTML = '<i class="bi ' + st.icon + '"></i>' + (tiny ? '' : '<span>' + st.label + '</span>');
+      btn.title = 'Kartenstil: ' + st.label + ' – antippen wechselt (' +
+                  ORDER.map(function (k) { return STYLES[k].label; }).join(' · ') +
+                  '). Die Wahl gilt für alle Karten.';
+      btn.setAttribute('aria-label', 'Kartenstil wechseln, aktuell: ' + st.label);
+    }
+
+    // Freie Ecke suchen: oben rechts starten, bei Überdeckung nach unten rücken.
+    function freeSpot() {
+      var r = btn.getBoundingClientRect();
+      if (!r.width || !r.height) return true;          // (noch) nicht sichtbar → nichts tun
+      var pts = [[r.left + 6, r.top + r.height / 2], [r.right - 6, r.top + r.height / 2],
+                 [r.left + r.width / 2, r.top + 4], [r.left + r.width / 2, r.bottom - 4]];
+      // Der Knopf liegt mit z-index 1001 selbst obenauf – für die Messung kurz ausblenden,
+      // sonst findet elementFromPoint immer nur den Knopf selbst.
+      var vis = btn.style.visibility;
+      btn.style.visibility = 'hidden';
+      var frei = true;
+      // 1) Leaflet-Bedienelemente und 🔒 in der Karte: Rechtecke dürfen sich nicht schneiden
+      //    (auch ein paar überdeckte Pixel des Lizenzhinweises zählen).
+      var ctrls = box.querySelectorAll('.leaflet-control, .mt-guard-lock');
+      for (var c = 0; c < ctrls.length && frei; c++) {
+        var o = ctrls[c];
+        if (o === btn || o.contains(btn) || btn.contains(o) || !o.getClientRects().length) continue;
+        var q = o.getBoundingClientRect();
+        if (q.width && q.height && !(r.right <= q.left || r.left >= q.right ||
+                                     r.bottom <= q.top || r.top >= q.bottom)) frei = false;
+      }
+      // 2) Fremde Elemente über der Karte (Leisten, feste Knöpfe) per Trefferprobe
+      for (var i = 0; i < pts.length && frei; i++) {
+        var el = document.elementFromPoint(pts[i][0], pts[i][1]);
+        // Alles, was zur Karte gehört (Kacheln, Bedienelemente, Overlays), ist in Ordnung –
+        // nur fremde Elemente (Leisten, Knöpfe, Hinweise) sind ein Hindernis.
+        if (el && !(el === btn || btn.contains(el) || box.contains(el))) { frei = false; break; }
+      }
+      btn.style.visibility = vis;
+      return frei;
+    }
+    function place() {
+      btn.style.top = '8px';
+      var guard = box.querySelector('.mt-guard-lock');
+      if (guard && guard.getClientRects().length) {
+        // 🔒 sitzt oben rechts: nicht überdecken, sondern links davon
+        var g = guard.getBoundingClientRect(), b = btn.getBoundingClientRect();
+        if (g.width && b.width && g.left < b.right) btn.style.right = (b.right - g.left + 8) + 'px';
+      }
+      for (var i = 0; i < 8 && !freeSpot(); i++) {
+        btn.style.top = (parseFloat(btn.style.top) + 34) + 'px';
+      }
+    }
+
+    function setStyle(name, quiet) {
+      if (!STYLES[name]) name = DEFAULT;
+      if (map._djoBase) map.removeLayer(map._djoBase);
+      map._djoBase = create(name);
+      map._djoBase.addTo(map);
+      if (map._djoBase.bringToBack) map._djoBase.bringToBack();   // Punkte/Linien bleiben oben
+      // Reihenfolge zählt: erst die Wahl merken (applyEverywhere), DANN malen –
+      // sonst zeigt der Knopf nach dem Klick noch den alten Stil an (Build z).
+      if (!quiet) applyEverywhere(name, map);
+      paint();
+    }
+    map._djoStyleApply = setStyle;
+
+    // Gespeicherte Wahl beim Aufbau anwenden
+    var wanted = readStyle();
+    if (wanted !== DEFAULT) setStyle(wanted, true);
+
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var next = ORDER[(ORDER.indexOf(readStyle()) + 1) % ORDER.length];
+      setStyle(next);
+      try { document.dispatchEvent(new CustomEvent('djo-map-style', {detail: {style: next}})); } catch (err) {}
+    });
+    paint();
+    box.appendChild(btn);
+    [0, 250, 800].forEach(function (ms) { setTimeout(place, ms); });
+    window.addEventListener('resize', function () { setTimeout(place, 100); });
+    if (box._djoMap === undefined) box._djoMap = map;
+    maps.push(map);
+
+    // Seiten mit EIGENEM Umschalter (z. B. Tourseite OSM/Satellit) bekommen keinen zweiten Knopf –
+    // aber wenn dort umgeschaltet wird, sollen die übrigen Karten der Seite folgen.
+    box.addEventListener('djo-style-sync', function (e) {
+      if (e.detail && STYLES[e.detail.style]) setStyle(e.detail.style, true);
+    });
+  }
+
+  function initAll() {
+    document.querySelectorAll('.leaflet-container').forEach(function (el) {
+      var m = el._djoMap;
+      if (m) decorate(m);
+    });
+  }
+
+  if (window.L && window.L.Map) {
+    window.L.Map.addInitHook(function () {
+      var box = this.getContainer();
+      if (box) box._djoMap = this;         // Rückweg DOM → Karte für die Nachlese
+      var m = this;
+      // Viele Seiten legen den Kachelsatz erst nach L.map() an → kurz warten.
+      setTimeout(function () { decorate(m); }, 60);
+    });
+  }
+  document.addEventListener('DOMContentLoaded', function () { setTimeout(initAll, 150); });
+  window.addEventListener('load', function () { setTimeout(initAll, 300); });
+
+  // Öffentliche API (auch für Tests und für Seiten mit eigenem Umschalter)
+  window.djoMap = {
+    styles: STYLES,
+    order: ORDER,
+    current: readStyle,
+    set: function (name) { applyEverywhere(name, null); },
+    syncOthers: function (name, box) {
+      // von einer Seite mit eigenem Umschalter aufrufen: alle anderen Karten nachziehen
+      writeStyle(name);
+      document.querySelectorAll('.leaflet-container').forEach(function (el) {
+        var m = el._djoMap;
+        if (m && m._djoStyleApply) m._djoStyleApply(name, true);
+      });
+    },
+    decorate: decorate,
+    // Karten, die ihren Stil selbst verwalten (data-map-style="own"), können sich hier
+    // einen passenden Kachelsatz holen – so bleibt es bei EINER Definition der Quellen.
+    layer: function (name) { return create(name); },
+    apply: function (map, name) {
+      if (map && map._djoStyleApply) { map._djoStyleApply(name, true); }
+    }
+  };
 })();
