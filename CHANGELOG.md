@@ -1,4 +1,11 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build u) – Fahrmodus der Live-Karte
+- Kein „Karte zum Verschieben antippen“ mehr auf der Live-Karte: Der Antipp-Schutz bleibt auf allen eingebetteten Karten aktiv, ist auf der Live-Seite aber aus – beim Fahren verschiebt ein Finger SOFORT, nichts überlagert die Kartenmitte.
+- Karte größer auf dem Handy (höhere Mindesthöhe, mehr Bildschirmanteil auf schmalen Displays).
+- 🚵 Wege-Knopf: Kartenstil umschaltbar zwischen Standard-OSM und CyclOSM (Radkarten-Stil, Feldwege/Tracks kräftig) – die Wahl wird gemerkt.
+- 👠 Folgen zoomt jetzt auf Fahrzoom 16 (Straßen/Wege deutlich lesbar).
+- Doppeltipp auf der Karte frischt das Bildschirm-Wachhalten auf („🔱 Bildschirm bleibt an“), dazu ein Wächter, der den Wake-Lock alle 60 s zurückholt – das Display hält so den ganzen Fahrttag durch.
+- 274 Tests, py_compile OK.
 ## 1.5.0 – 2026-11-06 (Build t) – Eine rote Anzeige statt zweier
 - Läuft die EIGENE Fahrt, ist die „Fahrt läuft“-Pill unten rechts DIE eine Anzeige – sie zeigt jetzt auch, wie viele unterwegs sind und ob die Aufzeichnung läuft (vorher standen Navbar-Pille „N unterwegs“ und Pill gleichzeitig herum). Die Navbar bleibt bei eigener Fahrt frei; fährt jemand anderes, zeigt weiterhin die Navbar-Pille die Gruppe an. Tourseiten regelt wie seit Build p die Aktionsleiste.
 - 271 Tests, py_compile OK.

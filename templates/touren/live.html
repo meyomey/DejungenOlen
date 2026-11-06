@@ -5,13 +5,13 @@
 <style>
   /* Build aa: Live-Karte – schlanke Seite für unterwegs (große Knöpfe, Vollbild, wenig Ballast) */
   #live-wrap { position: relative; border-radius: 10px; overflow: hidden; background: #e9ecef; }
-  #live-map  { height: calc(100vh - 290px); min-height: 360px; }
+  #live-map  { height: calc(100vh - 290px); min-height: 420px; }   {# Build 11-06u: mehr Karte #}
   #live-wrap.live-fs { position: fixed; inset: 0; z-index: 2000; border-radius: 0; }
   #live-wrap.live-fs #live-map { height: 100%; min-height: 0; }
   #live-bar  { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; gap: 6px; flex-wrap: wrap;
                justify-content: center; padding: 8px; background: linear-gradient(to top, rgba(255,255,255,.95), rgba(255,255,255,.6)); }
   #live-bar .btn { font-size: 1rem; padding: .5rem .9rem; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
-  @media (max-width: 575px) { #live-bar .btn { font-size: .9rem; padding: .45rem .6rem; } #live-map { height: calc(100vh - 250px); } }
+  @media (max-width: 575px) { #live-bar .btn { font-size: .9rem; padding: .45rem .6rem; } #live-map { height: calc(100vh - 230px); } }   {# Build 11-06u: mehr Karte #}
   .live-pin { width: 36px; height: 36px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 13px;
               display: flex; align-items: center; justify-content: center; border: 3px solid #fff;
               box-shadow: 0 1px 5px rgba(0,0,0,.45); position: relative; letter-spacing: .3px; }
@@ -126,7 +126,7 @@
         <div class="saver-chip">🌙 Stromspar an – Tippen = kurz aufhellen · ✕ oben rechts = aus</div>
         <button type="button" id="saver-off" onclick="setSaver(false)" aria-label="Stromspar-Modus beenden">✕</button>
       </div>
-      <div id="live-map"></div>
+      <div id="live-map" data-map-guard="off"></div>   {# Build 11-06u: kein Antipp-Schutz hier – beim Fahren muss Verschieben SOFORT gehen #}
       <div id="live-bar">
         {# Build b (2026-11-04): lb-main = die 3 Fahrt-Knöpfe (mobil unten groß in der Daumenzone),
            lb-sec = Sekundär-Funktionen (mobil eine schmale Reihe darüber) #}
@@ -143,6 +143,8 @@
           <button type="button" class="btn btn-light" id="btn-follow" onclick="toggleFollow()" title="Karte bleibt auf meiner Position zentriert">🎯 Folgen</button>
           <button type="button" class="btn btn-light" onclick="showAll()" title="Alle Mitfahrer und die Strecke einpassen">👥 Alle</button>
           <button type="button" class="btn btn-light" id="btn-fs" onclick="toggleFs()" title="Vollbild">⛶ Vollbild</button>
+          <button type="button" class="btn btn-light" id="btn-tiles" onclick="toggleTiles()"
+                  title="Kartenstil: Standardkarte – tippen für Radkarte (Wege kräftig)">🚵 Wege</button>
           <button type="button" class="btn btn-light" id="btn-saver" onclick="setSaver(!saverOn)"
                   title="Stromspar-Modus: Bildschirm bleibt an, wird aber dunkel – Tippen hellt kurz auf, ✕ beendet">🌙 Stromspar</button>
         </div>
@@ -212,8 +214,27 @@ let lastOwnAt = 0, ownAcc = null;                 // Build af: für „📷 Foto
 // ── Karte, Strecke, Treffpunkt, Einkehr ──────────────────────────────────────────────────────
 const map = L.map('live-map', {zoomControl: true, attributionControl: false});
 L.control.attribution({position: 'topright'}).addTo(map);   // Build ab: unten verdeckt die Statusleiste den OSM-Hinweis
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  {attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19}).addTo(map);
+// Build 11-06u: Kachelsatz wählbar – Standard-OSM oder CyclOSM (Radkarten-Stil:
+// Feldwege/Tracks, Radwege und Wege werden kräftiger gezeichnet – „wo verläuft der Weg?“).
+// Die Wahl wird gemerkt (localStorage djo_live_tiles).
+const TILES_OSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19});
+const TILES_CYC = L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
+  {attribution: '&copy; OpenStreetMap · CyclOSM', maxZoom: 19});
+let curBase = null;
+function setTiles(kind) {
+  if (curBase) map.removeLayer(curBase);
+  curBase = (kind === 'cyclosm') ? TILES_CYC : TILES_OSM;
+  curBase.addTo(map);
+  try { localStorage.setItem('djo_live_tiles', kind); } catch (e) {}
+  const b = document.getElementById('btn-tiles');
+  if (b) { b.classList.toggle('btn-warning', kind === 'cyclosm');
+           b.title = kind === 'cyclosm' ? 'Kartenstil: Radkarte (Wege kräftig) – tippen für Standardkarte'
+                                        : 'Kartenstil: Standardkarte – tippen für Radkarte (Wege kräftig)'; }
+}
+let _tilesPref = null; try { _tilesPref = localStorage.getItem('djo_live_tiles'); } catch (e) {}
+setTiles(_tilesPref === 'cyclosm' ? 'cyclosm' : 'osm');
+function toggleTiles() { setTiles(curBase === TILES_CYC ? 'osm' : 'cyclosm'); }
 let trackLine = null;
 const CUM = [];                                    // Streckenkilometer je Stützpunkt
 if (TRACK && TRACK.length > 1) {
@@ -445,7 +466,7 @@ function toggleFollow() {
   if (following) {
     if (!navigator.geolocation) { following = false; updateFollowBtn(); setStatus('Kein Standort verfügbar.', 'danger'); return; }
     ensureWatch(); requestWakeLock();
-    if (ownLatLng) map.setView(ownLatLng, Math.max(map.getZoom(), 15));
+    if (ownLatLng) map.setView(ownLatLng, Math.max(map.getZoom(), 16));   // Build 11-06u: Fahrzoom – Straßen/Wege deutlich lesbar
   } else {
     maybeStopWatch();
     if (!sharing) releaseWakeLock();
@@ -655,6 +676,24 @@ document.getElementById('saver-dim').addEventListener('click', e => {
   if (e.target && e.target.id === 'saver-off') return;   // ✕ hat sein eigenes onclick
   saverPeek();
 });
+
+// Build 11-06u: Doppeltipp irgendwo auf der Karte/Wrap frischt den Screen-Wake-Lock auf
+// („🔆 Bildschirm bleibt an“) – falls das System ihn fallen gelassen hat (Akkusparmodus, iOS).
+// Der Doppeltipp-Zoom von Leaflet läuft parallel und ist beim Fahren ohnehin nützlich.
+let _lastTapAt = 0;
+document.getElementById('live-wrap').addEventListener('touchend', function () {
+  const now = Date.now();
+  if (now - _lastTapAt < 350) {
+    _lastTapAt = 0;
+    requestWakeLock();
+    setStatus('🔆 Bildschirm bleibt an.', 'sharing');
+  } else {
+    _lastTapAt = now;
+  }
+}, {passive: true});
+// Build 11-06u: Wachhalten-Wächter – holt den Wake-Lock alle 60 s zurück, falls er
+// zwischendurch verloren ging; so hält das Display den ganzen Fahrttag durch.
+setInterval(() => { if ((sharing || following || saverOn) && !document.hidden) requestWakeLock(); }, 60000);
 
 // Vollbild per CSS-Klasse (funktioniert auch auf iPhone/iPad ohne Fullscreen-API)
 function toggleFs() {

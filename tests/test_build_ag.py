@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 t')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 u')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2031,7 +2031,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 t')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 u')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2278,3 +2278,33 @@ class EineRoteAnzeigeTest(AppTestCase):
         self.assertIn("function updatePillLive(lv, own)", base)
         self.assertIn("nEl.textContent = (own && lv) ? lv.n + ' unterwegs' + (lv.recording ? ' · ⏺' : '') + ' · ' : '';", base)
         self.assertIn("Fahrt läuft · <span class=\"pill-n\"></span>", base)
+
+
+class LiveFahrKomfortTest(AppTestCase):
+    """Build 2026-11-06u: Fahrmodus der Live-Karte – (1) kein Antipp-Schutz mehr
+    auf der Live-Karte (data-map-guard="off"): Verschieben geht SOFORT, die
+    Kartenmitte bleibt frei. (2) Karte mobil größer. (3) 🚵 Wege-Knopf schaltet
+    zwischen Standard-OSM und CyclOSM um (gemerkt in localStorage).
+    (4) 🎯 Folgen zoomt auf Fahrzoom 16. (5) Doppeltipp frischt den Wake-Lock
+    auf, ein 60-s-Wächter holt ihn sonst automatisch zurück."""
+
+    def test_u_guard_aus_und_karte_groesser(self):
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('data-map-guard="off"', live)
+        self.assertIn('min-height: 420px', live)
+        self.assertIn('height: calc(100vh - 230px)', live)
+
+    def test_u_wege_knopf_und_fahrzoom(self):
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('id="btn-tiles"', live)
+        self.assertIn('function setTiles(kind)', live)
+        self.assertIn('tile-cyclosm.openstreetmap.fr', live)
+        self.assertIn("localStorage.setItem('djo_live_tiles', kind)", live)
+        self.assertIn('if (ownLatLng) map.setView(ownLatLng, Math.max(map.getZoom(), 16));', live)
+        self.assertNotIn('setView(ownLatLng, Math.max(map.getZoom(), 15));', live)
+
+    def test_u_display_wachhalten(self):
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('let _lastTapAt = 0;', live)
+        self.assertIn('🔆 Bildschirm bleibt an.', live)
+        self.assertIn("(sharing || following || saverOn) && !document.hidden) requestWakeLock(); }, 60000", live)
