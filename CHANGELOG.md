@@ -1,4 +1,13 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build y) – „Bildschirm bleibt an“ hält jetzt wirklich an
+- **Fehler:** Nach dem Doppeltipp stand „🔆 Bildschirm bleibt an“, der Bildschirm ging aber trotzdem aus – auch in der Handy-Simulation des Browsers, also kein Geräteproblem. Ursache: Der Wake-Lock wurde **einmal** angefordert und nie wieder. Lässt der Browser ihn fallen (Tab verlassen, Display gesperrt, App-Wechsel, Akkusparmodus – bei jeder Aufnahme des Handys fällt er weg), blieb die Erfolgsmeldung stehen, aber nichts hielt den Bildschirm mehr. Der 60-s-Wächter griff nur bei laufender Fahrt/Folgen/Stromspar – nicht beim reinen Doppeltipp.
+- **Jetzt:** Die Seite merkt sich den **Wunsch** (`wakeWanted`) und holt den Lock bei jeder Rückkehr neu: bei `visibilitychange` (zurück im Tab, entsperrt), bei jedem normalen Tipp und über einen **20-s-Wächter** (vorher 60 s und nur bei Fahrt). Genau so verlangt es der Browser: eine neue Anforderung ist nur bei sichtbarer Seite erlaubt.
+- **Doppeltipp schaltet um:** einmal an, nochmal aus („🌙 Bildschirm darf wieder aus“) – vorher war ein zweiter Doppeltipp wirkungslos.
+- **Ehrliche Rückmeldung:** Der Erfolgstext kommt nur, wenn der Lock wirklich greift. Sonst nennt die Meldung den Grund (kein https, Energiesparmodus/Akku, Browser ohne Unterstützung).
+- **Neuer Knopf „🔆 Bildschirm an“** in der Leiste (dritte Reihe, volle Breite): setzt das Wachhalten ohne laufende Fahrt und zeigt den echten Zustand – „Bildschirm bleibt an“, wenn er gerade hält, sonst „Bildschirm an (greift nicht)“.
+- **Nebenbei:** Ein bestehender Test (`/fahren`) rechnete mit dem UTC-Datum des Servers statt mit Berliner Zeit und war zwischen 22 und 24 Uhr UTC rot – jetzt `_berlin_today()` wie in der App.
+- 288 Tests, py_compile OK.
+
 ## 1.5.0 – 2026-11-06 (Build x) – Live-Karte auf dem Handy lesbar: Guard unter dem Zoom, volle Knopf-Beschriftungen
 - **„Zum Verschieben antippen“ und 🔒 lagen auf dem „−“**: Das Zoom-Bedienfeld von Leaflet beginnt bei 10 px, ist mit zwei Knöpfen ≈ 70 px hoch – die Pill begann bei 56 px und nahm das Herauszoomen weg. Beide sitzen jetzt bei `top: 80px; left: 10px`, also **unter** dem Zoom und bündig mit ihm; der Karten-Toast rutscht mit auf 124 px.
 - **Abgeschnittene Knöpfe („Fol…“, „Voll…“, „Sta…“, „Str…“)**: Die fünf Sekundär-Knöpfe quetschten sich in eine Zeile und wurden mit Ellipse gekürzt. Jetzt ein 3+2-Raster (Folgen · Alle · Vollbild / Standard · Stromspar) mit voller Beschriftung und Umbruch statt Ellipse – die Höhe der Leiste bleibt bei ≈ 155 px.

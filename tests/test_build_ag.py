@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 x')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 y')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -926,7 +926,7 @@ class VideoSmoothTest(AppTestCase):
         # Lücke weg: kein Karten-Überstand, Laufraum am Seitenende
         self.assertNotIn('margin-bottom: 116px', live)
         self.assertNotIn('margin-bottom: 152px', live)
-        self.assertIn('html body { padding-bottom: calc(222px', live)   # Build x: Spezifität + neue Leistenhöhe
+        self.assertIn('html body { padding-bottom: calc(267px', live)   # Build y: dritte Reihe + Spezifität
         # Status-Leiste mit klaren Zuständen (CSS) + setStatus nutzt sie
         self.assertIn('#live-status { padding:', live)
         self.assertIn('#live-status.warning { background:', live)
@@ -950,9 +950,13 @@ class VideoSmoothTest(AppTestCase):
         self.assertTrue(r.headers['Location'].endswith('?share=1'))
         # 2) „heute ohne Anmeldung“ schlägt „angemeldet, aber in der Zukunft“
         _grp = M.Tour.query.get(self.t_plan_id).group_id   # Tests laufen im Gruppen-Kontext
-        t_heute = M.Tour(title='Heute-Fahrt', tour_date=dt.date.today(), status='planned',
+        # Build 11-06y: „heute" muss BERLINER Zeit sein – /fahren rechnet mit _berlin_today().
+        # Mit dem UTC-Datum des Servers (date.today()) lag der Test zwischen 22 und 24 Uhr UTC
+        # daneben: die „Heute-Fahrt" war für die App schon gestern, eine andere Tour gewann.
+        _heute = appmod._berlin_today()
+        t_heute = M.Tour(title='Heute-Fahrt', tour_date=_heute, status='planned',
                          created_by=self.org_id, group_id=_grp)
-        t_später = M.Tour(title='Später-Fahrt', tour_date=dt.date.today() + dt.timedelta(days=9),
+        t_später = M.Tour(title='Später-Fahrt', tour_date=_heute + dt.timedelta(days=9),
                           status='planned', created_by=self.org_id, group_id=_grp)
         db.session.add_all([t_heute, t_später])
         db.session.commit()
@@ -963,7 +967,7 @@ class VideoSmoothTest(AppTestCase):
         # 3) Anmeldung als Gleichstandskriterium: ohne heutige Tour gewinnt die früheste angemeldete
         db.session.delete(t_heute)
         db.session.commit()
-        t_att = M.Tour(title='Angemeldet-Fahrt', tour_date=dt.date.today() + dt.timedelta(days=3),
+        t_att = M.Tour(title='Angemeldet-Fahrt', tour_date=_heute + dt.timedelta(days=3),
                        status='planned', created_by=self.org_id, group_id=_grp)
         db.session.add(t_att)
         db.session.commit()
@@ -2031,7 +2035,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 x')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 y')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2306,7 +2310,8 @@ class LiveFahrKomfortTest(AppTestCase):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('let _lastTapAt = 0;', live)
         self.assertIn('🔆 Bildschirm bleibt an.', live)
-        self.assertIn("(sharing || following || saverOn) && !document.hidden) requestWakeLock(); }, 60000", live)
+        self.assertIn("else if ((sharing || following || saverOn) && !document.hidden) requestWakeLock();", live)
+        self.assertIn("}, 20000);", live)   # Build 11-06y: 20-s-Erneuerung statt 60-s
 
 
 class LiveFahrKomfort2Test(AppTestCase):
@@ -2335,10 +2340,11 @@ class LiveFahrKomfort2Test(AppTestCase):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('function mapToast(', live)
         self.assertIn("mapToast(ok ? '🔆 Bildschirm bleibt an.'", live)
-        self.assertIn('⚠️ Wachhalten hier nicht möglich', live)
+        self.assertIn("'⚠️ Bildschirm wachhalten nicht möglich: '", live)   # Build 11-06y
+        self.assertIn('function wakeFehlerText()', live)                     # Build 11-06y
         self.assertIn('.map-toast { position: absolute; top: 124px;', live)   # Build x: unter Pill/🔒
-        # requestWakeLock meldet ehrlich Erfolg/Misserfolg
-        self.assertIn('      return true;', live)
+        # requestWakeLock meldet ehrlich Erfolg/Misserfolg (Build 11-06y: mit Wach-Wunsch)
+        self.assertIn('    return true;', live)
         self.assertIn('  return false;', live)
 
     def test_v_kartenstil_knopf_lesbar(self):
@@ -2431,5 +2437,55 @@ class LiveKarteLesbarTest(AppTestCase):
     def test_x_laufraum_unter_der_leiste(self):
         live = self._live()
         # „html body“ (0,0,2) schlägt das spätere „body“ aus base.html (0,0,1)
-        self.assertIn('html body { padding-bottom: calc(222px + env(safe-area-inset-bottom)); }', live)
+        self.assertIn('html body { padding-bottom: calc(267px + env(safe-area-inset-bottom)); }', live)
         self.assertNotIn('    body { padding-bottom: calc(174px', live)   # der wirkungslose Selektor ist weg
+
+
+class WakeLockErneuerungTest(AppTestCase):
+    """Build 2026-11-06y: „Der Bildschirm bleibt nicht an, obwohl ‚Bildschirm bleibt an‘
+    dasteht." Ursache: Der Wake-Lock wurde EINMAL angefordert und nie wieder. Lässt der
+    Browser ihn fallen (Tab verlassen, Display gesperrt, Akkusparmodus), blieb die Seite
+    bei der Erfolgsmeldung – und der Doppeltipp war nach kurzer Zeit wirkungslos.
+    Jetzt merkt sich die Seite den WUNSCH (wakeWanted) und holt den Lock bei jeder
+    Rückkehr neu (sichtbar, Tipp, 20-s-Wächter); der Knopf zeigt den echten Zustand."""
+
+    def _live(self):
+        return open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+
+    def test_y_wunsch_wird_gemerkt_und_erneuert(self):
+        live = self._live()
+        self.assertIn('let wakeWanted = false, wakeTried = false, wakeErr = null;', live)
+        self.assertIn('function wakeHeld()', live)
+        self.assertIn('function wakeSupported()', live)
+        self.assertIn('async function setWakeWanted(on)', live)
+        # release-Handler räumt auf UND versucht es erneut (statt nur wakeLock = null)
+        self.assertIn('if (wakeWanted) refreshWakeUi();                     // gewollt, aber weg → erneut versuchen', live)
+        # Erneuerung an allen Rückkehr-Punkten
+        self.assertIn('if (wakeWanted) requestWakeLock();          // Build 11-06y: nach Tab-Wechsel/Sperren neu holen', live)
+        self.assertIn('if (wakeWanted && !wakeHeld()) requestWakeLock();', live)          # normaler Tipp
+        self.assertIn('if (!document.hidden && wakeWanted && !wakeHeld()) requestWakeLock();   // Build 11-06y: 20-s-Erneuerung', live)
+
+    def test_y_doppeltipp_schaltet_umschalten(self):
+        live = self._live()
+        # Doppeltipp setzt jetzt den Wunsch – an und wieder aus
+        self.assertIn('setWakeWanted(!wakeWanted).then(ok => {', live)
+        self.assertIn("mapToast('🌙 Bildschirm darf wieder aus.');", live)
+        # kein falsches Versprechen mehr: Erfolg nur, wenn der Lock wirklich greift
+        self.assertIn("setWakeWanted(true).then(ok => {", live)
+        self.assertIn('wakeFehlerText()', live)
+
+    def test_y_eigener_knopf_mit_echtem_zustand(self):
+        live = self._live()
+        self.assertIn('id="btn-wake" onclick="toggleWake()"', live)
+        self.assertIn('function toggleWake()', live)
+        # Knopf spiegelt, ob der Lock GERADE greift – nicht nur den Wunsch
+        self.assertIn("b.classList.toggle('btn-primary', wakeWanted && wakeHeld());", live)
+        self.assertIn("(wakeWanted && wakeHeld() ? 'Bildschirm bleibt an' : wakeWanted ? 'Bildschirm an (greift nicht)' : 'Bildschirm an')", live)
+        self.assertIn('#live-bar .lb-sec .btn.lb-full { grid-column: 1 / -1; }', live)
+        # Laufraum passt zur höheren Leiste
+        self.assertIn('html body { padding-bottom: calc(267px + env(safe-area-inset-bottom)); }', live)
+
+    def test_y_start_und_sparmodus_setzen_den_wunsch(self):
+        live = self._live()
+        self.assertIn('if (!wakeWanted) setWakeWanted(true);          // Build 11-06y: Fahrt halten den Bildschirm an', live)
+        self.assertIn('setWakeWanted(true);                          // Build 11-06y: Sparmodus braucht das Display', live)

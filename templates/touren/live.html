@@ -75,6 +75,7 @@
                              white-space: normal; overflow: visible; text-overflow: clip;
                              line-height: 1.15; grid-column: span 2; }
     #live-bar .lb-sec .btn.lb-wide { grid-column: span 3; }   /* Reihe 2: zwei Knöpfe über die volle Breite */
+    #live-bar .lb-sec .btn.lb-full { grid-column: 1 / -1; }   /* Reihe 3: Bildschirm an (Build 11-06y) */
     /* Build m/n: Lange Beschriftung komplett lesbar – der Knopf darf zweizeilig werden,
        statt mit „Fahrt bee…“ abgeschnitten zu werden (schmale Displays, Großschrift-Modus).
        Build n: Selektor mit #live-bar davor – sonst gewinnt das white-space:nowrap aus
@@ -87,8 +88,8 @@
        Build 11-06x: Selektor mit „html“ davor (Spezifität 0,0,2) – base.html setzt sein
        `body { padding-bottom: 58px }` SPÄTER im Dokument; bei gleicher Spezifität gewann die
        spätere Regel und der Laufraum war wirkungslos (58 statt 222 px), die Leiste lag über dem Inhalt.
-       Höhe = Leiste (155 px + 7 px Padding) + Bottom-Nav (58 px). */
-    html body { padding-bottom: calc(222px + env(safe-area-inset-bottom)); }
+       Höhe = Leiste (≈ 200 px) + Bottom-Nav (58 px). */
+    html body { padding-bottom: calc(267px + env(safe-area-inset-bottom)); }
   }
 </style>
 {% endblock %}
@@ -170,6 +171,8 @@
           <button type="button" class="btn btn-light" id="btn-follow" onclick="toggleFollow()" title="Karte bleibt auf meiner Position zentriert"><i class="bi bi-crosshair me-1"></i>Folgen</button>
           <button type="button" class="btn btn-light" onclick="showAll()" title="Alle Mitfahrer und die Strecke einpassen"><i class="bi bi-people-fill me-1"></i>Alle</button>
           <button type="button" class="btn btn-light" id="btn-fs" onclick="toggleFs()" title="Vollbild"><i class="bi bi-arrows-fullscreen me-1"></i><span id="btn-fs-txt">Vollbild</span></button>
+          <button type="button" class="btn btn-light lb-full" id="btn-wake" onclick="toggleWake()"
+                  title="Bildschirm bleibt an (bis du es beendest) – für unterwegs, ohne laufende Fahrt · Doppeltipp auf die Karte schaltet es auch"><i class="bi bi-brightness-high me-1"></i>Bildschirm an</button>
           <button type="button" class="btn btn-light lb-wide" id="btn-tiles" onclick="toggleTiles()"
                   title="Kartenstil: Standardkarte – tippen für Radkarte (Wege kräftig)"><i class="bi bi-bicycle me-1"></i><span id="btn-tiles-txt">Standard</span></button>
           <button type="button" class="btn btn-light lb-wide" id="btn-saver" onclick="setSaver(!saverOn)"
@@ -429,7 +432,12 @@ function poll() {
 render(INITIAL);
 setInterval(poll, 15000);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) { poll(); if (sharing || following || saverOn) { ensureWatch(); requestWakeLock(); } }
+  if (!document.hidden) {
+    poll();
+    if (sharing || following || saverOn) ensureWatch();
+    if (wakeWanted) requestWakeLock();          // Build 11-06y: nach Tab-Wechsel/Sperren neu holen
+    refreshWakeUi();
+  }
 });
 
 // ── Eigener Standort: Teilen / Folgen ─────────────────────────────────────────────────────────
@@ -449,7 +457,7 @@ function startShare() {
   updateShareBtn(); updatePauseBtn();
   setStatus('Standort wird ermittelt …', 'sharing');
   ensureWatch();
-  requestWakeLock();
+  if (!wakeWanted) setWakeWanted(true);          // Build 11-06y: Fahrt halten den Bildschirm an
 }
 function showRecHint() {   // Build q: Rückfrage deutlichsichtbar machen
   const el = document.getElementById('rec-hint');
@@ -748,21 +756,83 @@ function livePhoto(input) {
                                            {enableHighAccuracy: true, timeout: 10000, maximumAge: 30000});
 }
 
-// Bildschirm anlassen (Screen Wake Lock – Android/Chrome, iOS ab 16.4); ohne Unterstützung passiert nichts
+// ── Bildschirm anlassen (Screen Wake Lock – Android/Chrome, iOS ab 16.4) ───────────────────────
+// Build 11-06y: Vorher wurde der Lock EINMAL angefordert und nie wieder. Lässt der Browser ihn
+// fallen (Tab verlassen, Bildschirm gesperrt, Akkusparmodus), griff kein Wächter – die Seite
+// behauptete aber weiter „Bildschirm bleibt an“, und der einmalige Doppeltipp war nach kurzer
+// Zeit wirkungslos. Jetzt merkt sich die Seite den WUNSCH (wakeWanted) und holt den Lock bei
+// jeder Rückkehr (sichtbar, Tipp, Klick, 20-s-Wächter) neu – genau so, wie es der Browser
+// verlangt: eine neue Anforderung ist nur bei sichtbarer Seite erlaubt.
+let wakeWanted = false, wakeTried = false, wakeErr = null;
+function wakeSupported() { return !!(navigator.wakeLock && navigator.wakeLock.request); }
+function wakeHeld() { return !!(wakeLock && !(wakeLock.released)); }
+function wakeFehlerText() {
+  if (!wakeSupported()) return 'Dieser Browser hält den Bildschirm nicht wach (z. B. iPhone vor iOS 16.4)';
+  if (document.hidden) return 'Seite ist gerade im Hintergrund';
+  if (wakeErr === 'NotAllowedError') return 'der Browser erlaubt es hier nicht (Energiesparmodus / Akku schwach / Richtlinie)';
+  if (wakeErr === 'SecurityError') return 'nur über eine verschlüsselte Verbindung (https) möglich';
+  if (wakeErr) return 'der Browser hat es abgelehnt (' + wakeErr + ')';
+  return 'gerade nicht möglich';
+}
+// „An“ heißt: Der Wunsch ist gesetzt. wakeHeld() sagt, ob er GERADE wirklich greift.
+function wakeStatusText() {
+  if (!wakeWanted) return 'Bildschirm aus – Doppeltipp hält ihn an';
+  return wakeHeld() ? 'Bildschirm bleibt an' : 'Bildschirm wieder an – wird erneut gehalten';
+}
 async function requestWakeLock() {
+  wakeTried = true;
+  if (!wakeWanted) return false;
+  if (!wakeSupported() || document.hidden) return false;   // im Hintergrund ist eine Anfrage nicht erlaubt
+  if (wakeHeld()) return true;
   try {
-    if ('wakeLock' in navigator && !document.hidden) {
-      if (!wakeLock) {
-        wakeLock = await navigator.wakeLock.request('screen');
-        wakeLock.addEventListener('release', () => { wakeLock = null; });
-      }
-      return true;                            // Build 11-06v: ehrlich melden, ob Wachhalten greift
-    }
-  } catch (e) { /* z. B. Energiesparmodus */ }
-  return false;
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeErr = null;
+    wakeLock.addEventListener('release', () => {
+      wakeLock = null;
+      if (wakeWanted) refreshWakeUi();                     // gewollt, aber weg → erneut versuchen
+    });
+    refreshWakeUi();
+    return true;
+  } catch (e) {
+    wakeErr = (e && e.name) || 'Fehler';
+    wakeLock = null;
+    refreshWakeUi();
+    return false;
+  }
+}
+async function setWakeWanted(on) {
+  wakeWanted = !!on;
+  if (!wakeWanted) { wakeErr = null; releaseWakeLock(); refreshWakeUi(); return false; }
+  const ok = await requestWakeLock();
+  refreshWakeUi();
+  return ok;
 }
 function releaseWakeLock() {
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+// Rückmeldung im Knopf: 🔆 = gewollt und gehalten · ◻️ = nicht möglich · 🌙 = Stromspar
+function refreshWakeUi() {
+  const b = document.getElementById('btn-wake');
+  if (b) {
+    b.classList.toggle('btn-primary', wakeWanted && wakeHeld());
+    b.classList.toggle('btn-light', !(wakeWanted && wakeHeld()));
+    b.innerHTML = '<i class="bi bi-brightness-high me-1"></i>' +
+      (wakeWanted && wakeHeld() ? 'Bildschirm bleibt an' : wakeWanted ? 'Bildschirm an (greift nicht)' : 'Bildschirm an');
+    b.title = (wakeWanted
+      ? (wakeHeld() ? 'Bildschirm bleibt an – antippen beendet das Wachhalten'
+                    : 'Wachhalten gewünscht, greift aber gerade nicht: ' + wakeFehlerText())
+      : 'Bildschirm bleibt an (bis du es beendest) – für unterwegs, ohne laufende Fahrt') + ' · Doppeltipp auf die Karte schaltet es auch';
+  }
+}
+function toggleWake() {
+  if (wakeWanted) {
+    setWakeWanted(false);
+    mapToast('🌙 Bildschirm darf wieder aus.');
+    return;
+  }
+  setWakeWanted(true).then(ok => {
+    mapToast(ok ? '🔆 Bildschirm bleibt an.' : '⚠️ Bildschirm wachhalten nicht möglich: ' + wakeFehlerText() + '.');
+  });
 }
 
 // ── Build 11-06n: Stromspar-Modus – Display bleibt AN, wird aber dunkel überzogen ───────────────
@@ -777,10 +847,10 @@ async function setSaver(on) {
   if (dim) { dim.classList.toggle('d-none', !on); if (on) dim.classList.remove('saver-peek'); }
   if (b) { b.classList.toggle('btn-warning', on); b.classList.toggle('btn-light', !on); }
   if (on) {
-    requestWakeLock();
+    setWakeWanted(true);                          // Build 11-06y: Sparmodus braucht das Display
     setStatus('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft im 20-s-Takt. Tippen = kurz aufhellen.', 'sharing');
     clearTimeout(saverPeekTimer);
-  } else if (sharing) {
+  } else if (wakeWanted) {
     requestWakeLock();
     setStatus('🌙 Stromspar aus.', 'sharing');
   }
@@ -806,15 +876,26 @@ document.getElementById('live-wrap').addEventListener('touchend', function () {
   const now = Date.now();
   if (now - _lastTapAt < 350) {
     _lastTapAt = 0;
-    requestWakeLock().then(ok => mapToast(ok ? '🔆 Bildschirm bleibt an.'
-                                             : '⚠️ Wachhalten hier nicht möglich (Gerät/Modus) – Display-Zeit-Einstellung prüfen.'));
-  } else {
-    _lastTapAt = now;
+    // Build 11-06y: Doppeltipp schaltet den WUNSCH um. Vorher wurde der Lock nur EINMAL
+    // angefordert – fiel er (Tab weg, Display gesperrt), war der Doppeltipp wirkungslos.
+    setWakeWanted(!wakeWanted).then(ok => {
+      if (!wakeWanted) mapToast('🌙 Bildschirm darf wieder aus.');
+      else mapToast(ok ? '🔆 Bildschirm bleibt an.'
+                       : '⚠️ Bildschirm wachhalten nicht möglich: ' + wakeFehlerText() + '.');
+    });
+    return;
   }
+  _lastTapAt = now;
+  // Ein normaler Tipp ist eine Nutzeraktion – der beste Moment, den Wunsch zu erneuern,
+  // falls der Browser den Lock zwischendurch fallen gelassen hat.
+  if (wakeWanted && !wakeHeld()) requestWakeLock();
 }, {passive: true});
 // Build 11-06u: Wachhalten-Wächter – holt den Wake-Lock alle 60 s zurück, falls er
 // zwischendurch verloren ging; so hält das Display den ganzen Fahrttag durch.
-setInterval(() => { if ((sharing || following || saverOn) && !document.hidden) requestWakeLock(); }, 60000);
+setInterval(() => {
+  if (!document.hidden && wakeWanted && !wakeHeld()) requestWakeLock();   // Build 11-06y: 20-s-Erneuerung
+  else if ((sharing || following || saverOn) && !document.hidden) requestWakeLock();
+}, 20000);
 
 // Vollbild per CSS-Klasse (funktioniert auch auf iPhone/iPad ohne Fullscreen-API)
 function toggleFs() {
