@@ -648,3 +648,11 @@ footer {
    mitten im Wort um – Buttons bleiben grundsätzlich in einer Zeile
    (die Filterzeile size't den Button jetzt zusätzlich auf Inhalt). */
 .btn { white-space: nowrap; }
+
+
+/* Build 11-06k: Ausnahme fuer lange Button-Texte – Aufklapp-Hinweise
+   (data-bs-toggle="collapse", z. B. „Noch keine GPX-Datei?“ beim Tour-Anlegen)
+   muessen mehrzeilig duerfen; das globale Einzeilig-Gebot aus 11-06i liess den
+   langen Hinweistext ueber den rechten Rand hinauslaufen. Normale Buttons
+   bleiben weiter einzeilig (gegen „Anwende|n“-Umbruch). */
+.btn[data-bs-toggle="collapse"] { white-space: normal; text-align: start; }

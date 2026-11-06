@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 j')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 k')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2018,3 +2018,28 @@ class AmberAccentTest(AppTestCase):
         # Der Amber-FAB der Bottom-Nav bleibt unangetastet
         base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
         self.assertIn('.bottom-nav-create {\n  background: #f0a500;', base)
+
+
+class VersionBumpAndHintWrapTest(AppTestCase):
+    """Build 2026-11-06k: (1) Der Routenplaner-Hinweis auf der Tour-Anlegen-Seite
+    lief seit 11-06i ueber den Rand – das globale Einzeilig-Gebot fuer Buttons
+    verhinderte den Zeilenumbruch im langen Aufklapp-Button; Aufklapp-Buttons
+    (data-bs-toggle="collapse") duerfen jetzt wieder mehrzeilig sein.
+    (2) Die Versionsnummer wurde erstmals seit Build af wieder angehoben:
+    1.4.0 -> 1.5.0."""
+
+    def test_k_version_1_5_0(self):
+        self.assertEqual(appmod.APP_VERSION, '1.5.0')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 k')
+
+    def test_k_aufklapp_buttons_wrappen(self):
+        css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
+        self.assertIn('Build 11-06k', css)
+        # Grundregel bleibt: normale Buttons einzeilig (gegen „Anwende|n“-Umbruch)
+        self.assertIn('.btn { white-space: nowrap; }', css)
+        # Ausnahme: Aufklapp-Hinweise duerfen mehrzeilig sein
+        self.assertIn('.btn[data-bs-toggle="collapse"] { white-space: normal;', css)
+        create = open(os.path.join(ROOT, 'templates', 'touren', 'create.html'),
+                      encoding='utf-8').read()
+        self.assertIn('data-bs-target="#routenplaner-hinweis"', create)
+        self.assertIn('Noch keine GPX-Datei', create)

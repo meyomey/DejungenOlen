@@ -88,8 +88,8 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
-APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-06 j'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_VERSION = '1.5.0'
+APP_BUILD   = '2026-11-06 k'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request

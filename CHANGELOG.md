@@ -1,4 +1,8 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build k) – Text-Überlauf behoben & Versionssprung 1.4.0 → 1.5.0
+- Aufklapp-Hinweise (z. B. „Noch keine GPX-Datei?“ beim Tour-Anlegen) brechen wieder um: Das globale Einzeilig-Gebot für Buttons aus Build i ließ den langen Hinweistext über den rechten Rand laufen; Aufklapp-Buttons (data-bs-toggle="collapse") sind jetzt ausgenommen, normale Buttons bleiben einzeilig.
+- Versionsnummer erstmals seit Build af wieder angehoben (1.4.0 → 1.5.0) – seitdem kamen u. a.: WhatsApp-Verwaltung, Kopf-/Aktionsleisten, eine Button-Familie app-weit, OSM-Direktsuche mit Circuit-Breaker, Rückblick-Extras. Footer und Deploy-ZIPs führen künftig 1.5.0.
+- 254 Tests, py_compile OK.
 ## 1.4.0 – 2026-11-06 (Build j) – Ein Gelbton für alle Plus-Akzente
 - Die getönte Plus-Kachel der mobilen Kopfzeile nutzt jetzt das App-Amber #f0a500 (wie der runde Plus-Button der Bottom-Nav und der aktive Menüpunkt) statt Bootstrap-Gelb #ffc107 – vorher trafen sich auf einem Handy-Screen zwei verschiedene Gelbtöne.
 - 252 Tests, py_compile OK.
