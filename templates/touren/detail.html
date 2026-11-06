@@ -107,7 +107,8 @@
        ohne dass man die Tourseite neu laden muss. #}
     <span id="fahren-host">
       <span id="fahren-running" {% if not (live_now and live_now.tour_id == tour.id) %}class="d-none"{% endif %}>
-        <button type="button" class="btn btn-sm btn-danger" disabled
+        <button type="button" id="btn-fahrt-running" class="btn btn-sm btn-danger" disabled
+                onclick="fahrtBeenden()"
                 title="Auf dieser Tour läuft gerade eine Fahrt ({{ live_now.n if live_now else 0 }} unterwegs{% if live_now and live_now.recording %} · Aufzeichnung läuft{% endif %}) – der rote Punkt oben führt zur Live-Karte">
           <i class="bi bi-record-circle me-1"></i><span class="lbl">Fahrt läuft</span>
         </button>
@@ -128,8 +129,10 @@
     {% if current_user.is_admin or current_user.is_organizer or tour.created_by == current_user.id %}
     {% if current_user.is_organizer and tour.status == 'planned' %}
     <form method="post" action="{{ url_for('tour_complete', tour_id=tour.id) }}"
-          onsubmit="return confirm('Tour als abgeschlossen markieren?')">
-      <button class="btn btn-sm btn-success">
+          onsubmit="return abschliessenGuard()">
+      {# Build 11-06p: Läuft auf dieser Tour eine Fahrt, tritt „Abschließen“ optisch einen
+         Schritt zurück (weicher Tint statt Vollgrün) – es stoppt NICHT die Fahrt #}
+      <button class="btn btn-sm {% if live_now and live_now.tour_id == tour.id %}btn-outline-success{% else %}btn-success{% endif %}">
         <i class="bi bi-check2-circle me-1"></i><span class="lbl">Abschließen</span>
       </button>
     </form>
@@ -1622,19 +1625,49 @@
 <script>
 // Build o (2026-11-04): „Fahren“/„Fahrt läuft“ aktualisiert sich selbst – base.html pollt
 // /api/live/now alle 30 s und ruft diesen Hook; die Tourseite muss dafür nicht neu geladen werden.
+window.__fahrenAktiv = {{ 'true' if live_now and live_now.tour_id == tour.id else 'false' }};
 window.djoLiveNowUpdate = function (lv) {
   const run = document.getElementById('fahren-running');
   const nor = document.getElementById('fahren-normal');
   if (!run || !nor) return;
   const active = !!(lv && lv.tour_id === {{ tour.id }});
+  window.__fahrenAktiv = active;                     // Build 11-06p: Wächter für „Abschließen“
   run.classList.toggle('d-none', !active);
   nor.classList.toggle('d-none', active);
-  if (active && lv) {
-    const b = run.querySelector('button');
-    if (b) b.title = 'Auf dieser Tour läuft gerade eine Fahrt (' + lv.n + ' unterwegs' +
-                      (lv.recording ? ' · Aufzeichnung läuft' : '') + ') – der rote Punkt oben führt zur Live-Karte';
-  }
+  if (active) updateFahrenBtn(lv);
 };
+// Build 11-06p: Läuft die EIGENE Fahrt, wird aus dem Status-Knopf ein aktiver
+// „Fahrt beenden“-Knopf – vorher standen drei rote Anzeigen konkurrierend herum
+// (Navbar-Punkt, Pill unten rechts, deaktivierter Knopf) und man griff aus
+// Versehen zu „Abschließen“. Fremde Fahrten bleiben reiner Status (deaktiviert).
+function updateFahrenBtn(lv) {
+  const b = document.getElementById('btn-fahrt-running');
+  if (!b) return;
+  let own = false;
+  try { const st = window.djoFahren && djoFahren.state(); own = !!(st && st.tour_id === {{ tour.id }}); } catch (e) {}
+  const n = (lv && lv.n) || {{ live_now.n if live_now else 0 }};
+  const rec = lv && lv.recording != null ? lv.recording : {{ 'true' if live_now and live_now.recording else 'false' }};
+  b.disabled = !own;
+  b.classList.toggle('btn-danger', own);
+  b.classList.toggle('btn-outline-danger', !own);
+  b.querySelector('.lbl').textContent = own ? 'Fahrt beenden' : 'Fahrt läuft';
+  b.title = own
+    ? 'Eigene Fahrt beenden – die Aufzeichnung wird gestoppt und bleibt zum Übernehmen an der Tour gespeichert'
+    : 'Auf dieser Tour läuft gerade eine Fahrt (' + n + ' unterwegs' + (rec ? ' · Aufzeichnung läuft' : '') + ') – der rote Punkt oben führt zur Live-Karte';
+}
+function fahrtBeenden() {
+  if (!confirm('Eigene Fahrt beenden? Die Aufzeichnung wird gestoppt – du kannst sie danach auf dieser Tourseite übernehmen.')) return;
+  fetch('/api/location/stop?tour_id=' + {{ tour.id }}, {method: 'POST', keepalive: true}).catch(() => {});
+  try { window.djoFahren && djoFahren.clear(); } catch (e) {}
+  window.__fahrenAktiv = false;
+  const run = document.getElementById('fahren-running'), nor = document.getElementById('fahren-normal');
+  if (run && nor) { run.classList.add('d-none'); nor.classList.remove('d-none'); }   // sofort zurück zu „Fahren“
+}
+function abschliessenGuard() {
+  if (!window.__fahrenAktiv) return confirm('Tour als abgeschlossen markieren?');
+  return confirm('Es läuft noch eine Fahrt (Aufzeichnung) – „Abschließen“ stoppt sie NICHT.\nBesser: erst oben „Fahrt beenden“, dann die Tour abschließen.\n\nTrotzdem jetzt abschließen?');
+}
+if (window.__fahrenAktiv) updateFahrenBtn(null);
 </script>
 <script src="{{ url_for('static', filename='js/osm_gastro.js') }}?v={{ app_build|urlencode }}"></script>
 <script>

@@ -1,4 +1,8 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build p) – Eine Live-Anzeige statt dreier, „Abschließen“ entschärft
+- Konsolidiert: Auf der Tourseite zeigt jetzt die Aktionsleiste den Lauf-Status an – die rote „Fahrt läuft“-Pill unten rechts erscheint dort nicht mehr (Navbar-Punkt bleibt app-weit). Läuft die EIGENE Fahrt, wird der Knopf zum aktiven „⏺ Fahrt beenden“ (stoppt die eigene Aufzeichnung, ohne die Tourseite zu verlassen; danach steht wieder „Fahren“ da). Fremde Fahrten bleiben reiner Status.
+- „Abschließen“ tritt bei laufender Fahrt einen Schritt zurück (weicher Tint statt Vollgrün) und fragt beim Klick nach: „Es läuft noch eine Fahrt – Abschließen stoppt sie NICHT“. Bisher wirkte das grüne „Abschließen“ wie der Knopf zum Fahrt-Beenden.
+- 264 Tests, py_compile OK.
 ## 1.5.0 – 2026-11-06 (Build o) – Stromspar-Modus Stufe 2: gröber senden, Kurven-Trigger
 - Im Stromspar-Modus sendet die Aufzeichnung gröber: alle 20 s statt 10 s (im Stand alle 45 s statt 30 s) – spürbar weniger Funk-Aktivität auf langen Geraden.
 - Neuer Richtungs-Trigger (über 25° Kursänderung, wie in den Akku-Modi von Strava & Co.): Kurven werden auch im gröberen Takt sofort gesichert – Ecken bleiben rund, nur Geraden werden ausged¼nnt. Außerhalb des Sparmodus ändert sich nichts.

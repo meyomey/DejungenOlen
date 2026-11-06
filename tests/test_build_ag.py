@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 o')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 p')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2030,7 +2030,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 o')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 p')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2132,3 +2132,32 @@ class SaverGpsThrottleTest(AppTestCase):
         self.assertIn('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft im 20-s-Takt.', live)
         # Normalmodus unverändert: 10 s / 30 s bleiben als Basis erhalten
         self.assertIn('saverOn ? 20000 : 10000', live)
+
+
+class LiveIndikatorKonsolidiertTest(AppTestCase):
+    """Build 2026-11-06p: Eine Live-Anzeige statt dreier + „Abschließen“ entschärft.
+    (1) Auf der Tourseite erscheint die rote „Fahrt läuft“-Pill unten rechts nicht
+    mehr (die Aktionsleiste zeigt den Status; Weitersenden läuft weiter).
+    (2) Läuft die EIGENE Fahrt, wird der Knopf zum aktiven „Fahrt beenden“;
+    fremde Fahrten bleiben deaktivierter Status. (3) „Abschließen“ tritt bei
+    laufender Fahrt optisch zurück und warnt vor dem Abschließen."""
+
+    def test_p_pill_auf_tourseite_unterdrueckt(self):
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertIn("document.getElementById('fahren-host')", base)
+        self.assertIn("removePill(); return; }   // Build 11-06p", base)
+
+    def test_p_eigene_fahrt_beenden_knopf(self):
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertIn('id="btn-fahrt-running"', det)
+        self.assertIn('function updateFahrenBtn(lv)', det)
+        self.assertIn("own ? 'Fahrt beenden' : 'Fahrt läuft'", det)
+        self.assertIn('function fahrtBeenden()', det)
+        self.assertIn("fetch('/api/location/stop?tour_id=' + {{ tour.id }}", det)
+        self.assertIn('window.__fahrenAktiv', det)
+
+    def test_p_abschliessen_entshaerft(self):
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertIn('onsubmit="return abschliessenGuard()"', det)
+        self.assertIn('Es läuft noch eine Fahrt (Aufzeichnung)', det)
+        self.assertIn('{% if live_now and live_now.tour_id == tour.id %}btn-outline-success{% else %}btn-success{% endif %}', det)

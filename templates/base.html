@@ -507,6 +507,7 @@ updateDarkUI();
     const s = state();
     if (!s) { cleanup(); removePill(); return; }
     if (document.getElementById('btn-share')) { cleanup(); removePill(); return; }  // Live-Seite führt die Fahrt
+    if (document.getElementById('fahren-host')) { removePill(); return; }   // Build 11-06p: Tourseite zeigt den Status zentral in der Aktionsleiste – Pill dort unterdrücken, Weitersenden läuft weiter
     const now = Date.now();
     if (now - s.started > 8 * 3600 * 1000) {          // hartes Limit wie auf der Live-Seite
       remoteStop(s.tour_id); window.djoFahren.clear(); cleanup(); removePill(); return;
