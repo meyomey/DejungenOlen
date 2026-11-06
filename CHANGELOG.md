@@ -1,4 +1,9 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build n) – Video-Fehler inline, ffmpeg aus Git, Stromspar-Modus
+- Video-Seite: Schlägt die MP4-Erstellung serverseitig fehl, erscheint die Meldung jetzt direkt im Fortschritts-Kasten (mit Grund, Button bleibt bedienbar für erneuten Versuch) – vorher lud die Seite sich still neu und der Formularstand war weg.
+- ffmpeg-Binärdatei (77 MB) aus der Git-Verwaltung genommen („sanftes Slimming“): Der Verlauf wächst nicht weiter, die Datei bleibt lokal und auf dem Server; Deploy-ZIPs enthielten sie schon immer nicht. Bei Serverumzug aus der Historie holen (git checkout f32448c -- ffmpeg).
+- Stromspar-Modus auf der Live-Karte (Schalter „🌙 Stromspar“): Bildschirm bleibt AN (Wake Lock), wird aber dunkel überzogen – kein Entsperren nötig; Tippen hellt 4 s lang auf, ✕ beendet, mit Fahrtende endet der Modus automatisch. Die Aufzeichnung läuft unverändert weiter.
+- 260 Tests, py_compile OK.
 ## 1.5.0 – 2026-11-06 (Build m) – Footer-Link heißt jetzt „Monatsrückblick“
 - Der Footer-Link „Newsletter“ heißt jetzt „Monatsrückblick“ – so nennt sich die Zielseite selbst (Kopf: „Monatsrückblick MM/JJJJ“); auch der Browser-Titel der Seite wurde von „Newsletter MM/JJJJ“ auf „Monatsrückblick MM/JJJJ“ angeglichen. Die Adresse (/newsletter) bleibt unverändert, alte Links/Bookmarks funktionieren weiter.
 - 257 Tests, py_compile OK.

@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 m')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 n')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2030,7 +2030,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 m')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 n')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2074,3 +2074,44 @@ class MonatsrueckblickLabelTest(AppTestCase):
         # Die URL-Route bleibt unveraendert
         self.assertIn("url_for('newsletter_current')", base_nl := open(
             os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read())
+
+
+class SaverModeAndFixesTest(AppTestCase):
+    """Build 2026-11-06n: (1) Video-Seite zeigt Server-Fehler direkt im
+    Fortschritts-Kasten (vorher stiller Seiten-Reload). (2) ffmpeg (77 MB) ist
+    aus der Git-Verwaltung genommen (sanftes Slimming; Datei bleibt lokal).
+    (3) Stromspar-Modus auf der Live-Karte: dunkles Overlay, Bildschirm bleibt
+    AN (Wake Lock), Tap hellt kurz auf, ✕/Fahrtende beendet."""
+
+    def test_n_video_fehler_inline(self):
+        v = open(os.path.join(ROOT, 'templates', 'touren', 'video.html'), encoding='utf-8').read()
+        self.assertNotIn('window.location.href = window.location.pathname', v)
+        self.assertIn('DOMParser', v)
+        self.assertIn("MP4 nicht erstellt", v)
+
+    def test_n_ffmpeg_aus_git_aber_lokal_da(self):
+        gi = open(os.path.join(ROOT, '.gitignore'), encoding='utf-8').read()
+        self.assertIn('\nffmpeg\n', gi)
+        # Arbeitskopie behält die Datei (MP4-Feature/Testlauf weiterhin möglich)
+        self.assertTrue(os.path.isfile(os.path.join(ROOT, 'ffmpeg')))
+        # …aber sie ist nicht mehr versioniert
+        if os.path.isdir(os.path.join(ROOT, '.git')):
+            import subprocess
+            out = subprocess.run(['git', 'ls-files', 'ffmpeg'], cwd=ROOT,
+                                 capture_output=True, text=True).stdout.strip()
+            self.assertEqual(out, '')
+
+    def test_n_stromspar_modus(self):
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('id="btn-saver"', live)
+        self.assertIn('id="saver-dim"', live)
+        self.assertIn('async function setSaver(', live)
+        self.assertIn('function saverPeek(', live)
+        # Bildschirm bleibt AN: Sparmodus fordert die Wake-Lock an und meldet es
+        self.assertIn('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft weiter.', live)
+        # Sparmodus hält den Bildschirm auch nach App-Wechsel wach; Ende mit der Fahrt
+        self.assertIn('sharing || following || saverOn', live)
+        self.assertIn('if (saverOn) setSaver(false);', live)
+        css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
+        self.assertIn('#saver-dim {', css)
+        self.assertIn('#saver-dim.saver-peek', css)

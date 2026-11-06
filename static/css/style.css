@@ -656,3 +656,26 @@ footer {
    langen Hinweistext ueber den rechten Rand hinauslaufen. Normale Buttons
    bleiben weiter einzeilig (gegen „Anwende|n“-Umbruch). */
 .btn[data-bs-toggle="collapse"] { white-space: normal; text-align: start; }
+
+
+/* Build 11-06n: Stromspar-Modus der Live-Karte – Bildschirm bleibt an, wird dunkel überzogen.
+   Tippen hellt 4 s lang auf (saver-peek), ✕ oben rechts beendet; z-index über Leaflet & Navbar. */
+#saver-dim {
+  position: fixed; inset: 0; z-index: 4000;
+  background: rgba(5, 9, 20, .86);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  cursor: pointer;
+}
+#saver-dim.saver-peek { background: rgba(5, 9, 20, .18); }
+#saver-dim .saver-chip {
+  color: #cdd8f0; font-size: .8rem; text-align: center;
+  background: rgba(18, 26, 50, .9); border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: 999px; padding: .4rem 1rem;
+}
+#saver-off {
+  position: absolute; top: max(14px, env(safe-area-inset-top)); right: 16px;
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .4); background: rgba(18, 26, 50, .9);
+  color: #fff; font-size: 1.15rem; line-height: 1;
+}

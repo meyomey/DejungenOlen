@@ -1052,9 +1052,24 @@ document.addEventListener('DOMContentLoaded', () => {
           (blob.size/1048576).toFixed(1) + ' MB – der Download wurde gestartet.</div>' +
           '<a class="small" href="' + a.href + '" download="' + a.download + '">Falls nichts passiert: hier erneut speichern</a>';
       } else {
-        // Fehlerseite (Flash-Meldung) neu laden
+        // Build 11-06n: Server-Fehler direkt hier zeigen (vorher: stiller Seiten-Reload,
+        // bei dem die Meldung weiter oben landete und der Formularstand verloren ging)
+        let msg = '';
+        try {
+          const doc = new DOMParser().parseFromString(await resp.text(), 'text/html');
+          const al = doc.querySelector('.alert');
+          msg = al ? al.textContent.replace(/\s+/g, ' ').trim() : '';
+        } catch (e) { /* Antwort war kein HTML */ }
+        const warn = document.createElement('div');
+        warn.className = 'alert alert-warning py-2 small mb-2';
+        warn.textContent = 'MP4 nicht erstellt' + (msg ? ' – ' + msg : ' (HTTP ' + resp.status + ').');
+        const hint = document.createElement('div');
+        hint.className = 'small text-muted';
+        hint.textContent = 'Bitte erneut versuchen – bei sehr langen Videos: weniger Fotos oder „Karte aus“.';
+        box.innerHTML = '';
+        box.append(warn, hint);
         done();
-        window.location.href = window.location.pathname;
+        reset();
       }
     } catch (err) {
       done(); reset();

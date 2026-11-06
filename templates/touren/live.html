@@ -120,6 +120,12 @@
 <div class="row g-3">
   <div class="col-12 col-lg-8">
     <div id="live-wrap">
+      <!-- Build 11-06n: Stromspar-Overlay – dunkel, aber Bildschirm bleibt AN (kein Entsperren nötig);
+           Tippen irgendwo hellt 4 s lang auf, ✕ oben rechts beendet den Modus -->
+      <div id="saver-dim" class="d-none">
+        <div class="saver-chip">🌙 Stromspar an – Tippen = kurz aufhellen · ✕ oben rechts = aus</div>
+        <button type="button" id="saver-off" onclick="setSaver(false)" aria-label="Stromspar-Modus beenden">✕</button>
+      </div>
       <div id="live-map"></div>
       <div id="live-bar">
         {# Build b (2026-11-04): lb-main = die 3 Fahrt-Knöpfe (mobil unten groß in der Daumenzone),
@@ -137,6 +143,8 @@
           <button type="button" class="btn btn-light" id="btn-follow" onclick="toggleFollow()" title="Karte bleibt auf meiner Position zentriert">🎯 Folgen</button>
           <button type="button" class="btn btn-light" onclick="showAll()" title="Alle Mitfahrer und die Strecke einpassen">👥 Alle</button>
           <button type="button" class="btn btn-light" id="btn-fs" onclick="toggleFs()" title="Vollbild">⛶ Vollbild</button>
+          <button type="button" class="btn btn-light" id="btn-saver" onclick="setSaver(!saverOn)"
+                  title="Stromspar-Modus: Bildschirm bleibt an, wird aber dunkel – Tippen hellt kurz auf, ✕ beendet">🌙 Stromspar</button>
         </div>
       </div>
     </div>
@@ -196,7 +204,8 @@ function updatePauseBtn() {
   b.classList.toggle('btn-warning', !isPaused());
   b.classList.toggle('btn-success', isPaused());
 }
-let ownLatLng = null, ownMarker = null, accCircle = null, wakeLock = null, sentCount = 0;
+let ownLatLng = null, ownMarker = null, accCircle = null, wakeLock = null, sentCount = 0,
+    saverOn = false, saverPeekTimer = null;   // Build 11-06n: Stromspar-Modus
 let lastOwnAt = 0, ownAcc = null;                 // Build af: für „📷 Foto“ (frische Position ohne neue Abfrage)
 
 // ── Karte, Strecke, Treffpunkt, Einkehr ──────────────────────────────────────────────────────
@@ -368,7 +377,7 @@ function poll() {
 render(INITIAL);
 setInterval(poll, 15000);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) { poll(); if (sharing || following) { ensureWatch(); requestWakeLock(); } }
+  if (!document.hidden) { poll(); if (sharing || following || saverOn) { ensureWatch(); requestWakeLock(); } }
 });
 
 // ── Eigener Standort: Teilen / Folgen ─────────────────────────────────────────────────────────
@@ -400,6 +409,7 @@ function hideRecHint() {
   if (el) el.classList.add('d-none');
 }
 function stopShare(viaBeacon, withHint) {
+  if (saverOn) setSaver(false);   // Build 11-06n: Sparmodus endet mit der Fahrt
   if (withHint === undefined) { withHint = true; }   // Build q: nach normalem Beenden erinnern, nach Fehlern nicht
   const was = sharing;
   sharing = false;
@@ -592,6 +602,39 @@ async function requestWakeLock() {
 function releaseWakeLock() {
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
 }
+
+// ── Build 11-06n: Stromspar-Modus – Display bleibt AN, wird aber dunkel überzogen ───────────────
+// Das Display ist der größte Akku-Verbraucher bei der Aufzeichnung. Der Schalter legt ein
+// dunkles Overlay über die ganze Seite: kein Entsperren nötig, ein Tipp irgendwo hellt 4 s
+// lang auf („spähen“), ✕ beendet. Die GPS-/Sende-Logik der Aufzeichnung läuft unverändert
+// weiter; die Wake-Lock (Bildschirm an) wird im Sparmodus zusätzlich angefordert.
+async function setSaver(on) {
+  saverOn = on;
+  const dim = document.getElementById('saver-dim');
+  const b = document.getElementById('btn-saver');
+  if (dim) { dim.classList.toggle('d-none', !on); if (on) dim.classList.remove('saver-peek'); }
+  if (b) { b.classList.toggle('btn-warning', on); b.classList.toggle('btn-light', !on); }
+  if (on) {
+    requestWakeLock();
+    setStatus('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft weiter. Tippen = kurz aufhellen.', 'sharing');
+    clearTimeout(saverPeekTimer);
+  } else if (sharing) {
+    requestWakeLock();
+    setStatus('🌙 Stromspar aus.', 'sharing');
+  }
+}
+function saverPeek() {
+  if (!saverOn) return;
+  const dim = document.getElementById('saver-dim');
+  if (!dim) return;
+  dim.classList.add('saver-peek');
+  clearTimeout(saverPeekTimer);
+  saverPeekTimer = setTimeout(() => dim.classList.remove('saver-peek'), 4000);
+}
+document.getElementById('saver-dim').addEventListener('click', e => {
+  if (e.target && e.target.id === 'saver-off') return;   // ✕ hat sein eigenes onclick
+  saverPeek();
+});
 
 // Vollbild per CSS-Klasse (funktioniert auch auf iPhone/iPad ohne Fullscreen-API)
 function toggleFs() {

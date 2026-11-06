@@ -39,3 +39,9 @@ config_local.py
 .DS_Store
 Thumbs.db
 
+
+# Build 11-06n: ffmpeg-Binärdatei (77 MB) nicht mehr im Git-Repository („sanftes Slimming“ –
+# der Verlauf wächst nicht weiter). Die Datei bleibt lokal liegen und liegt auf dem Server;
+# Deploy-ZIPs enthalten sie (wie bisher) nicht. Bei einem Serverumzug aus der Historie holen:
+#   git checkout f32448c -- ffmpeg
+ffmpeg
