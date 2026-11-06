@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-06 f'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-06 g'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -7705,8 +7705,8 @@ def _overpass_elements_to_results(elements):
 
 
 def _overpass_fetch(query, cache_key=None, ttl=600, budget_s=40):
-    """Build r/s: Overpass-Abfrage mit identifizierendem User-Agent, Ausweich-Servern (12 s je Server,
-    Gesamtbudget budget_s, damit Passenger nicht abbricht) und kleinem In-Memory-Cache.
+    """Build r/s: Overpass-Abfrage mit identifizierendem User-Agent, Ausweich-Servern (18 s je Server
+    seit 11-06g, Gesamtbudget budget_s, damit Passenger nicht abbricht) und kleinem In-Memory-Cache.
     Rückgabe (elements, quelle, fehler) – elements ist None, wenn kein Server geantwortet hat."""
     now = _time.time()
     if cache_key is not None:
@@ -7725,7 +7725,10 @@ def _overpass_fetch(query, cache_key=None, ttl=600, budget_s=40):
             break
         host = endpoint.split('/')[2]
         try:
-            resp = http_requests.post(endpoint, data={'data': query}, headers=headers, timeout=12)
+            # Build 11-06g: 18 s statt 12 s – Overpass bekommt intern timeout:15; wenn die
+            # Abfrage diese Grenze ausschöpft (erste, ungecachte Suche), brach die App vorher
+            # ab und die Browser-Direktsuche sprang IMMER ein.
+            resp = http_requests.post(endpoint, data={'data': query}, headers=headers, timeout=18)
             if resp.status_code != 200:
                 last_error = f'{status_hint.get(resp.status_code, "HTTP " + str(resp.status_code))} bei {host}'
                 app.logger.warning(f'Overpass {endpoint} -> {resp.status_code}: {(resp.text or "")[:200]!r}')

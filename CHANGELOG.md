@@ -1,5 +1,11 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-06 (Build g) – OSM-Suche: Ursache sichtbar, Server wartet fair
+
+- Bei „Gaststätten im Kartenbereich suchen“ (und der Strecken-Suche auf der Tour) springt bei Server-Problemen die Direktsuche im Browser ein – das ist als Sicherheitsnetz gebaut. Jetzt wird aber **sichtbar, warum** ausgewichen wurde (z. B. „Zeitüberschreitung bei overpass-api.de“, „zu viele Anfragen (429)“) – sowohl im Hinweis als auch klein neben dem Ergebnis.
+- Serverseitig wartet die App jetzt **18 s** statt 12 s pro Overpass-Server: Overpass bekommt intern 15 s Zeit – bei der ersten, ungecachten Suche brach die App vorher ab, deshalb sprang praktisch immer die Direktsuche ein. Nach einem erfolgreichen Server-Treffer antwortet die Suche für 10 Minuten aus dem Cache ohne erneute Overpass-Anfrage.
+- 248 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-06 (Build f) – Buttons app-weit eine Familie
 
 - Globaler Button-Feinschliff: Gleiche Ecken für alle Buttons, und die Outline-Varianten (grau/grün/rot) haben jetzt überall die weiche Tint-Optik aus der Aktionsleiste – vorher nackte Bootstrap-Kacheln, besonders auf Gastro-, Archiv- und Admin-Seiten auffällig. Dark Mode mit eigenen Tönen.

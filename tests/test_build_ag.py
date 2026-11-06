@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 f')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 g')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1897,3 +1897,31 @@ class GlobalButtonHarmonyTest(AppTestCase):
         # dynamisch: Gastro-Seite (frueher nackte Kacheln) erbt den weichen Look
         self.login_member()
         self.get_html('/gastro')            # muss fehlerfrei rendern
+
+
+class OverpassFallbackDiagnoseTest(AppTestCase):
+    """Build 2026-11-06g: Die Overpass-Fallback-Kette ist diagnostizierbar – der Grund
+    der Server-Suche (z. B. Zeitüberschreitung) wird beim Ausweichen ANGEZEIGT und nach
+    erfolgreicher Direktsuche mitgeliefert; serverseitig wartet die App jetzt 18 s
+    (Overpass hat intern timeout:15 – vorher 12 s, dadurch sprang bei der ersten,
+    ungecachten Suche immer die Direktsuche ein)."""
+
+    def test_g_overpass_reason_visible(self):
+        srcapp = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('timeout=18', srcapp)
+        self.assertIn('brach die App vorher', srcapp)          # Erklärung im Code
+        gf = open(os.path.join(ROOT, 'templates', 'gastro', 'form.html'), encoding='utf-8').read()
+        self.assertIn("d.server_note = reason", gf)
+        self.assertIn('Server-Ausweichsuche:', gf)
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertIn("res.server_note = reason", det)
+        self.assertIn('Server-Ausweichsuche:', det)
+        # dynamisch: Server-Suche schlägt fehl (Requests sind in Tests geblockt) →
+        # 502 MIT Grund + Query, damit der Browser direkt weitermachen kann
+        self.login_org()
+        r = self.client.get('/api/overpass-gastro?s=53.40&w=9.79&n=53.49&e=9.81')
+        self.assertEqual(r.status_code, 502)
+        js = r.get_json()
+        self.assertIn('error', js)
+        self.assertIn('query', js)                             # Query für die Direktsuche
+        self.assertTrue(js['error'])                           # sprechender Grund vorhanden

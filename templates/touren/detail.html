@@ -2805,8 +2805,11 @@ function searchOsmGastro() {
       const d = await r.json().catch(() => ({}));
       if (r.ok && d.results) return d;
       if (!d.query) throw new Error(d.error || ('Server antwortet mit HTTP ' + r.status));
-      body.innerHTML = '<div class="text-muted small py-1"><span class="spinner-border spinner-border-sm me-1"></span>Server-Suche fehlgeschlagen – frage overpass-api.de direkt…</div>';
-      return osmGastroDirect(d.query, radius).catch(e2 => { throw new Error((d.error || '') + ' · Direktabfrage: ' + e2.message); });
+      const reason = d.error || ('Server antwortet mit HTTP ' + r.status);   // Build 11-06g: Grund sichtbar
+      body.innerHTML = '<div class="text-muted small py-1"><span class="spinner-border spinner-border-sm me-1"></span>Server-Suche fehlgeschlagen (' + escHtml(reason) + ') – frage overpass-api.de direkt…</div>';
+      return osmGastroDirect(d.query, radius)
+        .then(res => (res.server_note = reason, res))
+        .catch(e2 => { throw new Error(reason + ' · Direktabfrage: ' + e2.message); });
     })
     .then(d => { osmGastroLoaded = true; renderOsmGastro(d, body); })
     .catch(err => {
@@ -2846,7 +2849,8 @@ function renderOsmGastro(d, body) {
       .addTo(osmGastroLayer);
   });
   const src = d.source && d.source !== 'cache' ? ` · Quelle: ${escHtml(d.source)}` : '';
-  body.innerHTML = `<div class="small text-muted mb-2">${res.length} Treffer bis ${d.radius} m neben der Strecke, nach Streckenkilometer${src}. Orange Marker auf der Karte – „Übernehmen“ legt den Ort in der Gastro-Liste an.</div>` +
+  const note = d.server_note ? ` · <span class="text-danger" title="Grund, warum der Server nicht antworten konnte">⚠ Server-Ausweichsuche: ${escHtml(d.server_note)}</span>` : '';
+  body.innerHTML = `<div class="small text-muted mb-2">${res.length} Treffer bis ${d.radius} m neben der Strecke, nach Streckenkilometer${src}${note}. Orange Marker auf der Karte – „Übernehmen“ legt den Ort in der Gastro-Liste an.</div>` +
     '<div class="list-group list-group-flush" id="osm-gastro-list">' + res.map((r, i) => `
       <div class="list-group-item px-0 py-2 d-flex align-items-start gap-2" data-idx="${i}">
         <span style="font-size:1.3rem;line-height:1.2;cursor:pointer" onclick="focusOsmGastro(${i})" title="Auf der Karte zeigen">${GASTRO_ICONS[r.app_type] || '🍴'}</span>

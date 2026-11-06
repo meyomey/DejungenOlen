@@ -356,11 +356,12 @@ function searchOverpass() {
       const data = await r.json().catch(() => ({}));
       if (r.ok && data.results) return data;
       if (data.zoom_in) throw Object.assign(new Error(data.error), {noHint: true});   // zu großer Ausschnitt: kein Fallback nötig
-      const reason = data.error || ('Server antwortet mit HTTP ' + r.status);
-      el.innerHTML = '<div class="text-center text-muted small py-2"><div class="spinner-border spinner-border-sm me-1"></div>Server-Suche fehlgeschlagen – frage overpass-api.de direkt…</div>';
+      const reason = data.error || ('Server antwortet mit HTTP ' + r.status);   // Build 11-06g: Grund sichtbar
+      el.innerHTML = '<div class="text-center text-muted small py-2"><div class="spinner-border spinner-border-sm me-1"></div>Server-Suche fehlgeschlagen (' + escHtml(reason) + ') – frage overpass-api.de direkt…</div>';
       return overpassDirect(data.query || overpassQuery(b))
+        .then(d => (d.server_note = reason, d))
         .catch(e2 => { throw new Error(reason + ' · Direktabfrage: ' + e2.message); });
-    }, () => overpassDirect(overpassQuery(b)))                              // Proxy gar nicht erreichbar → direkt
+    }, () => overpassDirect(overpassQuery(b)).then(d => (d.server_note = 'Server nicht erreichbar', d)))   // Proxy weg → direkt
     .then(data => renderOverpassResults(data, el))
     .catch(err => {
       el.innerHTML = `<p class="text-danger small mb-1">Suche fehlgeschlagen: ${escHtml(err.message)}</p>` + (err.noHint ? '' :
@@ -389,7 +390,8 @@ function renderOverpassResults(data, el) {
   res.forEach(r => { r.dist_m = Math.round(map.distance(c, [r.lat, r.lng])); });
   res.sort((a, b) => a.dist_m - b.dist_m);                                   // nächstgelegene zuerst
   const src = data.source ? `<span class="text-muted fw-normal">· ${escHtml(data.source)}</span>` : '';
-  el.innerHTML = `<div class="small fw-semibold mb-2">${res.length} Treffer – klicken zum Übernehmen: ${src}</div>` +
+  const note = data.server_note ? ` <span class="text-danger small" title="Grund, warum der Server nicht antworten konnte">⚠ Server-Ausweichsuche: ${escHtml(data.server_note)}</span>` : '';
+  el.innerHTML = `<div class="small fw-semibold mb-2">${res.length} Treffer – klicken zum Übernehmen: ${src}${note}</div>` +
     res.slice(0, 25).map(r => `
       <div class="border rounded p-2 mb-1 small osm-hit" style="cursor:pointer" data-hit='${escHtml(JSON.stringify(r))}'>
         <strong>${escHtml(r.name)}</strong>
