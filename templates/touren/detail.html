@@ -1264,7 +1264,7 @@
             <p class="text-muted small mb-2">
               Klicke auf die Karte oder gib Koordinaten manuell ein. Dann <strong>Speichern</strong>.
             </p>
-            <div id="gps-modal-map" data-map-guard-hint="👉 Tippen aktivieren – dann Position klicken" style="height:300px;border-radius:8px;margin-bottom:1rem"></div>
+            <div id="gps-modal-map" data-map-guard-hint="👉 Karte antippen – dann Position klicken" style="height:300px;border-radius:8px;margin-bottom:1rem"></div>
             <form id="gpsModalForm" method="post">
               <div class="row g-2 align-items-end">
                 <div class="col-md-4">
@@ -2560,7 +2560,7 @@ if (GPX_DATA && GPX_DATA.points && GPX_DATA.points.length > 0) {
 }
 
 // Build bb: Mobiler Kartenschutz zentral (static/js/map-touch.js) – Overlay
-// „Tippen zum Aktivieren", Zwei-Finger-Gesten bleiben jederzeit möglich.
+// „Karte zum Verschieben antippen", Zwei-Finger-Gesten bleiben jederzeit möglich.
 const map = L.map('tour-map', {
   zoomControl: true,
   scrollWheelZoom:  false,

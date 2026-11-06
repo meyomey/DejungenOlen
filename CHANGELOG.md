@@ -1,4 +1,7 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build q) – Karten-Overlay eindeutig benannt
+- Der Karten-Schutz auf Handys hieß „☝ Tippen zum Aktivieren“ und wurde mehrfach so verstanden, als ließe sich hier die TOUR starten/aktivieren – gemeint war die Karte (erst antippen, dann mit einem Finger verschieben). Neu: „☝ Karte zum Verschieben antippen“; die vier Positions-Picker (Treffpunkt, Orte, Gastro, GPS-Korrektur) bekamen ebenfalls eindeutige Hinweise („Karte antippen – Klick setzt danach …“).
+- 266 Tests, py_compile OK.
 ## 1.5.0 – 2026-11-06 (Build p) – Eine Live-Anzeige statt dreier, „Abschließen“ entschärft
 - Konsolidiert: Auf der Tourseite zeigt jetzt die Aktionsleiste den Lauf-Status an – die rote „Fahrt läuft“-Pill unten rechts erscheint dort nicht mehr (Navbar-Punkt bleibt app-weit). Läuft die EIGENE Fahrt, wird der Knopf zum aktiven „⏺ Fahrt beenden“ (stoppt die eigene Aufzeichnung, ohne die Tourseite zu verlassen; danach steht wieder „Fahren“ da). Fremde Fahrten bleiben reiner Status.
 - „Abschließen“ tritt bei laufender Fahrt einen Schritt zurück (weicher Tint statt Vollgrün) und fragt beim Klick nach: „Es läuft noch eine Fahrt – Abschließen stoppt sie NICHT“. Bisher wirkte das grüne „Abschließen“ wie der Knopf zum Fahrt-Beenden.

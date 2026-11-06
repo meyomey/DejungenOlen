@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 p')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 q')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1207,7 +1207,8 @@ class VideoSmoothTest(AppTestCase):
         js = open(os.path.join(ROOT, 'static', 'js', 'map-touch.js'), encoding='utf-8').read()
         self.assertIn('L.Map.addInitHook', js)                    # automatisch für jede Karte
         self.assertIn("mergeOptions({ mobileGuard: true })", js)
-        self.assertIn('Tippen zum Aktivieren', js)
+        self.assertIn('Karte zum Verschieben antippen', js)
+        self.assertNotIn('Tippen zum Aktivieren', js)             # Build 11-06q: missverständlich entfernt
         self.assertIn("data-map-guard-hint", js)                  # eigener Text je Karte
         self.assertIn("mapGuard === 'off'", js)                   # Opt-out (data-map-guard="off")
         base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
@@ -2030,7 +2031,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 p')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 q')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2161,3 +2162,29 @@ class LiveIndikatorKonsolidiertTest(AppTestCase):
         self.assertIn('onsubmit="return abschliessenGuard()"', det)
         self.assertIn('Es läuft noch eine Fahrt (Aufzeichnung)', det)
         self.assertIn('{% if live_now and live_now.tour_id == tour.id %}btn-outline-success{% else %}btn-success{% endif %}', det)
+
+
+class KartenOverlayTextTest(AppTestCase):
+    """Build 2026-11-06q: Das Karten-Overlay hieß „👆 Tippen zum Aktivieren“ und
+    wurde mehrfach so verstanden, als ließe sich hier die TOUR starten – gemeint
+    war die Karte (erst antippen, dann mit einem Finger verschieben). Neu:
+    „Karte zum Verschieben antippen“; auch die vier Positions-Picker haben
+    jetzt eindeutige Hinweise."""
+
+    def test_q_standard_text_eindeutig(self):
+        js = open(os.path.join(ROOT, 'static', 'js', 'map-touch.js'), encoding='utf-8').read()
+        self.assertIn('Karte zum Verschieben antippen', js)
+        self.assertNotIn('Tippen zum Aktivieren', js)
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertNotIn('Tippen zum Aktivieren', det)
+        self.assertIn('👉 Karte antippen – dann Position klicken', det)   # GPS-Korrektur
+
+    def test_q_picker_hinweise_eindeutig(self):
+        gastro = open(os.path.join(ROOT, 'templates', 'gastro', 'form.html'), encoding='utf-8').read()
+        orte = open(os.path.join(ROOT, 'templates', 'orte', 'form.html'), encoding='utf-8').read()
+        create = open(os.path.join(ROOT, 'templates', 'touren', 'create.html'), encoding='utf-8').read()
+        for tpl in (gastro, orte):
+            self.assertNotIn('Tippen aktivieren', tpl)
+            self.assertIn('👉 Karte antippen – Klick setzt danach die Position', tpl)
+        self.assertNotIn('Tippen aktivieren', create)
+        self.assertIn('👉 Karte antippen – Klick setzt danach den Treffpunkt', create)

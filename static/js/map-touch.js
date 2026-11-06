@@ -5,7 +5,7 @@
  *
  * Lösung (Standard bei Karten-Einbettungen, wie Leaflet.GestureHandling oder
  * Google-Maps-Embeds): Die Karte startet auf Handys ohne Ein-Finger-Ziehen und
- * zeigt ein Overlay „Tippen zum Aktivieren". Ein Tipp macht sie beweglich, ein
+ * zeigt ein Overlay „Karte zum Verschieben antippen". Ein Tipp macht sie beweglich, ein
  * 🔒-Knopf sperrt sie wieder. Zwei-Finger-Gesten (Zoomen/Verschieben) funktionieren
  * jederzeit – deshalb stört der Schutz niemanden, der bewusst mit der Karte arbeitet.
  *
@@ -27,7 +27,7 @@
     if (map.tap && map.tap.disable) map.tap.disable();  // touchZoom bleibt AN → zwei Finger klappen immer
 
     var hint = box.dataset.mapGuardHint ||
-               '<i class="bi bi-hand-index me-1"></i>Tippen zum Aktivieren';
+               '<i class="bi bi-hand-index me-1"></i>Karte zum Verschieben antippen';   // Build 11-06q: eindeutig (bezog sich vorher mehr auf die Tour als auf die Karte)
     var overlay = document.createElement('div');
     overlay.className = 'mt-guard-overlay';
     overlay.style.cssText = 'position:absolute;inset:0;z-index:1000;display:flex;' +
