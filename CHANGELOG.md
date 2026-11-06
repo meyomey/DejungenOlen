@@ -1,4 +1,11 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build w) – Live-Karte wieder sperrbar: 🔒-Knopf nach dem Freischalten
+- Nach dem Freischalten des Ecken-Guards (Pill „Zum Verschieben antippen“ oben links) ließ sich die Karte nicht wieder sperren – die Pill war weg und die Seite scrollte fortan nicht mehr normal. Jetzt erscheint beim Freischalten an derselben Ecke der **🔒-Knopf**: Er sperrt die Karte wieder (Seite scrollt normal, Pill kommt zurück).
+- Der Guard liest seinen Zustand **selbst** (`setLiveGuard()` ohne Argumente, `guardArmed = true` als Startwert): gesperrt = kein Fahrt/Folgen/Vollbild **und** nicht freigetippt. Damit bleibt der Zustand auch nach Fahrtende, Folgen-Aus oder Drehen des Geräts konsistent (Neu-Bewertung zusätzlich bei `resize` und nach dem Ziehen der Karte).
+- Während **Fahrt, Folgen und Vollbild** sind Pill und 🔒 ausgeblendet – dort muss Verschieben sofort gehen (wie seit Build u).
+- Hilfe-Seite erklärt das Sperren auf der Live-Karte.
+- 280 Tests, py_compile OK.
+
 ## 1.5.0 – 2026-11-06 (Build v) – Live-Karte-Nachjustieren: Scrollen, Knopf-Zustand, ehrlicher Doppeltipp
 - Scrollen wieder leicht: Der Antipp-Schutz kehrt auf der Live-Karte zurück – aber als dezente Pill OBEN LINKS statt als Overlay mitten auf der Karte. Ohne laufende Fahrt scrollt die Seite normal, die Pill schaltet die Karte zum Verschieben frei; sobald Fahrt/Folgen/Vollbild aktiv sind, schaltet der Schutz automatisch ab (sofortiges Verschieben) und kehrt danach zurück.
 - Der 🚵-Knopf zeigt jetzt sichtbar den aktiven Kartenstil („🚵 Standard“ hell / „🚵 Radkarte“ gelb) – vorher blieb die Hell-Färbung drauf und überdeckte die Gelb-Markierung.

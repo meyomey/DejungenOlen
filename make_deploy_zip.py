@@ -95,7 +95,10 @@ def changed_since(ref):
         else:
             changed.add(path)
     changed = {p for p in changed if wanted(p) and (ROOT / p).is_file()}
-    deleted = {p for p in deleted if wanted(p) and not (ROOT / p).exists()}
+    # Build 11-06w: Die ffmpeg-Binärdatei ist seit Build n gitignored und liegt nur lokal/auf dem
+    # Server. Fehlt sie in einem frischen Klon, ist das KEINE Löschung – sonst stünde im Paket
+    # „Auf dem Server löschen: ffmpeg“ und die 77-MB-Datei wäre weg.
+    deleted = {p for p in deleted if wanted(p) and p != FFMPEG and not (ROOT / p).exists()}
     return sorted(changed), sorted(deleted)
 
 

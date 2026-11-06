@@ -26,6 +26,11 @@
   #live-guard-pill { position: absolute; top: 56px; left: 8px; z-index: 1100;
                      background: rgba(20, 30, 60, .88); color: #fff; border: 0; border-radius: 20px;
                      padding: .45rem .8rem; font-size: .85rem; box-shadow: 0 1px 5px rgba(0,0,0,.35); }
+  /* Build 11-06w: 🔒 an derselben Ecke – erscheint nach dem Freischalten und sperrt wieder */
+  #live-guard-lock { position: absolute; top: 56px; left: 8px; z-index: 1100;
+                     background: rgba(20, 30, 60, .88); color: #fff; border: 0; border-radius: 20px;
+                     padding: .45rem .7rem; font-size: .95rem; line-height: 1.1;
+                     box-shadow: 0 1px 5px rgba(0,0,0,.35); }
   .map-toast { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); z-index: 1150;
                background: rgba(20, 30, 60, .92); color: #fff; border-radius: 20px;
                padding: .6rem 1rem; font-size: 1rem; font-weight: 600; max-width: 92%;
@@ -357,13 +362,13 @@ function render(locs) {
 function focusUser(uid) {
   const m = markers[uid];
   if (!m) return;
-  following = false; updateFollowBtn();
+  following = false; updateFollowBtn(); setLiveGuard();   // Build 11-06w
   map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
   m.openTooltip();
   document.getElementById('live-wrap').scrollIntoView({behavior: 'smooth', block: 'start'});
 }
 function showAll() {
-  following = false; updateFollowBtn();
+  following = false; updateFollowBtn(); setLiveGuard();   // Build 11-06w
   const pts = Object.values(markers).map(m => m.getLatLng());
   if (ownLatLng) pts.push(L.latLng(ownLatLng));
   if (pts.length) {
@@ -420,7 +425,7 @@ function startShare() {
   if (!CAN_SHARE) return;
   if (!navigator.geolocation) { setStatus('Dieses Gerät oder dieser Browser kann keinen Standort ermitteln.', 'danger'); return; }
   sharing = true; lastSent = 0; sentCount = 0;
-  setLiveGuard(false);                     // Build 11-06v: Fahrt läuft → Karte sofort verschiebbar
+  setLiveGuard();                          // Build 11-06w: liest selbst – Fahrt läuft → Karte sofort verschiebbar
   hideRecHint();   // Build q: alte Übernahme-Rückfrage weg, wenn wieder gestartet wird
   // Build g: Fahrt über Seitenwechsel hinweg merken – Startzeit behalten, wenn man zurückkommt
   const _prev = window.djoFahren && djoFahren.state();
@@ -444,7 +449,7 @@ function hideRecHint() {
 }
 function stopShare(viaBeacon, withHint) {
   if (saverOn) setSaver(false);   // Build 11-06n: Sparmodus endet mit der Fahrt
-  setLiveGuard(!following && !_fsAn());   // Build 11-06v: zurück in den Scroll-Modus
+  setLiveGuard();                         // Build 11-06w: liest selbst – zurück in den Scroll-Modus
   if (withHint === undefined) { withHint = true; }   // Build q: nach normalem Beenden erinnern, nach Fehlern nicht
   const was = sharing;
   sharing = false;
@@ -484,7 +489,7 @@ function toggleFollow() {
     maybeStopWatch();
     if (!sharing) releaseWakeLock();
   }
-  setLiveGuard(!(sharing || following) && !_fsAn());   // Build 11-06v
+  setLiveGuard();                                     // Build 11-06w: liest selbst (Folgen an/aus)
 }
 function updateFollowBtn() {
   const b = document.getElementById('btn-follow');
@@ -492,7 +497,10 @@ function updateFollowBtn() {
   b.classList.toggle('btn-primary', following);
   b.classList.toggle('btn-light', !following);
 }
-map.on('dragstart', () => { if (following) { following = false; updateFollowBtn(); } });
+map.on('dragstart', () => {
+  if (following) { following = false; updateFollowBtn(); guardUnlocked = true; }   // Build 11-06w: Ziehen beendet das Folgen – Karte bleibt in der Hand
+});
+map.on('dragend', () => setLiveGuard());            // Build 11-06w: nach dem Ziehen Zustand neu bewerten (🔒 erscheint)
 
 function ensureWatch() {
   if (watchId != null || !navigator.geolocation) return;
@@ -505,32 +513,69 @@ function maybeStopWatch() {
 // ── Build 11-06v: Ecken-Guard + Karten-Toast ─────────────────────────────────
 // Ohne laufende Fahrt scrollt die Seite wieder normal (Karte sperrt das Wischen nicht) und
 // lässt sich per dezenter PILL OBEN LINKS zum Verschieben freischalten – kein Overlay mehr
-// mitten auf der Karte. Sobald die Fahrt läuft oder Folgen aktiv ist, schaltet der Schutz
-// automatisch ab (Verschieben SOFORT) und kehrt danach zurück. Vollbild zählt als Fahrt.
+// mitten auf der Karte. Sobald die Fahrt läuft oder Folgen aktiv ist, ist die Karte frei
+// (Verschieben SOFORT). Vollbild zählt als Fahrt: dort ist der Schutz ganz weg.
+//
+// Build 11-06w: Der Guard liest seinen Zustand SELBST (setLiveGuard() ohne Argumente):
+//   gesperrt = kein Fahrt/Folgen/Vollbild UND nicht freigetippt (unlocked).
+// Gesperrt → Karte unbeweglich + Pill „Zum Verschieben antippen“ oben links.
+// Nach dem Antippen → Pill weg, Karte beweglich, 🔒-Knopf an derselben Ecke. Der sperrt
+// wieder: Seite scrollt normal, Pill kommt zurück. Während Fahrt/Folgen/Vollbild sind
+// Pill und 🔒 ausgeblendet – die Karte muss beim Fahren sofort gehen.
 function _fsAn() { return document.getElementById('live-wrap').classList.contains('live-fs'); }
-let guardPill = null, guardArmed = false;
-function setLiveGuard(on) {
-  if (window.innerWidth >= 992) return;               // Desktop: wie immer
+let guardPill = null, guardLock = null, guardArmed = true, guardUnlocked = false;   // Start: gesperrt
+function guardWanted() {                              // true = Karte soll gesperrt sein
+  return !(sharing || following || _fsAn()) && !guardUnlocked;
+}
+function setLiveGuard() {                             // Build 11-06w: Zustand selbst lesen
   const wrap = document.getElementById('live-wrap');
-  if (on && !guardArmed) {
+  if (window.innerWidth >= 992) {                     // Desktop: Karte immer beweglich, kein Guard
+    map.dragging.enable();
+    if (guardPill) guardPill.style.display = 'none';
+    if (guardLock) guardLock.style.display = 'none';
+    guardArmed = false;
+    return;
+  }
+  const on = guardWanted();
+  if (on) {
     map.dragging.disable();
     if (!guardPill) {
       guardPill = document.createElement('button');
       guardPill.type = 'button';
       guardPill.id = 'live-guard-pill';
       guardPill.innerHTML = '<i class="bi bi-hand-index me-1"></i>Zum Verschieben antippen';
-      guardPill.onclick = () => setLiveGuard(false);
+      guardPill.onclick = () => { guardUnlocked = true; setLiveGuard(); };   // freischalten
       wrap.appendChild(guardPill);
     }
     guardPill.style.display = 'block';
+    if (guardLock) guardLock.style.display = 'none';
     guardArmed = true;
-  } else if (!on && guardArmed) {
+  } else {
     map.dragging.enable();
     if (guardPill) guardPill.style.display = 'none';
+    // 🔒 nur zeigen, wenn die Karte dauerhaft frei ist (nicht bei Fahrt/Folgen/Vollbild)
+    const lockBar = !sharing && !following && !_fsAn();
+    if (!lockBar) {
+      if (guardLock) guardLock.style.display = 'none';
+      guardArmed = false;
+      return;
+    }
+    if (!guardLock) {
+      guardLock = document.createElement('button');
+      guardLock.type = 'button';
+      guardLock.id = 'live-guard-lock';
+      guardLock.textContent = '🔒';
+      guardLock.title = 'Karte wieder sperren';
+      guardLock.setAttribute('aria-label', 'Karte wieder sperren');
+      guardLock.onclick = () => { guardUnlocked = false; setLiveGuard(); };  // sperren
+      wrap.appendChild(guardLock);
+    }
+    guardLock.style.display = 'block';
     guardArmed = false;
   }
 }
-setLiveGuard(true);                                   // Startzustand: Seite scrollt, Pill bietet Verschieben an
+setLiveGuard();                                       // Build 11-06w: Start gesperrt – Seite scrollt, Pill bietet Verschieben an
+window.addEventListener('resize', () => setLiveGuard());   // Build 11-06w: Drehen/Größe ändern → Guard neu bewerten
 // Kurze Rückmeldung direkt AUF der Karte (statt nur in der Statuszeile darüber)
 let _toastTimer = null;
 function mapToast(msg) {
@@ -764,7 +809,7 @@ function toggleFs() {
   document.body.style.overflow = on ? 'hidden' : '';
   document.getElementById('btn-fs').textContent = on ? '✕ Vollbild aus' : '⛶';
   setTimeout(() => map.invalidateSize(), 60);
-  setLiveGuard(!(sharing || following) && !_fsAn());   // Build 11-06v
+  setLiveGuard();                                     // Build 11-06w: liest selbst (Vollbild an/aus)
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('live-wrap').classList.contains('live-fs')) toggleFs(); });
 </script>

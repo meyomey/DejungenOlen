@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 v')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 w')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2031,7 +2031,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 v')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 w')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2093,10 +2093,9 @@ class SaverModeAndFixesTest(AppTestCase):
     def test_n_ffmpeg_aus_git_aber_lokal_da(self):
         gi = open(os.path.join(ROOT, '.gitignore'), encoding='utf-8').read()
         self.assertIn('\nffmpeg\n', gi)
-        # Arbeitskopie behält die Datei (MP4-Feature/Testlauf weiterhin möglich)
-        self.assertTrue(os.path.isfile(os.path.join(ROOT, 'ffmpeg')))
-        # …aber sie ist nicht mehr versioniert
-        if os.path.isdir(os.path.join(ROOT, '.git')):
+        # Build 11-06w: In einem frischen Klon fehlt die 77-MB-Binärdatei (gitignored) – das ist
+        # kein Fehler. Geprüft wird: liegt sie in der Arbeitskopie, ist sie dort NICHT versioniert.
+        if os.path.isfile(os.path.join(ROOT, 'ffmpeg')) and os.path.isdir(os.path.join(ROOT, '.git')):
             import subprocess
             out = subprocess.run(['git', 'ls-files', 'ffmpeg'], cwd=ROOT,
                                  capture_output=True, text=True).stdout.strip()
@@ -2320,12 +2319,16 @@ class LiveFahrKomfort2Test(AppTestCase):
     def test_v_ecken_guard_und_umschaltung(self):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn("id = 'live-guard-pill'", live)
-        self.assertIn('function setLiveGuard(', live)
+        self.assertIn('function setLiveGuard() {', live)                 # Build w: liest den Zustand selbst
+        self.assertIn('function guardWanted()', live)
         self.assertIn('function _fsAn()', live)
-        self.assertIn('setLiveGuard(true);', live)                       # Startzustand
-        self.assertIn('sharing = true; lastSent = 0; sentCount = 0;\n  setLiveGuard(false);', live)
-        self.assertIn('setLiveGuard(!following && !_fsAn());', live)     # stopShare
-        self.assertIn('setLiveGuard(!(sharing || following) && !_fsAn());', live)
+        self.assertIn('setLiveGuard();', live)                           # Aufrufe ohne Argument
+        self.assertNotIn('setLiveGuard(true);', live)                    # Build w: kein Argument mehr
+        self.assertNotIn('setLiveGuard(false);', live)
+        self.assertIn('sharing = true; lastSent = 0; sentCount = 0;\n  setLiveGuard();', live)   # startShare
+        self.assertIn('setLiveGuard();                         // Build 11-06w: liest selbst – zurück in den Scroll-Modus', live)   # stopShare
+        self.assertIn('setLiveGuard();                                     // Build 11-06w: liest selbst (Folgen an/aus)', live)
+        self.assertIn('setLiveGuard();                                     // Build 11-06w: liest selbst (Vollbild an/aus)', live)
         self.assertIn('#live-guard-pill { position: absolute; top: 56px; left: 8px;', live)
 
     def test_v_karten_toast_ehrlich(self):
@@ -2342,3 +2345,43 @@ class LiveFahrKomfort2Test(AppTestCase):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn("b.classList.toggle('btn-light', kind !== 'cyclosm');", live)
         self.assertIn("b.textContent = kind === 'cyclosm' ? '🚵 Radkarte' : '🚵 Standard';", live)
+
+
+class LiveGuardSperrenTest(AppTestCase):
+    """Build 2026-11-06w: Nach dem Freischalten des Ecken-Guards lässt sich die
+    Karte wieder sperren – oben links erscheint ein 🔒-Knopf (dieselbe Ecke wie
+    die Pill). Er sperrt die Karte, die Seite scrollt wieder normal und die Pill
+    kommt zurück. Während Fahrt/Folgen/Vollbild ist Pill UND 🔒 ausgeblendet.
+    Der Guard liest seinen Zustand selbst (setLiveGuard() ohne Argumente,
+    guardArmed = true als Startwert)."""
+
+    def _live(self):
+        return open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+
+    def test_w_lock_knopf_und_startzustand(self):
+        live = self._live()
+        self.assertIn("guardLock.id = 'live-guard-lock';", live)
+        self.assertIn("guardLock.textContent = '🔒';", live)
+        self.assertIn("guardLock.title = 'Karte wieder sperren';", live)
+        self.assertIn('guardLock.onclick = () => { guardUnlocked = false; setLiveGuard(); };', live)
+        self.assertIn('guardPill.onclick = () => { guardUnlocked = true; setLiveGuard(); };', live)
+        # Startwert: gesperrt, ohne dass jemand etwas übergibt
+        self.assertIn('let guardPill = null, guardLock = null, guardArmed = true, guardUnlocked = false;', live)
+        self.assertIn('function setLiveGuard() {                             // Build 11-06w: Zustand selbst lesen', live)
+        # 🔒 sitzt in derselben Ecke wie die Pill
+        self.assertIn('#live-guard-lock { position: absolute; top: 56px; left: 8px;', live)
+
+    def test_w_guard_nur_ohne_fahrt_folgen_vollbild(self):
+        live = self._live()
+        # Pill nur im gesperrten Zustand; 🔒 nur, wenn die Karte dauerhaft frei ist
+        self.assertIn('const lockBar = !sharing && !following && !_fsAn();', live)
+        self.assertIn("if (on) {", live)
+        self.assertIn("if (guardLock) guardLock.style.display = 'none';", live)
+        # Vollbild: Guard ganz aus (kein 🔒 über dem Bild)
+        self.assertIn("if (window.innerWidth >= 992) {                     // Desktop: Karte immer beweglich, kein Guard", live)
+        self.assertIn("window.addEventListener('resize', () => setLiveGuard());", live)
+        self.assertIn("map.on('dragend', () => setLiveGuard());", live)
+
+    def test_w_hilfe_erklaert_sperren(self):
+        hilfe = open(os.path.join(ROOT, 'templates', 'hilfe.html'), encoding='utf-8').read()
+        self.assertIn('nach dem Freischalten mit 🔒 wieder sperren', hilfe)
