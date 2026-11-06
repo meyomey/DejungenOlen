@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 b')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 c')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1750,63 +1750,66 @@ class ChartNoPulseTest(AppTestCase):
 
 
 class WhatsAppGroupLinkTest(AppTestCase):
-    """Build 2026-11-06b: Die WhatsApp-Gruppe ist aus der App erreichbar – der
-    Super-Admin hinterlegt pro Gruppe den Einladungslink (Gruppen-Verwaltung),
-    Touren-Seite und „Mehr“-Menü zeigen dann ein WhatsApp-Logo mit Link.
-    Nur echte WhatsApp-Links (https bei chat.whatsapp.com / wa.me / whatsapp.com)."""
+    """Build 2026-11-06c: Ein Ort für die WhatsApp-Logik – der Gruppen-Link
+    (Admin → Gruppen, jetzt direkt auf der Karte) hat Vorrang, sonst greift die
+    globale Einstellung (Admin → Einstellungen). Button auf Touren-Seite und
+    Account-Menü nutzen dieselbe Quelle."""
 
-    def test_b_whatsapp_link(self):
-        mod = open(os.path.join(ROOT, 'models.py'), encoding='utf-8').read()
-        self.assertIn('whatsapp_url', mod)
-        lst = open(os.path.join(ROOT, 'templates', 'touren', 'list.html'), encoding='utf-8').read()
-        self.assertIn('bi-whatsapp', lst)
-        grp = open(os.path.join(ROOT, 'templates', 'admin', 'gruppen.html'), encoding='utf-8').read()
-        self.assertIn('name="whatsapp_url"', grp)
-        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
-        self.assertIn('WhatsApp-Gruppe', base)
-
-        self.login_admin()
-        # Ungültiger Link wird abgelehnt (Fremd-Domain) und NICHT gespeichert
-        html = self.client.post(f'/gruppe/{self.g1_id}/umbenennen',
-                                data={'name': 'Olen', 'description': '',
-                                      'whatsapp_url': 'https://evil.example.com/xyz'},
-                                follow_redirects=True).get_data(as_text=True)
-        self.assertIn('kein WhatsApp-Einladungslink', html)
-        # http statt https ist auch nicht erlaubt
-        html = self.client.post(f'/gruppe/{self.g1_id}/umbenennen',
-                                data={'name': 'Olen', 'whatsapp_url': 'http://chat.whatsapp.com/AbC'},
-                                follow_redirects=True).get_data(as_text=True)
-        self.assertIn('kein WhatsApp-Einladungslink', html)
+    def _set_global(self, val):
         with app.app_context():
-            self.assertIsNone(db.session.get(M.Group, self.g1_id).whatsapp_url)
-        # Ohne Link: kein Button fürs Mitglied
-        self.login_member()
-        self.assertNotIn('bi-whatsapp', self.get_html('/touren'))
-        # Gültiger Link → gespeichert, Button auf Touren-Seite + Mehr-Menü
-        self.login_admin()
-        html = self.client.post(f'/gruppe/{self.g1_id}/umbenennen',
-                                data={'name': 'Olen',
-                                      'whatsapp_url': 'https://chat.whatsapp.com/AbCdEf123'},
-                                follow_redirects=True).get_data(as_text=True)
-        self.assertIn('aktualisiert', html)
+            sc = M.SiteConfig.query.filter_by(key='whatsapp_group_link').first()
+            if sc:
+                sc.value = val
+            else:
+                db.session.add(M.SiteConfig(key='whatsapp_group_link', value=val))
+            db.session.commit()
+
+    def test_c_whatsapp_admin(self):
+        grp = open(os.path.join(ROOT, 'templates', 'admin', 'gruppen.html'), encoding='utf-8').read()
+        self.assertIn('group_whatsapp_set', grp)             # eigenes Formular auf der Karte
+        self.assertIn('name="whatsapp_url"', grp)
+        lst = open(os.path.join(ROOT, 'templates', 'touren', 'list.html'), encoding='utf-8').read()
+        self.assertIn('{% if whatsapp_link %}', lst)          # zentrale Quelle
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertNotIn('current_group.whatsapp_url', base)  # kein Doppel-Eintrag im Mehr-Menü
+        srcapp = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('hat Vorrang', srcapp)                  # Gruppen-Link > global
+
+        # Fallback: nur globaler Link gepflegt → Button + Account-Menü zeigen ihn
+        self._set_global('https://chat.whatsapp.com/Global1')
         self.login_member()
         html = self.get_html('/touren')
-        self.assertIn('https://chat.whatsapp.com/AbCdEf123', html)
-        self.assertIn('bi-whatsapp', html)
-        self.assertIn('target="_blank"', html)
-        html = self.get_html('/rangliste')              # irgendeine Seite: Mehr-Menü
-        self.assertIn('WhatsApp-Gruppe', html)
-        # Gruppentrennung: die fremde Gruppe sieht den Link nicht
-        self.login('fremd@test.de')
-        self.assertNotIn('chat.whatsapp.com', self.get_html('/touren'))
-        # Mitglied darf den Link NICHT ändern
-        self.login_member()
-        r = self.client.post(f'/gruppe/{self.g1_id}/umbenennen',
-                             data={'name': 'Olen', 'whatsapp_url': ''})
-        self.assertEqual(r.status_code, 403)
-        # Link entfernen → Button weg
+        self.assertIn('https://chat.whatsapp.com/Global1', html)
+        # Gruppen-Link setzen (nur Admin) – hat Vorrang
         self.login_admin()
-        self.client.post(f'/gruppe/{self.g1_id}/umbenennen',
-                         data={'name': 'Olen', 'whatsapp_url': ''})
+        self.assertEqual(self.client.post(
+            f'/gruppe/{self.g1_id}/whatsapp',
+            data={'whatsapp_url': 'https://chat.whatsapp.com/Grp123'}).status_code, 302)
+        html = self.get_html('/touren')
+        self.assertIn('https://chat.whatsapp.com/Grp123', html)
+        self.assertNotIn('Global1', html)
+        html = self.get_html('/rangliste')                    # Account-Menü nutzt dieselbe Quelle
+        self.assertIn('https://chat.whatsapp.com/Grp123', html)
+        # Ungültiger Link wird abgelehnt und ändert nichts
+        self.login_admin()
+        html = self.client.post(f'/gruppe/{self.g1_id}/whatsapp',
+                                data={'whatsapp_url': 'https://evil.example.com/x'},
+                                follow_redirects=True).get_data(as_text=True)
+        self.assertIn('kein WhatsApp-Einladungslink', html)
+        # Mitglied darf nicht
         self.login_member()
-        self.assertNotIn('bi-whatsapp', self.get_html('/touren'))
+        self.assertEqual(self.client.post(
+            f'/gruppe/{self.g1_id}/whatsapp',
+            data={'whatsapp_url': ''}).status_code, 403)
+        # Entfernen → Fallback greift wieder
+        self.login_admin()
+        html = self.client.post(f'/gruppe/{self.g1_id}/whatsapp',
+                                data={'whatsapp_url': ''},
+                                follow_redirects=True).get_data(as_text=True)
+        self.assertIn('WhatsApp-Link entfernt', html)
+        self.login_member()
+        html = self.get_html('/touren')
+        self.assertIn('https://chat.whatsapp.com/Global1', html)
+        self.assertNotIn('Grp123', html)
+        # Aufräumen
+        self._set_global('')

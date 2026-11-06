@@ -26,8 +26,8 @@
   </h2>
   <div class="d-flex gap-2">
     {# Build 11-06b: direkter Sprung in die WhatsApp-Gruppe (Terminabstimmung) #}
-    {% if current_group and current_group.whatsapp_url %}
-    <a href="{{ current_group.whatsapp_url }}" target="_blank" rel="noopener"
+    {% if whatsapp_link %}{# Build 11-06c: Gruppen-Link oder globale Einstellung #}
+    <a href="{{ whatsapp_link }}" target="_blank" rel="noopener"
        class="btn btn-sm" style="background:#25D366;color:#fff"
        title="Zur WhatsApp-Gruppe – Termine abstimmen & kurz Bescheid geben">
       <i class="bi bi-whatsapp me-1"></i><span class="d-none d-sm-inline">WhatsApp</span>

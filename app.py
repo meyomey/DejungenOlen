@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-06 b'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-06 c'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -765,7 +765,14 @@ def inject_globals():
         try:
             wa_link = (cfg('whatsapp_group_link') or '').strip()
         except Exception:
-            pass
+            wa_link = ''
+        # Build 11-06c: Gruppen-spezifischer Link (Admin → Gruppen) hat Vorrang vor
+        # der globalen Einstellung (Admin → Einstellungen) – so ist WhatsApp überall
+        # (Account-Menü, Touren-Seite, …) konsistent.
+        from flask import g as _flask_g
+        _grp = getattr(_flask_g, 'group', None)
+        if _grp is not None and getattr(_grp, 'whatsapp_url', None):
+            wa_link = _grp.whatsapp_url
     return dict(upcoming_tours=upcoming, today_date=date.today(),
                 telegram_username=tg_user,
                 telegram_invite_link=tg_invite,
@@ -10715,20 +10722,35 @@ def group_rename(group_id):
     if not new_name:
         flash('Name darf nicht leer sein.', 'danger')
         return redirect(url_for('admin_groups'))
-    new_wa = (request.form.get('whatsapp_url') or '').strip()   # Build 11-06b
-    if new_wa and not _whatsapp_link_ok(new_wa):
-        flash('Das war kein WhatsApp-Einladungslink. Erwartet wird https://chat.whatsapp.com/… '
-              '(WhatsApp → Gruppeninfo → „Per Einladungslink teilen“).', 'danger')
-        return redirect(url_for('admin_groups'))
     old_name = group.name
     group.name = new_name
     group.description = new_desc or None
-    group.whatsapp_url = new_wa or None
     db.session.commit()
     if old_name != new_name:
         flash(f'Gruppe „{old_name}" wurde in „{new_name}" umbenannt.', 'success')
     else:
         flash(f'Gruppe „{new_name}" aktualisiert.', 'success')
+    return redirect(url_for('admin_groups'))
+
+
+@app.route('/gruppe/<int:group_id>/whatsapp', methods=['POST'])
+@login_required
+def group_whatsapp_set(group_id):
+    """Build 11-06c: WhatsApp-Einladungslink einer Gruppe setzen/entfernen (nur
+    Super-Admin) – eigenes Formular direkt auf der Gruppenkarte, nicht mehr im
+    versteckten Bearbeiten-Formular. Leer speichern = Link entfernen."""
+    if current_user.role != 'admin':
+        abort(403)
+    group = Group.query.get_or_404(group_id)
+    url = (request.form.get('whatsapp_url') or '').strip()
+    if url and not _whatsapp_link_ok(url):
+        flash('Das war kein WhatsApp-Einladungslink. Erwartet wird https://chat.whatsapp.com/… '
+              '(WhatsApp → Gruppeninfo → „Per Einladungslink teilen“).', 'danger')
+        return redirect(url_for('admin_groups'))
+    group.whatsapp_url = url or None
+    db.session.commit()
+    flash('WhatsApp-Link gespeichert – Button auf der Touren-Seite und im Menü ist aktiv.'
+          if url else 'WhatsApp-Link entfernt.', 'success')
     return redirect(url_for('admin_groups'))
 
 

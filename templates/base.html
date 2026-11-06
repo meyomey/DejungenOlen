@@ -159,11 +159,6 @@
               <i class="bi bi-camera me-2"></i>Foto-Challenge</a></li>
             <li><a class="dropdown-item" href="{{ url_for('mitglieder') }}">
               <i class="bi bi-people me-2"></i>Mitglieder</a></li>
-            {% if current_group and current_group.whatsapp_url %}{# Build 11-06b #}
-            <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="{{ current_group.whatsapp_url }}" target="_blank" rel="noopener">
-              <i class="bi bi-whatsapp me-2" style="color:#25D366"></i>WhatsApp-Gruppe</a></li>
-            {% endif %}
           </ul>
         </li>
 

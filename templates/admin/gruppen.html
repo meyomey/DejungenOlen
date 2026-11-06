@@ -56,16 +56,7 @@
             <label class="form-label small fw-semibold mb-1">Beschreibung</label>
             <textarea name="description" class="form-control form-control-sm" rows="2">{{ g.description or '' }}</textarea>
           </div>
-          {# Build 11-06b: WhatsApp-Gruppe der Gruppe (Einladungslink) #}
-          <div class="mb-2">
-            <label class="form-label small fw-semibold mb-1">
-              <i class="bi bi-whatsapp me-1" style="color:#25D366"></i>WhatsApp-Gruppe (Einladungslink)
-            </label>
-            <input type="url" name="whatsapp_url" class="form-control form-control-sm"
-                   placeholder="https://chat.whatsapp.com/…" value="{{ g.whatsapp_url or '' }}">
-            <div class="form-text">Leer lassen = Button nicht anzeigen. Link in WhatsApp:
-              Gruppeninfo → „Per Einladungslink teilen“.</div>
-          </div>
+
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-djo btn-sm">
               <i class="bi bi-check-lg me-1"></i>Speichern
@@ -76,6 +67,34 @@
             </button>
           </div>
         </form>
+
+        {# Build 11-06c: WhatsApp-Link DIREKT auf der Karte (nicht mehr hinter dem Stift versteckt) #}
+        <div class="border rounded p-2 mb-3" style="background:#f6fbf7">
+          <label class="form-label small fw-semibold mb-1">
+            <i class="bi bi-whatsapp me-1" style="color:#25D366"></i>WhatsApp-Gruppe (Einladungslink)
+          </label>
+          <form method="post" action="{{ url_for('group_whatsapp_set', group_id=g.id) }}"
+                class="d-flex gap-2">
+            <input type="url" name="whatsapp_url" class="form-control form-control-sm"
+                   placeholder="https://chat.whatsapp.com/…" value="{{ g.whatsapp_url or '' }}">
+            <button type="submit" class="btn btn-djo btn-sm flex-shrink-0">
+              <i class="bi bi-check-lg"></i>
+            </button>
+            {% if g.whatsapp_url %}
+            <button type="submit" name="whatsapp_url" value=""
+                    class="btn btn-sm btn-outline-danger flex-shrink-0"
+                    title="Link entfernen" onclick="return confirm('WhatsApp-Link entfernen?')">
+              <i class="bi bi-trash"></i>
+            </button>
+            {% endif %}
+          </form>
+          {% if g.whatsapp_url %}
+          <div class="small text-success mt-1"><i class="bi bi-check-circle-fill me-1"></i>Aktiv – Button auf der Touren-Seite und im Account-Menü sichtbar.</div>
+          {% else %}
+          <div class="form-text mb-0">Link in WhatsApp kopieren: Gruppeninfo → „Per Einladungslink teilen“.
+            Überschreibt für diese Gruppe die globale Einstellung (Admin → Einstellungen).</div>
+          {% endif %}
+        </div>
 
         {% if g.description %}
         <p class="text-muted small mb-3" id="desc-display-{{ g.id }}">{{ g.description }}</p>
