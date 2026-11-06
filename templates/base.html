@@ -486,7 +486,9 @@ updateDarkUI();
                             speed: (c.speed != null && !isNaN(c.speed)) ? c.speed : null,
                             heading: (c.heading != null && !isNaN(c.heading)) ? c.heading : null,
                             paused: false, since: 0})
-    }).catch(() => {});
+    }).then(r => { if (r && r.status === 409) {   // Build 11-06s: Fahrt wurde beendet – State+Sender entsorgen
+      window.djoFahren.clear(); cleanup(); removePill();
+    } }).catch(() => {});
   }
   function removePill() { if (pill) { pill.remove(); pill = null; } }
   function makePill(s) {

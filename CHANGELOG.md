@@ -1,4 +1,8 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build s) – „Ende gilt“-Siegel gegen Zombie-Fahrten
+- Fix für „Fahrt läuft immer noch, obwohl ich sie mehrfach beendet habe“: Ein vergessenes Gerät (Tab oder Handy mit offener Live-Karte bzw. aktivem Fahren-Status) sendete im Hintergrund weiter und riss die soeben gelöschte Anwesenheit alle ~30 Sekunden neu ein – die rote Anzeige kam also immer wieder.
+- Beim Beenden setzt der Server jetzt ein Siegel (live_stops): Weitere Hintergrund-Updates werden abgewiesen (HTTP 409), die Sender räumen sich selbst ab. Eine frisch geladene Live-Karte meldet resume und startet unbeschwert neu; die Aufzeichnung bleibt von der Änderung unberührt (weiter übernehmen/löschen auf der Tourseite).
+- 269 Tests, py_compile OK.
 ## 1.5.0 – 2026-11-06 (Build r) – Navbar bei mittlerer Größe gerade gezogen
 - Bei mittlerer Fenstergroße (992–1199 px) standen die Menü-Einträge versetzt: Icon über, Beschriftung unter – Ursache war Bootstraps .container, der dort nur 960 px breit ist und die Links zum Umbrechen zwang. Die Navbar nutzt jetzt die volle Breite (container-fluid), Beschriftungen sind grundsätzlich einzeilig, und im Mittelbereich sind Abstände/Logo/Brand etwas kompakter.
 - 267 Tests, py_compile OK.

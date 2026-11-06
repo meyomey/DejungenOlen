@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 r')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 s')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -737,7 +737,7 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('function hideRecHint()', live)
         self.assertIn('function stopShare(viaBeacon, withHint)', live)
         self.assertIn('if (withHint) { showRecHint(); }', live)
-        self.assertEqual(live.count('stopShare(false, false)'), 2)   # 403 + GPS verweigert
+        self.assertEqual(live.count('stopShare(false, false)'), 3)   # 403 + 409-Siegel (11-06s) + GPS verweigert
         self.assertIn('hideRecHint();', live)                        # Start räumt alte Rückfrage weg
         self.assertIn('const CAN_TAKEOVER = ', live)
         # dynamisch: Tourleitung sieht Übernahme, Mitglied den Download
@@ -2031,7 +2031,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 r')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 s')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2207,3 +2207,54 @@ class NavbarMittlereBreiteTest(AppTestCase):
         self.assertIn('.navbar-djo .nav-link { white-space: nowrap; }', css)
         self.assertIn('@media (min-width: 992px) and (max-width: 1299.98px) {', css)
         self.assertIn('.navbar-djo .navbar-logo { width: 36px; height: 36px; }', css)
+
+
+class LiveZombieStopTest(AppTestCase):
+    """Build 2026-11-06s: „Ende gilt“-Siegel gegen Zombie-Sender. Ein vergessenes
+    Gerät (offene Live-Karte / aktiver Fahren-Status) sendete weiter und riss die
+    gelöschte Anwesenheit alle ~30 s neu ein – die rote Anzeige kam immer wieder.
+    Jetzt setzt der Stop ein Siegel (LiveStop): weitere Updates -> 409, eine frisch
+    geladene Seite meldet resume=true und nimmt das Siegel."""
+
+    def _update(self, tour_id, **extra):
+        body = {'tour_id': tour_id, 'lat': 53.4, 'lng': 9.8, 'accuracy': 12}
+        body.update(extra)
+        return self.client.post('/api/location/update', json=body)
+
+    def test_s_siegel_blockt_zombie_und_resume_startet_neu(self):
+        from unittest import mock
+        tour_day = M.Tour.query.get(self.t_plan_id).tour_date
+        self.login_member()
+        with mock.patch.object(appmod, '_berlin_today', return_value=tour_day):
+            self.assertEqual(self._update(self.t_plan_id).status_code, 200)
+            self.client.post(f'/api/location/stop?tour_id={self.t_plan_id}', data='')
+            self.assertEqual(M.LiveLocation.query.filter_by(
+                tour_id=self.t_plan_id, user_id=self.mem_id).count(), 0)
+            # Zombie-Sender: erneutes Update OHNE resume -> 409 + keine neue Anwesenheit
+            r = self._update(self.t_plan_id)
+            self.assertEqual(r.status_code, 409)
+            self.assertTrue(r.get_json().get('ended'))
+            self.assertEqual(M.LiveLocation.query.filter_by(
+                tour_id=self.t_plan_id, user_id=self.mem_id).count(), 0)
+            # Frisch geladene Seite (resume) nimmt das Siegel und startet normal
+            r = self._update(self.t_plan_id, resume=True)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(M.LiveLocation.query.filter_by(
+                tour_id=self.t_plan_id, user_id=self.mem_id).count(), 1)
+            self.assertEqual(M.LiveStop.query.filter_by(
+                tour_id=self.t_plan_id, user_id=self.mem_id).count(), 0)
+
+    def test_s_siegel_in_code_und_clients(self):
+        src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
+        self.assertIn('stop_mark = LiveStop.query.filter_by(tour_id=tour_id, user_id=current_user.id).first()', src)
+        self.assertIn("'ended': True}), 409", src)
+        self.assertIn("db.session.add(LiveStop(tour_id=tour_id, user_id=current_user.id,", src)
+        models = open(os.path.join(ROOT, 'models.py'), encoding='utf-8').read()
+        self.assertIn('class LiveStop(db.Model):', models)
+        self.assertIn("__tablename__ = 'live_stops'", models)
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('resume: sentCount === 0', live)
+        self.assertIn('if (r.status === 409)', live)
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertIn('r.status === 409', base)
+        self.assertIn('window.djoFahren.clear(); cleanup(); removePill();', base)

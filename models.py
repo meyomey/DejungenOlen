@@ -257,6 +257,19 @@ class LiveLocation(db.Model):
     __table_args__ = (db.UniqueConstraint('tour_id', 'user_id'),)
 
 
+class LiveStop(db.Model):
+    """Build 11-06s: „Ende gilt“-Siegel der Live-Fahrt. Wird beim Beenden gesetzt und
+    blockt weitere Standort-Updates von ZOMBIE-Sendern (vergessene Tabs/Hände, die
+    weiter senden und die gelöschte Anwesenheit immer wieder neu anlegen). Eine frisch
+    geladene Live-Karte meldet resume=true und nimmt das Siegel wieder weg."""
+    __tablename__ = 'live_stops'
+    tour_id    = db.Column(db.Integer, db.ForeignKey('tours.id'), primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+    stopped_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    tour       = db.relationship('Tour')
+    user       = db.relationship('User')
+
+
 class LiveTrackPoint(db.Model):
     """Build af: Aufzeichnung der Live-Karte – jede gesendete Position bleibt als Punkt erhalten
     (LiveLocation hält nur die jeweils letzte). Daraus entsteht nach der Tour ein GPX-Track mit

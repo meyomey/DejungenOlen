@@ -529,10 +529,12 @@ function onPos(pos) {
                           speed: (c.speed != null && !isNaN(c.speed)) ? c.speed : null,
                           heading: (c.heading != null && !isNaN(c.heading)) ? c.heading : null,
                           paused: isPaused(),
+                          resume: sentCount === 0,          // Build 11-06s: frisch geladene Seite nimmt das Ende-Siegel
                           since: trailSince || 0})
   }).then(async r => {
     const d = await r.json().catch(() => ({}));
     if (r.status === 403) { stopShare(false, false); setStatus(d.error || 'Fahren ist für diese Tour gerade nicht möglich.', 'warning'); return; }
+    if (r.status === 409) { stopShare(false, false); setStatus(d.error || 'Fahrt wurde beendet – zum Neustart neu laden.', 'warning'); return; }
     if (!r.ok) { setStatus('Server meldet HTTP ' + r.status + ' – wird weiter versucht.', 'warning'); return; }
     sentCount++;
     if (d.locations) render(d.locations);

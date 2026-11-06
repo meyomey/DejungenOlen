@@ -79,7 +79,7 @@ import requests as http_requests
 
 from config import Config
 from models import (db, Group, User, InviteToken, Tour, TourParticipant, TourGuest, Guest, TourPhoto, TourVideo,
-                    GastroPhoto, TimeVote, LiveLocation, LiveTrackPoint, TourRide,
+                    GastroPhoto, TimeVote, LiveLocation, LiveTrackPoint, LiveStop, TourRide,
                     PasswordReset, GastroSpot, GastroReview, POI, TourComment, SiteConfig,
                     RouteRating, TourTemplate, PushSubscription, Announcement)
 
@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-06 r'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-06 s'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5366,6 +5366,18 @@ def location_update():
     ok, hint = _live_share_window(tour)
     if not ok:
         return jsonify({'error': hint}), 403
+    # Build 11-06s: „Ende gilt“-Siegel gegen Zombie-Sender – wurde die Fahrt (auf irgendeinem
+    # Gerät) beendet, ignorieren wir weitere Updates, bis eine FRISCH geladene Seite
+    # (resume=true bei der ersten Sendung) die Fahrt ausdrücklich wieder startet. Vorher
+    # riss ein vergessenes Tab/Handy die gerade gelöschte Anwesenheit alle ~30 s neu ein.
+    stop_mark = LiveStop.query.filter_by(tour_id=tour_id, user_id=current_user.id).first()
+    if stop_mark is not None:
+        if data.get('resume'):
+            db.session.delete(stop_mark)
+            db.session.commit()
+        else:
+            return jsonify({'error': 'Fahrt wurde bereits beendet – zum erneuten Start die Live-Karte neu laden.',
+                            'ended': True}), 409
     now = datetime.utcnow()
     existing = LiveLocation.query.filter_by(tour_id=tour_id, user_id=current_user.id).first()
     if existing:
@@ -5413,6 +5425,14 @@ def location_stop():
     if not tour_id:
         return jsonify({'error': 'tour_id fehlt'}), 400
     LiveLocation.query.filter_by(tour_id=tour_id, user_id=current_user.id).delete()
+    # Build 11-06s: Siegel setzen – damit halten Zombie-Sender (vergessene Tabs/Hände mit
+    # noch laufender Sendeschleife) die Fahrt nicht mehr „unten“; resume startet neu.
+    stop_mark = LiveStop.query.filter_by(tour_id=tour_id, user_id=current_user.id).first()
+    if stop_mark is not None:
+        stop_mark.stopped_at = datetime.utcnow()
+    else:
+        db.session.add(LiveStop(tour_id=tour_id, user_id=current_user.id,
+                                stopped_at=datetime.utcnow()))
     db.session.commit()
     return jsonify({'ok': True})
 
