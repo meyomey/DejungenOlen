@@ -1,5 +1,11 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-06 (Build b) – WhatsApp-Gruppe aus der App erreichen
+
+- Die eigene WhatsApp-Gruppe ist jetzt direkt aus der App erreichbar: Auf der **Touren-Seite** gibt es einen grünen **WhatsApp-Button** (offizielles Logo, auf dem Handy als Icon), im **„Mehr“-Menü** einen Eintrag „WhatsApp-Gruppe“. Beide öffnen die Gruppe in neuem Tab.
+- Der **Einladungslink wird pro Gruppe** in der Admin-Gruppenverwaltung hinterlegt (Feld „WhatsApp-Gruppe (Einladungslink)“, leer = Button nicht anzeigen). Zur Sicherheit werden nur echte WhatsApp-Links akzeptiert (`https://` mit `chat.whatsapp.com`, `wa.me` oder `whatsapp.com`) – alles andere wird abgelehnt.
+- 244 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-06 (Build a) – Rückblick-Diagramm pulsiert auf dem Handy nicht mehr
 
 - „Touren pro Monat“: Das Diagramm wurde auf Smartphones ständig kleiner/größer (Chart.js kämpfte mit der CSS-Begrenzung `max-height` am Zeichenfeld – jeder Adressleisten-Ein-/Ausblend-Stoß löste eine Größenänderung aus). Jetzt steht das Zeichenfeld in einem festen 220-px-Rahmen, das Seitenverhältnis ist fix und Größenänderungen werden 200 ms entprellt.

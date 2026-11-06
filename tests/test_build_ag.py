@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 a')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 b')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1747,3 +1747,66 @@ class ChartNoPulseTest(AppTestCase):
         self.assertIn('position:relative;height:220px', rb)              # fester Rahmen
         self.assertIn('maintainAspectRatio: false', rb)
         self.assertIn('resizeDelay: 200', rb)
+
+
+class WhatsAppGroupLinkTest(AppTestCase):
+    """Build 2026-11-06b: Die WhatsApp-Gruppe ist aus der App erreichbar – der
+    Super-Admin hinterlegt pro Gruppe den Einladungslink (Gruppen-Verwaltung),
+    Touren-Seite und „Mehr“-Menü zeigen dann ein WhatsApp-Logo mit Link.
+    Nur echte WhatsApp-Links (https bei chat.whatsapp.com / wa.me / whatsapp.com)."""
+
+    def test_b_whatsapp_link(self):
+        mod = open(os.path.join(ROOT, 'models.py'), encoding='utf-8').read()
+        self.assertIn('whatsapp_url', mod)
+        lst = open(os.path.join(ROOT, 'templates', 'touren', 'list.html'), encoding='utf-8').read()
+        self.assertIn('bi-whatsapp', lst)
+        grp = open(os.path.join(ROOT, 'templates', 'admin', 'gruppen.html'), encoding='utf-8').read()
+        self.assertIn('name="whatsapp_url"', grp)
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertIn('WhatsApp-Gruppe', base)
+
+        self.login_admin()
+        # Ungültiger Link wird abgelehnt (Fremd-Domain) und NICHT gespeichert
+        html = self.client.post(f'/gruppe/{self.g1_id}/umbenennen',
+                                data={'name': 'Olen', 'description': '',
+                                      'whatsapp_url': 'https://evil.example.com/xyz'},
+                                follow_redirects=True).get_data(as_text=True)
+        self.assertIn('kein WhatsApp-Einladungslink', html)
+        # http statt https ist auch nicht erlaubt
+        html = self.client.post(f'/gruppe/{self.g1_id}/umbenennen',
+                                data={'name': 'Olen', 'whatsapp_url': 'http://chat.whatsapp.com/AbC'},
+                                follow_redirects=True).get_data(as_text=True)
+        self.assertIn('kein WhatsApp-Einladungslink', html)
+        with app.app_context():
+            self.assertIsNone(db.session.get(M.Group, self.g1_id).whatsapp_url)
+        # Ohne Link: kein Button fürs Mitglied
+        self.login_member()
+        self.assertNotIn('bi-whatsapp', self.get_html('/touren'))
+        # Gültiger Link → gespeichert, Button auf Touren-Seite + Mehr-Menü
+        self.login_admin()
+        html = self.client.post(f'/gruppe/{self.g1_id}/umbenennen',
+                                data={'name': 'Olen',
+                                      'whatsapp_url': 'https://chat.whatsapp.com/AbCdEf123'},
+                                follow_redirects=True).get_data(as_text=True)
+        self.assertIn('aktualisiert', html)
+        self.login_member()
+        html = self.get_html('/touren')
+        self.assertIn('https://chat.whatsapp.com/AbCdEf123', html)
+        self.assertIn('bi-whatsapp', html)
+        self.assertIn('target="_blank"', html)
+        html = self.get_html('/rangliste')              # irgendeine Seite: Mehr-Menü
+        self.assertIn('WhatsApp-Gruppe', html)
+        # Gruppentrennung: die fremde Gruppe sieht den Link nicht
+        self.login('fremd@test.de')
+        self.assertNotIn('chat.whatsapp.com', self.get_html('/touren'))
+        # Mitglied darf den Link NICHT ändern
+        self.login_member()
+        r = self.client.post(f'/gruppe/{self.g1_id}/umbenennen',
+                             data={'name': 'Olen', 'whatsapp_url': ''})
+        self.assertEqual(r.status_code, 403)
+        # Link entfernen → Button weg
+        self.login_admin()
+        self.client.post(f'/gruppe/{self.g1_id}/umbenennen',
+                         data={'name': 'Olen', 'whatsapp_url': ''})
+        self.login_member()
+        self.assertNotIn('bi-whatsapp', self.get_html('/touren'))

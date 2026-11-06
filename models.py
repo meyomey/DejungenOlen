@@ -14,6 +14,7 @@ class Group(db.Model):
     description = db.Column(db.Text)
     logo        = db.Column(db.String(120))
     default_music = db.Column(db.String(150))   # Dateiname der Standard-Hintergrundmusik
+    whatsapp_url = db.Column(db.String(500))    # Build 11-06b: Einladungslink zur WhatsApp-Gruppe
     created_at  = db.Column(db.DateTime, default=datetime.utcnow)
     is_active   = db.Column(db.Boolean, default=True)
 

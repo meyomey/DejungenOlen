@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.4.0'
-APP_BUILD   = '2026-11-06 a'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-06 b'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -10690,10 +10690,23 @@ def group_music_delete(group_id):
     return redirect(url_for('admin_groups'))
 
 
+def _whatsapp_link_ok(url):
+    """Build 11-06b: Nur echte WhatsApp-Einladungslinks erlauben (https bei
+    chat.whatsapp.com / wa.me / whatsapp.com) – schützt vor Fremd-Weiterleitungen."""
+    from urllib.parse import urlparse
+    try:
+        u = urlparse(url or '')
+    except Exception:
+        return False
+    return (u.scheme == 'https'
+            and u.netloc.lower() in ('chat.whatsapp.com', 'wa.me',
+                                     'whatsapp.com', 'www.whatsapp.com'))
+
+
 @app.route('/gruppe/<int:group_id>/umbenennen', methods=['POST'])
 @login_required
 def group_rename(group_id):
-    """Name und Beschreibung einer Gruppe ändern (nur Super-Admin)."""
+    """Name, Beschreibung und WhatsApp-Link einer Gruppe ändern (nur Super-Admin)."""
     if current_user.role != 'admin':
         abort(403)
     group = Group.query.get_or_404(group_id)
@@ -10702,9 +10715,15 @@ def group_rename(group_id):
     if not new_name:
         flash('Name darf nicht leer sein.', 'danger')
         return redirect(url_for('admin_groups'))
+    new_wa = (request.form.get('whatsapp_url') or '').strip()   # Build 11-06b
+    if new_wa and not _whatsapp_link_ok(new_wa):
+        flash('Das war kein WhatsApp-Einladungslink. Erwartet wird https://chat.whatsapp.com/… '
+              '(WhatsApp → Gruppeninfo → „Per Einladungslink teilen“).', 'danger')
+        return redirect(url_for('admin_groups'))
     old_name = group.name
     group.name = new_name
     group.description = new_desc or None
+    group.whatsapp_url = new_wa or None
     db.session.commit()
     if old_name != new_name:
         flash(f'Gruppe „{old_name}" wurde in „{new_name}" umbenannt.', 'success')
@@ -10938,6 +10957,7 @@ def migrate_db():
     add_column('tour_photos', 'orig_hash',  'VARCHAR(64)')
     add_column('tour_photos', 'gps_source', 'VARCHAR(10)')   # Build ac
     add_column('users', 'morning_opener_until', 'VARCHAR(5)')
+    add_column('groups', 'whatsapp_url', 'VARCHAR(500)')   # Build 11-06b: WhatsApp-Gruppe der Gruppe
     add_column('tours', 'approx_km',      'FLOAT')
     add_column('tours', 'external_link',  'VARCHAR(500)')
     add_column('tours', 'weather_json',   'TEXT')          # Build q: Wetter-Cache für den Tourtag
