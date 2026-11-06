@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-05 o')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 a')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1732,3 +1732,18 @@ class RueckblickAllStopsTest(AppTestCase):
                 for tid in (tA_id, tB_id, tC_id):
                     db.session.execute(db.text(f'DELETE FROM tours WHERE id = {tid}'))
                 db.session.commit()
+
+
+class ChartNoPulseTest(AppTestCase):
+    """Build 2026-11-06a: Das „Touren pro Monat“-Diagramm pulsierte auf dem Handy
+    (Chart.js ResizeObserver vs. canvas max-height). Jetzt: fester Höhenrahmen um
+    das canvas + maintainAspectRatio:false + resizeDelay."""
+
+    def test_a_chart_fixed_frame(self):
+        self.login_member()
+        html = self.get_html('/rueckblick')
+        self.assertNotIn('id="monthly-chart" style="max-height', html)   # alte Ursache weg
+        rb = open(os.path.join(ROOT, 'templates', 'rueckblick.html'), encoding='utf-8').read()
+        self.assertIn('position:relative;height:220px', rb)              # fester Rahmen
+        self.assertIn('maintainAspectRatio: false', rb)
+        self.assertIn('resizeDelay: 200', rb)

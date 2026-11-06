@@ -79,7 +79,11 @@
         <i class="bi bi-bar-chart me-1"></i>Touren pro Monat {{ year }}
       </div>
       <div class="card-body">
-        <canvas id="monthly-chart" style="max-height:220px"></canvas>
+        {# Build 11-06a: fester Höhenrahmen – canvas mit max-height pulsierte auf dem
+           Handy (Chart.js ResizeObserver kämpfte mit der CSS-Begrenzung) #}
+        <div style="position:relative;height:220px">
+          <canvas id="monthly-chart"></canvas>
+        </div>
       </div>
     </div>
 
@@ -289,7 +293,7 @@ new Chart(document.getElementById('monthly-chart'), {
       y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: 'rgba(0,0,0,.06)' } },
       x: { grid: { display: false } }
     },
-    responsive: true, animation: false
+    responsive: true, maintainAspectRatio: false, resizeDelay: 200, animation: false   {# Build 11-06a: kein Pulsieren mehr #}
   }
 });
 </script>

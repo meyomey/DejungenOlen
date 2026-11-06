@@ -1,5 +1,10 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-06 (Build a) – Rückblick-Diagramm pulsiert auf dem Handy nicht mehr
+
+- „Touren pro Monat“: Das Diagramm wurde auf Smartphones ständig kleiner/größer (Chart.js kämpfte mit der CSS-Begrenzung `max-height` am Zeichenfeld – jeder Adressleisten-Ein-/Ausblend-Stoß löste eine Größenänderung aus). Jetzt steht das Zeichenfeld in einem festen 220-px-Rahmen, das Seitenverhältnis ist fix und Größenänderungen werden 200 ms entprellt.
+- 243 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-05 (Build o) – Lieblings-Einkehr: alle Stopps, Top 3
 
 - Die Einkehr-Bilanz im Jahresrückblick zählte nur den 1. Stopp und zeigte bei Gleichstand einen zufälligen Einstieg. Jetzt zählen **alle Stopps einer Tour** (1.–3. Stopp, Gastro-Verknüpfung oder Freitext), und die Karte zeigt die **Top 3** mit Zähler – Gleichstände (z. B. dreimal 2×) sind jetzt alle sichtbar. Freitext-Namen werden groß-/kleinschreibungsunabhängig zusammengezogen; wer denselben Stopp als Freitext und Verknüpfung einträgt, wird nicht doppelt gezählt.
