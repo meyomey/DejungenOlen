@@ -180,7 +180,8 @@ const INITIAL   = {{ locations_json|safe }};
 const TRAILS    = {{ trails_json|safe }};        // Build af: {user_id: [[lat, lng, ts], …]} – Aufzeichnung der letzten 12 h
 const UPLOAD_URL = "{{ url_for('tour_upload_photos', tour_id=tour.id) }}";
 // Zustand (vor allen Funktionen deklariert – onclick-Handler sind global)
-let sharing = false, following = false, watchId = null, lastSent = 0, lastPos = null, shareStart = 0;
+let sharing = false, following = false, watchId = null, lastSent = 0, lastPos = null, shareStart = 0,
+    prevSentPos = null;   // Build 11-06o: Position der letzten beiden Sendungen (für den Richtungs-Trigger)
 // Build b: Pause – manuell (Knopf) oder automatisch (≈3 Min. kein Standortwechsel > 25 m).
 // In der Pause werden KEINE Spurpunkte mehr gespeichert; der Standort bleibt für die anderen sichtbar.
 let manualPause = false, autoPause = false, moveAnchor = null, moveAnchorAt = 0, pauseSince = 0, pauseLatLng = null;
@@ -474,6 +475,14 @@ function drawOwn(c) {
     ownMarker.setLatLng(ll); accCircle.setLatLng(ll).setRadius(c.accuracy || 0);
   }
 }
+// Build 11-06o: Kurs (Peilung) von a nach b in Grad – für den Richtungs-Trigger des Sparmodus
+function _bearing(a, b) {
+  const r = Math.PI / 180;
+  const y = Math.sin((b[1] - a[1]) * r) * Math.cos(b[0] * r);
+  const x = Math.cos(a[0] * r) * Math.sin(b[0] * r) -
+            Math.sin(a[0] * r) * Math.cos(b[0] * r) * Math.cos((b[1] - a[1]) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
 function onPos(pos) {
   const c = pos.coords;
   ownLatLng = [c.latitude, c.longitude];
@@ -501,9 +510,18 @@ function onPos(pos) {
     autoPause = true; pauseSince = moveAnchorAt; pauseLatLng = ownLatLng; updatePauseBtn();
     setStatus('⏸ Pause erkannt – Aufzeichnung pausiert (Standort bleibt sichtbar).', 'warning');
   }
-  // Drosselung: höchstens alle 10 s, und ohne Bewegung (< 15 m) nur alle 30 s
+  // Drosselung: höchstens alle 10 s, und ohne Bewegung (< 15 m) nur alle 30 s.
+  // Build 11-06o: Im Stromspar-Modus wird gröber gesendet – alle 20 s, im Stand alle 45 s –,
+  // dafür sichert ein Richtungs-Trigger (> 25° Kursänderung, wie in den Akku-Modi von
+  // Strava & Co.) Kurven ab: Ecken bleiben rund, nur Geraden werden ausgedünnt.
   const moved = lastPos ? map.distance(lastPos, ownLatLng) : Infinity;
-  if (now - lastSent < 10000 || (moved < 15 && now - lastSent < 30000)) return;
+  const sendEvery = saverOn ? 20000 : 10000, stillEvery = saverOn ? 45000 : 30000;
+  if (now - lastSent < sendEvery || (moved < 15 && now - lastSent < stillEvery)) return;
+  if (saverOn && prevSentPos && lastPos && moved >= 15) {
+    const turn = Math.abs(((_bearing(prevSentPos, lastPos) - _bearing(lastPos, ownLatLng)) + 540) % 360 - 180);
+    if (turn < 25) return;
+  }
+  prevSentPos = lastPos;
   lastSent = now; lastPos = ownLatLng;
   fetch('/api/location/update', {
     method: 'POST', headers: {'Content-Type': 'application/json'}, keepalive: true,
@@ -616,7 +634,7 @@ async function setSaver(on) {
   if (b) { b.classList.toggle('btn-warning', on); b.classList.toggle('btn-light', !on); }
   if (on) {
     requestWakeLock();
-    setStatus('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft weiter. Tippen = kurz aufhellen.', 'sharing');
+    setStatus('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft im 20-s-Takt. Tippen = kurz aufhellen.', 'sharing');
     clearTimeout(saverPeekTimer);
   } else if (sharing) {
     requestWakeLock();

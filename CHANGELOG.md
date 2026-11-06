@@ -1,4 +1,8 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build o) – Stromspar-Modus Stufe 2: gröber senden, Kurven-Trigger
+- Im Stromspar-Modus sendet die Aufzeichnung gröber: alle 20 s statt 10 s (im Stand alle 45 s statt 30 s) – spürbar weniger Funk-Aktivität auf langen Geraden.
+- Neuer Richtungs-Trigger (über 25° Kursänderung, wie in den Akku-Modi von Strava & Co.): Kurven werden auch im gröberen Takt sofort gesichert – Ecken bleiben rund, nur Geraden werden ausged¼nnt. Außerhalb des Sparmodus ändert sich nichts.
+- 261 Tests, py_compile OK.
 ## 1.5.0 – 2026-11-06 (Build n) – Video-Fehler inline, ffmpeg aus Git, Stromspar-Modus
 - Video-Seite: Schlägt die MP4-Erstellung serverseitig fehl, erscheint die Meldung jetzt direkt im Fortschritts-Kasten (mit Grund, Button bleibt bedienbar für erneuten Versuch) – vorher lud die Seite sich still neu und der Formularstand war weg.
 - ffmpeg-Binärdatei (77 MB) aus der Git-Verwaltung genommen („sanftes Slimming“): Der Verlauf wächst nicht weiter, die Datei bleibt lokal und auf dem Server; Deploy-ZIPs enthielten sie schon immer nicht. Bei Serverumzug aus der Historie holen (git checkout f32448c -- ffmpeg).

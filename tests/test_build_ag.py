@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 n')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 o')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2030,7 +2030,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 n')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 o')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2108,10 +2108,27 @@ class SaverModeAndFixesTest(AppTestCase):
         self.assertIn('async function setSaver(', live)
         self.assertIn('function saverPeek(', live)
         # Bildschirm bleibt AN: Sparmodus fordert die Wake-Lock an und meldet es
-        self.assertIn('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft weiter.', live)
+        self.assertIn('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft im 20-s-Takt.', live)
         # Sparmodus hält den Bildschirm auch nach App-Wechsel wach; Ende mit der Fahrt
         self.assertIn('sharing || following || saverOn', live)
         self.assertIn('if (saverOn) setSaver(false);', live)
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
         self.assertIn('#saver-dim {', css)
         self.assertIn('#saver-dim.saver-peek', css)
+
+
+class SaverGpsThrottleTest(AppTestCase):
+    """Build 2026-11-06o: Stromspar-Modus Stufe 2 – im Sparmodus wird alle 20 s
+    gesendet (Stand: 45 s), ein Richtungs-Trigger (> 25° Kursänderung, berechnet
+    aus den letzten beiden Sendepositionen) sichert Kurven sofort. Wie die
+    Akku-Modi von Strava & Co.: Ecken rund, Geraden ausgedünnt."""
+
+    def test_o_spar_drossel_und_kurven_trigger(self):
+        live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
+        self.assertIn('function _bearing(a, b) {', live)
+        self.assertIn('const sendEvery = saverOn ? 20000 : 10000, stillEvery = saverOn ? 45000 : 30000;', live)
+        self.assertIn('if (turn < 25) return;', live)
+        self.assertIn('prevSentPos = lastPos;', live)
+        self.assertIn('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft im 20-s-Takt.', live)
+        # Normalmodus unverändert: 10 s / 30 s bleiben als Basis erhalten
+        self.assertIn('saverOn ? 20000 : 10000', live)
