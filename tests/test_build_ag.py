@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 e')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 f')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1872,3 +1872,28 @@ class TourActionsStyledTest(AppTestCase):
         html = self.get_html(f'/touren/{self.t_plan_id}')
         self.assertIn('id="tour-actions"', html)
         self.assertIn('bi-send', html)
+
+
+class GlobalButtonHarmonyTest(AppTestCase):
+    """Build 2026-11-06f: Eine Designsprache für ALLE Buttons – Ecken app-weit
+    vereinheitlicht, Outline-Varianten (grau/gruen/rot) mit weicher Tint-Optik
+    inkl. Dark Mode; Navigations-Buttons der Tourseite mit Icons statt Emoji."""
+
+    def test_f_global_button_harmony(self):
+        css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
+        self.assertIn('GLOBALER Button-Feinschliff', css)
+        self.assertIn('.btn { border-radius: 9px; }', css)
+        self.assertIn('.btn-sm { border-radius: 8px; }', css)
+        self.assertIn('.btn-outline-secondary {\n  background: var(--djo-light);', css)
+        self.assertIn('[data-theme="dark"] .btn-outline-secondary {\n  background: #232945;', css)
+        self.assertIn('[data-theme="dark"] .btn-outline-success {', css)
+        self.assertIn('[data-theme="dark"] .btn-outline-danger {', css)
+        det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()
+        self.assertNotIn('🌿 Komoot', det)
+        self.assertEqual(det.count('<i class="bi bi-signpost-2 me-1"></i>Komoot'), 2)
+        self.assertEqual(det.count('<i class="bi bi-phone me-1"></i>OsmAnd / Maps-App'), 2)
+        self.assertEqual(det.count('<i class="bi bi-map me-1"></i>Apple Maps'), 2)
+        self.assertEqual(det.count('<i class="bi bi-globe me-1"></i>OpenStreetMap'), 2)
+        # dynamisch: Gastro-Seite (frueher nackte Kacheln) erbt den weichen Look
+        self.login_member()
+        self.get_html('/gastro')            # muss fehlerfrei rendern

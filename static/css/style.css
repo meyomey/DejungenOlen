@@ -559,3 +559,51 @@ footer {
 [data-theme="dark"] #tour-actions .btn-outline-danger:hover {
   background: #b02a37; color: #fff; border-color: #b02a37;
 }
+
+
+/* Build 11-06f: GLOBALER Button-Feinschliff – eine Designsprache für die ganze App.
+   Gleiche Ecken überall; die Outline-Varianten bekommen die weiche Tint-Optik
+   (vorher: nackte Bootstrap-Kacheln, besonders in Gastro/Archiv/Admin auffällig).
+   Die Aktionsleiste der Tourseite (#tour-actions, Build 11-06e) bleibt unangetastet
+   und passt jetzt zur Rest-App. Dark Mode unten mit eigenen Toenen. */
+.btn { border-radius: 9px; }
+.btn-sm { border-radius: 8px; }
+.btn-outline-secondary {
+  background: var(--djo-light); color: #4a5568; border-color: var(--djo-border);
+}
+.btn-outline-secondary:hover, .btn-outline-secondary:focus {
+  background: var(--djo-border); color: var(--djo-navy); border-color: var(--djo-navy); color: var(--djo-navy);
+}
+.btn-outline-success {
+  background: rgba(21, 115, 71, .08); color: #157347; border-color: rgba(21, 115, 71, .4);
+}
+.btn-outline-success:hover, .btn-outline-success:focus {
+  background: #157347; color: #fff; border-color: #157347;
+}
+.btn-outline-danger {
+  background: rgba(192, 57, 43, .08); color: #b02a37; border-color: rgba(192, 57, 43, .4);
+}
+.btn-outline-danger:hover, .btn-outline-danger:focus {
+  background: #b02a37; color: #fff; border-color: #b02a37;
+}
+[data-theme="dark"] .btn-outline-secondary {
+  background: #232945; color: #9aaad0; border-color: #3a4070;
+}
+[data-theme="dark"] .btn-outline-secondary:hover,
+[data-theme="dark"] .btn-outline-secondary:focus {
+  background: #2e3555; color: #fff; border-color: #4a5590;
+}
+[data-theme="dark"] .btn-outline-success {
+  background: #0d2a1a; color: #80d4a0; border-color: #2e7d4f;
+}
+[data-theme="dark"] .btn-outline-success:hover,
+[data-theme="dark"] .btn-outline-success:focus {
+  background: #157347; color: #fff; border-color: #157347;
+}
+[data-theme="dark"] .btn-outline-danger {
+  background: #2a1212; color: #e09090; border-color: #7a3030;
+}
+[data-theme="dark"] .btn-outline-danger:hover,
+[data-theme="dark"] .btn-outline-danger:focus {
+  background: #b02a37; color: #fff; border-color: #b02a37;
+}

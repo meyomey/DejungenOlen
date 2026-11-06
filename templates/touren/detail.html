@@ -974,23 +974,23 @@
           <!-- Komoot: beliebteste Rad-App in Deutschland -->
           <a href="https://www.komoot.com/plan/@{{ tour.meeting_lat }},{{ tour.meeting_lng }},14z"
              target="_blank" class="btn btn-sm btn-outline-secondary">
-            🌿 Komoot
+            <i class="bi bi-signpost-2 me-1"></i>Komoot
           </a>
 
           <!-- OsmAnd: geo: URI öffnet direkt die installierte Maps-App -->
           <a href="geo:{{ tour.meeting_lat }},{{ tour.meeting_lng }}?z=14"
              class="btn btn-sm btn-outline-secondary">
-            📱 OsmAnd / Maps-App
+            <i class="bi bi-phone me-1"></i>OsmAnd / Maps-App
           </a>
           <!-- Apple Maps: für iPhone-Nutzer -->
           <a href="https://maps.apple.com/?daddr={{ tour.meeting_lat }},{{ tour.meeting_lng }}&dirflg=c"
              target="_blank" class="btn btn-sm btn-outline-secondary">
-            🍎 Apple Maps
+            <i class="bi bi-map me-1"></i>Apple Maps
           </a>
           <!-- OpenStreetMap direkt -->
           <a href="https://www.openstreetmap.org/directions?from=&to={{ tour.meeting_lat }},{{ tour.meeting_lng }}#map=14/{{ tour.meeting_lat }}/{{ tour.meeting_lng }}"
              target="_blank" class="btn btn-sm btn-outline-secondary">
-            🗺️ OpenStreetMap
+            <i class="bi bi-globe me-1"></i>OpenStreetMap
           </a>
         </div>
         {% endif %}
@@ -1494,19 +1494,19 @@
           </a>
           <a href="https://www.komoot.com/plan/@{{ tour.meeting_lat }},{{ tour.meeting_lng }},14z"
              target="_blank" class="btn btn-sm btn-outline-secondary">
-            🌿 Komoot
+            <i class="bi bi-signpost-2 me-1"></i>Komoot
           </a>
           <a href="geo:{{ tour.meeting_lat }},{{ tour.meeting_lng }}?z=14"
              class="btn btn-sm btn-outline-secondary">
-            📱 OsmAnd / Maps-App
+            <i class="bi bi-phone me-1"></i>OsmAnd / Maps-App
           </a>
           <a href="https://maps.apple.com/?daddr={{ tour.meeting_lat }},{{ tour.meeting_lng }}&dirflg=c"
              target="_blank" class="btn btn-sm btn-outline-secondary">
-            🍎 Apple Maps
+            <i class="bi bi-map me-1"></i>Apple Maps
           </a>
           <a href="https://www.openstreetmap.org/directions?from=&to={{ tour.meeting_lat }},{{ tour.meeting_lng }}#map=14/{{ tour.meeting_lat }}/{{ tour.meeting_lng }}"
              target="_blank" class="btn btn-sm btn-outline-secondary">
-            🗺️ OpenStreetMap
+            <i class="bi bi-globe me-1"></i>OpenStreetMap
           </a>
         </div>
         {% endif %}

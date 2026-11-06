@@ -1,5 +1,11 @@
 # Changelog – De jungen Olen
 
+## 1.4.0 – 2026-11-06 (Build f) – Buttons app-weit eine Familie
+
+- Globaler Button-Feinschliff: Gleiche Ecken für alle Buttons, und die Outline-Varianten (grau/grün/rot) haben jetzt überall die weiche Tint-Optik aus der Aktionsleiste – vorher nackte Bootstrap-Kacheln, besonders auf Gastro-, Archiv- und Admin-Seiten auffällig. Dark Mode mit eigenen Tönen.
+- Die Navigations-Buttons auf der Tour-Seite (Komoot, OsmAnd/Maps-App, Apple Maps, OpenStreetMap) nutzen jetzt Icons statt Emojis und passen zum Rest.
+- 247 Tests, py_compile OK.
+
 ## 1.4.0 – 2026-11-06 (Build e) – Aktionsleiste auf der Tour-Seite gestylt
 
 - Die Aktions-Buttons (Vorlesen, Bearbeiten, Vorlage, Nochmal, Löschen, Rückblick & Video, Drucken, iCal, Teilen …) sehen jetzt ruhig und einheitlich aus: gleiche Höhe und Ecken, weiche getönte Flächen statt nackter Outline-Kacheln, dezenter Hub beim Berühren. Grün (Nochmal) und Rot (Löschen) bleiben als Bedeutung erkennbar, „Rückblick & Video“ bleibt der goldene Hingucker – zusammen deutlich ruhiger.
