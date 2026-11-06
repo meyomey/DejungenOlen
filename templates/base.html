@@ -494,7 +494,7 @@ updateDarkUI();
   function makePill(s) {
     pill = document.createElement('div');
     pill.className = 'fahrt-pill';
-    pill.innerHTML = '<span class="live-now-dot"></span> Fahrt läuft · ' +
+    pill.innerHTML = '<span class="live-now-dot"></span> Fahrt läuft · <span class="pill-n"></span>' +
       '<a href="/touren/' + s.tour_id + '/live?share=1">Zur Karte</a>' +
       '<button type="button" title="Fahrt beenden">✕</button>';
     pill.querySelector('button').onclick = () => {
@@ -531,11 +531,24 @@ updateDarkUI();
   function applyLive(lv) {
     if (window.djoLiveNowUpdate) { try { window.djoLiveNowUpdate(lv); } catch (e) {} }   // Build o: Tourseite schaltet „Fahren“/„Fahrt läuft“ selbst um
     if (!badgeHost) return;
-    if (!lv) { badgeHost.innerHTML = ''; return; }
+    // Build 11-06t: EINE rote Anzeige pro Bildschirm – läuft die EIGENE Fahrt, ist die
+    // Pill unten rechts DIE Anzeige (Daumennähe, mit ✕ zum Beenden; sie übernimmt Anzahl
+    // + Aufzeichnungspunkt aus der Navbar). Fährt jemand ANDERES, zeigt die Navbar-Pille
+    // die Gruppe an. So stehen die beiden roten Elemente nie mehr gleichzeitig da.
+    let own = false;
+    try { const st = window.djoFahren && djoFahren.state(); own = !!(st && lv && st.tour_id === lv.tour_id); } catch (e) {}
+    updatePillLive(lv, own);
+    if (!lv || own) { badgeHost.innerHTML = ''; return; }
     badgeHost.innerHTML =
       '<a class="badge rounded-pill bg-danger live-now-badge" href="/touren/' + lv.tour_id + '/live"' +
       ' title="Fahrt läuft: ' + lv.n + ' unterwegs' + (lv.recording ? ' · Aufzeichnung läuft' : '') + ' – Live-Karte öffnen">' +
       '<span class="live-now-dot"></span>' + lv.n + ' unterwegs' + (lv.recording ? ' · ⏺' : '') + '</a>';
+  }
+  // Build 11-06t: Die Pill erbt die Navbar-Infos (Anzahl unterwegs + Aufzeichnungspunkt)
+  function updatePillLive(lv, own) {
+    if (!pill) return;
+    const nEl = pill.querySelector('.pill-n');
+    if (nEl) nEl.textContent = (own && lv) ? lv.n + ' unterwegs' + (lv.recording ? ' · ⏺' : '') + ' · ' : '';
   }
   function pollLive() {
     fetch('/api/live/now', {cache: 'no-store'})

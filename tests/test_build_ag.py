@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 s')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 t')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2031,7 +2031,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 s')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 t')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2258,3 +2258,23 @@ class LiveZombieStopTest(AppTestCase):
         base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
         self.assertIn('r.status === 409', base)
         self.assertIn('window.djoFahren.clear(); cleanup(); removePill();', base)
+
+
+class EineRoteAnzeigeTest(AppTestCase):
+    """Build 2026-11-06t: Eine rote Anzeige pro Bildschirm – läuft die EIGENE
+    Fahrt, ist die Pill unten rechts DIE Anzeige (erbt Anzahl + Aufzeichnungs-
+    punkt aus der Navbar-Polle); die Navbar bleibt dann frei. Fährt jemand
+    anderes, zeigt die Navbar-Pille. Nie mehr beide gleichzeitig."""
+
+    def test_t_navbar_bei_eigener_fahrt_geleert(self):
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertIn("let own = false;", base)
+        self.assertIn("own = !!(st && lv && st.tour_id === lv.tour_id)", base)
+        self.assertIn("updatePillLive(lv, own);", base)
+        self.assertIn("if (!lv || own) { badgeHost.innerHTML = ''; return; }", base)
+
+    def test_t_pill_erbt_navbar_infos(self):
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        self.assertIn("function updatePillLive(lv, own)", base)
+        self.assertIn("nEl.textContent = (own && lv) ? lv.n + ' unterwegs' + (lv.recording ? ' · ⏺' : '') + ' · ' : '';", base)
+        self.assertIn("Fahrt läuft · <span class=\"pill-n\"></span>", base)

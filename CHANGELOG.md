@@ -1,4 +1,7 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build t) – Eine rote Anzeige statt zweier
+- Läuft die EIGENE Fahrt, ist die „Fahrt läuft“-Pill unten rechts DIE eine Anzeige – sie zeigt jetzt auch, wie viele unterwegs sind und ob die Aufzeichnung läuft (vorher standen Navbar-Pille „N unterwegs“ und Pill gleichzeitig herum). Die Navbar bleibt bei eigener Fahrt frei; fährt jemand anderes, zeigt weiterhin die Navbar-Pille die Gruppe an. Tourseiten regelt wie seit Build p die Aktionsleiste.
+- 271 Tests, py_compile OK.
 ## 1.5.0 – 2026-11-06 (Build s) – „Ende gilt“-Siegel gegen Zombie-Fahrten
 - Fix für „Fahrt läuft immer noch, obwohl ich sie mehrfach beendet habe“: Ein vergessenes Gerät (Tab oder Handy mit offener Live-Karte bzw. aktivem Fahren-Status) sendete im Hintergrund weiter und riss die soeben gelöschte Anwesenheit alle ~30 Sekunden neu ein – die rote Anzeige kam also immer wieder.
 - Beim Beenden setzt der Server jetzt ein Siegel (live_stops): Weitere Hintergrund-Updates werden abgewiesen (HTTP 409), die Sender räumen sich selbst ab. Eine frisch geladene Live-Karte meldet resume und startet unbeschwert neu; die Aufzeichnung bleibt von der Änderung unberührt (weiter übernehmen/löschen auf der Tourseite).
