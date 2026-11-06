@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 k')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 l')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2030,7 +2030,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 k')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 l')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2043,3 +2043,15 @@ class VersionBumpAndHintWrapTest(AppTestCase):
                       encoding='utf-8').read()
         self.assertIn('data-bs-target="#routenplaner-hinweis"', create)
         self.assertIn('Noch keine GPX-Datei', create)
+
+
+class FooterCenteredTest(AppTestCase):
+    """Build 2026-11-06l: Die Footer-Zeile (Gruppenname · Newsletter ·
+    Datenschutz) ist zentriert statt nach links/rechts verteilt – auf
+    schmalen Screens stand bisher alles links, nur die Versionszeile mittig."""
+
+    def test_l_footer_zentriert(self):
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        foot = base.split('<footer')[1].split('</footer>')[0]
+        self.assertIn('justify-content-center', foot)
+        self.assertNotIn('justify-content-between', foot)
