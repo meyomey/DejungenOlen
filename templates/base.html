@@ -38,7 +38,10 @@
 {% if current_user.is_authenticated %}
 <!-- ── Navbar ──────────────────────────────────────────────────────────────── -->
 <nav class="navbar navbar-expand-lg navbar-djo sticky-top">
-  <div class="container">
+  {# Build 11-06r: container-fluid – Bootstraps .container hat im lg-Bereich (992–1199 px)
+     nur 960 px Breite, da quetschten sich Logo + 9 Menüpunkte + Account zusammen und die
+     Beschriftungen brachen IM Link um (Icon oben, Text unten → versetztes Bild) #}
+  <div class="container-fluid px-3">
 
     <!-- Brand -->
     <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">

@@ -1,4 +1,7 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-06 (Build r) – Navbar bei mittlerer Größe gerade gezogen
+- Bei mittlerer Fenstergroße (992–1199 px) standen die Menü-Einträge versetzt: Icon über, Beschriftung unter – Ursache war Bootstraps .container, der dort nur 960 px breit ist und die Links zum Umbrechen zwang. Die Navbar nutzt jetzt die volle Breite (container-fluid), Beschriftungen sind grundsätzlich einzeilig, und im Mittelbereich sind Abstände/Logo/Brand etwas kompakter.
+- 267 Tests, py_compile OK.
 ## 1.5.0 – 2026-11-06 (Build q) – Karten-Overlay eindeutig benannt
 - Der Karten-Schutz auf Handys hieß „☝ Tippen zum Aktivieren“ und wurde mehrfach so verstanden, als ließe sich hier die TOUR starten/aktivieren – gemeint war die Karte (erst antippen, dann mit einem Finger verschieben). Neu: „☝ Karte zum Verschieben antippen“; die vier Positions-Picker (Treffpunkt, Orte, Gastro, GPS-Korrektur) bekamen ebenfalls eindeutige Hinweise („Karte antippen – Klick setzt danach …“).
 - 266 Tests, py_compile OK.

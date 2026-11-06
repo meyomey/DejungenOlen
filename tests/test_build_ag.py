@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 q')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 r')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2031,7 +2031,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 q')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-06 r')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2188,3 +2188,22 @@ class KartenOverlayTextTest(AppTestCase):
             self.assertIn('👉 Karte antippen – Klick setzt danach die Position', tpl)
         self.assertNotIn('Tippen aktivieren', create)
         self.assertIn('👉 Karte antippen – Klick setzt danach den Treffpunkt', create)
+
+
+class NavbarMittlereBreiteTest(AppTestCase):
+    """Build 2026-11-06r: Bei mittlerer Fenstergroesse (992-1199 px) standen die
+    Menu-Eintraege versetzt (Icon ueber, Beschriftung unter) – Bootstraps .container
+    ist dort nur 960 px breit und zwang die Links zum Umbrechen. Jetzt:
+    container-fluid (volle Breite), Einzeilig-Gebot fuer Nav-Beschriftungen,
+    kompaktere Abstaende/Logo/Brand im Mittelbereich."""
+
+    def test_r_navbar_volle_breite_und_einzeilig(self):
+        base = open(os.path.join(ROOT, 'templates', 'base.html'), encoding='utf-8').read()
+        nav = base.split('<nav class="navbar')[1].split('</nav>')[0]
+        self.assertIn('container-fluid px-3', nav)
+        self.assertNotIn('<div class="container">', nav)
+        css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
+        self.assertIn('Build 11-06r', css)
+        self.assertIn('.navbar-djo .nav-link { white-space: nowrap; }', css)
+        self.assertIn('@media (min-width: 992px) and (max-width: 1299.98px) {', css)
+        self.assertIn('.navbar-djo .navbar-logo { width: 36px; height: 36px; }', css)

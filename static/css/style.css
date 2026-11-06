@@ -679,3 +679,15 @@ footer {
   border: 1px solid rgba(255, 255, 255, .4); background: rgba(18, 26, 50, .9);
   color: #fff; font-size: 1.15rem; line-height: 1;
 }
+
+
+/* Build 11-06r: Navbar bei mittlerer Fenstergroesse (lg bis ~1300 px) – vorher brachen
+   Icon und Beschriftung innerhalb der Links um (gestapelte, „versetzte“ Eintraege), weil
+   Bootstraps .container dort nur 960 px breit ist. Jetzt: volle Breite + Beschriftungen
+   grundsatzlich einzeilig + engere Abstaende/Groessen im Mittelbereich. */
+.navbar-djo .nav-link { white-space: nowrap; }
+@media (min-width: 992px) and (max-width: 1299.98px) {
+  .navbar-djo .nav-link { padding-left: .55rem; padding-right: .55rem; font-size: .88rem; }
+  .navbar-djo .navbar-brand { font-size: 1.05rem; }
+  .navbar-djo .navbar-logo { width: 36px; height: 36px; }
+}
