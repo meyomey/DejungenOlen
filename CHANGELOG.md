@@ -7,7 +7,8 @@
   Das ist seit **Build an** die gewollte Lage („Der Sperrknopf soll lieber unten über dem
   grünen/orangen InfoBlock erscheinen"). An der Lage habe ich **nichts geändert**.
 - **Falsch war nur der Text.** Die Hilfe sagte „Zum Verschieben **oben links**". Jetzt:
-  „Zum Verschieben **unten links** (unter der Karte, direkt über dem Info-Block)".
+  „Unten links über dem Info-Block steht ‚Zum Verschieben antippen' – ein Tipp darauf gibt
+  die Karte frei." (vorher stand dort doppelt „Zum Verschieben … Zum Verschieben antippen").
 - Zwei Code-Kommentare in `live.html` behaupteten ebenfalls „oben links" – beide korrigiert
   und um den Stand ergänzt (seit Build an unten links). Warnung: Die Live-Karte und die
   übrigen Karten haben damit **zwei verschiedene Orte** für denselben Hinweis (Live: unten

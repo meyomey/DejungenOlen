@@ -655,8 +655,9 @@ class LiveHinweisUntenLinksTest(unittest.TestCase):
 
     def test_hilfe_sagt_unten_links(self):
         h = open(os.path.join(ROOT, 'templates', 'hilfe.html'), encoding='utf-8').read()
-        self.assertIn('Zum Verschieben unten links', h)
-        self.assertNotIn('Zum Verschieben oben links', h)
+        self.assertIn('Unten links über dem Info-Block steht', h)
+        self.assertIn('„Zum Verschieben antippen“', h)
+        self.assertNotIn('oben links', h)
 
     def test_pill_haengt_links_und_unten(self):
         live = _live()
