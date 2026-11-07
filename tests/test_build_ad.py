@@ -89,6 +89,8 @@ class RueckmeldungAmKnopfTest(unittest.TestCase):
         self.assertIn('bottom: calc(58px + env(safe-area-inset-bottom) + 58px);', css)
         # Statuszeile weicht, solange der Hinweis steht (beide sitzen an derselben Stelle)
         self.assertIn('body.bar-hinweis-an #live-status { opacity: 0; }', _live())
+        # Kein zweiter Toast oben auf der Karte – der Balken an der Leiste genuegt.
+        self.assertNotIn("mapToast('⚠️ Bildschirm wachhalten greift hier nicht", _live())
 
 
 class StromsparNeuTest(unittest.TestCase):

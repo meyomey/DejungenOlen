@@ -1114,13 +1114,11 @@ function wakeVerify() {
     if (!f.ok) {
       wakeErr = f.laeuft ? 'video-zu-klein' : 'video-startet-nicht';
       const grund = f.laeuft ? 'Video zu klein oder verdeckt' : 'Video startet nicht';
+      // Nur der Balken an der Leiste – ein zweiter Toast oben auf der Karte waere Doppelung.
       barHinweis('⚠️ Bildschirm wachhalten greift hier nicht (' + grund + ').', 'warn');
-      mapToast('⚠️ Bildschirm wachhalten greift hier nicht (' + grund +
-               ') – bitte Bildschirmsperre im Gerät abschalten.', 6000);
     } else {
       wakeErr = null;
       barHinweis('🔆 Bildschirm bleibt an – ' + (f.api ? 'Browser-Freigabe' : 'Video-Ersatz') + ', geprüft.', 'gut');
-      mapToast('🔆 Bildschirm bleibt an (' + (f.api ? 'Browser-Freigabe' : 'Video-Ersatz') + ', geprüft).');
     }
     refreshWakeUi();
   }, 1200);
