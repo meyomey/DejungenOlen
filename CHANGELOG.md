@@ -1,4 +1,22 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ah) – Im hellen Stromspar-Zustand ist die Karte wieder bedienbar
+- **Rückmeldung:** „man kann nur schauen und nicht bedienen oder zoomen nach einem Doppelklick aus dem Stromsparen?"
+- **Ursache (mein Fehler in Build af):** `background: transparent` machte das Overlay im dauerhaft hellen Zustand nur **unsichtbar**. Es lag weiterhin über der ganzen Seite und fing jeden Tipp ab – man konnte zusehen, aber nichts bedienen. Zwei weitere Sperren kamen dazu:
+  - `body.saver-on #live-tools { visibility: hidden; }` blendete die Symbolspalte in **jedem** Sparzustand aus, auch im hellen.
+  - Der Karten-Wächter („Zum Verschieben antippen") blieb aktiv, solange keine Fahrt lief.
+- **Behoben:**
+  - Im hellen Zustand lässt das Overlay **alle Tipps durch** (`pointer-events: none`). Nur der ✕-Knopf und der kleine Hinweis-Streifen bleiben anklickbar – sonst käme man nicht mehr heraus.
+  - Symbolspalte, Statuszeile und Verschiebe-Hinweis sind im hellen Zustand wieder da; im dunklen bleiben sie ausgeblendet (die Regel hängt jetzt an `body.saver-on:not(.saver-hell)`).
+  - Die Karte ist im hellen Zustand **verschiebbar**, ohne vorher „Zum Verschieben antippen" drücken zu müssen; beim Zurückschalten wird sie wieder geschützt.
+- **Im Browser belegt** (Chromium, Smartphone-Profil):
+  - hell: `pointer-events = none`, `map.dragging = true`, Symbolspalte `visible`.
+  - **Zoom 12 → 13** per Klick auf „+", **Karte verschoben** (53,4595 → 53,4457), „Alle"-Knopf reagiert, Fahrt-Knopf reagiert.
+  - zurück auf dunkel: `pointer-events = auto`, Symbolspalte `hidden` – die Sperre greift wieder.
+- 4 neue Tests (362 gesamt), py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templates/hilfe.html`, `app.py`,
+`templates/base.html`, `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ag) – Einmal tippen dunkelt jetzt jedes Mal wieder ab
 - **Rückmeldung:** „Einmal tippen funktioniert nur einmal. Wenn man erneut nach einer längeren Zeit auf den abgedunkelten Screen einmal tippt, bleibt er immer an."
 - **Ursache (klarer Fehler in Build af):** `saverTap()` hellte direkt auf (`classList.add('saver-peek')`), setzte aber **keinen Zeitgeber zum Zurückdunkeln**. Der 4-Sekunden-Timer lebte nur in `saverStufe()` und lief einmal beim Einschalten des Sparmodus. Nach der ersten Aufhellung blieb deshalb jeder weitere Einzeltipp für immer hell.

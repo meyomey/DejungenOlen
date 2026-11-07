@@ -104,8 +104,13 @@
   /* Build ae: Im Stromspar-Modus dunkelt ALLES ab – auch die Symbolspalte. Sonst blieb
      rechts ein heller Streifen stehen („es wird nicht der ganze Bildschirm abgedunkelt").
      Beendet wird ueber das ✕ im Overlay (oder mit dem Ende der Fahrt). */
-  body.saver-on #live-tools { visibility: hidden; }
-  body.saver-on #live-status, body.saver-on .bar-hinweis { display: none !important; }
+  /* Build ah: Symbolspalte nur im DUNKLEN ausblenden. Im dauerhaft hellen Zustand will
+     man die Karte bedienen – Folgen, Alle, Vollbild, Bildschirm an muessen erreichbar sein. */
+  body.saver-on:not(.saver-hell) #live-tools { visibility: hidden; }
+  body.saver-on:not(.saver-hell) #live-status,
+  body.saver-on:not(.saver-hell) .bar-hinweis { display: none !important; }
+  /* Verschiebe-Hinweis der Karte im hellen Zustand sichtbar/antippbar machen */
+  body.saver-hell #live-guard-pill { z-index: 1200; }
 
   details.live-info > summary { cursor: pointer; list-style: none; }
   details.live-info > summary::marker { content: ''; }
@@ -1255,6 +1260,9 @@ let saverHell = false, saverTapTimer = null, saverHintTimer = null;
 
 function saverStufe(hell) {
   saverHell = !!hell;
+  // Build ah: Im hellen Zustand ist die Seite BEDIENBAR (Overlay laesst alles durch).
+  // Die Klasse steuert, dass Symbolspalte/Status zurueckkommen.
+  document.body.classList.toggle('saver-hell', saverHell && saverOn);
   const dim = document.getElementById('saver-dim');
   if (dim) {
     dim.classList.toggle('d-none', !saverOn);
@@ -1265,6 +1273,10 @@ function saverStufe(hell) {
   clearTimeout(saverPeekTimer);
   clearTimeout(saverTapTimer);
   clearTimeout(saverHintTimer);
+  // Build ah: Im hellen Zustand muss die Karte bedienbar sein – auch wenn keine Fahrt laeuft.
+  // Der normale Guard („Zum Verschieben antippen") waere hier eine Huerte zu viel.
+  if (saverHell) { guardUnlocked = true; setLiveGuard(); }
+  else if (!sharing && !following) { guardUnlocked = false; setLiveGuard(); }
   // Build ag: Den Blick (4 s hell, Hinweis nach 2 s weg) macht saverBlick() – an EINER
   // Stelle. Hier bleibt nur der Zustandswechsel dunkel↔dauerhaft hell.
   const b = document.getElementById('btn-saver');
@@ -1327,7 +1339,8 @@ function saverTap() {
   // Wartezeit immer scharf machen – egal in welchem Zustand.
   saverTapTimer = setTimeout(() => { saverTapTimer = null; }, 300);
   if (saverHell) {
-    // Dauerhaft hell ist schon hell – ein Einzeltipp sagt nur, wie man zurückkommt.
+    // Build ah: Dauerhaft hell ist die Seite bedienbar (Overlay laesst alles durch).
+    // Ein Tipp auf den kleinen Hinweis blendet ihn sofort aus; die Karte bleibt frei.
     const dim = document.getElementById('saver-dim');
     if (dim) {
       dim.classList.remove('saver-tipp');

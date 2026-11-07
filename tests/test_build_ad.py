@@ -130,7 +130,7 @@ class StromsparNeuTest(unittest.TestCase):
         self.assertNotIn('#live-bar { z-index: 4100 !important; }', css)
         self.assertNotIn('#saver-dim { bottom: var(--saver-frei, 0px); }', css)
         # alles andere dunkelt mit ab
-        self.assertIn('body.saver-on #live-tools { visibility: hidden; }', _live())
+        self.assertIn('body.saver-on:not(.saver-hell) #live-tools { visibility: hidden; }', _live())
 
     def test_spar_hinweis_sagt_die_wahrheit(self):
         live = _live()
@@ -164,9 +164,9 @@ class AbdunklungGanzflaechigTest(unittest.TestCase):
 
     def test_nichts_steht_ueber_dem_overlay(self):
         css = _css()
-        # Symbolspalte und Statuszeile werden im Sparmodus ausgeblendet statt hochgelegt
-        self.assertIn('body.saver-on #live-tools { visibility: hidden; }', _live())
-        self.assertIn('body.saver-on #live-status, body.saver-on .bar-hinweis { display: none !important; }', _live())
+        # Build ah: nur im DUNKLEN ausblenden – im hellen Zustand muss man bedienen koennen.
+        self.assertIn('body.saver-on:not(.saver-hell) #live-tools { visibility: hidden; }', _live())
+        self.assertIn('body.saver-on:not(.saver-hell) #live-status,', _live())
 
 
 class SelbsttestWachhaltenTest(unittest.TestCase):
@@ -228,7 +228,9 @@ class StromsparZweiStufenTest(unittest.TestCase):
         self.assertIn('if (saverTapTimer) {', live)
         self.assertIn("saverStufe(!saverHell);", live)
         css = _css()
-        self.assertIn('#saver-dim.saver-off { background: transparent; cursor: default; }', css)
+        off = css.split('#saver-dim.saver-off {', 1)[1].split('}', 1)[0]
+        self.assertIn('background: transparent', off)
+        self.assertIn('pointer-events: none', off)
 
     def test_zurueck_in_den_sparmodus(self):
         live = _live()
@@ -288,3 +290,40 @@ class StromsparBlickJedesMalTest(unittest.TestCase):
         live = _live()
         block = live.split('function saverBlick()', 1)[1].split('\n}', 1)[0]
         self.assertIn('if (d && !saverHell) d.classList.remove(\'saver-peek\');', block)
+
+
+class StromsparHellBedienbarTest(unittest.TestCase):
+    """Build ah: „man kann nur schauen und nicht bedienen oder zoomen nach einem Doppelklick
+    aus dem Stromsparen?"
+
+    Ursache: `background: transparent` machte das Overlay im dauerhaft hellen Zustand nur
+    unsichtbar. Es lag weiterhin über allem und fing jeden Tipp ab – man konnte zusehen,
+    aber nichts bedienen. Zusätzlich blendete `body.saver-on #live-tools` die Symbolspalte
+    in JEDEM Sparzustand aus, und der Karten-Guard sperrte das Verschieben.
+    """
+
+    def test_overlay_laesst_tipps_durch(self):
+        css = _css()
+        block = css.split('#saver-dim.saver-off {', 1)[1].split('}', 1)[0]
+        self.assertIn('pointer-events: none', block)
+        # ✕ und Hinweis bleiben anklickbar – sonst käme man nicht mehr heraus
+        self.assertIn('#saver-dim.saver-off #saver-off { pointer-events: auto; }', css)
+        self.assertIn('#saver-dim.saver-off .saver-chip { pointer-events: auto; }', css)
+
+    def test_symbolspalte_nur_im_dunklen_aus(self):
+        live = _live()
+        self.assertIn('body.saver-on:not(.saver-hell) #live-tools { visibility: hidden; }', live)
+        self.assertIn('body.saver-on:not(.saver-hell) #live-status,', live)
+        # die alte, zustandsunabhängige Regel darf nicht zurückkommen
+        self.assertNotIn('body.saver-on #live-tools { visibility: hidden; }', live)
+
+    def test_karte_im_hellen_zustand_verschiebbar(self):
+        live = _live()
+        block = live.split('function saverStufe(', 1)[1].split('\n}', 1)[0]
+        self.assertIn('if (saverHell) { guardUnlocked = true; setLiveGuard(); }', block)
+        self.assertIn("document.body.classList.toggle('saver-hell', saverHell && saverOn);", block)
+
+    def test_zurueck_im_dunklen_wieder_geschuetzt(self):
+        css = _css()
+        # ohne saver-off gilt wieder die normale Overlay-Regel (pointer-events: auto)
+        self.assertNotIn('#saver-dim { pointer-events: none;', css)
