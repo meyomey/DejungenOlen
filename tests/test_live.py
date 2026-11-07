@@ -132,10 +132,12 @@ class LiveTest(AppTestCase):
         self.assertIn('"initials": "HM"', html)
         self.assertIn('Bahnhof, Gleis 1', html)                    # Treffpunkt
         self.assertRegex(html, r'const TRACK\s*=\s*\[\[\d')         # vereinfachter GPX-Track
-        self.assertIn('>Folgen<', html)                       # Build x: volle Beschriftung (kein „Fol…“)
-        self.assertIn('bi-crosshair', html)                   # Build x: Icon statt Emoji
-        self.assertIn('>Alle<', html)
-        self.assertIn('bi-people-fill', html)
+        self.assertIn('aria-label="Folgen"', html)            # Build 11-06aa: Folgen ist ein Symbol-Knopf
+        self.assertIn('title="Folgen:', html)
+        # Build 11-06aa: Symbole sind jetzt Inline-SVG (keine Icon-Font nötig, offline sicher)
+        self.assertIn('<svg viewBox="0 0 24 24"', html)
+        self.assertIn('aria-label="Alle anzeigen"', html)
+        self.assertIn('<circle cx="12" cy="12" r="7"/>', html)      # Folgen-Symbol
         # Fremde Tour
         self.assertEqual(self.client.get(f'/touren/{self.t_fremd_id}/live').status_code, 404)
 

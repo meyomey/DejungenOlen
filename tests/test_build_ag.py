@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 z')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 aa')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -806,8 +806,9 @@ class VideoSmoothTest(AppTestCase):
         # „Fahrt bee…“ abgeschnitten – der Knopf darf zweizeilig werden; auf sehr schmalen
         # Displays wird die Schrift der Fahrt-Knöpfe leicht verkleinert.
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
-        self.assertIn('#live-bar #btn-share { flex: 2.2 1 0; white-space: normal; line-height: 1.15; text-overflow: clip; }', live)  # Build n: hoeher spezifisch – nowrap aus '#live-bar .btn' darf nicht gewinnen
-        self.assertIn('@media (max-width: 374.98px) { #live-bar .lb-main .btn { font-size: .9rem; } }', live)
+        self.assertIn('#live-bar #btn-share { flex: 2.2 1 0; }', live)
+        self.assertIn('white-space: normal; line-height: 1.15; overflow: visible; text-overflow: clip;', live)  # Build n: hoeher spezifisch – nowrap aus '#live-bar .btn' darf nicht gewinnen
+        self.assertIn('@media (max-width: 374.98px) { #live-bar .lb-main .btn { font-size: .95rem; } }', live)
 
     def test_l_stop_status_links_to_recording(self):
         # Build l (2026-11-04): Auch die Meldung nach „⏹ Fahrt beenden“ verlinkt direkt –
@@ -916,7 +917,7 @@ class VideoSmoothTest(AppTestCase):
         live = self.client.get(f'/touren/{self.t_plan_id}/live').get_data(as_text=True)
         # Genau EIN kombinierter Hinweis-Block, schön strukturiert
         self.assertEqual(live.count('details class="small text-muted live-info'), 1)
-        self.assertIn('<i class="bi bi-info-circle me-1"></i>Hinweise', live)
+        self.assertIn('id="live-info-btn"', live)      # ℹ️-Knopf öffnet die Hinweise
         self.assertIn('live-info-grid', live)
         self.assertIn('👀 Zuschauen &amp; Fahren:</strong>', live)   # Build j: ein Begriff für Start/Stop
         self.assertIn('⏸ Pause:</strong>', live)
@@ -927,12 +928,12 @@ class VideoSmoothTest(AppTestCase):
         # Lücke weg: kein Karten-Überstand, Laufraum am Seitenende
         self.assertNotIn('margin-bottom: 116px', live)
         self.assertNotIn('margin-bottom: 152px', live)
-        self.assertIn('html body { padding-bottom: calc(267px', live)   # Build y: dritte Reihe + Spezifität
+        self.assertIn('html body { padding-bottom: calc(126px', live)   # Build 11-06aa: flache Leiste
         # Status-Leiste mit klaren Zuständen (CSS) + setStatus nutzt sie
         self.assertIn('#live-status { padding:', live)
         self.assertIn('#live-status.warning { background:', live)
         self.assertIn("#live-status.danger  { background:", live)
-        self.assertIn("el.className = 'mb-2 ' + (cls === 'danger' ? 'danger'", live)
+        self.assertIn("el.className = 'mb-1 py-1 ' + (cls === 'danger' ? 'danger'", live)
         self.assertNotIn("el.className = 'small mb-2", live)
         # Fahrgemeinschaften: Header klappt, Body collapse ohne "show" (eingeklappt)
         html = self.client.get(f'/touren/{self.t_plan_id}').get_data(as_text=True)
@@ -980,7 +981,7 @@ class VideoSmoothTest(AppTestCase):
         html = self.client.get(f'/touren/{t_att.id}/live?share=1').get_data(as_text=True)
         self.assertIn('id="btn-pause"', html)
         self.assertIn('class="lb-main"', html)
-        self.assertIn('class="lb-sec"', html)
+        self.assertIn('id="live-tools"', html)      # Build 11-06aa: Nebenfunktionen als Symbole
         # 5) CSS (Inline in live.html – dort gewinnt es gegen die bestehenden Regeln)
         live_src = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('flex-direction: column-reverse', live_src)
@@ -2036,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-06 z')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 aa')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2295,8 +2296,8 @@ class LiveFahrKomfortTest(AppTestCase):
     def test_u_guard_aus_und_karte_groesser(self):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('data-map-guard="off"', live)
-        self.assertIn('min-height: 420px', live)
-        self.assertIn('height: calc(100vh - 230px)', live)
+        self.assertIn('min-height: 330px', live)
+        self.assertIn('height: calc(100vh - 168px)', live)
 
     def test_u_wege_knopf_und_fahrzoom(self):
         # Build 11-06z: Der eigene 🚵-Kachelknopf der Live-Karte ist weg – den Stil
@@ -2425,21 +2426,25 @@ class LiveKarteLesbarTest(AppTestCase):
     def test_x_sekundaerleiste_volle_beschriftung(self):
         live = self._live()
         # 3+2-Raster statt einer gequetschten Fünferspalte
-        self.assertIn('#live-bar .lb-sec { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }', live)
-        self.assertIn('#live-bar .lb-sec .btn.lb-wide { grid-column: span 3; }', live)
+        self.assertIn('#live-bar .lb-sec  { display: none; }', live)      # Nebenknöpfe sind jetzt Symbole auf der Karte
+        self.assertIn('#live-tools .lt-btn { width: 42px; height: 42px;', live)
+        self.assertIn('#live-tools { position: absolute; right: 8px; bottom: 84px;', live)
         # Umbruch statt Ellipse in der Sekundärreihe
-        self.assertIn("""    #live-bar .lb-sec .btn { min-height: 40px; font-size: .82rem; padding: .25rem .2rem;
-                             white-space: normal; overflow: visible; text-overflow: clip;""", live)
-        # volle Wörter stehen im Markup
+        # Build 11-06aa: Die Nebenknöpfe sind jetzt Symbole auf der Karte (42 × 42 px).
+        self.assertIn("#live-tools .lt-btn { width: 42px; height: 42px;", live)
         # Build 11-06z: „Standard" ist aus der Leiste raus (Kartenstil-Knopf sitzt auf der Karte)
-        for wort in ('>Folgen<', '>Alle<', '>Vollbild</span>', '>Stromspar<'):
+        # Build 11-06aa: Die Namen stehen jetzt in title/aria-label der Symbol-Knöpfe
+        for wort in ('title="Folgen:', 'title="Alle:', 'aria-label="Vollbild"', 'aria-label="Stromspar"'):
             self.assertIn(wort, live)
 
     def test_x_beschriftung_bleibt_bei_umschalten(self):
         live = self._live()
         # Vollbild: Text im eigenen Span, Icon bleibt (vorher wurde der Knopf zum nackten „⛶“)
-        self.assertIn('<span id="btn-fs-txt">Vollbild</span>', live)
-        self.assertIn("if (fsTxt) fsTxt.textContent = on ? 'Vollbild aus' : 'Vollbild';", live)
+        # Build 11-06aa: Vollbild ist ein reiner Symbol-Knopf – das Symbol tauscht, der Zustand
+        # steht in title/aria-label.
+        self.assertIn("const fsIco = document.getElementById('btn-fs-ico');", live)
+        self.assertIn("fsIco.innerHTML = on ? SVG_X : SVG_FS;", live)
+        self.assertIn("fsBtn.title = on ? 'Vollbild aus' : 'Vollbild';", live)
         # Build 11-06z: Der Kartenstil-Knopf ist aus der Leiste verschwunden (er sitzt
         # jetzt auf der Karte selbst) – dort bleibt es bei Icon + Text im Span.
         self.assertNotIn('btn-tiles-txt', live)
@@ -2447,7 +2452,7 @@ class LiveKarteLesbarTest(AppTestCase):
     def test_x_laufraum_unter_der_leiste(self):
         live = self._live()
         # „html body“ (0,0,2) schlägt das spätere „body“ aus base.html (0,0,1)
-        self.assertIn('html body { padding-bottom: calc(267px + env(safe-area-inset-bottom)); }', live)
+        self.assertIn('html body { padding-bottom: calc(126px + env(safe-area-inset-bottom)); }', live)
         self.assertNotIn('    body { padding-bottom: calc(174px', live)   # der wirkungslose Selektor ist weg
 
 
@@ -2486,14 +2491,14 @@ class WakeLockErneuerungTest(AppTestCase):
 
     def test_y_eigener_knopf_mit_echtem_zustand(self):
         live = self._live()
-        self.assertIn('id="btn-wake" onclick="toggleWake()"', live)
+        self.assertIn('class="lt-btn" id="btn-wake" onclick="toggleWake()"', live)
         self.assertIn('function toggleWake()', live)
         # Knopf spiegelt, ob der Lock GERADE greift – nicht nur den Wunsch
-        self.assertIn("b.classList.toggle('btn-primary', wakeWanted && wakeHeld());", live)
-        self.assertIn("(wakeWanted && wakeHeld() ? 'Bildschirm bleibt an' : wakeWanted ? 'Bildschirm an (greift nicht)' : 'Bildschirm an')", live)
-        self.assertIn('#live-bar .lb-sec .btn.lb-full { grid-column: 1 / -1; }', live)
+        self.assertIn("b.classList.toggle('on', wakeWanted && wakeHeld());", live)
+        self.assertIn("b.setAttribute('aria-label', wakeWanted && wakeHeld() ? 'Bildschirm bleibt an'", live)
+        self.assertIn("b.classList.toggle('warn', wakeWanted && !wakeHeld());", live)      # gewollt, greift nicht → orange
         # Laufraum passt zur höheren Leiste
-        self.assertIn('html body { padding-bottom: calc(267px + env(safe-area-inset-bottom)); }', live)
+        self.assertIn('html body { padding-bottom: calc(126px + env(safe-area-inset-bottom)); }', live)
 
     def test_y_start_und_sparmodus_setzen_den_wunsch(self):
         live = self._live()

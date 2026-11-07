@@ -1,4 +1,16 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build aa) – Live-Karte: die Karte bekommt den Bildschirm
+- **Wunsch:** „Vom Wichtigsten, der Karte, kann man fast nichts mehr sehen. Die Knöpfe nehmen viel zu viel Platz ein."
+- **Oben: eine Titelzeile statt vier Blöcke.** Zurück-Pfeil · Titel · ℹ️ in einer Zeile (≈ 38 px statt über 300 px). Datum, Startzeit und Treffpunkt sowie der ganze Hinweise-Block stecken im ℹ️-Aufklapper; die Statusmeldung ist ein kleiner Chip **auf** der Karte (zwei Zeilen, antippen klappt die ganze Meldung auf – die Links nach Fahrtende bleiben erreichbar).
+- **Unten: drei große Knöpfe statt fünf Reihen.** Fahrt beenden/starten · Pause · Foto sind jetzt **58 px hoch** (vorher 50) und der Fahrt-Knopf bekommt am meisten Breite – der Rest der Leiste ist weg (≈ 70 px statt ≈ 200 px).
+- **Nebenfunktionen als Symbole auf der Karte:** Folgen · Alle · Vollbild · Bildschirm an · Stromspar sitzen als 42-px-Symbole unten rechts über der Leiste. Aktive Funktionen sind eingefärbt (Bildschirm: orange, wenn gewünscht, aber nicht greifend), jeder Knopf nennt beim Antippen kurz seinen Namen.
+- **Symbole als Inline-SVG statt Icon-Schrift:** Unterwegs ohne Netz lädt Bootstrap Icons nicht vom CDN – die Knöpfe wären leere Kästchen. Die Symbole stecken jetzt direkt im HTML (auch der Verschiebe-Hinweis und der ℹ️-Knopf kommen ohne Icon-Font aus).
+- **Messung im Browser** (390×844): Karte 676 px hoch, beginnt bei y = 232 statt 318, Kopfzeile 38 px, Leiste 70 px; bei 360×640 bleibt die Karte 472 px hoch, kein Symbol liegt auf Leiste oder Karte-Chip.
+- 12 neue Tests (`tests/test_build_aa.py`), 322 gesamt, py_compile OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_aa.py`, `tests/test_build_ag.py`,
+`tests/test_live.py`, `CHANGELOG.md`, `templates/hilfe.html`.
+
 ## 1.5.0 – 2026-11-06 (Build z) – Radkarte (CyclOSM) auf jeder Karte
 - **Wunsch:** „CyclOSM soll auch auf jeder Karte auswählbar sein." Bisher gab es den Radkarten-Stil nur auf der Live-Karte (🚵 Wege, Build 11-06u), auf der Tour-Seite nur als einer von mehreren Knöpfen.
 - **Eine Lösung statt 17 Kopien:** Der Umschalter steckt in `static/js/map-touch.js` – die Datei wird über `base.html` auf jeder Seite geladen. Ein kleiner Knopf auf der Karte schaltet zyklisch **Standard → Radkarte (CyclOSM) → Luftbild**; er erkennt „unsere" Karten an den OSM-Kacheln, tauscht nur den Grund-Kachelsatz (Marker, Track, Overlays bleiben oben) und zieht alle anderen Karten der Seite mit.

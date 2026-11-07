@@ -5,13 +5,16 @@
 <style>
   /* Build aa: Live-Karte – schlanke Seite für unterwegs (große Knöpfe, Vollbild, wenig Ballast) */
   #live-wrap { position: relative; border-radius: 10px; overflow: hidden; background: #e9ecef; }
-  #live-map  { height: calc(100vh - 290px); min-height: 420px; }   {# Build 11-06u: mehr Karte #}
+  /* Build 11-06aa: Der Karte gehört fast der ganze Bildschirm – oben nur noch EINE Titelzeile,
+     die Nebenknöpfe sitzen als kleine Symbole AUF der Karte, unten nur die drei dicken Knöpfe.
+     Vorher fraß der Kopf (Zurück + Titel + Datum + Hinweise + Status) über 300 px. */
+  #live-map  { height: calc(100vh - 205px); min-height: 330px; }
   #live-wrap.live-fs { position: fixed; inset: 0; z-index: 2000; border-radius: 0; }
   #live-wrap.live-fs #live-map { height: 100%; min-height: 0; }
   #live-bar  { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; gap: 6px; flex-wrap: wrap;
                justify-content: center; padding: 8px; background: linear-gradient(to top, rgba(255,255,255,.95), rgba(255,255,255,.6)); }
   #live-bar .btn { font-size: 1rem; padding: .5rem .9rem; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
-  @media (max-width: 575px) { #live-bar .btn { font-size: .9rem; padding: .45rem .6rem; } #live-map { height: calc(100vh - 230px); } }   {# Build 11-06u: mehr Karte #}
+  @media (max-width: 575px) { #live-bar .btn { font-size: .9rem; padding: .45rem .6rem; } #live-map { height: calc(100vh - 168px); } }
   .live-pin { width: 36px; height: 36px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 13px;
               display: flex; align-items: center; justify-content: center; border: 3px solid #fff;
               box-shadow: 0 1px 5px rgba(0,0,0,.45); position: relative; letter-spacing: .3px; }
@@ -45,6 +48,51 @@
   #live-status.sharing { background: #e2f3e8; color: #1d5c38; border-color: #b9e2c8; }
   #live-status.warning { background: #fff4d6; color: #6b4e00; border-color: #eeda9c; }
   #live-status.danger  { background: #fdecea; color: #8f1f14; border-color: #f3c1bb; }
+  /* Build 11-06aa: Die Statuszeile liegt AUF der Karte (oben links, unter dem Zoom) statt
+     darüber – sie ist wichtig, braucht aber keine eigene Zeile im Kopf. Zwei Zeilen genügen;
+     längere Meldungen lassen sich antippen und dann vollständig lesen. */
+  /* links unten: dort ist die Karte frei (oben links liegt der Verschiebe-Hinweis, oben rechts
+     der Kartenstil-Knopf, rechts unten die Symbolspalte) */
+  #live-status { position: absolute; left: 8px; bottom: 84px; max-width: calc(100% - 66px); z-index: 1100;
+                 margin: 0 !important; padding: .35rem .6rem !important; font-size: .82rem !important;
+                 font-weight: 600; border-radius: 10px; line-height: 1.25;
+                 max-height: 3.1em; overflow: hidden; cursor: pointer;
+                 background: rgba(255,255,255,.95); box-shadow: 0 1px 5px rgba(0,0,0,.25); }
+  /* Auf dem Handy liegt die Leiste FEST am Fenster – die Karte reicht darunter hinaus.
+     Deshalb hängt der Status-Chip dort ebenfalls am Fenster, direkt über der Leiste. */
+  @media (max-width: 991.98px) {
+    #live-status { position: fixed; left: 8px; bottom: calc(58px + 78px); max-width: calc(100% - 66px); }
+  }
+  #live-status.open { max-height: 12em; overflow-y: auto; }
+  @media (min-width: 992px) { #live-status { font-size: .9rem !important; max-width: 60%; } }
+
+  /* Build 11-06aa: Kopfzeile – EINE Zeile (Zurück · Titel · ℹ️). Datum und Hinweise
+     stecken im ℹ️-Aufklapper, damit die Karte den Bildschirm bekommt. */
+  #live-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .35rem; }
+  #live-head .lh-back { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+                        width: 38px; height: 38px; border-radius: 10px; background: #e9eef7;
+                        color: var(--djo-navy); text-decoration: none; font-size: 1.1rem; }
+  #live-head .lh-title { flex: 1 1 auto; min-width: 0; font-weight: 700; color: var(--djo-navy);
+                         font-size: 1.05rem; line-height: 1.2; overflow: hidden;
+                         text-overflow: ellipsis; white-space: nowrap; }
+  #live-head .lh-info { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px; border: 0;
+                        background: #e9eef7; color: var(--djo-navy); font-size: 1.15rem; }
+  #live-details { margin-bottom: .35rem; }
+  #live-details .lh-when { font-size: .85rem; color: #6c757d; margin-bottom: .35rem; }
+
+  /* Build 11-06aa: Nebenfunktionen als kleine Symbole AUF der Karte (unten rechts, über der
+     großen Leiste). Aktive Funktionen sind eingefärbt; der Name steht als title/aria-label
+     und erscheint beim Antippen kurz als Einblendung. */
+  #live-tools { position: absolute; right: 8px; bottom: 84px; z-index: 1050;
+                display: flex; flex-direction: column; gap: 6px; }
+  #live-tools .lt-btn svg { display: block; }
+  #live-tools .lt-btn { width: 42px; height: 42px; border-radius: 12px; border: 0;
+                        background: rgba(255,255,255,.94); color: var(--djo-navy);
+                        box-shadow: 0 1px 6px rgba(0,0,0,.3); display: inline-flex;
+                        align-items: center; justify-content: center; line-height: 1; padding: 0; }
+  #live-tools .lt-btn.on { background: var(--djo-navy); color: #fff; }
+  #live-tools .lt-btn.warn { background: #b06a00; color: #fff; }
+
   details.live-info > summary { cursor: pointer; list-style: none; }
   details.live-info > summary::marker { content: ''; }
   .live-info-grid { display: grid; gap: .45rem; }
@@ -63,25 +111,16 @@
       background: rgba(255, 255, 255, .97); border-radius: 14px 14px 0 0;
       padding: 7px 8px; box-shadow: 0 -3px 14px rgba(0, 0, 0, .28);
     }
+    /* Build 11-06aa: Unten nur noch die DREI wichtigen Knöpfe – groß genug für den Daumen,
+       ohne dass die Leiste die Karte zudeckt (vorher fünf Reihen, ≈ 200 px). */
+    #live-bar { padding: 6px 8px; }
     #live-bar .lb-main { display: flex; gap: 6px; }
-    #live-bar .lb-sec  { display: flex; gap: 6px; }
-    #live-bar .btn { min-height: 50px; font-size: 1rem; flex: 1 1 0; padding: .4rem .3rem;
-                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    /* Build 11-06x: Sekundär-Reihe war mit fünf Knöpfen zu eng – „Fol…“, „Voll…“, „Sta…“, „Str…“
-       waren auf dem Handy nicht mehr zu verstehen. Jetzt zweizeilig (3 + 2), volle Beschriftung,
-       Umbruch statt Ellipse; die Höhe der Leiste bleibt dabei gleich. */
-    #live-bar .lb-sec { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
-    #live-bar .lb-sec .btn { min-height: 40px; font-size: .82rem; padding: .25rem .2rem;
-                             white-space: normal; overflow: visible; text-overflow: clip;
-                             line-height: 1.15; grid-column: span 2; }
-    #live-bar .lb-sec .btn.lb-wide { grid-column: span 3; }   /* Reihe 2: zwei Knöpfe über die volle Breite */
-    #live-bar .lb-sec .btn.lb-full { grid-column: 1 / -1; }   /* Reihe 3: Bildschirm an (Build 11-06y) */
-    /* Build m/n: Lange Beschriftung komplett lesbar – der Knopf darf zweizeilig werden,
-       statt mit „Fahrt bee…“ abgeschnitten zu werden (schmale Displays, Großschrift-Modus).
-       Build n: Selektor mit #live-bar davor – sonst gewinnt das white-space:nowrap aus
-       „#live-bar .btn“ (ID + Klasse schlägt bloße ID) und es wird weiterhin abgeschnitten. */
-    #live-bar #btn-share { flex: 2.2 1 0; white-space: normal; line-height: 1.15; text-overflow: clip; }
-    @media (max-width: 374.98px) { #live-bar .lb-main .btn { font-size: .9rem; } }
+    #live-bar .lb-sec  { display: none; }        /* Nebenfunktionen: siehe #live-tools auf der Karte */
+    #live-bar .btn { min-height: 58px; font-size: 1.05rem; font-weight: 600; flex: 1 1 0; padding: .45rem .35rem;
+                     white-space: normal; line-height: 1.15; overflow: visible; text-overflow: clip; }
+    /* Build m/n: „⏹ Fahrt beenden" vollständig, nie „Fahrt bee…" – der Knopf bekommt am meisten Platz. */
+    #live-bar #btn-share { flex: 2.2 1 0; }
+    @media (max-width: 374.98px) { #live-bar .lb-main .btn { font-size: .95rem; } }
     #btn-photo { flex: 1.1 1 0; }
     /* Kein Überstand unter der Karte mehr – die Leiste liegt nur beim Scrollen über dem Inhalt;
        am Seitenende sorgt der Laufraum dafür, dass nichts hinter ihr versteckt bleibt.
@@ -89,25 +128,28 @@
        `body { padding-bottom: 58px }` SPÄTER im Dokument; bei gleicher Spezifität gewann die
        spätere Regel und der Laufraum war wirkungslos (58 statt 222 px), die Leiste lag über dem Inhalt.
        Höhe = Leiste (≈ 200 px) + Bottom-Nav (58 px). */
-    html body { padding-bottom: calc(267px + env(safe-area-inset-bottom)); }
+    html body { padding-bottom: calc(126px + env(safe-area-inset-bottom)); }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
-  <div>
-    <a href="{{ url_for('tour_detail', tour_id=tour.id) }}" class="text-decoration-none small"><i class="bi bi-arrow-left me-1"></i>Zur Tour</a>
-    <h2 class="fw-bold mb-0 h4" style="color:var(--djo-navy)">📍 Live-Karte: {{ tour.title }}</h2>
-    <div class="text-muted small">{% if datum %}{{ datum }}{% else %}Termin offen{% endif %}{% if tour.start_time %} · Start {{ tour.start_time }} Uhr{% endif %}{% if tour.meeting_desc %} · {{ tour.meeting_desc }}{% endif %}</div>
-  </div>
+{# Build 11-06aa: EINE Titelzeile statt Kopfblock – die Karte bekommt den Bildschirm.
+   Datum/Start/Treffpunkt und die Hinweise stecken im ℹ️-Aufklapper. #}
+<div id="live-head">
+  <a href="{{ url_for('tour_detail', tour_id=tour.id) }}" class="lh-back" title="Zur Tour" aria-label="Zur Tour">
+    <span aria-hidden="true">←</span></a>
+  <div class="lh-title">📍 Live-Karte: {{ tour.title }}</div>
+  <button type="button" class="lh-info" id="live-info-btn" aria-expanded="false"
+          title="Datum, Treffpunkt und Hinweise anzeigen" aria-label="Datum und Hinweise anzeigen">
+    <span aria-hidden="true">ℹ️</span></button>
 </div>
 
 {# Build e: EIN einklappbarer Hinweis-Block statt verstreuter Beschreibungen #}
-<details class="small text-muted live-info mb-2">
-  <summary class="fw-semibold" style="color:var(--djo-navy)"><i class="bi bi-info-circle me-1"></i>Hinweise
-    <span class="fw-normal">– Zuschauen · Pause · Aufzeichnung · Foto</span></summary>
-  <div class="live-info-grid mt-2">
+<details class="small text-muted live-info mb-2" id="live-details">
+  <summary class="d-none">Hinweise</summary>
+  <div class="lh-when">{% if datum %}{{ datum }}{% else %}Termin offen{% endif %}{% if tour.start_time %} · Start {{ tour.start_time }} Uhr{% endif %}{% if tour.meeting_desc %} · {{ tour.meeting_desc }}{% endif %}</div>
+  <div class="live-info-grid">
     <div><strong>👀 Zuschauen &amp; Fahren:</strong> Jeder aus der Gruppe kann zuschauen. Wer die Fahrt startet („▶ Fahrt starten“),
       ist für alle als Punkt sichtbar – Standorte werden alle 15 Sekunden aktualisiert und nach {{ stale_s // 60 }} Minuten
       ohne Signal ausgeblendet. Gesendet wird höchstens alle 10 Sekunden, der Bildschirm bleibt an, solange die Seite offen ist.
@@ -127,7 +169,6 @@
 {% if not can_share %}
 <div class="alert alert-info py-2 small mb-2" id="share-hint"><i class="bi bi-info-circle me-1"></i>{{ share_hint }} Zuschauen geht jederzeit.</div>
 {% endif %}
-<div id="live-status" class="mb-2">Du schaust nur zu – Standorte werden alle 15 Sekunden aktualisiert.</div>
 
 {# Build q (2026-11-04): Nach dem Beenden direkt an die Aufzeichnung erinnern – sonst wird das
    Sichern leicht vergessen. Tourleitung: Übernahme als GPX-Track; Mitglieder: eigener GPX-Download. #}
@@ -154,7 +195,10 @@
         <div class="saver-chip">🌙 Stromspar an – Tippen = kurz aufhellen · ✕ oben rechts = aus</div>
         <button type="button" id="saver-off" onclick="setSaver(false)" aria-label="Stromspar-Modus beenden">✕</button>
       </div>
-      <div id="live-map" data-map-guard="off"></div>   {# Build 11-06u: kein Antipp-Schutz hier – beim Fahren muss Verschieben SOFORT gehen #}
+      <div id="live-map" data-map-guard="off"></div>
+      {# Build 11-06aa: Statusanzeige als Karte-Chip – kostet keine Höhe über der Karte #}
+      <div id="live-status" title="Antippen für die ganze Meldung">Du schaust nur zu – Standorte werden alle 15 Sekunden aktualisiert.</div>
+      {# Build 11-06u: kein Antipp-Schutz auf der Live-Karte – beim Fahren muss Verschieben SOFORT gehen #}
       <div id="live-bar">
         {# Build b (2026-11-04): lb-main = die 3 Fahrt-Knöpfe (mobil unten groß in der Daumenzone),
            lb-sec = Sekundär-Funktionen (mobil eine schmale Reihe darüber) #}
@@ -167,14 +211,19 @@
                   title="Foto aufnehmen – wird sofort mit deinem aktuellen Standort zur Tour hochgeladen">📷 Foto</button>
           <input type="file" id="live-cam" accept="image/*" capture="environment" class="d-none" onchange="livePhoto(this)">
         </div>
-        <div class="lb-sec">
-          <button type="button" class="btn btn-light" id="btn-follow" onclick="toggleFollow()" title="Karte bleibt auf meiner Position zentriert"><i class="bi bi-crosshair me-1"></i>Folgen</button>
-          <button type="button" class="btn btn-light" onclick="showAll()" title="Alle Mitfahrer und die Strecke einpassen"><i class="bi bi-people-fill me-1"></i>Alle</button>
-          <button type="button" class="btn btn-light" id="btn-fs" onclick="toggleFs()" title="Vollbild"><i class="bi bi-arrows-fullscreen me-1"></i><span id="btn-fs-txt">Vollbild</span></button>
-          <button type="button" class="btn btn-light lb-full" id="btn-wake" onclick="toggleWake()"
-                  title="Bildschirm bleibt an (bis du es beendest) – für unterwegs, ohne laufende Fahrt · Doppeltipp auf die Karte schaltet es auch"><i class="bi bi-brightness-high me-1"></i>Bildschirm an</button>
-          <button type="button" class="btn btn-light lb-wide" id="btn-saver" onclick="setSaver(!saverOn)"
-                  title="Stromspar-Modus: Bildschirm bleibt an, wird aber dunkel – Tippen hellt kurz auf, ✕ beendet"><i class="bi bi-moon-stars me-1"></i>Stromspar</button>
+        {# Build 11-06aa: Die Nebenfunktionen sind jetzt kleine Symbole auf der Karte (unten rechts).
+           Jedes Symbol nennt seinen Namen beim Antippen (Einblendung) und im title/aria-label. #}
+        <div id="live-tools" role="group" aria-label="Karten-Funktionen">
+          <button type="button" class="lt-btn" id="btn-follow" onclick="toggleFollow()"
+                  title="Folgen: Karte bleibt auf meiner Position zentriert" aria-label="Folgen"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/></svg></button>
+          <button type="button" class="lt-btn" id="btn-all" onclick="showAll()"
+                  title="Alle: Mitfahrer und Strecke einpassen" aria-label="Alle anzeigen"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.8 19.5c0-3.4 2.8-5.6 6.2-5.6s6.2 2.2 6.2 5.6"/><circle cx="17.6" cy="8.6" r="2.4"/><path d="M15.5 14.4c3 .2 5.4 2.2 5.4 5.1"/></svg></button>
+          <button type="button" class="lt-btn" id="btn-fs" onclick="toggleFs()"
+                  title="Vollbild" aria-label="Vollbild"><span id="btn-fs-ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V4.5A1.5 1.5 0 0 1 4.5 3H9M15 3h4.5A1.5 1.5 0 0 1 21 4.5V9M21 15v4.5a1.5 1.5 0 0 1-1.5 1.5H15M9 21H4.5A1.5 1.5 0 0 1 3 19.5V15"/></svg></span></button>
+          <button type="button" class="lt-btn" id="btn-wake" onclick="toggleWake()"
+                  title="Bildschirm bleibt an – Doppeltipp auf die Karte schaltet es auch" aria-label="Bildschirm an"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"/></svg></button>
+          <button type="button" class="lt-btn" id="btn-saver" onclick="setSaver(!saverOn)"
+                  title="Stromspar: Bildschirm bleibt an, wird aber dunkel" aria-label="Stromspar"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20.5 15.2A9 9 0 0 1 8.8 3.5a9 9 0 1 0 11.7 11.7z"/></svg></button>
         </div>
       </div>
     </div>
@@ -305,7 +354,7 @@ function pinIcon(loc, isMe) {
 function setStatus(text, cls, asHtml) {
   const el = document.getElementById('live-status');
   if (asHtml) { el.innerHTML = text; } else { el.textContent = text; }   // Build k: html nur für eigene Link-Meldungen
-  el.className = 'mb-2 ' + (cls === 'danger' ? 'danger' : cls === 'warning' ? 'warning' : cls === 'sharing' ? 'sharing' : '');
+  el.className = 'mb-1 py-1 ' + (cls === 'danger' ? 'danger' : cls === 'warning' ? 'warning' : cls === 'sharing' ? 'sharing' : '');
 }
 
 // ── Standorte anzeigen (Marker + Liste + Spannweite) ──────────────────────────────────────────
@@ -504,8 +553,8 @@ function toggleFollow() {
 function updateFollowBtn() {
   const b = document.getElementById('btn-follow');
   if (!b) return;
-  b.classList.toggle('btn-primary', following);
-  b.classList.toggle('btn-light', !following);
+  b.classList.toggle('on', following);        // Build 11-06aa: Symbol-Knopf, aktiv = eingefärbt
+  b.setAttribute('aria-pressed', following ? 'true' : 'false');
 }
 map.on('dragstart', () => {
   if (following) { following = false; updateFollowBtn(); guardUnlocked = true; }   // Build 11-06w: Ziehen beendet das Folgen – Karte bleibt in der Hand
@@ -553,7 +602,7 @@ function setLiveGuard() {                             // Build 11-06w: Zustand s
       guardPill = document.createElement('button');
       guardPill.type = 'button';
       guardPill.id = 'live-guard-pill';
-      guardPill.innerHTML = '<i class="bi bi-hand-index me-1"></i>Zum Verschieben antippen';
+      guardPill.textContent = 'Zum Verschieben antippen';   // Build 11-06aa: reiner Text, kein Icon-Font nötig
       guardPill.onclick = () => { guardUnlocked = true; setLiveGuard(); };   // freischalten
       wrap.appendChild(guardPill);
     }
@@ -600,6 +649,35 @@ function mapToast(msg) {
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => t.classList.remove('on'), 2500);
 }
+// Build 11-06aa: Die Symbol-Knöpfe auf der Karte nennen beim Antippen kurz ihren Namen –
+// ein nacktes Symbol ist unterwegs nicht immer eindeutig („wofür war das nochmal?“).
+const TOOL_NAMES = { 'btn-follow': 'Folgen', 'btn-all': 'Alle anzeigen', 'btn-fs': 'Vollbild',
+                     'btn-wake': 'Bildschirm an', 'btn-saver': 'Stromspar' };
+document.querySelectorAll('#live-tools .lt-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    const name = TOOL_NAMES[b.id] || b.getAttribute('aria-label') || '';
+    if (name) mapToast(b.classList.contains('warn') ? name + ' – greift gerade nicht' : name);
+  });
+});
+
+// ℹ️ in der Kopfzeile öffnet/schließt Datum + Hinweise; der Knopf zeigt den Zustand.
+const _infoBtn = document.getElementById('live-info-btn');
+const _infoBox = document.getElementById('live-details');
+if (_infoBtn && _infoBox) {
+  _infoBtn.addEventListener('click', () => {
+    _infoBox.open = !_infoBox.open;
+    _infoBtn.classList.toggle('on', _infoBox.open);
+    _infoBtn.setAttribute('aria-expanded', _infoBox.open ? 'true' : 'false');
+  });
+}
+
+// Build 11-06aa: Der Status-Chip auf der Karte zeigt zwei Zeilen; ein Tipp klappt die
+// vollständige Meldung auf (z. B. die Links nach dem Beenden der Fahrt).
+document.getElementById('live-status').addEventListener('click', e => {
+  if (e.target.closest('a')) return;            // Links bleiben normal klickbar
+  e.currentTarget.classList.toggle('open');
+});
+
 function drawOwn(c) {
   const ll = [c.latitude, c.longitude];
   if (!ownMarker) {
@@ -802,14 +880,16 @@ function releaseWakeLock() {
 function refreshWakeUi() {
   const b = document.getElementById('btn-wake');
   if (b) {
-    b.classList.toggle('btn-primary', wakeWanted && wakeHeld());
-    b.classList.toggle('btn-light', !(wakeWanted && wakeHeld()));
-    b.innerHTML = '<i class="bi bi-brightness-high me-1"></i>' +
-      (wakeWanted && wakeHeld() ? 'Bildschirm bleibt an' : wakeWanted ? 'Bildschirm an (greift nicht)' : 'Bildschirm an');
+    // Build 11-06aa: Symbol-Knopf – eingefärbt, wenn das Wachhalten wirklich hält,
+    // orange, wenn es gewünscht ist aber nicht greift. Den Zustand nennt der title.
+    b.classList.toggle('on', wakeWanted && wakeHeld());
+    b.classList.toggle('warn', wakeWanted && !wakeHeld());
     b.title = (wakeWanted
       ? (wakeHeld() ? 'Bildschirm bleibt an – antippen beendet das Wachhalten'
                     : 'Wachhalten gewünscht, greift aber gerade nicht: ' + wakeFehlerText())
       : 'Bildschirm bleibt an (bis du es beendest) – für unterwegs, ohne laufende Fahrt') + ' · Doppeltipp auf die Karte schaltet es auch';
+    b.setAttribute('aria-label', wakeWanted && wakeHeld() ? 'Bildschirm bleibt an'
+                    : wakeWanted ? 'Bildschirm an (greift nicht)' : 'Bildschirm an');
   }
 }
 function toggleWake() {
@@ -833,7 +913,7 @@ async function setSaver(on) {
   const dim = document.getElementById('saver-dim');
   const b = document.getElementById('btn-saver');
   if (dim) { dim.classList.toggle('d-none', !on); if (on) dim.classList.remove('saver-peek'); }
-  if (b) { b.classList.toggle('btn-warning', on); b.classList.toggle('btn-light', !on); }
+  if (b) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   if (on) {
     setWakeWanted(true);                          // Build 11-06y: Sparmodus braucht das Display
     setStatus('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft im 20-s-Takt. Tippen = kurz aufhellen.', 'sharing');
@@ -886,14 +966,24 @@ setInterval(() => {
 }, 20000);
 
 // Vollbild per CSS-Klasse (funktioniert auch auf iPhone/iPad ohne Fullscreen-API)
+// Build 11-06aa: Die beiden Vollbild-Symbole (auf/zu) an einer Stelle – der Knopf tauscht
+// nur den Inhalt, das SVG bleibt knackscharf (keine Emoji-Schrift nötig).
+const SVG_FS = document.querySelector('#btn-fs-ico') ? document.querySelector('#btn-fs-ico').innerHTML : '';
+const SVG_X = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
+              'stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 function toggleFs() {
   const wrap = document.getElementById('live-wrap');
   const on = wrap.classList.toggle('live-fs');
   document.body.style.overflow = on ? 'hidden' : '';
-  const fsTxt = document.getElementById('btn-fs-txt');
-  if (fsTxt) fsTxt.textContent = on ? 'Vollbild aus' : 'Vollbild';   // Build 11-06x: Icon bleibt
-  const fsIco = document.querySelector('#btn-fs i');
-  if (fsIco) fsIco.className = on ? 'bi bi-x-lg me-1' : 'bi bi-arrows-fullscreen me-1';
+  // Build 11-06aa: reiner Symbol-Knopf – Icon wechselt, der Zustand steht im title/aria-label
+  const fsIco = document.getElementById('btn-fs-ico');
+  if (fsIco) fsIco.innerHTML = on ? SVG_X : SVG_FS;
+  const fsBtn = document.getElementById('btn-fs');
+  if (fsBtn) {
+    fsBtn.classList.toggle('on', on);
+    fsBtn.title = on ? 'Vollbild aus' : 'Vollbild';
+    fsBtn.setAttribute('aria-label', on ? 'Vollbild aus' : 'Vollbild');
+  }
   setTimeout(() => map.invalidateSize(), 60);
   setLiveGuard();                                     // Build 11-06w: liest selbst (Vollbild an/aus)
 }
