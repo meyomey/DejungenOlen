@@ -1,4 +1,26 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build an) – Kein Sperren im Vollbild, Sperrknopf über dem Info-Block
+- **Rückmeldung:** „1. Beim Vollbild muss die Sperre nicht sein. 2. Der Sperrknopf soll lieber unten über dem grünen/orangen InfoBlock erscheinen."
+- **(1) Vollbild:** `guardWanted()` gibt dort jetzt immer `false` zurück, der 🔒-Knopf wird gar nicht erst eingeblendet. Eine vor dem Vollbild gesetzte Sperre wird gemerkt und beim Verlassen wiederhergestellt; nach dem Vollbild startet die Karte frei.
+- **(2) Lage:** Verschiebe-Hinweis und Sperrknopf sitzen nicht mehr oben links unter dem Zoom, sondern **unten direkt über dem Status-Chip**. Gemessen: Info-Block y 702–732, Knopf jetzt y 664–694 – also exakt 8 px darüber, links bündig.
+  - Mobil hängt der Knopf am Fenster (wie der Info-Block): `bottom: calc(58px + 64px + 30px + 8px)`.
+  - Desktop liegt der Info-Block in der Karte (`bottom: 84px`), der Knopf bei `bottom: 122px`.
+  - Beide sind 30 px hoch, damit beim Umschalten zwischen Pill und 🔒 nichts springt.
+- **Im Browser belegt** (404 × 854, echte Touch-Eingaben):
+
+  | Prüfung | Ergebnis |
+  |---|---|
+  | 🔒 über dem grünen Info-Block | ja, Abstand exakt 8 px ✅ |
+  | Pill über dem orangen Info-Block | ja ✅ |
+  | Vollbild: kein 🔒, keine Pill | ja ✅ |
+  | Vollbild: Karte frei | ja ✅ |
+  | Vollbild aus: 🔒 wieder da, Sperren wirkt | ja ✅ |
+
+- 3 neue Tests, 3 alte an die neue Lage angepasst, 381 gesamt; py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.py`, `tests/test_build_ad.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build am) – Live-Karte lässt sich immer sperren, dann scrollt die Seite
 - **Rückmeldung:** „Bei der Live Karte kann man nicht so richtig scrollen, da man die Karte nicht sperren kann."
 - **Nachgemessen** (acht Zustände, echter Ein-Finger-Wisch über die Karte):

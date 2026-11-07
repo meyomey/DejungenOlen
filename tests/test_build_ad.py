@@ -500,3 +500,37 @@ class SperrenDerLiveKarteTest(unittest.TestCase):
     def test_entsperren_loest_auch_die_eigene_sperre(self):
         live = _live()
         self.assertIn('guardPill.onclick = () => { guardUnlocked = true; guardLocked = false; setLiveGuard(); };', live)
+
+
+class SperrknopfUeberDemInfoBlockTest(unittest.TestCase):
+    """Build an: (1) „Beim Vollbild muss die Sperre nicht sein."
+    (2) „Der Sperrknopf soll lieber unten über dem grünen/orangen InfoBlock erscheinen."
+
+    Gemessen vorher: 🔒 bei y≈224 (oben links unter dem Zoom), der Info-Block unten bei
+    y≈702–732. Jetzt sitzt der Knopf bei y≈664–694, also genau 8 px über dem Block.
+    """
+
+    def test_im_vollbild_wird_nicht_gesperrt(self):
+        live = _live()
+        block = live.split('function guardWanted() {', 1)[1].split('}', 1)[0]
+        self.assertIn('if (_fsAn()) return false;', block)
+        # auch kein Knopf im Vollbild
+        else_teil = live.split('// Build an: NICHT im Vollbild – dort soll keine Sperre sein (Nutzerwunsch).', 1)
+        self.assertEqual(len(else_teil), 2)
+        self.assertIn("if (guardLock) guardLock.style.display = 'none';", else_teil[1].split('}', 1)[0])
+
+    def test_vollbild_merkt_sich_die_sperre(self):
+        live = _live()
+        self.assertIn('let guardVorVollbild = false;', live)
+        self.assertIn('guardVorVollbild = guardLocked;', live)
+        self.assertIn('guardLocked = guardVorVollbild;', live)
+
+    def test_knopf_und_pill_sitzen_ueber_dem_infoblock(self):
+        live = _live()
+        # mobil: dieselbe Kante wie der Status-Chip (58 + 64), plus dessen Hoehe und 8 px Luft
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: fixed; bottom: calc(58px + 64px + 30px + 8px); }', live)
+        # Desktop: der Status-Chip sitzt in der Karte bei bottom: 84px -> Knopf bei 122px
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 122px; }', live)
+        # die alte Lage oben links ist weg
+        self.assertNotIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
+        self.assertNotIn('#live-guard-lock { position: absolute; top: 80px; left: 10px;', live)

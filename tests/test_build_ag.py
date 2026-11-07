@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 am')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 an')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2037,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 am')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 an')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2343,7 +2343,9 @@ class LiveFahrKomfort2Test(AppTestCase):
         self.assertIn('setLiveGuard();                         // Build 11-06w: liest selbst – zurück in den Scroll-Modus', live)   # stopShare
         self.assertIn('setLiveGuard();                                     // Build 11-06w: liest selbst (Folgen an/aus)', live)
         self.assertIn('setLiveGuard();                                     // Build 11-06w: liest selbst (Vollbild an/aus)', live)
-        self.assertIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
+        # Build an: Die Pill sitzt nicht mehr oben links unter dem Zoom, sondern unten
+        # ueber dem Info-Block (Nutzerwunsch).
+        self.assertIn('#live-guard-pill { position: absolute; left: 8px;', live)
 
     def test_v_karten_toast_ehrlich(self):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
@@ -2396,8 +2398,8 @@ class LiveGuardSperrenTest(AppTestCase):
         # Startwert: gesperrt, ohne dass jemand etwas übergibt
         self.assertIn('let guardPill = null, guardLock = null, guardArmed = true, guardUnlocked = false;', live)
         self.assertIn('function setLiveGuard() {                             // Build 11-06w: Zustand selbst lesen', live)
-        # 🔒 sitzt in derselben Ecke wie die Pill
-        self.assertIn('#live-guard-lock { position: absolute; top: 80px; left: 10px;', live)
+        # Build an: 🔒 sitzt an derselben Stelle wie die Pill – unten ueber dem Info-Block
+        self.assertIn('#live-guard-lock { position: absolute; left: 8px;', live)
 
     def test_w_guard_sperren_ist_immer_moeglich(self):
         live = self._live()
@@ -2432,10 +2434,16 @@ class LiveKarteLesbarTest(AppTestCase):
         return open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
 
     def test_x_guard_unter_dem_zoom(self):
+        """Build 11-06x: Pill und 🔒 lagen auf dem Leaflet-„−" (top: 56 px bei ≈ 70 px hohem
+        Zoom-Stack) – sie rutschten unter den Zoom. Build an: Der Nutzer wollte sie lieber
+        unten über dem grünen/orangen Info-Block, also sind sie jetzt dort."""
         live = self._live()
-        self.assertIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
-        self.assertIn('#live-guard-lock { position: absolute; top: 80px; left: 10px;', live)
-        self.assertNotIn('top: 56px; left: 8px;', live)          # die alte, überlappende Ecke ist weg
+        # nicht mehr auf dem Zoom-Bedienfeld
+        self.assertNotIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
+        self.assertNotIn('top: 56px; left: 8px;', live)
+        # unten ueber dem Info-Block (mobil am Fenster, Desktop in der Karte)
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: fixed; bottom: calc(58px + 64px + 30px + 8px); }', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 122px; }', live)
         # Toast rutscht mit, damit er nicht auf der Pill sitzt
         self.assertIn('.map-toast { position: absolute; top: 124px;', live)
 
