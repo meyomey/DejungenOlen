@@ -388,6 +388,15 @@ function initialView() {
   else map.setView([53.1, 9.1], 10);
 }
 initialView();
+// Build am: Der Ausschnitt, mit dem die Karte aufgebaut wurde. Beim Sperren kehrt die Karte
+// hierher zurueck – sonst bleibt nach dem Verschieben ein Ausschnitt stehen, in dem man den
+// eigenen Standort nicht mehr findet („ich kann die Karte nicht so richtig sperren").
+let guardStartView = null;
+function guardViewMerken() {
+  const c = map.getCenter();
+  guardStartView = {lat: c.lat, lng: c.lng, zoom: map.getZoom()};
+}
+guardViewMerken();
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────────────────────
 function fmtAgo(s) { return s < 15 ? 'gerade eben' : s < 90 ? 'vor ' + s + ' s' : 'vor ' + Math.round(s / 60) + ' min'; }
@@ -648,9 +657,19 @@ function maybeStopWatch() {
 // wieder: Seite scrollt normal, Pill kommt zurück. Während Fahrt/Folgen/Vollbild sind
 // Pill und 🔒 ausgeblendet – die Karte muss beim Fahren sofort gehen.
 function _fsAn() { return document.getElementById('live-wrap').classList.contains('live-fs'); }
+// Build am: Der Nutzer: „Bei der Live Karte kann man nicht so richtig scrollen, da man die
+// Karte nicht sperren kann."
+// Gefunden: Das 🔒 gab es NUR, wenn weder Fahrt lief noch gefolgt wurde noch Vollbild an war.
+// Wer während der Fahrt scrollen wollte, fand gar keinen Sperr-Knopf – die Karte blieb frei
+// und fraß jedes Wischen.
+// Neu: `guardLocked` ist eine EIGENE Sperre, die jeden anderen Zustand schlaegt. Sie wird
+// ueber den 🔒-Knopf gesetzt und bleibt, bis die Karte wieder freigetippt wird. Fahrt,
+// Folgen und Vollbild haben damit nur noch Einfluss darauf, wie die Karte STARTET –
+// nicht darauf, ob man sie sperren darf.
 let guardPill = null, guardLock = null, guardArmed = true, guardUnlocked = false;   // Start: gesperrt
+let guardLocked = false;      // Build am: vom Nutzer ausdruecklich gesperrt – schlaegt alles andere
 function guardWanted() {                              // true = Karte soll gesperrt sein
-  return !(sharing || following || _fsAn()) && !guardUnlocked;
+  return guardLocked || (!(sharing || following || _fsAn()) && !guardUnlocked);
 }
 function setLiveGuard() {                             // Build 11-06w: Zustand selbst lesen
   const wrap = document.getElementById('live-wrap');
@@ -669,7 +688,7 @@ function setLiveGuard() {                             // Build 11-06w: Zustand s
       guardPill.type = 'button';
       guardPill.id = 'live-guard-pill';
       guardPill.textContent = 'Zum Verschieben antippen';   // Build 11-06aa: reiner Text, kein Icon-Font nötig
-      guardPill.onclick = () => { guardUnlocked = true; setLiveGuard(); };   // freischalten
+      guardPill.onclick = () => { guardUnlocked = true; guardLocked = false; setLiveGuard(); };   // freischalten
       wrap.appendChild(guardPill);
     }
     guardPill.style.display = 'block';
@@ -678,21 +697,22 @@ function setLiveGuard() {                             // Build 11-06w: Zustand s
   } else {
     map.dragging.enable();
     if (guardPill) guardPill.style.display = 'none';
-    // 🔒 nur zeigen, wenn die Karte dauerhaft frei ist (nicht bei Fahrt/Folgen/Vollbild)
-    const lockBar = !sharing && !following && !_fsAn();
-    if (!lockBar) {
-      if (guardLock) guardLock.style.display = 'none';
-      guardArmed = false;
-      return;
-    }
+    // Build am: 🔒 IMMER anbieten, sobald die Karte frei ist – auch während Fahrt, Folgen und
+    // Vollbild. Vorher fehlte der Knopf genau dort, wo man am ehesten scrollen will.
     if (!guardLock) {
       guardLock = document.createElement('button');
       guardLock.type = 'button';
       guardLock.id = 'live-guard-lock';
       guardLock.textContent = '🔒';
-      guardLock.title = 'Karte wieder sperren';
-      guardLock.setAttribute('aria-label', 'Karte wieder sperren');
-      guardLock.onclick = () => { guardUnlocked = false; setLiveGuard(); };  // sperren
+      guardLock.title = 'Karte sperren – dann scrollt die Seite';
+      guardLock.setAttribute('aria-label', 'Karte sperren');
+      guardLock.onclick = () => {
+        guardLocked = true; guardUnlocked = false;
+        // Build am: Sperren heisst auch „aussortieren" – zurueck zum Anfangsausschnitt.
+        // Ohne das bleibt die Karte irgendwo in der Pampa stehen und man wundert sich.
+        if (guardStartView) map.setView([guardStartView.lat, guardStartView.lng], guardStartView.zoom, {animate: true});
+        setLiveGuard();
+      };  // sperren
       wrap.appendChild(guardLock);
     }
     guardLock.style.display = 'block';

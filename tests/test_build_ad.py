@@ -464,3 +464,39 @@ class SaverSeitenZoomTest(unittest.TestCase):
         live = _live()
         # Build ak darf durch Build al nicht verloren gehen
         self.assertIn('if (saverOn) map.doubleClickZoom.disable();', live)
+
+
+class SperrenDerLiveKarteTest(unittest.TestCase):
+    """Build am: „Bei der Live Karte kann man nicht so richtig scrollen, da man die Karte
+    nicht sperren kann."
+
+    Gemessen in acht Zuständen: Das 🔒 gab es nur, wenn weder Fahrt lief noch gefolgt wurde
+    noch Vollbild an war. Wer während der Fahrt oder beim Folgen scrollen wollte, fand
+    keinen Sperr-Knopf – die Karte blieb frei und fraß jedes Wischen (0 px Scroll).
+
+    Neu: `guardLocked` ist eine eigene Sperre, die jeden anderen Zustand schlägt, und der
+    🔒-Knopf wird immer angeboten, sobald die Karte frei ist.
+    """
+
+    def test_eigene_sperre_schlaegt_jeden_modus(self):
+        live = _live()
+        self.assertIn('let guardLocked = false;', live)
+        block = live.split('function guardWanted() {', 1)[1].split('}', 1)[0]
+        self.assertIn('return guardLocked ||', block)
+
+    def test_sperrknopf_gibt_es_immer(self):
+        live = _live()
+        # die alte Bedingung, die den Knopf bei Fahrt/Folgen/Vollbild verschluckte
+        self.assertNotIn('const lockBar = !sharing && !following && !_fsAn();', live)
+        # der Knopf wird jetzt ohne Zustandspruefung angelegt
+        self.assertIn("guardLock.title = 'Karte sperren – dann scrollt die Seite';", live)
+
+    def test_sperren_setzt_die_karte_zurueck(self):
+        live = _live()
+        self.assertIn('let guardStartView = null;', live)
+        self.assertIn('function guardViewMerken()', live)
+        self.assertIn('if (guardStartView) map.setView(', live)
+
+    def test_entsperren_loest_auch_die_eigene_sperre(self):
+        live = _live()
+        self.assertIn('guardPill.onclick = () => { guardUnlocked = true; guardLocked = false; setLiveGuard(); };', live)

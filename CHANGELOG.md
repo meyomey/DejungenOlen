@@ -1,4 +1,37 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build am) – Live-Karte lässt sich immer sperren, dann scrollt die Seite
+- **Rückmeldung:** „Bei der Live Karte kann man nicht so richtig scrollen, da man die Karte nicht sperren kann."
+- **Nachgemessen** (acht Zustände, echter Ein-Finger-Wisch über die Karte):
+
+  | Zustand | 🔒 sichtbar | Scrollweite |
+  |---|---|---|
+  | ohne Fahrt | ja | 338 px ✅ |
+  | freigeschaltet | ja | 0 px (Karte frei) |
+  | **Fahrt läuft** | **nein** ❌ | 0 px |
+  | **Folgen an** | **nein** ❌ | 0 px |
+  | **Vollbild** | **nein** ❌ | 0 px |
+  | Sparmodus hell | ja | 0 px (Karte frei) |
+
+- **Ursache:** Das 🔒 wurde nur angelegt, wenn `!sharing && !following && !_fsAn()` – also genau **nicht** während Fahrt, Folgen oder Vollbild. Wer dann scrollen wollte, fand keinen Sperr-Knopf, und die Karte fraß jedes Wischen.
+- **Behoben:**
+  - Neue eigene Sperre `guardLocked`, die jeden anderen Zustand schlägt. Fahrt, Folgen und Vollbild bestimmen nur noch, wie die Karte **startet** – nicht, ob man sie sperren darf.
+  - Der 🔒-Knopf ist **immer** da, sobald die Karte frei ist.
+  - Beim Sperren springt die Karte zurück auf den Ausschnitt, mit dem sie aufgebaut wurde – vorher blieb sie irgendwo verschoben stehen.
+- **Im Browser belegt** (echte Touch-Eingaben):
+
+  | Prüfung | Ergebnis |
+  |---|---|
+  | Fahrt läuft: 🔒 sichtbar | ja ✅ |
+  | Fahrt läuft: nach 🔒 gesperrt, Seite scrollt | ja ✅ |
+  | Folgen: 🔒 sichtbar, sperrbar, Seite scrollt | ja ✅ |
+  | Normalfall: gesperrt → frei → gesperrt | ja ✅ |
+  | Karte zurücksetzen beim Sperren | Mittelpunkt und Zoom wieder wie beim Aufbau ✅ |
+
+- 4 neue Tests, 2 alte angepasst (die prüften die entfernte Einschränkung), 378 gesamt; py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.py`, `tests/test_build_ad.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build al) – Im Stromsparmodus zoomt nur die Karte, nicht der Bildschirm
 - **Rückmeldung:** „Im Stromsparmodus zoomt der ganze Screen und nicht nur die Karte."
 - **Nachgemessen** (echte Zwei-Finger-Touch-Events über CDP):

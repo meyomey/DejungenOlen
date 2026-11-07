@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 al')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 am')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2037,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 al')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 am')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2373,9 +2373,14 @@ class LiveGuardSperrenTest(AppTestCase):
     """Build 2026-11-06w: Nach dem Freischalten des Ecken-Guards lässt sich die
     Karte wieder sperren – oben links erscheint ein 🔒-Knopf (dieselbe Ecke wie
     die Pill). Er sperrt die Karte, die Seite scrollt wieder normal und die Pill
-    kommt zurück. Während Fahrt/Folgen/Vollbild ist Pill UND 🔒 ausgeblendet.
-    Der Guard liest seinen Zustand selbst (setLiveGuard() ohne Argumente,
-    guardArmed = true als Startwert)."""
+    kommt zurück. Der Guard liest seinen Zustand selbst (setLiveGuard() ohne
+    Argumente, guardArmed = true als Startwert).
+
+    Build am: Ursprünglich waren Pill UND 🔒 während Fahrt/Folgen/Vollbild
+    ausgeblendet. Genau dort fehlte damit aber der Sperr-Knopf – der Nutzer:
+    „Bei der Live Karte kann man nicht so richtig scrollen, da man die Karte
+    nicht sperren kann." Jetzt ist das 🔒 immer da; die Karte ist in diesen
+    Fällen nur von Anfang an frei."""
 
     def _live(self):
         return open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
@@ -2384,21 +2389,26 @@ class LiveGuardSperrenTest(AppTestCase):
         live = self._live()
         self.assertIn("guardLock.id = 'live-guard-lock';", live)
         self.assertIn("guardLock.textContent = '🔒';", live)
-        self.assertIn("guardLock.title = 'Karte wieder sperren';", live)
-        self.assertIn('guardLock.onclick = () => { guardUnlocked = false; setLiveGuard(); };', live)
-        self.assertIn('guardPill.onclick = () => { guardUnlocked = true; setLiveGuard(); };', live)
+        # Build am: klarerer Text + eigene Sperre, die jeden Modus schlaegt
+        self.assertIn("guardLock.title = 'Karte sperren – dann scrollt die Seite';", live)
+        self.assertIn('guardLock.onclick = () => {', live)
+        self.assertIn('guardPill.onclick = () => { guardUnlocked = true; guardLocked = false; setLiveGuard(); };', live)
         # Startwert: gesperrt, ohne dass jemand etwas übergibt
         self.assertIn('let guardPill = null, guardLock = null, guardArmed = true, guardUnlocked = false;', live)
         self.assertIn('function setLiveGuard() {                             // Build 11-06w: Zustand selbst lesen', live)
         # 🔒 sitzt in derselben Ecke wie die Pill
         self.assertIn('#live-guard-lock { position: absolute; top: 80px; left: 10px;', live)
 
-    def test_w_guard_nur_ohne_fahrt_folgen_vollbild(self):
+    def test_w_guard_sperren_ist_immer_moeglich(self):
         live = self._live()
-        # Pill nur im gesperrten Zustand; 🔒 nur, wenn die Karte dauerhaft frei ist
-        self.assertIn('const lockBar = !sharing && !following && !_fsAn();', live)
+        # Build am: Die alte Einschraenkung (🔒 nur ohne Fahrt/Folgen/Vollbild) ist WEG –
+        # sie war die Ursache dafuer, dass man die Karte nicht sperren konnte.
+        self.assertNotIn('const lockBar = !sharing && !following && !_fsAn();', live)
         self.assertIn("if (on) {", live)
         self.assertIn("if (guardLock) guardLock.style.display = 'none';", live)
+        # eine eigene Sperre, die alles andere schlaegt
+        self.assertIn('let guardLocked = false;', live)
+        self.assertIn('return guardLocked ||', live)
         # Vollbild: Guard ganz aus (kein 🔒 über dem Bild)
         self.assertIn("if (window.innerWidth >= 992) {                     // Desktop: Karte immer beweglich, kein Guard", live)
         self.assertIn("window.addEventListener('resize', () => setLiveGuard());", live)
