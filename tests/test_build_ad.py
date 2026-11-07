@@ -78,7 +78,9 @@ class RueckmeldungAmKnopfTest(unittest.TestCase):
 
     def test_alle_wake_rueckmeldungen_nutzen_die_leiste(self):
         live = _live()
-        for text in ('🔆 wird eingeschaltet', '🔆 Bildschirm bleibt an – ',
+        # Build ae: „Bildschirm bleibt an" steht erst da, wenn der Selbsttest es bestätigt –
+        # vorher nur „Eingerichtet … in 40 Sekunden weiß ich mehr".
+        for text in ('🔆 wird eingeschaltet', '🔆 Eingerichtet (',
                      '⚠️ Geht auf diesem Gerät nicht: ',
                      '🌙 Bildschirm darf wieder ausgehen.'):
             self.assertIn(text, live, text)
@@ -122,11 +124,13 @@ class StromsparNeuTest(unittest.TestCase):
         self.assertIn('gesichert.splice(ix, 1); sicherSpeichern();', live)
 
     def test_leiste_bleibt_im_sparmodus_bedienbar(self):
-        """Vorher fing das dunkle Overlay jeden Tipp ab – Fahrt war nicht zu beenden."""
+        """Build ae: Die Leiste wird NICHT mehr ueber die Abdunklung gehoben – der Nutzer
+        meldete „es wird nicht der ganze Bildschirm abgedunkelt". Beendet wird ueber das ✕."""
         css = _css()
-        self.assertIn('#live-bar { z-index: 4100 !important; }', css)
-        self.assertIn('#saver-dim { bottom: var(--saver-frei, 0px); }', css)
-        self.assertIn('body.saver-on #live-tools { z-index: 4100; }', _live())
+        self.assertNotIn('#live-bar { z-index: 4100 !important; }', css)
+        self.assertNotIn('#saver-dim { bottom: var(--saver-frei, 0px); }', css)
+        # alles andere dunkelt mit ab
+        self.assertIn('body.saver-on #live-tools { visibility: hidden; }', _live())
 
     def test_spar_hinweis_sagt_die_wahrheit(self):
         live = _live()
@@ -136,3 +140,64 @@ class StromsparNeuTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class AbdunklungGanzflaechigTest(unittest.TestCase):
+    """Build ae: „Es wird auch nicht der ganze Bildschirm abgedunkelt."
+
+    Ursache: Build ad hob Knopfleiste und Symbolspalte über das Overlay, und das Overlay
+    endete oberhalb der Leiste (`bottom: var(--saver-frei)`). Dadurch blieben unten helle
+    Streifen – App-Navigation, Knopfleiste und Symbolspalte – und das Overlay war nicht
+    bildschirmfüllend.
+    """
+
+    def test_overlay_deckt_das_ganze_fenster(self):
+        css = _css()
+        block = css.split('#saver-dim {', 1)[1].split('}', 1)[0]
+        self.assertIn('position: fixed; inset: 0', block)
+        # keine Verkürzung mehr nach unten
+        self.assertNotIn('--saver-frei', css)
+        self.assertNotIn('#live-bar { z-index: 4100', css)
+        self.assertNotIn('bottom: var(--saver-frei', css)
+
+    def test_nichts_steht_ueber_dem_overlay(self):
+        css = _css()
+        # Symbolspalte und Statuszeile werden im Sparmodus ausgeblendet statt hochgelegt
+        self.assertIn('body.saver-on #live-tools { visibility: hidden; }', _live())
+        self.assertIn('body.saver-on #live-status, body.saver-on .bar-hinweis { display: none !important; }', _live())
+
+
+class SelbsttestWachhaltenTest(unittest.TestCase):
+    """Build ae: „Es geht nicht, obwohl nur grüne Meldungen kommen."
+
+    Der Konstruktionsfehler war, den technischen Zustand als Beweis auszugeben. Eine
+    Web-Seite kann den Bildschirm nicht abfragen – aber sie kann messen, ob die Seite
+    eingefroren wurde. Genau das macht wachTick().
+    """
+
+    def test_zeitmessung_existiert(self):
+        live = _live()
+        self.assertIn('function wachTick()', live)
+        self.assertIn('letzteWachZeit', live)
+        self.assertIn('setInterval(wachTick, 5000);', live)
+
+    def test_stillstand_widerlegt_das_wachhalten(self):
+        live = _live()
+        self.assertIn('if (luecke > 20 && wakeWanted) {', live)
+        self.assertIn("wachBeweis = {ok: false, luecke: luecke};", live)
+        self.assertIn('Der Bildschirm ging trotz „an" aus', live)
+        # der Gegenbeweis schlägt jede technische Freigabe
+        self.assertIn('if (wachBeweis && wachBeweis.ok === false) f.ok = false;', live)
+
+    def test_gruen_erst_nach_40_sekunden(self):
+        live = _live()
+        self.assertIn('jetzt - wachSeit >= 40000', live)
+        self.assertIn('✅ Bildschirm bleibt an – vom Gerät bestätigt (40 s ohne Unterbrechung).', live)
+        # und NICHT mehr „geprüft" direkt nach dem Einschalten
+        self.assertNotIn("', geprüft.', 'gut')", live)
+        self.assertIn('Ob der Bildschirm wirklich anbleibt, zeigt sich in den nächsten 40 Sekunden', live)
+
+    def test_knopf_bleibt_an_nur_mit_beweis(self):
+        live = _live()
+        self.assertIn('const bewaehrt = !!(wachBeweis && wachBeweis.ok === true);', live)
+        self.assertIn('noch nicht bestätigt; das Gerät kann sich darüber hinwegsetzen', live)

@@ -1,4 +1,24 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ae) – „Grün, aber wirkungslos" abgeschafft + Abdunklung wirklich ganzflächig
+- **Rückmeldung:** „Es geht nicht, obwohl nur grüne Meldungen kommen. Es wird auch nicht der ganze Bildschirm abgedunkelt."
+- **Der eigentliche Konstruktionsfehler (meiner):** Ich habe gemeldet, dass *meine Mittel* laufen (Video spielt, Wake-Lock erteilt), und das als Beweis ausgegeben, dass der Bildschirm anbleibt. Das ist es nicht. Verweigert das Betriebssystem den Bildschirm-Wächter – Samsungs Akkusparmodus tut genau das –, laufen Video und Schnittstelle „fehlerfrei" weiter, nur ohne Wirkung. Das Grün war also ehrlich gemeint und trotzdem falsch.
+  - **Neu: ein echter Selbsttest mit Zeitmessung.** Wenn der Bildschirm ausgeht, friert Android die Seite ein. `wachTick()` läuft alle 5 Sekunden und merkt sich die Zeit; bleibt ein Loch von mehr als 20 Sekunden, war es **kein** Wachhalten – dann kommt sofort eine rote, konkrete Meldung: „Der Bildschirm ging trotz ‚an' aus (34 s Stillstand)." Der gemessene Gegenbeweis schlägt jede technische Freigabe (`f.ok = false`).
+  - **„Bleibt an" nur noch nach 40 Sekunden ohne Unterbrechung** – vorher steht dort „Eingerichtet … ob der Bildschirm wirklich anbleibt, zeigt sich in den nächsten 40 Sekunden". Auch der Knopf-Tooltip und das aria-label folgen dieser Regel.
+  - `wakeVerify()` behauptet nichts mehr. Es prüft nur noch, ob Video/API technisch laufen – und schweigt, wenn ja, statt Grün zu fahren.
+- **Abdunklung war nicht ganzflächig** – zu Recht gemeldet. Drei Ursachen, alle behoben:
+  - Das Overlay endete per `bottom: var(--saver-frei)` **oberhalb** der Knopfleiste → unten blieb ein heller Streifen.
+  - Build ad hatte die Knopfleiste mit `z-index: 4100` **über** die Abdunklung gehoben → Leiste und App-Navigation blieben hell.
+  - Die Symbolspalte lag ebenfalls darüber.
+  - Neu: `inset: 0` ohne Verkürzung, die Abdunklung liegt über **allem** – nachgemessen an neun Punkten (Ecken, Navigation, Leiste, Symbolspalte): alle treffen das Overlay. Aufgehellt wird durch Tippen (4 s), beendet mit ✕ oben rechts. Der Spar-Hinweis ist größer und mittig.
+- **Im Browser belegt** (Chromium, Smartphone-Profil):
+  - Deckung: `vollflaeche = true`, alle neun Testpunkte treffen `saver-dim` (bzw. den Spar-Chip in der Mitte).
+  - Selbsttest negativ: 34 s Stillstand → `wachBeweis = {ok: false, luecke: 34}`, roter Balken, `wakeFacts().ok = false`.
+  - Selbsttest positiv: 41 s ohne Stillstand → `{ok: true, geprueft: 40}`, grüner Balken „vom Gerät bestätigt".
+- 6 neue Tests (350 gesamt), py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templates/hilfe.html`, `app.py`,
+`templates/base.html`, `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ad) – „Bildschirm bleibt an" endlich wirksam + Stromspar neu gedacht
 - **Rückmeldung:** „es geht nicht. Wenn ich länger auf den Button tippe, wird auch nichts angezeigt. Vielleicht sollte man den Stromsparmode nochmal neu denken." Zwei echte Fehler, ein Design-Fehler.
 - **Fehler 1 – das Video war zu klein.** Ich hatte die Regel falsch im Kopf. Im Chromium-Quelltext (`video_wake_lock.cc`) steht sie wörtlich: ein Video hält den Bildschirm nur, wenn es **hörbar** läuft **oder** zu **mindestens 20 % des Fensters** zählt **und** zu **mindestens 75 % sichtbar** ist (`kSizeThreshold = 0.2`, `kStrictVisibilityThreshold = 0.75`). Mein 2×2-Pixel-Video aus Build ac erfüllte beides **nie** – es konnte auf dem S23 gar nicht wirken.

@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ad')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ae')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2037,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ad')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ae')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2314,7 +2314,8 @@ class LiveFahrKomfortTest(AppTestCase):
     def test_u_display_wachhalten(self):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('let _lastTapAt = 0;', live)
-        self.assertIn('🔆 Bildschirm bleibt an.', live)
+        # Build ae: Doppeltipp meldet „Eingerichtet" – „bleibt an" erst nach dem Selbsttest.
+        self.assertIn('🔆 Eingerichtet. Ob der Bildschirm anbleibt, zeigt sich in den nächsten 40 Sekunden.', live)
         self.assertIn("else if ((sharing || following || saverOn) && !wakeActive()) requestWakeLock();", live)
         self.assertIn("}, 20000);", live)   # Build 11-06y: 20-s-Erneuerung statt 60-s
 
@@ -2344,8 +2345,10 @@ class LiveFahrKomfort2Test(AppTestCase):
     def test_v_karten_toast_ehrlich(self):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('function mapToast(', live)
-        self.assertIn("mapToast(ok ? '🔆 Bildschirm bleibt an.'", live)
-        self.assertIn("'⚠️ Bildschirm wachhalten nicht möglich: '", live)   # Build 11-06y
+        # Build ae: Die Wake-Rueckmeldung laeuft ueber die Leiste (barHinweis), nicht mehr
+        # ueber den Karten-Toast oben – der war beim Tippen unten unsichtbar.
+        self.assertIn('function barHinweis(', live)
+        self.assertIn("'⚠️ Geht auf diesem Gerät nicht: '", live)   # Build 11-06y
         self.assertIn('function wakeFehlerText()', live)                     # Build 11-06y
         self.assertIn('.map-toast { position: absolute; top: 124px;', live)   # Build x: unter Pill/🔒
         # requestWakeLock meldet ehrlich Erfolg/Misserfolg (Build 11-06y: mit Wach-Wunsch)
@@ -2496,7 +2499,8 @@ class WakeLockErneuerungTest(AppTestCase):
         self.assertIn('function toggleWake()', live)
         # Knopf spiegelt, ob der Lock GERADE greift – nicht nur den Wunsch
         self.assertIn("b.classList.toggle('on', wakeWanted && wakeActive());", live)
-        self.assertIn("b.setAttribute('aria-label', wakeWanted && wakeActive() ? 'Bildschirm bleibt an'", live)
+        # Build ae: „Bildschirm bleibt an" im aria-label nur mit bestandenem Selbsttest.
+        self.assertIn("b.setAttribute('aria-label', wakeWanted && bewaehrt ? 'Bildschirm bleibt an'", live)
         self.assertIn("b.classList.toggle('warn', wakeWanted && !wakeActive());", live)     # gewollt, greift nicht → orange
         # Laufraum passt zur höheren Leiste
         self.assertIn('html body { padding-bottom: calc(106px + env(safe-area-inset-bottom)); }', live)

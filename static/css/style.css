@@ -663,24 +663,27 @@ footer {
 #saver-dim {
   position: fixed; inset: 0; z-index: 4000;
   background: rgba(5, 9, 20, .86);
-  /* Build ad: Hinweistext nach OBEN – unten bleiben Knopfleiste und Balken frei.
-     (unten 140px Luft fuer Daumenleiste + Hinweisleiste + App-Navigation) */
-  display: flex; align-items: flex-start; justify-content: center;
-  padding-top: max(96px, calc(env(safe-area-inset-top) + 80px));
+  /* Build ae: Der Nutzer meldete „Es wird auch nicht der ganze Bildschirm abgedunkelt" –
+     zu Recht: Leiste, Symbolspalte und App-Navigation standen ÜBER der Abdunklung.
+     Stromsparen heißt aber: so wenig Licht wie möglich. Jetzt liegt die Abdunklung
+     über ALLEM (einschließlich Leiste, Symbolen und Navigation); nur der Spar-Hinweis
+     und das ✕ bleiben sichtbar. Aufgehellt wird durch Tippen (saver-peek), beendet mit ✕. */
+  display: flex; align-items: center; justify-content: center;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
   cursor: pointer;
 }
-/* Build ad: Die Knopfleiste bleibt im Stromspar-Modus bedienbar.
-   Vorher fing das dunkle Overlay jeden Tipp ab – man konnte die Fahrt auf dem Rad
-   nicht beenden. Jetzt liegt die Leiste darueber; die Abdunklung endet oberhalb. */
-#live-bar { z-index: 4100 !important; }
-#saver-dim { bottom: var(--saver-frei, 0px); }
-body.saver-on #live-bar { background: rgba(18, 26, 50, .92); }
-body.saver-on #live-bar .btn { opacity: .95; }
+/* Build ae: Knopfleiste NICHT mehr ueber die Abdunklung heben. Build ad hatte sie
+   hochgelegt, damit man die Fahrt beenden kann – dadurch blieb unten aber ein heller
+   Streifen stehen („es wird nicht der ganze Bildschirm abgedunkelt"). Der Modus laesst
+   sich jetzt ueber das ✕ im Overlay beenden; das ist der eine bewusste helle Punkt. */
+/* Build ae: Frueher wurde hier die Knopfleiste ueber die Abdunklung gehoben – dadurch
+   blieb unten ein heller Streifen stehen. Jetzt dunkel alles ab; beenden laesst sich der
+   Modus ueber das ✕ oben rechts (und er endet ohnehin mit der Fahrt). */
 #saver-dim.saver-peek { background: rgba(5, 9, 20, .18); }
 #saver-dim .saver-chip {
-  color: #cdd8f0; font-size: .8rem; text-align: center;
-  background: rgba(18, 26, 50, .9); border: 1px solid rgba(255, 255, 255, .25);
-  border-radius: 999px; padding: .4rem 1rem;
+  color: #e6edfa; font-size: 1rem; line-height: 1.45; text-align: center;
+  background: rgba(14, 20, 40, .92); border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 14px; padding: .9rem 1.15rem; max-width: 22rem;
 }
 #saver-dim .saver-weg { font-size: .78rem; color: #9fb0d0; text-align: center; margin-top: .35rem; }
 #saver-off {

@@ -101,9 +101,11 @@
                         align-items: center; justify-content: center; line-height: 1; padding: 0; }
   #live-tools .lt-btn.on { background: var(--djo-navy); color: #fff; }
   #live-tools .lt-btn.warn { background: #b06a00; color: #fff; }
-  /* Build ad: Im Stromspar-Modus liegt das dunkle Overlay ueber der Karte. Die Symbolknoepfe
-     und die Knopfleiste bleiben trotzdem bedienbar – sonst kaeme man nicht mehr heraus. */
-  body.saver-on #live-tools { z-index: 4100; }
+  /* Build ae: Im Stromspar-Modus dunkelt ALLES ab – auch die Symbolspalte. Sonst blieb
+     rechts ein heller Streifen stehen („es wird nicht der ganze Bildschirm abgedunkelt").
+     Beendet wird ueber das ✕ im Overlay (oder mit dem Ende der Fahrt). */
+  body.saver-on #live-tools { visibility: hidden; }
+  body.saver-on #live-status, body.saver-on .bar-hinweis { display: none !important; }
 
   details.live-info > summary { cursor: pointer; list-style: none; }
   details.live-info > summary::marker { content: ''; }
@@ -1080,9 +1082,49 @@ function releaseWakeLock() {
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   setFallback(false);
 }
+// Build ae: SELBSTTEST statt grüner Meldung.
+// Der Nutzer meldete: „Es geht nicht, obwohl nur grüne Meldungen kommen." Das war der
+// eigentliche Konstruktionsfehler: Ich habe gemeldet, dass Unsere Mittel *laufen* – und das
+// als Beweis ausgegeben, dass der Bildschirm bleibt. Das ist er nicht. Verweigert das
+// Betriebssystem (Samsung-Akkusparmodus, Energiesparmodus) den Bildschirm-Wächter, laufen
+// Video und Schnittstelle trotzdem „fehlerfrei" weiter – nur eben ohne Wirkung.
+//
+// Was man MESSEN kann, ist die Gegenprobe: Wenn der Bildschirm NICHT wachgehalten wird,
+// geht das Gerät nach einigen Sekunden ohne Berührung aus. Die Seite friert dann ein, und
+// die Zeit danach fehlt. Bleibt ein Zeitloch von mehr als 20 s, hat es NICHT gehalten –
+// egal wie grün alles aussieht. Das ist die einzige ehrliche Aussage, die eine Web-Seite
+// über den Bildschirm treffen kann.
+let letzteWachZeit = Date.now(), wachBeweis = null, wachSeit = 0;   // null = noch nicht geprüft
+function wachTick() {
+  if (document.hidden) return;                 // im Hintergrund läuft die Uhr ohnehin nicht
+  const jetzt = Date.now();
+  const luecke = Math.round((jetzt - letzteWachZeit) / 1000);
+  letzteWachZeit = jetzt;
+  // Lücken entstehen nur, wenn die Seite stillgelegt war (Bildschirm aus, Tab weg, Freeze).
+  // Kleine Timer-Verspätungen (bis ~15 s) sind normal und zählen nicht.
+  if (luecke > 20 && wakeWanted) {
+    wachBeweis = {ok: false, luecke: luecke};
+    barHinweis('⚠️ Der Bildschirm ging trotz „an" aus (' + luecke + ' s Stillstand). ' +
+               'Das Gerät setzt sich darüber hinweg – bitte Bildschirmsperre in den Einstellungen abschalten.', 'warn');
+    refreshWakeUi();
+    return;
+  }
+  // Build ae: Der positive Beweis braucht Zeit. Erst wenn 40 s lang KEIN Stillstand war,
+  // darf „bleibt an" dastehen – vorher wäre es wieder nur eine Behauptung.
+  if (wakeWanted && wachBeweis === null && wakeActive() && !document.hidden) {
+    if (!wachSeit) wachSeit = jetzt;
+    else if (jetzt - wachSeit >= 40000) {
+      wachBeweis = {ok: true, geprueft: 40};
+      barHinweis('✅ Bildschirm bleibt an – vom Gerät bestätigt (40 s ohne Unterbrechung).', 'gut');
+      refreshWakeUi();
+    }
+  } else if (!wakeWanted) {
+    wachSeit = 0;
+  }
+}
+
 // Build ad: NACHPRÜFUNG statt Hoffnung.
-// Wir können nicht abfragen, ob das Betriebssystem den Bildschirm wirklich anlässt – das
-// gibt keine Schnittstelle her. Prüfbar ist aber, ob UNSERE Mittel greifen:
+// Prüfbar ist, ob UNSERE Mittel greifen:
 //   · läuft das Ersatz-Video (paused = false, readyState >= 2)?
 //   · ist es groß genug für Chromiums Video-Wake-Lock (≥ 20 % Fläche, ≥ 75 % sichtbar)?
 //   · ist der API-Lock noch da (nicht vom Browser freigegeben)?
@@ -1102,6 +1144,8 @@ function wakeFacts() {
     f.video = f.laeuft && f.gross;
   }
   f.ok = f.api || f.video;
+  // Build ae: Der gemessene Gegenbeweis schlägt jede technische Freigabe.
+  if (wachBeweis && wachBeweis.ok === false) f.ok = false;
   return f;
 }
 // Kurz warten (Video braucht einen Moment), dann Zustand prüfen und ehrlich anzeigen.
@@ -1116,10 +1160,10 @@ function wakeVerify() {
       const grund = f.laeuft ? 'Video zu klein oder verdeckt' : 'Video startet nicht';
       // Nur der Balken an der Leiste – ein zweiter Toast oben auf der Karte waere Doppelung.
       barHinweis('⚠️ Bildschirm wachhalten greift hier nicht (' + grund + ').', 'warn');
-    } else {
-      wakeErr = null;
-      barHinweis('🔆 Bildschirm bleibt an – ' + (f.api ? 'Browser-Freigabe' : 'Video-Ersatz') + ', geprüft.', 'gut');
     }
+    // Build ae: KEIN grünes „bleibt an" mehr an dieser Stelle. Dass unsere Mittel laufen,
+    // ist kein Beweis dafür, dass der Bildschirm anbleibt – das prüft nur wachTick über die
+    // Zeitmessung. Hier steht deshalb nur der technische Stand.
     refreshWakeUi();
   }, 1200);
 }
@@ -1133,11 +1177,14 @@ function refreshWakeUi() {
     // orange, wenn es gewünscht ist aber nicht greift. Den Zustand nennt der title.
     b.classList.toggle('on', wakeWanted && wakeActive());
     b.classList.toggle('warn', wakeWanted && !wakeActive());
+    // Build ae: „bleibt an" nur noch, wenn der Selbsttest es bestätigt hat (wachBeweis.ok).
+    const bewaehrt = !!(wachBeweis && wachBeweis.ok === true);
     b.title = (wakeWanted
-      ? (wakeActive() ? 'Bildschirm bleibt an (' + wakeWegText() + ') – antippen beendet das Wachhalten'
-                      : 'Wachhalten gewünscht, greift aber gerade nicht: ' + wakeFehlerText())
+      ? (bewaehrt ? 'Bildschirm bleibt an (vom Gerät bestätigt, ' + wakeWegText() + ') – antippen beendet das Wachhalten'
+        : wakeActive() ? 'Wachhalten eingerichtet (' + wakeWegText() + ') – noch nicht bestätigt; das Gerät kann sich darüber hinwegsetzen'
+                       : 'Wachhalten gewünscht, greift aber gerade nicht: ' + wakeFehlerText())
       : 'Bildschirm bleibt an (bis du es beendest) – für unterwegs, ohne laufende Fahrt') + ' · Doppeltipp auf die Karte schaltet es auch';
-    b.setAttribute('aria-label', wakeWanted && wakeActive() ? 'Bildschirm bleibt an'
+    b.setAttribute('aria-label', wakeWanted && bewaehrt ? 'Bildschirm bleibt an'
                     : wakeWanted ? 'Bildschirm an (greift nicht)' : 'Bildschirm an');
   }
 }
@@ -1149,14 +1196,17 @@ function toggleWake() {
     return;
   }
   barHinweis('🔆 wird eingeschaltet …');
+  wachBeweis = null; wachSeit = 0; letzteWachZeit = Date.now();   // Build ae: neu messen
   setWakeWanted(true).then(ok => {
     const f = wakeLastFacts || wakeFacts();
     if (ok && f.ok) {
-      barHinweis('🔆 Bildschirm bleibt an – ' + (f.api ? 'Freigabe erteilt' : 'über Video-Ersatz') + ', geprüft.', 'gut');
-      mapToast('🔆 Bildschirm bleibt an.');
+      // Build ae: Kein „bleibt an" mehr auf Verdacht. Ehrlich ist die Zwischenstufe:
+      // technisch eingerichtet – und in den nächsten Sekunden wissen wir mehr.
+      barHinweis('🔆 Eingerichtet (' + (f.api ? 'Browser-Freigabe' : 'Video-Ersatz') +
+                 '). Ob der Bildschirm wirklich anbleibt, zeigt sich in den nächsten 40 Sekunden – ' +
+                 'ich melde mich.', 'gut');
     } else {
       barHinweis('⚠️ Geht auf diesem Gerät nicht: ' + wakeFehlerText() + '.', 'warn');
-      mapToast('⚠️ ' + wakeFehlerText() + '.', 6000);
     }
   });
 }
@@ -1176,14 +1226,6 @@ async function setSaver(on) {
   const b = document.getElementById('btn-saver');
   if (dim) { dim.classList.toggle('d-none', !on); if (on) dim.classList.remove('saver-peek'); }
   document.body.classList.toggle('saver-on', !!on);
-  // Build ad: Das dunkle Overlay endet oberhalb der Knopfleiste – so bleibt sie bedienbar.
-  if (on) {
-    const bar = document.getElementById('live-bar');
-    const h = bar ? Math.round(bar.getBoundingClientRect().height + parseInt(getComputedStyle(bar).bottom || 0, 10)) : 0;
-    document.documentElement.style.setProperty('--saver-frei', (h ? h + 58 : 0) + 'px');
-  } else {
-    document.documentElement.style.removeProperty('--saver-frei');
-  }
   if (b) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   if (on) {
     // Build ad: Stromspar neu gedacht.
@@ -1223,10 +1265,12 @@ document.getElementById('live-wrap').addEventListener('touchend', function () {
     _lastTapAt = 0;
     // Build 11-06y: Doppeltipp schaltet den WUNSCH um. Vorher wurde der Lock nur EINMAL
     // angefordert – fiel er (Tab weg, Display gesperrt), war der Doppeltipp wirkungslos.
+    wachBeweis = null; wachSeit = 0; letzteWachZeit = Date.now();   // Build ae: neu messen
     setWakeWanted(!wakeWanted).then(ok => {
-      if (!wakeWanted) mapToast('🌙 Bildschirm darf wieder aus.');
-      else mapToast(ok ? '🔆 Bildschirm bleibt an.'
-                       : '⚠️ Bildschirm wachhalten nicht möglich: ' + wakeFehlerText() + '.');
+      // Build ae: kein „bleibt an" auf Verdacht – erst einrichten, dann messen.
+      if (!wakeWanted) barHinweis('🌙 Bildschirm darf wieder ausgehen.', 'gut');
+      else if (ok) barHinweis('🔆 Eingerichtet. Ob der Bildschirm anbleibt, zeigt sich in den nächsten 40 Sekunden.', 'gut');
+      else barHinweis('⚠️ Geht auf diesem Gerät nicht: ' + wakeFehlerText() + '.', 'warn');
     });
     return;
   }
@@ -1242,10 +1286,17 @@ setInterval(() => {
   // Video ein; stockt das Video (Energiesparmodus), wird es neu gestartet.
   if (document.hidden) return;
   if (wakeVideoOn && wakeVideo && wakeVideo.paused) tryVideoAgain();
+  wachTick();                                                  // Build ae: Selbsttest
   if (gesichert.length) sicherNachsenden();                    // Build ad: Sicherung leeren
   if (wakeWanted && !wakeActive()) requestWakeLock();          // Build 11-06y: Erneuerung
   else if ((sharing || following || saverOn) && !wakeActive()) requestWakeLock();
 }, 20000);
+
+// Build ae: Der Selbsttest braucht einen feineren Takt als der 20-s-Wächter – sonst
+// verschwimmen kurze Freezes (Bildschirm aus, wieder an) mit normaler Timer-Trägheit.
+setInterval(wachTick, 5000);
+// Nach dem Aufwachen sofort messen: die Lücke ist der Beweis.
+document.addEventListener('visibilitychange', () => { if (!document.hidden) wachTick(); });
 
 // Vollbild per CSS-Klasse (funktioniert auch auf iPhone/iPad ohne Fullscreen-API)
 // Build 11-06aa: Die beiden Vollbild-Symbole (auf/zu) an einer Stelle – der Knopf tauscht
