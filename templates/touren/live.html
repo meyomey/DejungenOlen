@@ -1119,8 +1119,9 @@ function wachTick() {
   if (wakeWanted && wachBeweis === null && wakeActive() && !document.hidden) {
     if (!wachSeit) wachSeit = jetzt;
     else if (jetzt - wachSeit >= 40000) {
+      // Build aj: Der Nachweis bleibt, aber keine gruene Box mehr – der Knopf faerbt sich
+      // und nennt den Beweis im Tooltip. Der Nutzer wollte die Test-Hinweise nicht sehen.
       wachBeweis = {ok: true, geprueft: 40};
-      barHinweis('✅ Bildschirm bleibt an – vom Gerät bestätigt (40 s ohne Unterbrechung).', 'gut');
       refreshWakeUi();
     }
   } else if (!wakeWanted) {
@@ -1204,15 +1205,9 @@ function toggleWake() {
   wachBeweis = null; wachSeit = 0; letzteWachZeit = Date.now();   // Build ae: neu messen
   setWakeWanted(true).then(ok => {
     const f = wakeLastFacts || wakeFacts();
-    if (ok && f.ok) {
-      // Build ae: Kein „bleibt an" mehr auf Verdacht. Ehrlich ist die Zwischenstufe:
-      // technisch eingerichtet – und in den nächsten Sekunden wissen wir mehr.
-      barHinweis('🔆 Eingerichtet (' + (f.api ? 'Browser-Freigabe' : 'Video-Ersatz') +
-                 '). Ob der Bildschirm wirklich anbleibt, zeigt sich in den nächsten 40 Sekunden – ' +
-                 'ich melde mich.', 'gut');
-    } else {
-      barHinweis('⚠️ Geht auf diesem Gerät nicht: ' + wakeFehlerText() + '.', 'warn');
-    }
+    // Build aj: Kein grüner „Eingerichtet … 40 Sekunden"-Kasten mehr (Nutzerwunsch).
+    // Gelingt es, zeigt der Knopf den Stand; gelingt es nicht, kommt die rote Warnung.
+    if (!(ok && f.ok)) barHinweis('⚠️ Geht auf diesem Gerät nicht: ' + wakeFehlerText() + '.', 'warn');
   });
 }
 
@@ -1446,9 +1441,9 @@ document.getElementById('live-wrap').addEventListener('touchend', function () {
     wachBeweis = null; wachSeit = 0; letzteWachZeit = Date.now();   // Build ae: neu messen
     setWakeWanted(!wakeWanted).then(ok => {
       // Build ae: kein „bleibt an" auf Verdacht – erst einrichten, dann messen.
+      // Build aj: Meldungen nur noch, wenn etwas schiefgeht – kein grüner Selbsttest-Kasten.
       if (!wakeWanted) barHinweis('🌙 Bildschirm darf wieder ausgehen.', 'gut');
-      else if (ok) barHinweis('🔆 Eingerichtet. Ob der Bildschirm anbleibt, zeigt sich in den nächsten 40 Sekunden.', 'gut');
-      else barHinweis('⚠️ Geht auf diesem Gerät nicht: ' + wakeFehlerText() + '.', 'warn');
+      else if (!ok) barHinweis('⚠️ Geht auf diesem Gerät nicht: ' + wakeFehlerText() + '.', 'warn');
     });
     return;
   }

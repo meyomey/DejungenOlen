@@ -1,4 +1,21 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build aj) – Grüne Selbsttest-Boxen entfernt
+- **Rückmeldung:** „Deine grünen Boxen mit test hinweisen können entfernt werden?"
+- **Entfernt** (die Erfolgsmeldungen über den Hauptknöpfen):
+  - „✅ Bildschirm bleibt an – vom Gerät bestätigt (40 s ohne Unterbrechung)"
+  - „🔆 Eingerichtet (Browser-Freigabe / Video-Ersatz). Ob der Bildschirm wirklich anbleibt, zeigt sich in den nächsten 40 Sekunden – ich melde mich."
+  - „🔆 Eingerichtet. Ob der Bildschirm anbleibt, zeigt sich in den nächsten 40 Sekunden." (Doppeltipp auf die Karte)
+- **Geblieben ist der Nachweis selbst** – nur ohne Kasten:
+  - Der Selbsttest läuft weiter: Erst nach 40 s ohne Unterbrechung gilt „bleibt an" als belegt; eine Lücke über 20 s widerlegt es sofort.
+  - Der Stand steckt jetzt **im Knopf**: farbig, sobald es hält, mit `title`/`aria-label` „vom Gerät bestätigt" bzw. „noch nicht bestätigt".
+- **Warnungen bleiben** (so gewünscht): „⚠️ Geht auf diesem Gerät nicht", „⚠️ Bildschirm wachhalten greift hier nicht", „⚠️ Der Bildschirm ging trotz ‚an' aus".
+- „🔆 wird eingeschaltet …" (die halbe Sekunde bis zur Antwort) und „🌙 Bildschirm darf wieder ausgehen." bleiben – das sind keine Testergebnisse.
+- **Im Browser belegt** (Chromium, Freigabe erteilt): nach 47 s `wachBeweis = {ok: true, geprueft: 40}`, Knopf „vom Gerät bestätigt", **keine sichtbare Box** im DOM. Ohne Freigabe: nur die rote Warnung, kein grüner Kasten.
+- Hilfe-Seite an die neue Rückmeldung angepasst; 1 Test neu, 4 angepasst (367 gesamt).
+
+Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.py`, `tests/test_build_ad.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ai) – Zweimal tippen funktioniert jetzt auch bei großgestellter Karte
 - **Rückmeldung:** „Wenn die Karte auf groß gestellt ist, funktioniert zweimal tippen nicht mehr."
 - **Der eigentliche Fehler hatte nichts mit dem Vollbild zu tun** – dort ist er nur aufgefallen, weil man die Karte dann wirklich bedient. Zwei Ursachen, beide von mir:

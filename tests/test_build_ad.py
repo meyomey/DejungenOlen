@@ -78,12 +78,13 @@ class RueckmeldungAmKnopfTest(unittest.TestCase):
 
     def test_alle_wake_rueckmeldungen_nutzen_die_leiste(self):
         live = _live()
-        # Build ae: „Bildschirm bleibt an" steht erst da, wenn der Selbsttest es bestätigt –
-        # vorher nur „Eingerichtet … in 40 Sekunden weiß ich mehr".
-        for text in ('🔆 wird eingeschaltet', '🔆 Eingerichtet (',
+        # Build aj: Die gruenen Selbsttest-Kaesten sind weg („Eingerichtet … 40 Sekunden",
+        # „vom Gerät bestaetigt"). Geblieben ist die Rueckmeldung am Knopf und die Warnung.
+        for text in ('🔆 wird eingeschaltet',
                      '⚠️ Geht auf diesem Gerät nicht: ',
                      '🌙 Bildschirm darf wieder ausgehen.'):
             self.assertIn(text, live, text)
+        self.assertNotIn('🔆 Eingerichtet (', live)
 
     def test_leiste_liegt_ueber_den_hauptknoepfen(self):
         css = _css()
@@ -191,13 +192,24 @@ class SelbsttestWachhaltenTest(unittest.TestCase):
         # der Gegenbeweis schlägt jede technische Freigabe
         self.assertIn('if (wachBeweis && wachBeweis.ok === false) f.ok = false;', live)
 
-    def test_gruen_erst_nach_40_sekunden(self):
+    def test_beweis_erst_nach_40_sekunden_ohne_kasten(self):
         live = _live()
+        # Der Nachweis nach 40 s bleibt die Grundlage – nur ohne gruene Box (Build aj).
         self.assertIn('jetzt - wachSeit >= 40000', live)
-        self.assertIn('✅ Bildschirm bleibt an – vom Gerät bestätigt (40 s ohne Unterbrechung).', live)
+        self.assertIn('wachBeweis = {ok: true, geprueft: 40};', live)
         # und NICHT mehr „geprüft" direkt nach dem Einschalten
         self.assertNotIn("', geprüft.', 'gut')", live)
-        self.assertIn('Ob der Bildschirm wirklich anbleibt, zeigt sich in den nächsten 40 Sekunden', live)
+        # Build aj: keine Selbsttest-Meldungen mehr in der Leiste
+        self.assertNotIn('✅ Bildschirm bleibt an – vom Gerät bestätigt (40 s ohne Unterbrechung).', live)
+        self.assertNotIn('Ob der Bildschirm wirklich anbleibt, zeigt sich in den nächsten 40 Sekunden', live)
+        self.assertNotIn('zeigt sich in den nächsten 40 Sekunden', live)
+
+    def test_beweis_steht_weiter_im_knopf(self):
+        live = _live()
+        # Der Stand ist nicht verloren – er steckt im Symbol-Knopf (Farbe + title).
+        self.assertIn('b.classList.toggle(\'on\', wakeWanted && wakeActive());', live)
+        self.assertIn('vom Gerät bestätigt, ', live)
+        self.assertIn('noch nicht bestätigt; das Gerät kann sich darüber hinwegsetzen', live)
 
     def test_knopf_bleibt_an_nur_mit_beweis(self):
         live = _live()

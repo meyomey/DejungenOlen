@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ai')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 aj')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2037,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ai')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 aj')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2315,8 +2315,10 @@ class LiveFahrKomfortTest(AppTestCase):
     def test_u_display_wachhalten(self):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('let _lastTapAt = 0;', live)
-        # Build ae: Doppeltipp meldet „Eingerichtet" – „bleibt an" erst nach dem Selbsttest.
-        self.assertIn('🔆 Eingerichtet. Ob der Bildschirm anbleibt, zeigt sich in den nächsten 40 Sekunden.', live)
+        # Build aj: Doppeltipp meldet nur noch Fehler – der Erfolg steht am Knopf, nicht in
+        # einer gruenen Box (Nutzerwunsch: die Test-Hinweise sollen weg).
+        self.assertIn('else if (!ok) barHinweis(', live)
+        self.assertNotIn('🔆 Eingerichtet.', live)
         self.assertIn("else if ((sharing || following || saverOn) && !wakeActive()) requestWakeLock();", live)
         self.assertIn("}, 20000);", live)   # Build 11-06y: 20-s-Erneuerung statt 60-s
 
