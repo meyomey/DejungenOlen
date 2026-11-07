@@ -1,4 +1,37 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build as) – Ein Schloss für alle Karten, unten statt oben rechts
+- **Rückmeldung:** „Das Schloss sollte auch jetzt im unteren Bereich erscheinen und nicht weiter
+  oben rechts sein. Die Darstellung des Schlosses sind momentan unterschiedlich Live-Karte und
+  andere Karten. Das sollte einheitlich sein."
+- **Zwei getrennte Umsetzungen, nebeneinander gewachsen** – das war der Kern des Problems:
+
+  | | Live-Karte | andere Karten |
+  |---|---|---|
+  | Ecke | unten links | **oben rechts** |
+  | Symbol | 🔒 (Emoji) | Icon-Font `bi-lock-fill` **vom CDN** |
+  | Grund | dunkelblau | **schwarz** |
+  | Form | Radius 20 px | **Radius 6 px, 32 × 32** |
+  | Höhe | 30 px | 32 px |
+
+- **Jetzt eine Darstellung, überall dieselbe:** unten links, **38 × 34 px**, Radius 20 px,
+  Grund `rgba(20,30,60,.88)`, weisses Schloss als **Inline-SVG** (17 × 17).
+  Im Browser auf allen fünf Karten nachgemessen: identische Werte.
+- **Warum SVG statt Emoji und statt Icon-Font:** ein 🔒 sieht auf iOS, Android und Windows jedes
+  Mal anders aus – und der Icon-Font kommt vom CDN, ist unterwegs ohne Netz also ein leerer
+  Kasten. Das SVG ist auf jedem Gerät dasselbe und braucht kein Netz.
+- **Kein Springen beim Umschalten:** Hinweis und Schloss tauschen sich an derselben Stelle aus
+  (`left: 8px`, gleiche Unterkante, beide 34 px hoch) – gemessen: beide bei 9 px / 12 px.
+- **Hinweis der übrigen Karten** sitzt jetzt ebenfalls unten **links** (vorher mittig): dort ist
+  die einzige freie Ecke – oben links Zoom, oben rechts Kartenstil-Knopf, unten rechts die
+  Quellenangabe. Damit deckt sich alles mit der Live-Karte.
+- **Nebenbei behoben:** Der Kartenstil-Knopf wich immer nach links aus, sobald ein Schloss
+  existierte – auch wenn es 600 px tiefer lag. Jetzt nur noch bei echter Überlappung.
+- Desktop bleibt bewusst ohne Guard (Maus, keine Scroll-Falle) – unverändert.
+- 6 neue Tests, 6 alte auf die einheitliche Darstellung umgestellt (402 gesamt).
+
+Geänderte Dateien: `static/js/map-touch.js`, `templates/touren/live.html`, `app.py`,
+`tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ar) – Hilfe sagt die richtige Ecke: unten links
 - **Korrektur des Nutzers:** „Auf der Live Karte steht der Verschiebe-Hinweis unten links."
   Ich hatte in der letzten Antwort behauptet, er sitze oben links – **das war falsch.**

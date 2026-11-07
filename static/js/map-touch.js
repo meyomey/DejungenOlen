@@ -17,6 +17,12 @@
 (function () {
   'use strict';
 
+  // Build as: EIN Schloss-Symbol fuer alle Karten (hier und in live.html identisch).
+  var LOCK_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
+                 'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+                 '<rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/>' +
+                 '<path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>';
+
   function applyGuard(map) {
     if (window.innerWidth >= 992) return;               // Desktop: alles wie bisher
     var box = map.getContainer();
@@ -34,41 +40,62 @@
     // oben rechts der Kartenstil-Knopf, unten rechts die Quellenangabe – unten in der Mitte
     // ist die einzige Ecke, die frei bleibt.
     //
-    // Die Karten sind sehr unterschiedlich hoch (gemessen: 100 px auf der Startseite,
-    // 460 px auf der Tourseite, 624 px auf der Karten-Seite). Auf einer 100-px-Karte waere
-    // ein 36-px-Hinweis am unteren Rand fast die halbe Karte – deshalb bei niedrigen Karten
-    // kleinere Schrift und weniger Innenabstand (unter 140 px: .72rem / 3px 9px,
-    // unter 200 px: .78rem / 5px 12px).
-    var h = box.getBoundingClientRect().height || 200;
-    var klein  = h < 140;
-    var mittel = !klein && h < 200;
-    var schrift = klein ? '.72rem' : (mittel ? '.78rem' : '.85rem');
-    var innen   = klein ? '3px 9px' : (mittel ? '5px 12px' : '6px 14px');
-    var abstand = klein ? '4px' : '6px';
+    // Die Karten sind sehr unterschiedlich hoch (100 px Startseite bis 624 px Karten-Seite).
+    // Build aq hatte deshalb kleinere Schrift auf niedrigen Karten – Build as gibt das wieder
+    // auf: eine einheitliche Optik ist wichtiger (Nutzerwunsch), und die feste Kante von 11 px
+    // haelt den Knopf auf jeder Hoehe ueber der Quellenangabe (17 px hoch).
     var overlay = document.createElement('div');
     overlay.className = 'mt-guard-overlay';
     overlay.style.cssText = 'position:absolute;inset:0;z-index:1000;display:flex;' +
-      'align-items:flex-end;justify-content:center;cursor:pointer;border-radius:inherit';
-    overlay.innerHTML = '<div style="background:rgba(0,0,0,.5);color:#fff;' +
-      'padding:' + innen + ';border-radius:20px;font-size:' + schrift + ';' +
-      'line-height:1.2;pointer-events:none;margin-bottom:calc(' + abstand + ' + 24px);' +
-      'max-width:calc(100% - 88px);text-align:center">' + hint + '</div>';
+      'align-items:flex-end;justify-content:flex-start;cursor:pointer;border-radius:inherit';
+    // Build as: „Die Darstellung des Schlosses sind momentan unterschiedlich Live-Karte und
+    // andere Karten. Das sollte einheitlich sein." Deshalb uebernimmt diese Datei exakt die
+    // Werte der Live-Karte (#live-guard-lock / #live-guard-pill):
+    //   Ecke      unten LINKS (left: 8px) – dort, wo auch die Live-Karte ihren Knopf hat
+    //   Grund     rgba(20,30,60,.88), weisse Schrift, Radius 20 px, Schatten 0 1px 5px
+    //   Hoehe     34 px = 14 px Innenabstand + 20 px Zeile
+    //   Kanten    17 px ueber dem unteren Rand, weil dort die Quellenangabe sitzt
+    // Der Hinweis erscheint nur im gesperrten Zustand, das Schloss nur im freien – sie sind
+    // nie gleichzeitig da und tauschen sich an derselben Stelle aus.
+    overlay.style.paddingLeft = '8px';
+    overlay.innerHTML = '<div style="background:rgba(20,30,60,.88);color:#fff;' +
+      'padding:.45rem .8rem;border-radius:20px;font-size:.85rem;line-height:20px;' +
+      'pointer-events:none;margin-bottom:11px;max-width:calc(100% - 16px);' +
+      'box-shadow:0 1px 5px rgba(0,0,0,.35)">' + hint + '</div>';
 
+    // Build as: Schloss unten mittig, exakt wie auf der Live-Karte. Vorher stand es oben rechts
+    // als 32-px-Kaestchen mit Icon-Font (bi-lock-fill) und schwarzem Grund – die Live-Karte
+    // hatte dagegen ein dunkelblaues Emoji-Pill. Jetzt EINE Darstellung:
+    //   Geometrie 34 px hoch (14 px Padding + 20 px Zeile), Radius 20 px, Innenabstand .45rem/.7rem
+    //   Farbe     rgba(20,30,60,.88) wie #live-guard-lock / #live-guard-pill
+    //   Symbol    🔒 als Text (kein Icon-Font; der CDN-Font fehlt offline und auf manchen
+    //             Geraeten – dann war das Schloss ein leerer Kasten)
+    //   Text      .95rem, weisse Schrift
+    // Position: unten mittig, dieselbe Kante wie der Hinweis (margin-bottom 6px).
+    // Symbol als Inline-SVG, NICHT als Emoji und nicht als Icon-Font: der Icon-Font kommt vom
+    // CDN (unterwegs ohne Netz ein leerer Kasten), und ein 🔒 sieht auf iOS, Android und
+    // Windows jedes Mal anders aus. Das SVG ist auf jedem Geraet dasselbe – und es ist
+    // Zeichen fuer Zeichen dasselbe wie auf der Live-Karte.
     var lockBtn = document.createElement('button');
     lockBtn.type = 'button';
-    lockBtn.innerHTML = '<i class="bi bi-lock-fill"></i>';
-    lockBtn.title = 'Karte sperren';
+    lockBtn.innerHTML = LOCK_SVG;
+    lockBtn.title = 'Karte sperren – dann scrollt die Seite';
     lockBtn.setAttribute('aria-label', 'Karte sperren');
     lockBtn.className = 'mt-guard-lock';
-    lockBtn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:1001;' +
-      'background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:6px;width:32px;height:32px;' +
-      'cursor:pointer;font-size:.9rem;display:none';
+    // padding:0 + feste 38x34 + flex-Zentrierung = exakt die Geometrie von #live-guard-lock.
+    // Mit Innenabstand schrumpfte das SVG auf 16 px und das Schloss wirkte kleiner als auf
+    // der Live-Karte; ohne bleibt es bei 17 px wie dort.
+    lockBtn.style.cssText = 'position:absolute;left:8px;bottom:11px;z-index:1001;' +
+      'background:rgba(20,30,60,.88);color:#fff;border:0;border-radius:20px;' +
+      'padding:0;height:34px;width:38px;' +
+      'display:none;align-items:center;justify-content:center;cursor:pointer;' +
+      'box-shadow:0 1px 5px rgba(0,0,0,.35)';
 
     function activate() {
       map.dragging.enable();
       if (map.tap && map.tap.enable) map.tap.enable();
       overlay.style.display = 'none';
-      lockBtn.style.display = 'block';
+      lockBtn.style.display = 'flex';
     }
     function deactivate() {
       map.dragging.disable();
@@ -251,11 +278,17 @@
     }
     function place() {
       btn.style.top = '6px';
+      btn.style.right = '8px';                     // Build as: immer erst die Grundecke setzen
       var guard = box.querySelector('.mt-guard-lock');
       if (guard && guard.getClientRects().length) {
-        // 🔒 sitzt oben rechts: nicht überdecken, sondern links davon
+        // Build as: Das 🔒 sitzt nicht mehr oben rechts, sondern unten mittig. Nur wenn es
+        // wirklich in derselben Zeile liegt (vertikale Überlappung), muss der Stil-Knopf
+        // ausweichen – sonst schob die alte Rechnung ihn grundlos nach links.
         var g = guard.getBoundingClientRect(), b = btn.getBoundingClientRect();
-        if (g.width && b.width && g.left < b.right) btn.style.right = (b.right - g.left + 8) + 'px';
+        var gleicheZeile = g.top < b.bottom && g.bottom > b.top;
+        if (gleicheZeile && g.width && b.width && g.left < b.right) {
+          btn.style.right = (b.right - g.left + 8) + 'px';
+        }
       }
       for (var i = 0; i < 8 && !freeSpot(); i++) {
         btn.style.top = (parseFloat(btn.style.top) + 34) + 'px';

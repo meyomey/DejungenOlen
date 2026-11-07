@@ -30,14 +30,19 @@
      über dem grünen/orangen InfoBlock erscheinen." Beide hängen am Fenster (position: fixed)
      und stehen direkt über dem Status-Chip – gemessen liegt dessen Unterkante bei 122 px
      über dem Fensterrand, also beginnen sie bei 130 px von unten. */
+  /* Build as: EINE Darstellung fuer alle Karten – die Live-Karte ist jetzt die Vorlage,
+     und die uebrigen Karten (map-touch.js) uebernehmen exakt diese Werte:
+       Hoehe 34 px = 14 px Innenabstand + 20 px Zeile, Radius 20 px, Grund rgba(20,30,60,.88)
+     Pill und 🔒 sind gleich hoch, damit beim Umschalten nichts springt. */
   #live-guard-pill { position: absolute; left: 8px; z-index: 1100;
                      background: rgba(20, 30, 60, .88); color: #fff; border: 0; border-radius: 20px;
-                     padding: .45rem .8rem; font-size: .85rem; box-shadow: 0 1px 5px rgba(0,0,0,.35); }
+                     padding: .45rem .8rem; font-size: .85rem; line-height: 20px;
+                     box-shadow: 0 1px 5px rgba(0,0,0,.35); }
   /* Build 11-06w: 🔒 ersetzt die Pill an derselben Stelle und sperrt wieder.
-     Build an: unten über dem Info-Block. */
+     Build an: unten über dem Info-Block. Build as: gleiche Maße wie in map-touch.js. */
   #live-guard-lock { position: absolute; left: 8px; z-index: 1100;
                      background: rgba(20, 30, 60, .88); color: #fff; border: 0; border-radius: 20px;
-                     padding: .45rem .7rem; font-size: .95rem; line-height: 1.1;
+                     padding: .45rem .7rem; font-size: .95rem; line-height: 20px;
                      box-shadow: 0 1px 5px rgba(0,0,0,.35); }
   .map-toast { position: absolute; top: 124px; left: 50%; transform: translateX(-50%); z-index: 1150;
                background: rgba(20, 30, 60, .92); color: #fff; border-radius: 20px;
@@ -118,14 +123,17 @@
      fest am Fenster (Unterkante 122 px über dem Rand) – also beginnen Pill und 🔒 8 px
      darüber. Statuszeile und Knopf sind gleich hoch (30 px), damit nichts springt. */
   @media (max-width: 991.98px) {
-    #live-guard-pill, #live-guard-lock { position: fixed; bottom: calc(58px + 64px + 30px + 8px); }
-    #live-guard-pill { height: 30px; display: inline-flex; align-items: center; }
-    #live-guard-lock { height: 30px; width: 38px; display: inline-flex; align-items: center;
+    /* Build as: Pill und 🔒 auf DERSELBEN Kante – sie tauschen sich aus, es springt nichts.
+       34 px hoch wie auf allen anderen Karten (map-touch.js nutzt dieselben Werte). */
+    #live-guard-pill, #live-guard-lock { position: fixed; bottom: calc(58px + 64px + 34px + 8px); }
+    #live-guard-pill { height: 34px; display: inline-flex; align-items: center; }
+    #live-guard-lock { height: 34px; width: 38px; display: inline-flex; align-items: center;
                        justify-content: center; padding: 0; }
   }
   @media (min-width: 992px) {
-    /* Desktop: der Status-Chip sitzt in der Karte (bottom: 84px) – gleiche Kante, andere Bezugsart */
-    #live-guard-pill, #live-guard-lock { bottom: 122px; }
+    /* Desktop: der Status-Chip sitzt in der Karte (bottom: 84px) – gleiche Kante, andere Bezugsart.
+       Build as: 4 px hoeher als vorher, weil Pill und 🔒 von 30 auf 34 px gewachsen sind. */
+    #live-guard-pill, #live-guard-lock { bottom: 126px; }
   }
 
   details.live-info > summary { cursor: pointer; list-style: none; }
@@ -683,6 +691,13 @@ function _fsAn() { return document.getElementById('live-wrap').classList.contain
 // ueber den 🔒-Knopf gesetzt und bleibt, bis die Karte wieder freigetippt wird. Fahrt,
 // Folgen und Vollbild haben damit nur noch Einfluss darauf, wie die Karte STARTET –
 // nicht darauf, ob man sie sperren darf.
+// Build as: EIN Schloss-Symbol fuer alle Karten – dieselbe Zeichnung wie LOCK_SVG in
+// static/js/map-touch.js. 17 px, 2.2 Strichstaerke, runde Ecken.
+const LOCK_SVG_LIVE = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" ' +
+                      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+                      'stroke-linejoin="round">' +
+                      '<rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/>' +
+                      '<path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>';
 let guardPill = null, guardLock = null, guardArmed = true, guardUnlocked = false;   // Start: gesperrt
 let guardLocked = false;      // Build am: vom Nutzer ausdruecklich gesperrt – schlaegt alles andere
 let guardVorVollbild = false; // Build an: Sperre, die vor dem Vollbild galt (wird danach wiederhergestellt)
@@ -730,7 +745,9 @@ function setLiveGuard() {                             // Build 11-06w: Zustand s
       guardLock = document.createElement('button');
       guardLock.type = 'button';
       guardLock.id = 'live-guard-lock';
-      guardLock.textContent = '🔒';
+      // Build as: Inline-SVG statt Emoji – dasselbe Zeichen wie in map-touch.js (LOCK_SVG).
+      // Ein 🔒 sieht auf iOS, Android und Windows jedes Mal anders aus; das SVG ist ueberall gleich.
+      guardLock.innerHTML = LOCK_SVG_LIVE;
       guardLock.title = 'Karte sperren – dann scrollt die Seite';
       guardLock.setAttribute('aria-label', 'Karte sperren');
       guardLock.onclick = () => {
@@ -742,7 +759,7 @@ function setLiveGuard() {                             // Build 11-06w: Zustand s
       };  // sperren
       wrap.appendChild(guardLock);
     }
-    guardLock.style.display = 'block';
+    guardLock.style.display = 'flex';   // Build as: flex, damit das SVG mittig sitzt
     guardArmed = false;
   }
 }

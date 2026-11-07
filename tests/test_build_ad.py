@@ -533,9 +533,10 @@ class SperrknopfUeberDemInfoBlockTest(unittest.TestCase):
     def test_knopf_und_pill_sitzen_ueber_dem_infoblock(self):
         live = _live()
         # mobil: dieselbe Kante wie der Status-Chip (58 + 64), plus dessen Hoehe und 8 px Luft
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: fixed; bottom: calc(58px + 64px + 30px + 8px); }', live)
+        # Build as: 34 px hoch (vorher 30) – gleiche Masse wie das Schloss auf allen Karten
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: fixed; bottom: calc(58px + 64px + 34px + 8px); }', live)
         # Desktop: der Status-Chip sitzt in der Karte bei bottom: 84px -> Knopf bei 122px
-        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 122px; }', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 126px; }', live)
         # die alte Lage oben links ist weg
         self.assertNotIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
         self.assertNotIn('#live-guard-lock { position: absolute; top: 80px; left: 10px;', live)
@@ -623,22 +624,29 @@ class KartenHinweisUntenTest(unittest.TestCase):
         return open(os.path.join(ROOT, 'static', 'js', 'map-touch.js'), encoding='utf-8').read()
 
     def test_hinweis_steht_unten_nicht_mittig(self):
+        # Build as: naoch weiter nach links – der Hinweis sitzt jetzt unten LINKS, an derselben
+        # Stelle, an der danach das Schloss erscheint (einheitlich mit der Live-Karte).
         js = self._js()
-        self.assertIn("'align-items:flex-end;justify-content:center;cursor:pointer;border-radius:inherit'", js)
-        self.assertNotIn('align-items:center;justify-content:center;cursor:pointer', js)
+        self.assertIn("'align-items:flex-end;justify-content:flex-start;cursor:pointer;border-radius:inherit'", js)
+        self.assertIn("overlay.style.paddingLeft = '8px';", js)
+        # Der Hinweis-Overlay darf nicht mehr zentrieren (der Schloss-Knopf zentriert SEINEN
+        # Inhalt per flex – das ist etwas anderes und bleibt).
+        overlay_block = js.split("overlay.style.cssText =", 1)[1].split(';', 2)[0] + \
+                        js.split("overlay.style.cssText =", 1)[1].split(';', 2)[1]
+        self.assertNotIn('justify-content:center', overlay_block)
 
-    def test_schrift_groesse_passt_sich_der_kartenhoehe_an(self):
+    def test_schrift_ist_einheitlich(self):
+        # Build aq hatte die Schrift an die Kartenhöhe angepasst (100-px-Karten kleiner).
+        # Build as nimmt das zurück: „Das sollte einheitlich sein" – eine feste Groesse,
+        # zumal die Kante von 11 px über der Quellenangabe auf jeder Höhe passt.
         js = self._js()
-        # sehr niedrige Karten (Startseite: 100 px) bekommen kleineren Text
-        self.assertIn('var klein  = h < 140;', js)
-        self.assertIn('var mittel = !klein && h < 200;', js)
-        self.assertIn("var schrift = klein ? '.72rem' : (mittel ? '.78rem' : '.85rem');", js)
-        self.assertIn("var abstand = klein ? '4px' : '6px';", js)
+        self.assertIn('font-size:.85rem;line-height:20px;', js)
+        self.assertNotIn('var klein  = h < 140;', js)
 
     def test_kein_ueberlauf_auf_schmalen_karten(self):
         js = self._js()
-        # rechts bleibt Platz fuer den Schloss-Knopf
-        self.assertIn('max-width:calc(100% - 88px)', js)
+        # Build as: Hinweis linksbuendig mit 8 px Rand – 16 px Abstand halten ihn im Bild
+        self.assertIn('max-width:calc(100% - 16px)', js)
 
 
 class LiveHinweisUntenLinksTest(unittest.TestCase):
@@ -664,11 +672,85 @@ class LiveHinweisUntenLinksTest(unittest.TestCase):
         # links ist fest, unten kommt aus den beiden Media-Queries (mobil/desktop)
         self.assertIn('#live-guard-pill { position: absolute; left: 8px;', live)
         self.assertIn('#live-guard-pill, #live-guard-lock { position: fixed; '
-                      'bottom: calc(58px + 64px + 30px + 8px); }', live)
-        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 122px; }', live)
+                      'bottom: calc(58px + 64px + 34px + 8px); }', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 126px; }', live)
 
     def test_kommentare_behaupten_nicht_mehr_oben_links(self):
         live = _live()
         # „seit Build an unten links" muss im Kommentar stehen, damit der Irrtum nicht zurueckkommt
         self.assertIn('UNTEN LINKS (Build an:', live)
         self.assertIn('seit Build an ebenfalls unten links', live)
+
+
+class EinheitlichesSchlossTest(unittest.TestCase):
+    """Build as: „Das Schloss sollte auch jetzt im unteren Bereich erscheinen und nicht
+    weiter oben rechts sein. Die Darstellung des Schlosses sind momentan unterschiedlich
+    Live-Karte und andere Karten. Das sollte einheitlich sein."
+
+    Vorher gab es ZWEI Darstellungen:
+
+    | | Live-Karte | andere Karten |
+    |---|---|---|
+    | Ecke | unten links | **oben rechts** |
+    | Symbol | 🔒 (Emoji) | Icon-Font `bi-lock-fill` (CDN!) |
+    | Grund | dunkelblau rgba(20,30,60,.88) | **schwarz rgba(0,0,0,.5)** |
+    | Form | Radius 20 px | **Radius 6 px, 32 × 32** |
+    | Höhe | 30 px | 32 px |
+
+    Jetzt eine Darstellung: unten links, Inline-SVG, 38 × 34, Radius 20 px, `display:flex`.
+    Im Browser nachgemessen – alle fünf Karten liefern identische Werte.
+    """
+
+    def _js(self):
+        return open(os.path.join(ROOT, 'static', 'js', 'map-touch.js'), encoding='utf-8').read()
+
+    def test_schloss_steht_unten_links_nicht_oben_rechts(self):
+        js = self._js()
+        self.assertIn("lockBtn.style.cssText = 'position:absolute;left:8px;bottom:11px;z-index:1001;'", js)
+        # die alte Lage oben rechts darf nicht zurückkommen
+        self.assertNotIn("'position:absolute;top:8px;right:8px;z-index:1001;'", js)
+
+    def test_schloss_hat_dieselben_masse_wie_die_live_karte(self):
+        js = self._js()
+        # 38 x 34, Radius 20, kein Innenabstand, dunkelblau - exakt wie #live-guard-lock
+        self.assertIn("'padding:0;height:34px;width:38px;'", js)
+        self.assertIn("'background:rgba(20,30,60,.88);color:#fff;border:0;border-radius:20px;'", js)
+        live = _live()
+        self.assertIn('#live-guard-lock { position: absolute; left: 8px; z-index: 1100;', live)
+        self.assertIn('background: rgba(20, 30, 60, .88)', live)
+
+    def test_kein_emoji_und_kein_icon_font_im_schloss(self):
+        js = self._js()
+        # Build as: Inline-SVG statt Emoji (sieht je nach Gerät anders aus) und statt Icon-Font
+        # (kommt vom CDN - ohne Netz ein leerer Kasten)
+        self.assertIn('var LOCK_SVG =', js)
+        self.assertIn('lockBtn.innerHTML = LOCK_SVG;', js)
+        self.assertNotIn("lockBtn.innerHTML = '<i class=\"bi bi-lock-fill\"></i>'", js)
+        self.assertNotIn("lockBtn.textContent = '🔒'", js)
+
+    def test_live_karte_und_karten_teilen_dasselbe_symbol(self):
+        js = self._js()
+        live = _live()
+        # beide definieren dieselbe Zeichnung (Rechteck 4.5/10.5/15/10.5 r2.5 + Bogen)
+        for quelle, name in ((js, 'map-touch.js'), (live, 'live.html')):
+            self.assertIn('<rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/>', quelle,
+                          f'{name}: Rechteck fehlt')
+            self.assertIn('<path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>', quelle,
+                          f'{name}: Buegel fehlt')
+            self.assertIn('width="17" height="17"', quelle, f'{name}: Groesse fehlt')
+
+    def test_hinweis_und_schloss_tauschen_sich_an_derselben_stelle(self):
+        js = self._js()
+        # beide left:8px, beide 34 px hoch, gleiche Unterkante -> beim Entsperren springt nichts
+        self.assertIn("'align-items:flex-end;justify-content:flex-start;cursor:pointer;border-radius:inherit'", js)
+        self.assertIn("overlay.style.paddingLeft = '8px';", js)
+        self.assertIn('padding:.45rem .8rem;border-radius:20px;font-size:.85rem;line-height:20px;', js)
+        # Hinweis: 6 px Rand + 2x6 Innenabstand + 20 Zeile = 34; Schloss: fest 34 + bottom 11
+        self.assertIn('margin-bottom:11px', js)
+        self.assertIn('bottom:11px', js)
+
+    def test_stil_knopf_weicht_nur_bei_gleicher_zeile_aus(self):
+        js = self._js()
+        # alte Logik schob den Stil-Knopf immer nach links, sobald ein Lock existierte
+        self.assertIn('var gleicheZeile = g.top < b.bottom && g.bottom > b.top;', js)
+        self.assertIn("btn.style.right = '8px';", js)

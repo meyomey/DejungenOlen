@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ar')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 as')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2037,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ar')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 as')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2395,7 +2395,9 @@ class LiveGuardSperrenTest(AppTestCase):
     def test_w_lock_knopf_und_startzustand(self):
         live = self._live()
         self.assertIn("guardLock.id = 'live-guard-lock';", live)
-        self.assertIn("guardLock.textContent = '🔒';", live)
+        # Build as: Kein Emoji mehr, sondern dasselbe Inline-SVG wie auf allen anderen Karten
+        self.assertIn('guardLock.innerHTML = LOCK_SVG_LIVE;', live)
+        self.assertIn('const LOCK_SVG_LIVE =', live)
         # Build am: klarerer Text + eigene Sperre, die jeden Modus schlaegt
         self.assertIn("guardLock.title = 'Karte sperren – dann scrollt die Seite';", live)
         self.assertIn('guardLock.onclick = () => {', live)
@@ -2447,8 +2449,8 @@ class LiveKarteLesbarTest(AppTestCase):
         self.assertNotIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
         self.assertNotIn('top: 56px; left: 8px;', live)
         # unten ueber dem Info-Block (mobil am Fenster, Desktop in der Karte)
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: fixed; bottom: calc(58px + 64px + 30px + 8px); }', live)
-        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 122px; }', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: fixed; bottom: calc(58px + 64px + 34px + 8px); }', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 126px; }', live)
         # Toast rutscht mit, damit er nicht auf der Pill sitzt
         self.assertIn('.map-toast { position: absolute; top: 124px;', live)
 
