@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ae')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 af')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2037,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ae')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 af')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2112,7 +2112,8 @@ class SaverModeAndFixesTest(AppTestCase):
         self.assertIn('id="btn-saver"', live)
         self.assertIn('id="saver-dim"', live)
         self.assertIn('async function setSaver(', live)
-        self.assertIn('function saverPeek(', live)
+        # Build af: saverPeek() ist in saverStufe()/saverTap() aufgegangen (zwei Stufen).
+        self.assertIn('function saverStufe(', live)
         # Bildschirm bleibt AN: Sparmodus fordert die Wake-Lock an und meldet es
         self.assertIn('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', live)
         # Sparmodus hält den Bildschirm auch nach App-Wechsel wach; Ende mit der Fahrt

@@ -679,12 +679,26 @@ footer {
 /* Build ae: Frueher wurde hier die Knopfleiste ueber die Abdunklung gehoben – dadurch
    blieb unten ein heller Streifen stehen. Jetzt dunkel alles ab; beenden laesst sich der
    Modus ueber das ✕ oben rechts (und er endet ohnehin mit der Fahrt). */
+/* Build af: „Lange aufhellen" (früher saver-peek) blendet die Abdunklung ganz weg. */
 #saver-dim.saver-peek { background: rgba(5, 9, 20, .18); }
+/* Build af: dauerhaft hell – die Abdunklung ist vollständig weg, die Karte frei. */
+#saver-dim.saver-off { background: transparent; cursor: default; }
+/* Build af: Der Hinweis ist nur noch ein schmaler Streifen unten – nicht mehr ein Kasten
+   mitten im Bild, der die Karte versperrt. Ausgeblendet wird er über saver-tipp. */
+/* Build af: Hinweis ueber der Knopfleiste (mobil), damit er weder Karte noch
+   App-Navigation verdeckt – und nur beim Aufwachen. */
+#saver-dim { align-items: flex-end; padding-bottom: calc(122px + env(safe-area-inset-bottom)); }
+@media (min-width: 992px) { #saver-dim { padding-bottom: 24px; } }
 #saver-dim .saver-chip {
-  color: #e6edfa; font-size: 1rem; line-height: 1.45; text-align: center;
-  background: rgba(14, 20, 40, .92); border: 1px solid rgba(255, 255, 255, .28);
-  border-radius: 14px; padding: .9rem 1.15rem; max-width: 22rem;
+  color: #e6edfa; font-size: .84rem; line-height: 1.3; text-align: center;
+  background: rgba(14, 20, 40, .9); border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: 999px; padding: .4rem .85rem; max-width: min(22rem, calc(100% - 24px));
+  opacity: 1; transition: opacity .2s;
 }
+/* im aufgehellten Zustand: Hinweis nach 2 s ausblenden, damit nichts im Weg steht */
+#saver-dim.saver-tipp .saver-chip { opacity: 0; }
+#saver-dim.saver-tipp .saver-chip,
+#saver-dim.saver-peek .saver-chip { pointer-events: none; }
 #saver-dim .saver-weg { font-size: .78rem; color: #9fb0d0; text-align: center; margin-top: .35rem; }
 #saver-off {
   position: absolute; top: max(14px, env(safe-area-inset-top)); right: 16px;

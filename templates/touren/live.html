@@ -206,8 +206,8 @@
       <!-- Build 11-06n: Stromspar-Overlay – dunkel, aber Bildschirm bleibt AN (kein Entsperren nötig);
            Tippen irgendwo hellt 4 s lang auf, ✕ oben rechts beendet den Modus -->
       <div id="saver-dim" class="d-none">
-        <div class="saver-chip">🌙 Stromspar an – das Display darf ausgehen,<br>die Aufzeichnung läuft weiter.<br>
-          <span class="saver-weg">Tippen = kurz aufhellen · ✕ oben rechts = aus</span></div>
+        <div class="saver-chip" aria-hidden="true">
+          <span class="saver-weg" id="saver-weg">Einmal tippen = kurz schauen · zweimal tippen = dauerhaft hell · ✕ = aus</span></div>
         <button type="button" id="saver-off" onclick="setSaver(false)" aria-label="Stromspar-Modus beenden">✕</button>
       </div>
       <div id="live-map" data-map-guard="off" data-map-style-compact="1"></div>
@@ -1224,7 +1224,6 @@ async function setSaver(on) {
   saverOn = on;
   const dim = document.getElementById('saver-dim');
   const b = document.getElementById('btn-saver');
-  if (dim) { dim.classList.toggle('d-none', !on); if (on) dim.classList.remove('saver-peek'); }
   document.body.classList.toggle('saver-on', !!on);
   if (b) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   if (on) {
@@ -1234,25 +1233,95 @@ async function setSaver(on) {
     // Neu: das Display DARF ausgehen. Wichtig ist nur, dass die Aufzeichnung weiterläuft –
     // dafür wird jeder Messpunkt vor dem Senden lokal gesichert (gesichert/sicherNachsenden).
     // Wer das Display anlassen will, nimmt den Sonnen-Knopf (🔆) – die beiden sind getrennt.
-    clearTimeout(saverPeekTimer);
-    setStatus('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt. Tippen = kurz aufhellen.', 'sharing');
-    barHinweis('🌙 Stromspar an – das Display darf jetzt ausgehen. Die Aufzeichnung läuft weiter.', 'gut');
-  } else if (wakeWanted) {
-    requestWakeLock();
+    setStatus('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', 'sharing');
+    barHinweis('🌙 Stromspar an – das Display darf jetzt ausgehen. Einmal tippen = kurz schauen, zweimal = dauerhaft hell.', 'gut');
+    saverStufe(false);                        // Build af: frisch eingeschaltet = dunkel
+  } else {
+    saverStufe(false);
+    if (dim) { dim.classList.add('d-none'); dim.classList.remove('saver-off', 'saver-peek', 'saver-tipp'); }
+    clearTimeout(saverTapTimer); saverTapTimer = null;
+    if (wakeWanted) requestWakeLock();
     setStatus('🌙 Stromspar aus.', 'sharing');
   }
 }
-function saverPeek() {
+// Build af: Zwei Stufen im Stromspar-Modus.
+//   EINMAL tippen  = kurz schauen (4 s hell, dann wieder dunkel)
+//   ZWEIMAL tippen = dauerhaft hell (die Abdunklung bleibt ganz weg)
+//   nochmal ZWEIMAL tippen = zurück in den Stromspar-Modus
+// Der Hinweis erscheint nur beim Aufwachen – und auch dann nur klein unten, damit er
+// die Karte nicht verdeckt.
+let saverHell = false, saverTapTimer = null, saverHintTimer = null;
+
+function saverStufe(hell) {
+  saverHell = !!hell;
+  const dim = document.getElementById('saver-dim');
+  if (dim) {
+    dim.classList.toggle('d-none', !saverOn);
+    dim.classList.toggle('saver-off', saverHell);          // Abdunklung ganz weg
+    dim.classList.remove('saver-peek');
+    dim.classList.remove('saver-tipp');
+  }
+  clearTimeout(saverPeekTimer);
+  clearTimeout(saverTapTimer);
+  clearTimeout(saverHintTimer);
+  if (saverOn && !saverHell) {
+    // Nach dem kurzen Blick wieder dunkel.
+    saverPeekTimer = setTimeout(() => {
+      const d = document.getElementById('saver-dim');
+      if (d && !saverHell) d.classList.remove('saver-peek');
+    }, 4000);
+    // Build af: Der Hinweis wird schon nach 2 s ausgeblendet – er stand der Karte im Weg.
+    // Beim Aufwachen muss man ihn einmal kurz sehen können, danach ist die Karte frei.
+    clearTimeout(saverHintTimer);
+    saverHintTimer = setTimeout(() => {
+      const d = document.getElementById('saver-dim');
+      if (d && !saverHell) d.classList.add('saver-tipp');
+    }, 2000);
+  }
+  const b = document.getElementById('btn-saver');
+  if (b) {
+    b.classList.toggle('on', saverOn);
+    b.setAttribute('aria-pressed', saverOn ? 'true' : 'false');
+    b.title = saverHell ? 'Stromspar: gerade dauerhaft hell – zweimal tippen schaltet wieder ab'
+                        : 'Stromspar: Display darf ausgehen – einmal tippen = kurz schauen, zweimal = dauerhaft hell';
+  }
+  refreshSaverChip();
+}
+
+// Der kleine Hinweis unten nennt nur noch, was gerade gilt.
+function refreshSaverChip() {
+  const weg = document.getElementById('saver-weg');
+  if (!weg) return;
+  weg.textContent = saverHell
+    ? 'Dauerhaft hell · zweimal tippen = wieder Stromsparen · ✕ = aus'
+    : 'Einmal tippen = kurz schauen · zweimal tippen = dauerhaft hell · ✕ = aus';
+}
+
+// Einmal vs. zweimal: Der erste Tipp wartet kurz, ob ein zweiter folgt (Doppeltipp-Zoom
+// von Leaflet liegt darunter und ist hier ohnehin abgedunkelt).
+function saverTap() {
   if (!saverOn) return;
   const dim = document.getElementById('saver-dim');
-  if (!dim) return;
-  dim.classList.add('saver-peek');
-  clearTimeout(saverPeekTimer);
-  saverPeekTimer = setTimeout(() => dim.classList.remove('saver-peek'), 4000);
+  if (saverTapTimer) {                       // zweiter Tipp innerhalb der Wartezeit
+    clearTimeout(saverTapTimer);
+    saverTapTimer = null;
+    saverStufe(!saverHell);
+    return;
+  }
+  // erster Tipp: sofort kurz aufhellen (damit man gleich etwas sieht) …
+  if (!saverHell && dim) dim.classList.add('saver-peek');
+  saverTapTimer = setTimeout(() => {
+    saverTapTimer = null;
+    if (dim) {
+      dim.classList.add('saver-peek');
+      dim.classList.add('saver-tipp');       // blendet den Hinweis nach 2 s aus
+    }
+  }, 300);
 }
+
 document.getElementById('saver-dim').addEventListener('click', e => {
   if (e.target && e.target.id === 'saver-off') return;   // ✕ hat sein eigenes onclick
-  saverPeek();
+  saverTap();
 });
 
 // Build 11-06u: Doppeltipp irgendwo auf der Karte/Wrap frischt den Screen-Wake-Lock auf

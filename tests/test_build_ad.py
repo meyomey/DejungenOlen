@@ -134,8 +134,10 @@ class StromsparNeuTest(unittest.TestCase):
 
     def test_spar_hinweis_sagt_die_wahrheit(self):
         live = _live()
-        self.assertIn('das Display darf ausgehen,<br>die Aufzeichnung läuft weiter', live)
-        self.assertIn('🌙 Stromspar an – das Display darf jetzt ausgehen. Die Aufzeichnung läuft weiter.', live)
+        # Build af: Der grosse Kasten mitten im Bild ist ersetzt durch einen schmalen Streifen.
+        self.assertIn('Einmal tippen = kurz schauen · zweimal tippen = dauerhaft hell', live)
+        self.assertIn('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', live)
+        self.assertIn('Einmal tippen = kurz schauen, zweimal = dauerhaft hell.', live)
 
 
 if __name__ == '__main__':
@@ -201,3 +203,48 @@ class SelbsttestWachhaltenTest(unittest.TestCase):
         live = _live()
         self.assertIn('const bewaehrt = !!(wachBeweis && wachBeweis.ok === true);', live)
         self.assertIn('noch nicht bestätigt; das Gerät kann sich darüber hinwegsetzen', live)
+
+
+class StromsparZweiStufenTest(unittest.TestCase):
+    """Build af: Einmal tippen = kurz schauen, zweimal = dauerhaft hell, nochmal = sparen.
+
+    Der Nutzer: „Wenn der Stromsparen aktiv ist, soll bei einmal tippen das Display kurz
+    angehen um kurz schauen zu können und bei zweimal tippen soll das Display anbleiben.
+    Wenn man erneut zweimal tippt, wieder in Stromsparen gehen. Aktuell wird die Sicht auf
+    die Karte versperrt mit dem großen Stromspar-an-Hinweis, auch wenn es hell ist."
+    """
+
+    def test_einmal_tippen_hellt_kurz_auf(self):
+        live = _live()
+        self.assertIn('function saverTap()', live)
+        self.assertIn('function saverStufe(', live)
+        # 4 s hell, dann wieder dunkel
+        self.assertIn('}, 4000);', live)
+        self.assertIn('d.classList.remove(\'saver-peek\')', live)
+
+    def test_zweimal_tippen_bleibt_hell(self):
+        live = _live()
+        # Doppeltipp erkennt der zweite Tipp innerhalb der Wartezeit
+        self.assertIn('if (saverTapTimer) {', live)
+        self.assertIn("saverStufe(!saverHell);", live)
+        css = _css()
+        self.assertIn('#saver-dim.saver-off { background: transparent; cursor: default; }', css)
+
+    def test_zurueck_in_den_sparmodus(self):
+        live = _live()
+        self.assertIn("dim.classList.toggle('saver-off', saverHell);", live)
+        # Ausschalten räumt beide Stufen ab
+        self.assertIn("dim.classList.remove('saver-off', 'saver-peek', 'saver-tipp')", live)
+
+    def test_hinweis_versperrt_die_karte_nicht(self):
+        live = _live()
+        css = _css()
+        # kein Kasten mehr mitten im Bild
+        self.assertNotIn('Bildschirm bleibt an – das Display darf ausgehen', live)
+        self.assertIn("id=\"saver-weg\"", live)
+        # beim Aufwachen nach 2 s ausblenden
+        self.assertIn('d.classList.add(\'saver-tipp\')', live)
+        self.assertIn('}, 2000);', live)
+        self.assertIn('#saver-dim.saver-tipp .saver-chip { opacity: 0; }', css)
+        # Hinweis sitzt über der Leiste, nicht auf der Karte
+        self.assertIn('padding-bottom: calc(122px + env(safe-area-inset-bottom));', css)

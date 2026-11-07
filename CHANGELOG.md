@@ -1,4 +1,27 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build af) – Stromspar mit zwei Stufen, Hinweis versperrt die Karte nicht mehr
+- **Gute Nachricht vom Gerät:** „Der Bildschirm bleibt 40 s an, vom Gerät bestätigt." Der Selbsttest aus Build ae funktioniert also – das Wachhalten hält auf dem S23 und die Meldung ist belegt statt behauptet.
+- **Wunsch:** „Wenn der Stromsparen aktiv ist, soll bei einmal tippen das Display kurz angehen um kurz schauen zu können und bei zweimal tippen soll das Display anbleiben. Wenn man erneut zweimal tippt, wieder in Stromsparen gehen."
+  - **Einmal tippen** → 4 Sekunden hell, dann wieder dunkel (wie bisher, aber jetzt sauber getrennt).
+  - **Zweimal tippen** → dauerhaft hell: Die Abdunklung ist vollständig weg, die Karte also wirklich frei.
+  - **Nochmals zweimal tippen** → zurück in den Sparmodus.
+  - **✕** beendet den Modus weiterhin ganz.
+  - Unterscheidung: Der zweite Tipp innerhalb von 300 ms zählt als Doppeltipp; ein Einzeltipp hellt sofort auf, damit man nicht ins Leere tippt.
+- **Fehler:** „Aktuell wird die Sicht auf die Karte versperrt mit dem großen Stromspar-an-Hinweis, auch wenn es hell ist." Zu Recht – der Kasten stand mittig im Bild und blieb auch im hellen Zustand stehen.
+  - Der Hinweis ist jetzt ein **schmaler Streifen** statt eines Kastens, sitzt **über der Knopfleiste** (verdeckt weder Karte noch App-Navigation) und wird **beim Aufwachen nach 2 Sekunden ausgeblendet**.
+  - Im dauerhaft hellen Zustand ist er nur so lange zu sehen, bis man die neue Stufe wahrgenommen hat.
+- **Im Browser belegt** (Chromium, Smartphone-Profil):
+  - frisch an → dunkel (`rgba(5,9,20,0.86)`), Hinweis sichtbar.
+  - 1× tippen → `saver-peek saver-tipp`, Hintergrund `0.18`, Hinweis nach 2 s auf `opacity 0`; nach 4,5 s wieder `0.86`.
+  - 2× tippen → `saver-off`, Hintergrund `transparent`, Text „Dauerhaft hell · zweimal tippen = wieder Stromsparen".
+  - erneut 2× → wieder dunkel.
+  - ✕ → `saverOn = false`, Overlay `d-none`.
+  - Hinweis-Lage: `[682, 732]` – unterhalb der Karte, oberhalb von Leiste und Navigation.
+- 4 neue Tests (354 gesamt), py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templates/hilfe.html`, `app.py`,
+`templates/base.html`, `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ae) – „Grün, aber wirkungslos" abgeschafft + Abdunklung wirklich ganzflächig
 - **Rückmeldung:** „Es geht nicht, obwohl nur grüne Meldungen kommen. Es wird auch nicht der ganze Bildschirm abgedunkelt."
 - **Der eigentliche Konstruktionsfehler (meiner):** Ich habe gemeldet, dass *meine Mittel* laufen (Video spielt, Wake-Lock erteilt), und das als Beweis ausgegeben, dass der Bildschirm anbleibt. Das ist es nicht. Verweigert das Betriebssystem den Bildschirm-Wächter – Samsungs Akkusparmodus tut genau das –, laufen Video und Schnittstelle „fehlerfrei" weiter, nur ohne Wirkung. Das Grün war also ehrlich gemeint und trotzdem falsch.
