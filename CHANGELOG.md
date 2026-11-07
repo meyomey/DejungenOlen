@@ -1,4 +1,19 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ac) – „Bildschirm bleibt an": der Fehler lag im Video (es war stumm)
+- **Rückmeldung:** „Leider funktioniert Bildschirm bleibt an nicht." Zu Recht – mein Ersatz-Weg aus Build ab war **wirkungslos**.
+- **Die Regel, die ich übersehen hatte:** Ein Video hält den Bildschirm nur wach, wenn es **nicht stumm** ist. Es braucht eine **Tonspur** und darf nicht `muted` sein. Das Video aus Build ab hatte gar keine Tonspur (nur ein schwarzes Bild) und war zusätzlich stummgeschaltet – der Browser hatte damit keinen Grund, das Display anzulassen.
+  - Nachgeprüft am Vorbild **NoSleep.js**: dessen WebM hat eine **Vorbis**-, das MP4 eine **AAC**-Tonspur, und es wird nirgends stummgeschaltet.
+- **Neues Video:** 2×2 Pixel, schwarz, 1 s, Endlosschleife, **mit unhörbarer Vorbis-Tonspur** (Lautstärke 0,02 – nicht stumm), 5,5 KB, direkt im HTML eingebettet. Kein Netz, keine Datei.
+- **Zweiter echter Fehler gefunden:** `wakeActive()` fragte nur ein Flag ab. Stand das Video (Autoplay-Sperre, Energiesparmodus), behauptete die Seite trotzdem „Bildschirm bleibt an". Jetzt zählt nur ein **nachweislich laufendes** Video (`!paused && readyState >= 2`); sonst kommt eine ehrliche Warnung: „greift auf diesem Gerät nicht – bitte Bildschirmsperre im Gerät abschalten."
+- **Fehlertexte nennen jetzt den Video-Grund**: „das Ersatz-Video startet nicht (Autoplay gesperrt)" bzw. „wird blockiert (Code …)" statt allgemein „abgelehnt".
+- **Im Browser belegt** (Chromium, Smartphone-Simulation):
+  - Wake-Lock-Berechtigung erteilt → API hält (`api = true`), Video bleibt aus.
+  - Berechtigung fehlt → Video läuft (`paused = false`, `muted = false`, `duration 1,06 s`), Knopf „an".
+  - Abspielen künstlich blockiert → Knopf **orange**, ehrliche Warnung, kein falsches „bleibt an".
+- 3 neue Tests (332 gesamt), py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_aa.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ab) – „Bildschirm bleibt an" hält jetzt wirklich (zweiter Weg) + feinere Leiste
 - **Fehler:** „Bildschirm bleibt an funktioniert nicht, zumindest nicht auf meinem Galaxy S23 und auch nicht im Browser bei der Smartphone-Simulation." Ursache: Der Wake-Lock ist eine **Berechtigung** des Browsers. Verweigert er sie (Energiesparmodus, schwacher Akku, Browser-Richtlinie, Seite nicht über https), blieb bisher nur eine ehrliche Fehlermeldung – der Bildschirm ging aus.
 - **Zweiter Weg – stilles Endlos-Video:** Ein 641 Byte kleines, unsichtbares Video (16×16, schwarz, 1 s, Endlosschleife, direkt im HTML eingebettet, kein Netz nötig) hält den Bildschirm genauso wach. Das ist der klassische Ausweg, den auch NoSleep.js geht.

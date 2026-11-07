@@ -121,7 +121,9 @@ class WakeLockMitVideoErsatzTest(AppTestCase):
 
     def test_zwei_wege_und_ehrlicher_zustand(self):
         h = self.html
-        self.assertIn('function wakeActive() { return wakeHeld() || wakeVideoOn; }', h)
+        # Build ac: nur ein WIRKLICH laufendes Video zählt (nicht bloß ein Flag)
+        self.assertIn('function videoRunning() { return !!(wakeVideo && wakeVideoOn && !wakeVideo.paused', h)
+        self.assertIn('function wakeActive() { return wakeHeld() || videoRunning(); }', h)
         self.assertIn('function setFallback(on)', h)
         self.assertIn('function tryVideoAgain()', h)
 
@@ -151,6 +153,47 @@ class WakeLockMitVideoErsatzTest(AppTestCase):
         h = self.html
         self.assertIn('data-map-style-compact="1"', h)
         self.assertIn('#live-map .leaflet-control-attribution { margin-right: 50px !important; }', h)
+
+
+class WakeLockTonspurTest(AppTestCase):
+    """Build ac: „Bildschirm bleibt an funktioniert immer noch nicht."
+
+    Zwei Fehler gefunden und behoben:
+      1. Das Ersatz-Video aus Build ab war STUMM (kein `muted`-Attribut nötig, aber auch keine
+         Tonspur). Ein stummes Video hält den Bildschirm NICHT wach – das ist die Regel, die
+         auch NoSleep.js befolgt: dort steckt eine Vorbis-/AAC-Tonspur drin.
+      2. `wakeActive()` prüfte nur ein Flag. Stand das Video (Autoplay-Sperre), behauptete die
+         Seite trotzdem „Bildschirm bleibt an". Jetzt zählt nur, was nachweislich läuft.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.login_org()
+        self.html = self.get_html('/touren/%d/live' % self.t_plan_id)
+
+    def test_video_hat_tonspur(self):
+        """Das eingebettete WebM ist nicht stumm – sonst hält es den Bildschirm nicht wach."""
+        h = self.html
+        self.assertIn("base64,", h)
+        self.assertNotIn("wakeVideo.muted = true", h)
+        self.assertNotIn("wakeVideo.setAttribute('muted'", h)
+        self.assertIn("wakeVideo.volume = 0.02;", h)      # unhörbar, aber nicht stumm
+        # das Video ist deutlich größer als das stumme aus Build ab (641 Byte)
+        import re
+        m = re.search(r"const NOSLEEP_WEBM = 'data:video/webm;base64,([^']+)'", h)
+        self.assertIsNotNone(m)
+        self.assertGreater(len(m.group(1)), 3000)
+
+    def test_kein_falsches_versprechen(self):
+        h = self.html
+        self.assertIn('function videoRunning()', h)
+        self.assertIn('wakeVideo.readyState >= 2', h)
+        self.assertIn("mapToast('⚠️ Bildschirm wachhalten greift auf diesem Gerät nicht", h)
+
+    def test_fehlertext_nennt_video_probleme(self):
+        h = self.html
+        self.assertIn("das Ersatz-Video wird blockiert (Code ' + wakeVideo.error.code", h)
+        self.assertIn("das Ersatz-Video startet nicht (Autoplay gesperrt)", h)
 
 
 class LiveKarteImBrowserTest(AppTestCase):
