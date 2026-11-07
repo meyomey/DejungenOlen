@@ -799,3 +799,45 @@ class BlickZentriertAufMichTest(unittest.TestCase):
         # im dauerhaft hellen Zustand will man die Karte bedienen – kein Sprung
         stufe = live.split('function saverStufe(', 1)[1].split('\nfunction ', 1)[0]
         self.assertNotIn('saverAufMich', stufe)
+
+
+class LiveStreckeTest(unittest.TestCase):
+    """Build au: „kann man die zurückgelegte Route auch schon in der Live Karte anzeigen lassen?"
+
+    Die Route wurde schon gezeichnet (`addTrails`, eigene Spur blau #1E88E5), aber niemand
+    konnte sehen, WIE VIEL man geschafft hat – die Kilometerzahl stand erst nach der Fahrt
+    auf der Tourseite. Jetzt rechnet die Live-Karte aus denselben Punkten mit.
+
+    Im Browser gemessen: 10 Punkte → **1072 m = „1,2 km gefahren"**; zwei weitere Punkte →
+    2156 m = „2,2 km", ohne Neuladen. Unter 50 m bleibt der Chip verborgen (kein „0,0 km").
+    """
+
+    def test_strecke_wird_aus_der_spur_gerechnet(self):
+        live = _live()
+        self.assertIn('function trailLaenge(uid)', live)
+        self.assertIn('for (let i = 1; i < pts.length; i++) m += map.distance(pts[i - 1], pts[i]);', live)
+
+    def test_chip_steht_auf_der_karte_nicht_in_der_liste(self):
+        live = _live()
+        # auf der Karte, oben links unter dem Zoom
+        self.assertIn('<span id="live-km" class="d-none"', live)
+        self.assertIn('#live-km { position: absolute; left: 10px; top: 82px;', live)
+        # der Chip im Card-Footer ist wieder weg (dort waere er auf dem Handy unsichtbar)
+        self.assertNotIn('<span id="live-km" class="badge bg-secondary d-none"></span>', live)
+
+    def test_unter_50_meter_keine_zahl(self):
+        live = _live()
+        self.assertIn('if (ich && ich.m >= 50) {', live)
+
+    def test_kein_emoji_im_chip(self):
+        live = _live()
+        # Emoji fehlt auf manchen Geraeten -> leeres Kaestchen; daher Inline-SVG
+        self.assertIn('const SVG_RAD =', live)
+        self.assertIn("chip.innerHTML = SVG_RAD + ' ' + fmtKm(Math.round(ich.m)) + ' km gefahren';", live)
+        self.assertNotIn("chip.textContent = '🚴 '", live)
+
+    def test_waechst_bei_jedem_neuen_punkt(self):
+        live = _live()
+        # updateTrailKm() haengt am Ende von addTrails()
+        block = live.split('function addTrails(obj)', 1)[1].split('\nfunction ', 1)[0]
+        self.assertIn('updateTrailKm();', block)

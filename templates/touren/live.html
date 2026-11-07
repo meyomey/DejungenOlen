@@ -34,6 +34,15 @@
      und die uebrigen Karten (map-touch.js) uebernehmen exakt diese Werte:
        Hoehe 34 px = 14 px Innenabstand + 20 px Zeile, Radius 20 px, Grund rgba(20,30,60,.88)
      Pill und 🔒 sind gleich hoch, damit beim Umschalten nichts springt. */
+  /* Build au: Zurueckgelegte Strecke – kleiner Chip AUF der Karte, oben links unter dem
+     Zoom. Bewusst nicht in der Karte „Unterwegs": die liegt auf dem Handy unter der Karte,
+     man saehe die Zahl beim Fahren also nie. Beim Stromsparen wird er mit abgedunkelt
+     (er gehoert zur Karte), im hellen Zustand ist er sichtbar. */
+  #live-km { position: absolute; left: 10px; top: 82px; z-index: 1050;
+             background: rgba(20, 30, 60, .88); color: #fff; border-radius: 20px;
+             padding: .3rem .7rem; font-size: .82rem; font-weight: 600;
+             box-shadow: 0 1px 5px rgba(0,0,0,.35); pointer-events: none; }
+  body.saver-on:not(.saver-hell) #live-km { visibility: hidden; }
   #live-guard-pill { position: absolute; left: 8px; z-index: 1100;
                      background: rgba(20, 30, 60, .88); color: #fff; border: 0; border-radius: 20px;
                      padding: .45rem .8rem; font-size: .85rem; line-height: 20px;
@@ -240,6 +249,7 @@
         <button type="button" id="saver-off" onclick="setSaver(false)" aria-label="Stromspar-Modus beenden">✕</button>
       </div>
       <div id="live-map" data-map-guard="off" data-map-style-compact="1"></div>
+      <span id="live-km" class="d-none" title="Zurückgelegte Strecke auf dieser Fahrt"></span>
       {# Build 11-06aa: Statusanzeige als Karte-Chip – kostet keine Höhe über der Karte #}
       <div id="live-status" title="Antippen für die ganze Meldung">Du schaust nur zu – Standorte werden alle 15 Sekunden aktualisiert.</div>
       {# Build 11-06u: kein Antipp-Schutz auf der Live-Karte – beim Fahren muss Verschieben SOFORT gehen #}
@@ -487,7 +497,8 @@ function render(locs) {
       return '<div class="list-group-item d-flex align-items-center gap-2 py-2">' +
         '<span class="live-bubble" style="background:' + colorFor(r.loc.ago) + '">' + escHtml(r.loc.initials || '?') + '</span>' +
         '<div class="flex-grow-1"><div class="fw-semibold">' + escHtml(r.loc.name) + (r.isMe ? ' <span class="text-muted fw-normal">(du)</span>' : '') + '</div>' +
-        '<div class="small text-muted">' + parts.join(' · ') + '</div></div>' +
+        '<div class="small text-muted">' + parts.join(' · ') +
+          '<span id="live-km-' + r.loc.user_id + '"></span></div></div>' +
         '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="focusUser(' + r.loc.user_id + ')" title="Auf der Karte zeigen">🔍</button></div>';
     }).join('');
   }
@@ -547,8 +558,62 @@ function addTrails(obj) {
       if (p[2] > trailSince) trailSince = p[2];
     });
   });
+  updateTrailKm();          // Build au: die gefahrene Strecke mitwachsen lassen
 }
 addTrails(TRAILS);
+
+// Build au: Zurueckgelegte Strecke je Person, live mitwachsend.
+// „kann man die zurueckgelegte Route auch schon in der Live Karte anzeigen lassen?"
+// Die Spur wurde schon gezeichnet (addTrails), aber niemand konnte sehen, WIE VIEL man
+// geschafft hat. Die Zahl steht sonst erst nach der Fahrt auf der Tourseite (dort aus
+// _live_track_summaries). Hier wird sie aus denselben Punkten mitgerechnet – pro Person,
+// damit auch Zuschauer sehen, wie weit die anderen sind.
+const trailKm = {};          // user_id -> {m: Meter, n: Punkte, letzter: [lat,lng]}
+function trailLaenge(uid) {
+  const t = trails[uid];
+  if (!t) return 0;
+  const pts = t.getLatLngs();
+  let m = 0;
+  for (let i = 1; i < pts.length; i++) m += map.distance(pts[i - 1], pts[i]);
+  return m;
+}
+function trailStand(uid) {
+  const t = trails[uid];
+  if (!t) return null;
+  const pts = t.getLatLngs();
+  if (!pts.length) return null;
+  const m = trailKm[uid] && trailKm[uid].n === pts.length ? trailKm[uid].m : trailLaenge(uid);
+  trailKm[uid] = {m: m, n: pts.length, letzter: pts[pts.length - 1]};
+  return trailKm[uid];
+}
+const SVG_RAD = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' +
+                'style="vertical-align:-2px">' +
+                '<circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/>' +
+                '<path d="M15 6h4l-1.5 8M9 17.5l3-8h3M7 10h5"/></svg>';
+// km-Anzeige aktualisieren (eigene Zeile in der Liste + Chip auf der Karte)
+function updateTrailKm() {
+  const ich = trailStand(ME.id);
+  const chip = document.getElementById('live-km');
+  if (chip) {
+    if (ich && ich.m >= 50) {
+      // Build au: Symbol als Inline-SVG, kein Emoji – auf manchen Geraeten fehlt die
+      // Emoji-Schrift und es bliebe ein leerer Kasten (im Test genau so gesehen).
+      chip.innerHTML = SVG_RAD + ' ' + fmtKm(Math.round(ich.m)) + ' km gefahren';
+      chip.classList.remove('d-none');
+    } else {
+      chip.classList.add('d-none');            // unter 50 m ist keine Zahl – kein „0,0 km"
+    }
+  }
+  // Auch die anderen: ihre km in der Personenliste ergaenzen
+  Object.keys(trails).forEach(k => {
+    const uid = parseInt(k, 10);
+    if (uid === ME.id) return;
+    const st = trailStand(uid);
+    const el = document.getElementById('live-km-' + uid);
+    if (el && st && st.m >= 50) el.textContent = ' · ' + fmtKm(Math.round(st.m)) + ' km';
+  });
+}
 
 // ── Polling (für alle Zuschauer) ──────────────────────────────────────────────────────────────
 function poll() {

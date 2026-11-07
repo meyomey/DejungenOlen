@@ -1,4 +1,29 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build au) – Live-Karte zeigt die zurückgelegte Strecke
+- **Frage:** „kann man die zurückgelegte Route auch schon in der Live Karte anzeigen lassen?"
+- **Die Route war schon da:** Seit Build af zeichnet die Live-Karte die Spuren aller
+  Teilnehmer (eigene Spur blau `#1E88E5`, jede weitere Person in einer eigenen Farbe) und
+  wächst alle 15 s mit. Was fehlte: **wie viel** man geschafft hat. Die Kilometerzahl stand
+  erst nach der Fahrt auf der Tourseite.
+- **Neu:** Ein Chip auf der Karte, oben links unter dem Zoom – **„1,2 km gefahren"**.
+  Er rechnet aus denselben Spurpunkten mit und aktualisiert sich bei jedem neuen Punkt.
+
+  Gemessen im Browser: 10 Punkte → **1072 m** („1,2 km gefahren"); zwei weitere Punkte →
+  **2156 m** („2,2 km"), ohne Neuladen.
+
+- **Drei Details, die dabei wichtig waren:**
+  - **Nicht in die Karte „Unterwegs":** Dort stand die Zahl zuerst – die Karte liegt auf dem
+    Handy aber *unter* der Karte, man sähe sie beim Fahren also nie.
+  - **Unter 50 m keine Zahl** – „0,0 km" beim Losfahren wäre nur Lärm.
+  - **Inline-SVG statt 🚴:** im Testfeld erschien das Emoji als leeres Kästchen (fehlende
+    Emoji-Schrift) – das SVG ist überall gleich.
+- Im Stromsparmodus wird der Chip mit abgedunkelt (er gehört zur Karte), im hellen Zustand
+  ist er sichtbar.
+- 5 neue Tests (412 gesamt), `node --check` OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build at) – Der kurze Blick zeigt, wo man ist
 - **Frage:** „Wenn man einmal tippt aus dem Stromspar kann man ja nichts bedienen, aber es
   sollte dann gezoomt werden auf einen selber um zu sehen wo man sich befindet, oder?"
