@@ -95,17 +95,17 @@
 
   var STYLES = {
     osm: {
-      label: 'Standard', icon: 'bi-map',
+      label: 'Standard', icon: 'bi-map', emoji: '🗺️',
       url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
       options: {maxZoom: 19, attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}
     },
     cyclosm: {
-      label: 'Radkarte', icon: 'bi-bicycle',
+      label: 'Radkarte', icon: 'bi-bicycle', emoji: '🚵',
       url: 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
       options: {maxZoom: 19, attribution: '&copy; OpenStreetMap &middot; CyclOSM'}
     },
     sat: {
-      label: 'Luftbild', icon: 'bi-globe-americas',
+      label: 'Luftbild', icon: 'bi-globe-americas', emoji: '🛰️',
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       options: {maxZoom: 19, attribution: '&copy; Esri &ndash; Source: Esri, DigitalGlobe, USDA FSA, GeoEye, Earthstar Geographics'}
     }
@@ -165,23 +165,38 @@
     // dann nach unten ausweichen, bis der Knopf wirklich frei liegt (Prüfung mit
     // elementFromPoint – so werden auch Leisten erkannt, die über der Karte liegen).
     // Inline-CSS: unabhängig von geladenen Stylesheets (auch im Druck und in Tests)
-    btn.style.cssText = 'position:absolute;z-index:1001;right:8px;top:8px;' +
+    btn.style.cssText = 'position:absolute;z-index:1001;right:8px;top:6px;' +
       'background:rgba(20,30,60,.88);color:#fff;border:0;border-radius:8px;' +
-      'padding:5px 9px;font-size:.78rem;line-height:1.2;display:inline-flex;align-items:center;gap:4px;' +
+      'font-size:.78rem;line-height:1.2;display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:4px;' +
       'cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,.35);font-weight:600;white-space:nowrap;' +
       'max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;';
     if (getComputedStyle(box).position === 'static') box.style.position = 'relative';
 
     // Kleine, nicht bedienbare Vorschaukarten (Mini-Karten in Listen) zeigen nur das Symbol –
     // ein Textknopf würde dort den halben Kartenausschnitt verdecken.
-    var tiny = (box.offsetHeight || 0) > 0 && box.offsetHeight < 200;
+    // Kompakt = nur Symbol: kleine Vorschaukarten UND Karten, die schon eine eigene
+    // Symbolspalte haben (Live-Karte trägt data-map-style-compact) – dort wäre ein
+    // Textknopf zu breit und würde Lizenzhinweis oder Symbole überdecken.
+    var tiny = ((box.offsetHeight || 0) > 0 && box.offsetHeight < 200) ||
+               box.dataset.mapStyleCompact === '1';
     function paint() {
       var st = STYLES[readStyle()] || STYLES[DEFAULT];
-      btn.innerHTML = '<i class="bi ' + st.icon + '"></i>' + (tiny ? '' : '<span>' + st.label + '</span>');
+      if (tiny) {
+        // nur Symbol: Quadrat mit fester Größe, Emoji statt Icon-Font
+        // (Bootstrap Icons kommen vom CDN – unterwegs ohne Netz wären es leere Kästchen)
+        btn.innerHTML = '<span class="mt-ico" style="font-size:1.05rem;line-height:1">' + st.emoji + '</span>';
+      } else {
+        btn.innerHTML = '<span class="mt-ico" style="font-size:1rem;line-height:1">' + st.emoji + '</span>' +
+                        '<span>' + st.label + '</span>';
+      }
       btn.title = 'Kartenstil: ' + st.label + ' – antippen wechselt (' +
                   ORDER.map(function (k) { return STYLES[k].label; }).join(' · ') +
                   '). Die Wahl gilt für alle Karten.';
       btn.setAttribute('aria-label', 'Kartenstil wechseln, aktuell: ' + st.label);
+      // Quadrat (42 × 42) bei „nur Symbol", sonst Textknopf
+      btn.style.padding = tiny ? '0' : '5px 9px';
+      btn.style.width = tiny ? '42px' : 'auto';
+      btn.style.height = tiny ? '42px' : 'auto';
     }
 
     // Freie Ecke suchen: oben rechts starten, bei Überdeckung nach unten rücken.
@@ -216,7 +231,7 @@
       return frei;
     }
     function place() {
-      btn.style.top = '8px';
+      btn.style.top = '6px';
       var guard = box.querySelector('.mt-guard-lock');
       if (guard && guard.getClientRects().length) {
         // 🔒 sitzt oben rechts: nicht überdecken, sondern links davon

@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 aa')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ab')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -807,7 +807,7 @@ class VideoSmoothTest(AppTestCase):
         # Displays wird die Schrift der Fahrt-Knöpfe leicht verkleinert.
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('#live-bar #btn-share { flex: 2.2 1 0; }', live)
-        self.assertIn('white-space: normal; line-height: 1.15; overflow: visible; text-overflow: clip;', live)  # Build n: hoeher spezifisch – nowrap aus '#live-bar .btn' darf nicht gewinnen
+        self.assertIn('white-space: normal; line-height: 1.12; overflow: visible; text-overflow: clip;', live)  # Build n: hoeher spezifisch – nowrap aus '#live-bar .btn' darf nicht gewinnen
         self.assertIn('@media (max-width: 374.98px) { #live-bar .lb-main .btn { font-size: .95rem; } }', live)
 
     def test_l_stop_status_links_to_recording(self):
@@ -928,7 +928,7 @@ class VideoSmoothTest(AppTestCase):
         # Lücke weg: kein Karten-Überstand, Laufraum am Seitenende
         self.assertNotIn('margin-bottom: 116px', live)
         self.assertNotIn('margin-bottom: 152px', live)
-        self.assertIn('html body { padding-bottom: calc(126px', live)   # Build 11-06aa: flache Leiste
+        self.assertIn('html body { padding-bottom: calc(106px', live)   # Build ab: noch flachere Leiste
         # Status-Leiste mit klaren Zuständen (CSS) + setStatus nutzt sie
         self.assertIn('#live-status { padding:', live)
         self.assertIn('#live-status.warning { background:', live)
@@ -2037,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 aa')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ab')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2315,7 +2315,7 @@ class LiveFahrKomfortTest(AppTestCase):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('let _lastTapAt = 0;', live)
         self.assertIn('🔆 Bildschirm bleibt an.', live)
-        self.assertIn("else if ((sharing || following || saverOn) && !document.hidden) requestWakeLock();", live)
+        self.assertIn("else if ((sharing || following || saverOn) && !wakeActive()) requestWakeLock();", live)
         self.assertIn("}, 20000);", live)   # Build 11-06y: 20-s-Erneuerung statt 60-s
 
 
@@ -2358,7 +2358,7 @@ class LiveFahrKomfort2Test(AppTestCase):
         # title/aria-label nennen den aktiven Stil. Auf kleinen Karten (< 200 px)
         # bleibt nur das Symbol, damit nichts die Karte verdeckt.
         js = open(os.path.join(ROOT, 'static', 'js', 'map-touch.js'), encoding='utf-8').read()
-        self.assertIn("+ (tiny ? '' : '<span>'", js)      # Mini-Karten: nur Symbol
+        self.assertIn("if (tiny) {", js)      # Mini-Karten: nur Symbol
         self.assertIn("'Kartenstil: ' + st.label", js)
         self.assertIn("'Kartenstil wechseln, aktuell: ' + st.label", js)
 
@@ -2428,7 +2428,7 @@ class LiveKarteLesbarTest(AppTestCase):
         # 3+2-Raster statt einer gequetschten Fünferspalte
         self.assertIn('#live-bar .lb-sec  { display: none; }', live)      # Nebenknöpfe sind jetzt Symbole auf der Karte
         self.assertIn('#live-tools .lt-btn { width: 42px; height: 42px;', live)
-        self.assertIn('#live-tools { position: absolute; right: 8px; bottom: 84px;', live)
+        self.assertIn('#live-tools { position: absolute; right: 8px; bottom: 66px;', live)
         # Umbruch statt Ellipse in der Sekundärreihe
         # Build 11-06aa: Die Nebenknöpfe sind jetzt Symbole auf der Karte (42 × 42 px).
         self.assertIn("#live-tools .lt-btn { width: 42px; height: 42px;", live)
@@ -2452,7 +2452,7 @@ class LiveKarteLesbarTest(AppTestCase):
     def test_x_laufraum_unter_der_leiste(self):
         live = self._live()
         # „html body“ (0,0,2) schlägt das spätere „body“ aus base.html (0,0,1)
-        self.assertIn('html body { padding-bottom: calc(126px + env(safe-area-inset-bottom)); }', live)
+        self.assertIn('html body { padding-bottom: calc(106px + env(safe-area-inset-bottom)); }', live)
         self.assertNotIn('    body { padding-bottom: calc(174px', live)   # der wirkungslose Selektor ist weg
 
 
@@ -2474,11 +2474,12 @@ class WakeLockErneuerungTest(AppTestCase):
         self.assertIn('function wakeSupported()', live)
         self.assertIn('async function setWakeWanted(on)', live)
         # release-Handler räumt auf UND versucht es erneut (statt nur wakeLock = null)
-        self.assertIn('if (wakeWanted) refreshWakeUi();                     // gewollt, aber weg → erneut versuchen', live)
+        self.assertIn('if (wakeWanted && !wakeActive()) setFallback(true);', live)   # Build ab: Video springt ein
+        self.assertIn('if (wakeWanted) refreshWakeUi();', live)
         # Erneuerung an allen Rückkehr-Punkten
         self.assertIn('if (wakeWanted) requestWakeLock();          // Build 11-06y: nach Tab-Wechsel/Sperren neu holen', live)
         self.assertIn('if (wakeWanted && !wakeHeld()) requestWakeLock();', live)          # normaler Tipp
-        self.assertIn('if (!document.hidden && wakeWanted && !wakeHeld()) requestWakeLock();   // Build 11-06y: 20-s-Erneuerung', live)
+        self.assertIn('if (wakeWanted && !wakeActive()) requestWakeLock();          // Build 11-06y: Erneuerung', live)
 
     def test_y_doppeltipp_schaltet_umschalten(self):
         live = self._live()
@@ -2494,11 +2495,11 @@ class WakeLockErneuerungTest(AppTestCase):
         self.assertIn('class="lt-btn" id="btn-wake" onclick="toggleWake()"', live)
         self.assertIn('function toggleWake()', live)
         # Knopf spiegelt, ob der Lock GERADE greift – nicht nur den Wunsch
-        self.assertIn("b.classList.toggle('on', wakeWanted && wakeHeld());", live)
-        self.assertIn("b.setAttribute('aria-label', wakeWanted && wakeHeld() ? 'Bildschirm bleibt an'", live)
-        self.assertIn("b.classList.toggle('warn', wakeWanted && !wakeHeld());", live)      # gewollt, greift nicht → orange
+        self.assertIn("b.classList.toggle('on', wakeWanted && wakeActive());", live)
+        self.assertIn("b.setAttribute('aria-label', wakeWanted && wakeActive() ? 'Bildschirm bleibt an'", live)
+        self.assertIn("b.classList.toggle('warn', wakeWanted && !wakeActive());", live)     # gewollt, greift nicht → orange
         # Laufraum passt zur höheren Leiste
-        self.assertIn('html body { padding-bottom: calc(126px + env(safe-area-inset-bottom)); }', live)
+        self.assertIn('html body { padding-bottom: calc(106px + env(safe-area-inset-bottom)); }', live)
 
     def test_y_start_und_sparmodus_setzen_den_wunsch(self):
         live = self._live()

@@ -1,4 +1,19 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ab) – „Bildschirm bleibt an" hält jetzt wirklich (zweiter Weg) + feinere Leiste
+- **Fehler:** „Bildschirm bleibt an funktioniert nicht, zumindest nicht auf meinem Galaxy S23 und auch nicht im Browser bei der Smartphone-Simulation." Ursache: Der Wake-Lock ist eine **Berechtigung** des Browsers. Verweigert er sie (Energiesparmodus, schwacher Akku, Browser-Richtlinie, Seite nicht über https), blieb bisher nur eine ehrliche Fehlermeldung – der Bildschirm ging aus.
+- **Zweiter Weg – stilles Endlos-Video:** Ein 641 Byte kleines, unsichtbares Video (16×16, schwarz, 1 s, Endlosschleife, direkt im HTML eingebettet, kein Netz nötig) hält den Bildschirm genauso wach. Das ist der klassische Ausweg, den auch NoSleep.js geht.
+  - Läuft die Wake-Lock-Schnittstelle, wird sie genommen (sauberer, sparsamer) – das Video bleibt aus.
+  - Scheitert sie (oder fehlt sie ganz), springt das Video ein; der Knopf zeigt dann trotzdem „an" und der Titel nennt den Weg.
+  - Fällt der Lock später weg (Tab-Wechsel, Sperren, Energiesparmodus), startet das Video automatisch; der 20-s-Wächter prüft beide Wege und startet ein pausiertes Video neu.
+  - Aus-Knopf und Fahrtende schalten **beide** Wege ab.
+- **Im Browser nachgemessen** (Chromium, Smartphone-Simulation): mit erteilter Wake-Lock-Berechtigung hält die API; **ohne** Berechtigung übernimmt das Video (läuft, `wakeActive() = true`, Knopf „an", kein „greift nicht" mehr). Nach Pause des Videos startet es über den Wächter wieder.
+- **Kartenstil-Knopf höher:** Auf der Live-Karte sitzt er jetzt ganz oben rechts (6 px) als 42-px-Symbol; der Lizenzhinweis rückt dafür 50 px nach links. Auf allen anderen Karten bleibt er der Textknopf.
+- **Hauptknöpfe kleiner:** Fahrt beenden/starten · Pause · Foto von 58 px auf **46 px** (Schrift .97rem) – die Leiste ist damit nur noch 56 px hoch (vorher 70). Der Laufraum darunter sinkt auf 106 px, Status-Chip und Symbolspalte rücken entsprechend nach.
+- 7 neue Tests (Video-Ersatz), 329 gesamt, py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `static/js/map-touch.js`, `app.py`, `tests/test_build_aa.py`,
+`tests/test_build_ag.py`, `tests/test_build_z.py`, `CHANGELOG.md`, `templates/hilfe.html`.
+
 ## 1.5.0 – 2026-11-07 (Build aa) – Live-Karte: die Karte bekommt den Bildschirm
 - **Wunsch:** „Vom Wichtigsten, der Karte, kann man fast nichts mehr sehen. Die Knöpfe nehmen viel zu viel Platz ein."
 - **Oben: eine Titelzeile statt vier Blöcke.** Zurück-Pfeil · Titel · ℹ️ in einer Zeile (≈ 38 px statt über 300 px). Datum, Startzeit und Treffpunkt sowie der ganze Hinweise-Block stecken im ℹ️-Aufklapper; die Statusmeldung ist ein kleiner Chip **auf** der Karte (zwei Zeilen, antippen klappt die ganze Meldung auf – die Links nach Fahrtende bleiben erreichbar).

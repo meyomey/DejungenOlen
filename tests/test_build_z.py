@@ -71,7 +71,7 @@ class CentralStyleSwitchTest(unittest.TestCase):
     def test_tiny_maps_only_icon(self):
         """Mini-Karten (< 200 px) zeigen nur das Symbol – kein Text über dem Kartenbild."""
         self.assertIn('offsetHeight < 200', self.js)
-        self.assertIn("(tiny ? '' :", self.js)
+        self.assertIn("if (tiny) {", self.js)
 
     def test_osm_max_zoom(self):
         self.assertIn('maxZoom: 19', self.js)

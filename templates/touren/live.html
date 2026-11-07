@@ -48,12 +48,17 @@
   #live-status.sharing { background: #e2f3e8; color: #1d5c38; border-color: #b9e2c8; }
   #live-status.warning { background: #fff4d6; color: #6b4e00; border-color: #eeda9c; }
   #live-status.danger  { background: #fdecea; color: #8f1f14; border-color: #f3c1bb; }
+  /* Build ab: Der Kartenstil-Knopf sitzt ganz oben rechts (nur Symbol, 42 × 42, 6 px vom Rand).
+     Damit er nicht auf dem Lizenzhinweis liegt, rückt der Hinweis ein Stück nach links –
+     und zwar auf DIESER Seite auch, wenn er (statt oben rechts) unten sitzt. */
+  #live-map .leaflet-control-attribution { margin-right: 50px !important; }
+
   /* Build 11-06aa: Die Statuszeile liegt AUF der Karte (oben links, unter dem Zoom) statt
      darüber – sie ist wichtig, braucht aber keine eigene Zeile im Kopf. Zwei Zeilen genügen;
      längere Meldungen lassen sich antippen und dann vollständig lesen. */
   /* links unten: dort ist die Karte frei (oben links liegt der Verschiebe-Hinweis, oben rechts
      der Kartenstil-Knopf, rechts unten die Symbolspalte) */
-  #live-status { position: absolute; left: 8px; bottom: 84px; max-width: calc(100% - 66px); z-index: 1100;
+  #live-status { position: absolute; left: 8px; bottom: 84px; max-width: calc(100% - 74px); z-index: 1030;
                  margin: 0 !important; padding: .35rem .6rem !important; font-size: .82rem !important;
                  font-weight: 600; border-radius: 10px; line-height: 1.25;
                  max-height: 3.1em; overflow: hidden; cursor: pointer;
@@ -61,7 +66,7 @@
   /* Auf dem Handy liegt die Leiste FEST am Fenster – die Karte reicht darunter hinaus.
      Deshalb hängt der Status-Chip dort ebenfalls am Fenster, direkt über der Leiste. */
   @media (max-width: 991.98px) {
-    #live-status { position: fixed; left: 8px; bottom: calc(58px + 78px); max-width: calc(100% - 66px); }
+    #live-status { position: fixed; left: 8px; bottom: calc(58px + 64px); max-width: calc(100% - 74px); }
   }
   #live-status.open { max-height: 12em; overflow-y: auto; }
   @media (min-width: 992px) { #live-status { font-size: .9rem !important; max-width: 60%; } }
@@ -83,7 +88,7 @@
   /* Build 11-06aa: Nebenfunktionen als kleine Symbole AUF der Karte (unten rechts, über der
      großen Leiste). Aktive Funktionen sind eingefärbt; der Name steht als title/aria-label
      und erscheint beim Antippen kurz als Einblendung. */
-  #live-tools { position: absolute; right: 8px; bottom: 84px; z-index: 1050;
+  #live-tools { position: absolute; right: 8px; bottom: 66px; z-index: 1040;
                 display: flex; flex-direction: column; gap: 6px; }
   #live-tools .lt-btn svg { display: block; }
   #live-tools .lt-btn { width: 42px; height: 42px; border-radius: 12px; border: 0;
@@ -113,11 +118,11 @@
     }
     /* Build 11-06aa: Unten nur noch die DREI wichtigen Knöpfe – groß genug für den Daumen,
        ohne dass die Leiste die Karte zudeckt (vorher fünf Reihen, ≈ 200 px). */
-    #live-bar { padding: 6px 8px; }
+    #live-bar { padding: 5px 8px; }
     #live-bar .lb-main { display: flex; gap: 6px; }
     #live-bar .lb-sec  { display: none; }        /* Nebenfunktionen: siehe #live-tools auf der Karte */
-    #live-bar .btn { min-height: 58px; font-size: 1.05rem; font-weight: 600; flex: 1 1 0; padding: .45rem .35rem;
-                     white-space: normal; line-height: 1.15; overflow: visible; text-overflow: clip; }
+    #live-bar .btn { min-height: 46px; font-size: .97rem; font-weight: 600; flex: 1 1 0; padding: .3rem .3rem;
+                     white-space: normal; line-height: 1.12; overflow: visible; text-overflow: clip; }
     /* Build m/n: „⏹ Fahrt beenden" vollständig, nie „Fahrt bee…" – der Knopf bekommt am meisten Platz. */
     #live-bar #btn-share { flex: 2.2 1 0; }
     @media (max-width: 374.98px) { #live-bar .lb-main .btn { font-size: .95rem; } }
@@ -128,7 +133,7 @@
        `body { padding-bottom: 58px }` SPÄTER im Dokument; bei gleicher Spezifität gewann die
        spätere Regel und der Laufraum war wirkungslos (58 statt 222 px), die Leiste lag über dem Inhalt.
        Höhe = Leiste (≈ 200 px) + Bottom-Nav (58 px). */
-    html body { padding-bottom: calc(126px + env(safe-area-inset-bottom)); }
+    html body { padding-bottom: calc(106px + env(safe-area-inset-bottom)); }
   }
 </style>
 {% endblock %}
@@ -195,7 +200,7 @@
         <div class="saver-chip">🌙 Stromspar an – Tippen = kurz aufhellen · ✕ oben rechts = aus</div>
         <button type="button" id="saver-off" onclick="setSaver(false)" aria-label="Stromspar-Modus beenden">✕</button>
       </div>
-      <div id="live-map" data-map-guard="off"></div>
+      <div id="live-map" data-map-guard="off" data-map-style-compact="1"></div>
       {# Build 11-06aa: Statusanzeige als Karte-Chip – kostet keine Höhe über der Karte #}
       <div id="live-status" title="Antippen für die ganze Meldung">Du schaust nur zu – Standorte werden alle 15 Sekunden aktualisiert.</div>
       {# Build 11-06u: kein Antipp-Schutz auf der Live-Karte – beim Fahren muss Verschieben SOFORT gehen #}
@@ -473,6 +478,7 @@ document.addEventListener('visibilitychange', () => {
     poll();
     if (sharing || following || saverOn) ensureWatch();
     if (wakeWanted) requestWakeLock();          // Build 11-06y: nach Tab-Wechsel/Sperren neu holen
+    if (wakeWanted && wakeVideoOn && wakeVideo && wakeVideo.paused) tryVideoAgain();   // Build ab
     refreshWakeUi();
   }
 });
@@ -830,15 +836,79 @@ function livePhoto(input) {
 // jeder Rückkehr (sichtbar, Tipp, Klick, 20-s-Wächter) neu – genau so, wie es der Browser
 // verlangt: eine neue Anforderung ist nur bei sichtbarer Seite erlaubt.
 let wakeWanted = false, wakeTried = false, wakeErr = null;
+// Build ab: ZWEI Wege zum Wachhalten.
+//  (1) Wake Lock API (der saubere Weg, Android/Chrome und iOS ab 16.4 – braucht https).
+//  (2) Stiller Loop-Video im Hintergrund: Solange ein Video mit Ton-Spur läuft, lässt
+//      Chrome/Safari den Bildschirm nicht einschlafen. Das ist der klassische Ausweg,
+//      wenn die Wake-Lock-API fehlt, blockiert ist (Berechtigung, Energiesparmodus) oder
+//      die Seite nicht über https läuft – genau die Fälle, in denen der Knopf bisher
+//      „greift nicht" meldete.
+// 641-Byte-Video (16×16, schwarz, 1 s, Endlos-Schleife) – keine externe Datei, kein Netz.
+const NOSLEEP_WEBM = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAJREU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHWTbuMU6uEElTDZ1OsggEyTbuMU6uEHFO7a1OsggI77AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsCrXsYMPQkBNgIxMYXZmNjMuMS4xMDJXQYxMYXZmNjMuMS4xMDJEiYhAj0AAAAAAABZUrmvXrgEAAAAAAABO14EBc8WIK9nDpdxcYvScgQAitZyDdW5kiIEAhoVWX1ZQOIOBASPjg4QL68IA4JCwgRC6gRCagQJVsIRVuYEBVe6BAOwBAAAAAAAAAgAAElTDZ/pzc59jwIBnyJlFo4dFTkNPREVSRIeMTGF2ZjYzLjEuMTAyc3PVY8CLY8WIK9nDpdxcYvRnyKBFo4dFTkNPREVSRIeTTGF2YzYzLjEuMTAyIGxpYnZweGfIoUWjiERVUkFUSU9ORIeTMDA6MDA6MDEuMDAwMDAwMDAwAB9DtnVAhOeBAKOjgQAAgBACAJ0BKhAAEAAARwiFhYiFhIgCAgAMDWAA/v+rUICjlYEAyACxAQABEBAAGAAYWC/0AAgAAKOVgQGQALEBAAEQEAAYABhYL/QACAAAo5WBAlgAsQEAARAQABgAGFgv9AAIAACjlYEDIACxAQABEBAAGAAYWC/0AAgAABxTu2uRu4+zgQC3iveBAfGCAbHwgQM=';
+let wakeVideo = null, wakeVideoOn = false;
 function wakeSupported() { return !!(navigator.wakeLock && navigator.wakeLock.request); }
 function wakeHeld() { return !!(wakeLock && !(wakeLock.released)); }
+function tryVideoAgain() {
+  if (!wakeVideo) return;
+  try { const pr = wakeVideo.play(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {}
+}
+// „Hält" heißt jetzt: API-Lock ODER laufendes Video.
+function wakeActive() { return wakeHeld() || wakeVideoOn; }
+function videoSupported() { return !!(document.createElement('video').canPlayType); }
+
+// Video-Fallback ein- und ausschalten. Es bleibt unsichtbar und tonlos im Dokument.
+function setFallback(on) {
+  if (on) {
+    if (wakeVideoOn) {                    // läuft schon – aber ggf. wieder anstoßen
+      if (wakeVideo && wakeVideo.paused) tryVideoAgain();
+      return true;
+    }
+    try {
+      if (!wakeVideo) {
+        wakeVideo = document.createElement('video');
+        wakeVideo.setAttribute('playsinline', '');
+        wakeVideo.setAttribute('muted', '');
+        wakeVideo.setAttribute('loop', '');
+        wakeVideo.muted = true;
+        wakeVideo.setAttribute('aria-hidden', 'true');
+        wakeVideo.style.cssText = 'position:fixed;left:-2px;bottom:-2px;width:2px;height:2px;opacity:.01;pointer-events:none';
+        const src = document.createElement('source');
+        src.src = NOSLEEP_WEBM; src.type = 'video/webm';
+        wakeVideo.appendChild(src);
+        document.body.appendChild(wakeVideo);
+      }
+      // play() kann abgelehnt werden (Autoplay-Sperre) – dann ist der Wunsch gesetzt,
+      // das Video aber nicht gestartet. Beim nächsten Versuch (Tipp/20-s-Wächter) neu probieren.
+      const pr = wakeVideo.play();
+      if (pr && pr.catch) pr.catch(() => {});
+      if (wakeVideo.paused && !wakeVideo.ended) {
+        // manche Browser starten verzögert – kurz prüfen statt sofort „an" zu melden
+        setTimeout(() => { if (wakeWanted && wakeVideo && wakeVideo.paused) tryVideoAgain(); }, 400);
+      }
+      wakeVideoOn = true;
+      return true;
+    } catch (e) {
+      wakeVideoOn = false;
+      return false;
+    }
+  }
+  if (wakeVideo) { try { wakeVideo.pause(); } catch (e) {} }
+  wakeVideoOn = false;
+  return false;
+}
 function wakeFehlerText() {
-  if (!wakeSupported()) return 'Dieser Browser hält den Bildschirm nicht wach (z. B. iPhone vor iOS 16.4)';
   if (document.hidden) return 'Seite ist gerade im Hintergrund';
-  if (wakeErr === 'NotAllowedError') return 'der Browser erlaubt es hier nicht (Energiesparmodus / Akku schwach / Richtlinie)';
+  if (wakeErr === 'kein-wakelock') return 'dieser Browser kennt die Wake-Lock-Schnittstelle nicht (z. B. iPhone vor iOS 16.4)';
+  if (wakeErr === 'NotAllowedError') return 'der Browser hat die Freigabe verweigert (Energiesparmodus / Akku schwach / Richtlinie)';
   if (wakeErr === 'SecurityError') return 'nur über eine verschlüsselte Verbindung (https) möglich';
-  if (wakeErr) return 'der Browser hat es abgelehnt (' + wakeErr + ')';
+  if (wakeErr) return 'der Browser hat es abgelehnt (' + wakeErr.replace('-video', '') + ')';
   return 'gerade nicht möglich';
+}
+// Build ab: Kurzbericht über den Weg, der wirklich hält (für Einblendung und Diagnose).
+function wakeWegText() {
+  if (wakeHeld()) return 'über die Wake-Lock-Schnittstelle';
+  if (wakeVideoOn) return 'über ein Hintergrund-Video (Ersatz, weil die Schnittstelle nicht greift)';
+  return '';
 }
 // „An“ heißt: Der Wunsch ist gesetzt. wakeHeld() sagt, ob er GERADE wirklich greift.
 function wakeStatusText() {
@@ -848,23 +918,34 @@ function wakeStatusText() {
 async function requestWakeLock() {
   wakeTried = true;
   if (!wakeWanted) return false;
-  if (!wakeSupported() || document.hidden) return false;   // im Hintergrund ist eine Anfrage nicht erlaubt
-  if (wakeHeld()) return true;
-  try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeErr = null;
-    wakeLock.addEventListener('release', () => {
+  if (wakeActive()) return true;
+  // 1) Wake-Lock-API (nur bei sichtbarer Seite erlaubt)
+  if (wakeSupported() && !document.hidden) {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeErr = null;
+      wakeLock.addEventListener('release', () => {
+        wakeLock = null;
+        // Build ab: Fällt der Lock weg, springt das Video ein – so geht der Bildschirm
+        // beim Tab-Wechsel/Sperren nicht aus, ohne dass jemand etwas tun muss.
+        if (wakeWanted && !wakeActive()) setFallback(true);
+        if (wakeWanted) refreshWakeUi();
+      });
+      setFallback(false);              // API hält → Video aus (spart Akku)
+      refreshWakeUi();
+      return true;
+    } catch (e) {
+      wakeErr = (e && e.name) || 'Fehler';
       wakeLock = null;
-      if (wakeWanted) refreshWakeUi();                     // gewollt, aber weg → erneut versuchen
-    });
-    refreshWakeUi();
-    return true;
-  } catch (e) {
-    wakeErr = (e && e.name) || 'Fehler';
-    wakeLock = null;
-    refreshWakeUi();
-    return false;
+    }
+  } else if (!wakeSupported()) {
+    wakeErr = 'kein-wakelock';       // API gar nicht vorhanden (z. B. iPhone vor 16.4, http)
   }
+  // 2) Video-Fallback – funktioniert auch dort, wo die API fehlt oder blockiert ist
+  const ok2 = setFallback(true);
+  if (ok2) wakeErr = wakeSupported() ? (wakeErr + '-video') : 'video';
+  refreshWakeUi();
+  return ok2;
 }
 async function setWakeWanted(on) {
   wakeWanted = !!on;
@@ -875,6 +956,7 @@ async function setWakeWanted(on) {
 }
 function releaseWakeLock() {
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  setFallback(false);
 }
 // Rückmeldung im Knopf: 🔆 = gewollt und gehalten · ◻️ = nicht möglich · 🌙 = Stromspar
 function refreshWakeUi() {
@@ -882,13 +964,13 @@ function refreshWakeUi() {
   if (b) {
     // Build 11-06aa: Symbol-Knopf – eingefärbt, wenn das Wachhalten wirklich hält,
     // orange, wenn es gewünscht ist aber nicht greift. Den Zustand nennt der title.
-    b.classList.toggle('on', wakeWanted && wakeHeld());
-    b.classList.toggle('warn', wakeWanted && !wakeHeld());
+    b.classList.toggle('on', wakeWanted && wakeActive());
+    b.classList.toggle('warn', wakeWanted && !wakeActive());
     b.title = (wakeWanted
-      ? (wakeHeld() ? 'Bildschirm bleibt an – antippen beendet das Wachhalten'
-                    : 'Wachhalten gewünscht, greift aber gerade nicht: ' + wakeFehlerText())
+      ? (wakeActive() ? 'Bildschirm bleibt an (' + wakeWegText() + ') – antippen beendet das Wachhalten'
+                      : 'Wachhalten gewünscht, greift aber gerade nicht: ' + wakeFehlerText())
       : 'Bildschirm bleibt an (bis du es beendest) – für unterwegs, ohne laufende Fahrt') + ' · Doppeltipp auf die Karte schaltet es auch';
-    b.setAttribute('aria-label', wakeWanted && wakeHeld() ? 'Bildschirm bleibt an'
+    b.setAttribute('aria-label', wakeWanted && wakeActive() ? 'Bildschirm bleibt an'
                     : wakeWanted ? 'Bildschirm an (greift nicht)' : 'Bildschirm an');
   }
 }
@@ -961,8 +1043,12 @@ document.getElementById('live-wrap').addEventListener('touchend', function () {
 // Build 11-06u: Wachhalten-Wächter – holt den Wake-Lock alle 60 s zurück, falls er
 // zwischendurch verloren ging; so hält das Display den ganzen Fahrttag durch.
 setInterval(() => {
-  if (!document.hidden && wakeWanted && !wakeHeld()) requestWakeLock();   // Build 11-06y: 20-s-Erneuerung
-  else if ((sharing || following || saverOn) && !document.hidden) requestWakeLock();
+  // Build ab: Der Wächter hält BEIDE Wege am Leben – fällt der API-Lock weg, springt das
+  // Video ein; stockt das Video (Energiesparmodus), wird es neu gestartet.
+  if (document.hidden) return;
+  if (wakeVideoOn && wakeVideo && wakeVideo.paused) tryVideoAgain();
+  if (wakeWanted && !wakeActive()) requestWakeLock();          // Build 11-06y: Erneuerung
+  else if ((sharing || following || saverOn) && !wakeActive()) requestWakeLock();
 }, 20000);
 
 // Vollbild per CSS-Klasse (funktioniert auch auf iPhone/iPad ohne Fullscreen-API)

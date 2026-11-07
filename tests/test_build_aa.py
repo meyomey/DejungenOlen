@@ -57,7 +57,7 @@ class LiveKopfUndLeisteTest(AppTestCase):
         self.assertIn('id="btn-share"', h)
         self.assertIn('id="btn-pause"', h)
         self.assertIn('id="btn-photo"', h)
-        self.assertIn('min-height: 58px', h)                    # groß genug für den Daumen
+        self.assertIn('min-height: 46px', h)                    # Build ab: kleiner, aber daumenfreundlich
         self.assertIn('#live-bar #btn-share { flex: 2.2 1 0; }', h)
 
     def test_sekundaere_sind_symbole_auf_der_karte(self):
@@ -87,14 +87,70 @@ class LiveKopfUndLeisteTest(AppTestCase):
         h = self.html
         self.assertIn('#live-map  { height: calc(100vh - 205px); min-height: 330px; }', h)
         self.assertIn('#live-map { height: calc(100vh - 168px); }', h)      # sehr schmal
-        self.assertIn('html body { padding-bottom: calc(126px', h)          # flache Leiste
+        self.assertIn('html body { padding-bottom: calc(106px', h)          # flache Leiste
 
     def test_zustaende_der_symbole(self):
         h = self.html
         self.assertIn("b.classList.toggle('on', following);", h)
-        self.assertIn("b.classList.toggle('on', wakeWanted && wakeHeld());", h)
-        self.assertIn("b.classList.toggle('warn', wakeWanted && !wakeHeld());", h)
+        self.assertIn("b.classList.toggle('on', wakeWanted && wakeActive());", h)
+        self.assertIn("b.classList.toggle('warn', wakeWanted && !wakeActive());", h)
         self.assertIn("fsIco.innerHTML = on ? SVG_X : SVG_FS;", h)
+
+
+class WakeLockMitVideoErsatzTest(AppTestCase):
+    """Build ab: „Bildschirm bleibt an funktioniert nicht" – auf dem S23 und im Browser.
+
+    Ursache: Der Wake-Lock ist eine *Berechtigung* des Browsers. Verweigert er sie
+    (Energiesparmodus, Akku schwach, Richtlinie, http statt https), blieb nur die ehrliche
+    Fehlermeldung. Jetzt gibt es einen zweiten Weg: ein stilles Endlos-Video (641 Byte,
+    im HTML eingebettet) hält den Bildschirm genauso wach – das ist der klassische
+    Ausweg, den auch NoSleep.js geht.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.login_org()
+        self.html = self.get_html('/touren/%d/live' % self.t_plan_id)
+
+    def test_video_eingebettet_ohne_netz(self):
+        h = self.html
+        self.assertIn('const NOSLEEP_WEBM = \'data:video/webm;base64,', h)
+        self.assertIn('wakeVideo', h)
+        # kein Nachladen von außen
+        self.assertNotIn('nosleep.js', h.lower())
+
+    def test_zwei_wege_und_ehrlicher_zustand(self):
+        h = self.html
+        self.assertIn('function wakeActive() { return wakeHeld() || wakeVideoOn; }', h)
+        self.assertIn('function setFallback(on)', h)
+        self.assertIn('function tryVideoAgain()', h)
+
+    def test_api_fehler_faellt_auf_video_zurueck(self):
+        h = self.html
+        # nach dem catch der API wird der Video-Weg versucht
+        self.assertIn('const ok2 = setFallback(true);', h)
+        self.assertIn('wakeErr = wakeSupported() ? (wakeErr + \'-video\') : \'video\';', h)
+
+    def test_ausserten_ausschalten_stoppt_beide(self):
+        self.assertIn("""function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  setFallback(false);
+}""", self.html)
+
+    def test_video_wird_beim_wechsel_erneuert(self):
+        h = self.html
+        self.assertIn('if (wakeVideoOn && wakeVideo && wakeVideo.paused) tryVideoAgain();', h)
+        self.assertIn('if (wakeWanted && wakeVideoOn && wakeVideo && wakeVideo.paused) tryVideoAgain();', h)
+
+    def test_waechter_prueft_beide_wege(self):
+        self.assertIn('if (wakeWanted && !wakeActive()) requestWakeLock();', self.html)
+
+    def test_kartenstil_knopf_ist_auf_der_live_karte_ein_symbol(self):
+        """Build ab: oben rechts sitzt der Stil-Knopf als 42-px-Quadrat, damit er nicht
+        mit Lizenzhinweis/Symbolspalte kollidiert – der Hinweis rückt ein Stück nach links."""
+        h = self.html
+        self.assertIn('data-map-style-compact="1"', h)
+        self.assertIn('#live-map .leaflet-control-attribution { margin-right: 50px !important; }', h)
 
 
 class LiveKarteImBrowserTest(AppTestCase):
