@@ -1,3 +1,102 @@
+# Audit-Bericht – De jungen Olen, Audit 7 (Version 1.5.0, Build an, 07.11.2026)
+
+Siebtes Komplett-Audit, Stand Build an. Scope: der Zuwachs seit Audit 6 (Build p, 04.11.2026) –
+**72 Commits, 6 Builds (ae–an)**, fast ausschließlich auf der Live-Karte: Stromsparmodus neu
+gedacht (ganzflächige Abdunklung, zwei Stufen, Bedienbarkeit im hellen Zustand), ehrliches
+„Bildschirm bleibt an" mit Messung statt Behauptung (Wake-Lock + Video-Ersatz), die
+Kartensperre (immer verfügbar außer im Vollbild, jetzt über dem Info-Block) und drei
+Bedienfehler, die der Nutzer im Betrieb gefunden hat (Doppeltipp tot, Seiten-Zoom statt
+Karten-Zoom, Doppeltipp zoomte die Karte mit).
+
+Ergebnis im Satz: **keine Sicherheitslücke** – aber **zwei echte Verhaltensfehler und zwei
+Ressourcen-Leck**, alle selbst gefunden und behoben: ein Zustandsfehler der Kartensperre nach
+dem Vollbild (die Karte blieb gesperrt, obwohl sie vorher frei war), ein unbegrenzt wachsender
+Kachel-Cache im Service Worker, fehlende Datenbank-Indizes auf `group_id`/`tour_id` und rund
+40 Zeilen toter Code im Stromsparmodus.
+
+## Vorgehen
+
+- **Statisch:** `py_compile` über app/models/config/exif_gps/make_deploy_zip → sauber;
+  **pyflakes** (in dieser Umgebung nachinstalliert) → 5 Hinweise, davon 3 absichtliche
+  Import-Tests (`# noqa` im Code, von pyflakes ignoriert) und 2 unbenutzte `tour`-Variablen,
+  die nur der Zugriffsprüfung dienen (jetzt ohne Zuweisung, damit es niemand für einen Fehler
+  hält); `node --check` über **alle 36 Inline-Skript-Blöcke** aus 54 Templates → 0 Fehler;
+  `node --check` über sw.js und map-touch.js → sauber
+- **Sicherheit (dynamisch, Test-DB):**
+  - Gefährliche Muster: `eval`, `exec`, `os.system`, `shell=True`, `pickle.load`,
+    `yaml.load`, rohe SQL-Strings → **0 Treffer**; `render_template_string` nur mit einer
+    festen Konstante als Fallback (kein Injection-Pfad); `Markup()` einmal, mit `escape()`
+    umschlossen
+  - **Mandantenprobe** gegen eine Tour der fremden Gruppe (8 Endpunkte, GET und POST):
+    überall 404 bzw. 403 – auch Kommentar anlegen, Fotos, Zeitabstimmung, Teilnahme
+  - **Gruppenisolation der Listen:** Start, Touren, Archiv, Karte, Mitglieder – der Titel
+    der fremden Tour taucht nirgends im HTML auf
+  - **XSS:** Tour mit `<img src=x onerror=alert(1)>` als Titel, `"><script>` als Treffpunkt
+    und Beschreibung angelegt → auf Tourseite, Liste und Live-Karte vollständig escaped,
+    kein rohes Vorkommen
+  - **Uploads:** GPX-Upload erzwingt die Endung und vergibt den Dateinamen serverseitig
+    (`tour_id_token.gpx`); Fotos werden über **Magic Bytes** geprüft (JPEG/PNG/WebP/HEIC),
+    nicht nur über die Endung; Rate-Limit 5 Uploads/Minute
+  - **Auth:** Login-Links 32 Byte, einmalig, 15 Minuten, Zweck `login` getrennt von
+    `reset`; Antwort verrät nicht, ob die Adresse existiert; Rate-Limit pro IP und pro Nutzer
+  - **Cron-Endpunkte** `/api/backup/trigger` und `/api/reminder/trigger`: nur per Token,
+    `hmac.compare_digest` (zeitkonstant), Default-Schlüssel wird abgewiesen
+  - **Deploy-ZIPs:** keine `.env`, keine Datenbank, keine Backups, kein `__pycache__` –
+    nur `.env.example`
+- **Robustheit:** 20 Fuzzing-Fälle (`lat=''`, `'x'`, `1e309`, `999`; `tour_id` als
+  `1e309`/`-5`/`abc`; 100 kB Kommentar; `parent_id` als Text und als fremde ID; leerer und
+  HTML-Slot; unbekannter RSVP-Status; 2 000-Zeichen-Suche, SQL-Fragment in der Suche;
+  `page=-1`/`abc`/`999999`) → **kein einziger 500er**; Live-Update liefert korrekt 400
+- **Performance:** SQL-Zähler je Seite 9–29 (flach, kein N+1); `EXPLAIN QUERY PLAN` zeigte
+  aber drei Tabellendurchläufe (→ B3)
+- **Browser (Chromium, Smartphone-Profil, 404 × 854):** Zustandsmaschine der Live-Karte
+  durchgespielt (Sparmodus × Sperre × Vollbild, 8 Schritte) → B1 gefunden; dabei auch die
+  Konsolenfehler gesichtet (nur erwartete, geblockte CDN/Tiles)
+- **Doku:** README kannte keine der neuen Live-Funktionen (→ B4)
+
+## Befunde
+
+| Nr. | Schwere | Befund | Status (Build ao) |
+|---|---|---|---|
+| B1 | **Mittel** (Bedienung) | **Kartensperre nach dem Vollbild falsch.** `saverStufe()` schrieb `guardUnlocked` auch im Vollbild. Wer im Vollbild den Stromsparmodus beendete, verlor den gemerkten Frei-Zustand – nach dem Verlassen war die Karte gesperrt, obwohl sie vorher frei war (gemessen: `drag` false statt true, Pill zurück) | **behoben:** im Vollbild fasst `saverStufe()` den Guard nicht mehr an; der Vollbild-Zustand regelt ihn selbst. Nachgestellt: 8-Schritt-Sequenz endet jetzt im erwarteten Zustand |
+| B2 | **Mittel** (Ressourcen) | **Kachel-Cache wuchs unbegrenzt.** `djo-tiles-v1` ist in `activate` von der Löschung ausgenommen (richtig, offline-Karten sollen Deploys überleben), wurde aber nirgends begrenzt: „Karte offline speichern" legt bis 500 Kacheln je Klick ab, ohne Rotation. Über Monate hunderte MB; dann räumt der Browser alles auf, auch die offline gespeicherten Touren | **behoben:** Obergrenze 1500 Kacheln (≈ 20–30 MB), FIFO – älteste zuerst. Aufgeräumt wird beim Aktivieren einer neuen Build-Version, nach jedem Voraus-Cachen und gelegentlich (2 %) beim normalen Kachel-Laden |
+| B3 | Niedrig (Performance) | Fehlende Indizes: `tours.group_id`, `users.group_id`, `tour_videos.tour_id` (und weitere FK-Spalten). `EXPLAIN QUERY PLAN` zeigte `SCAN tours` / `SCAN users` / `SCAN tour_videos`, obwohl nach diesen Spalten bei jeder Anfrage gefiltert wird | **behoben:** 8 Indizes über das bestehende `add_index()`-Muster (`CREATE INDEX IF NOT EXISTS`, greift auch auf bestehenden Datenbanken). Nachgemessen: aus `SCAN` wurde `SEARCH … USING INDEX` |
+| B4 | Niedrig (Doku) | README beschrieb die Live-Karte auf dem Stand von Build p – Stromsparmodus, ehrliches „Bildschirm bleibt an" und die Kartensperre fehlten komplett | **behoben:** drei Bullets ergänzt (Stromsparmodus, Wachhalten, Sperre) |
+| B5 | Niedrig (Wartbarkeit) | `saverTap()` – rund 40 Zeilen – war seit Build ai **toter Code** (die Tipp-Erkennung wanderte ans Dokument, niemand rief die Funktion mehr). Dazu `const aufKarte = …`, zugewiesen und nie benutzt. Zwei Tests prüften den toten Code und hätten ihn festgehalten | **behoben:** beides entfernt, die zwei Tests auf die tatsächlich laufende Stelle (Dokument-Listener, `saverBlick`) umgestellt. `guardArmed` wird nur geschrieben, nie gelesen – **belassen**, weil ein Test aus Build ag den Anfangswert `guardArmed = true` ausdrücklich verlangt (Nutzer-Vorgabe aus dem Guard-Umbau) |
+
+## Bestätigt (ohne Handlungsbedarf)
+
+- **Mandantentrennung hält** – 8 Endpunkte gegen eine fremde Tour geprüft, alle 404/403;
+  kein Titel einer fremden Gruppe in irgendeiner Liste
+- **XSS-Abwehr hält** – gespeicherte Payloads in Titel, Treffpunkt und Beschreibung werden
+  auf allen Seiten escaped; Kommentare ebenso
+- **Uploads** prüfen Inhalt (Magic Bytes) und Endung, vergeben Dateinamen serverseitig
+- **Keine 500er** in 20 Fuzzing-Fällen; `lat/lng` außerhalb des Bereichs und Nicht-Zahlen
+  liefern sauber 400
+- **Cron-Token** zeitkonstant verglichen, Default-Schlüssel abgewiesen
+- **Deploy-Pakete** enthalten keine Geheimnisse, keine Daten, keine Caches
+- **Service Worker** versioniert den Cache pro Build (kein „alte Version hängt"), Fotos und
+  Videos sind seit Build ai network-first (Datenschutz auf geteilten Geräten)
+- **SQL-Zähler** flach (9–29 je Seite), kein N+1
+
+## Anmerkungen (kein Befund, zur Kenntnis)
+
+- **Cron-Token = erste 20 Zeichen des `SECRET_KEY`.** Wer `SECRET_KEY` kennt, kann Backups
+  auslösen und Erinnerungen verschicken – mehr nicht (beides idempotent bzw. durch Flag
+  geschützt). Der Default-Schlüssel wird korrekt abgewiesen. **Aber:** Wer `.env.example`
+  wörtlich übernimmt, hat den Token `hier-einen-zufaellig` – der steht öffentlich im Repo.
+  Empfehlung: in `.env.example` deutlicher machen, dass der Wert ersetzt werden **muss**
+  (bereits als „Pflicht" markiert, aber nicht als Sicherheitsfolge benannt).
+- **`comment_delete` prüft Autor, nicht Gruppe.** Ein Mitglied kann einen **eigenen**
+  Kommentar löschen, dessen `tour_id` auf eine fremde Tour zeigt (die Tour selbst ist
+  unerreichbar, 404). Danach leitet die Route auf `/touren/<fremde_id>` um → 404. Kein
+  Datenabfluss, aber unschön; die Route sollte die Tour mitprüfen.
+- **`Query.get()` ist SQLAlchemy-Legacy** und erzeugt bei jedem Start Warnungen. Kein
+  Fehler, aber bei einem künftigen SQLAlchemy-3-Umstieg bricht es.
+- **Testdauer** ist von ~60 s auf ~95 s gewachsen (381 Tests).
+
+Die Berichte zu Audit 1–6 stehen unten.
+
 # Audit-Bericht – De jungen Olen, Audit 6 (Version 1.4.0, Build p, 04.11.2026)
 
 Sechstes Komplett-Audit, Stand Build o. Scope: der Zuwachs seit Audit 5 (Build av, 17.10.2026) –

@@ -6,6 +6,24 @@
 
 const CACHE_VERSION = 'djo-__BUILD__';
 const TILE_CACHE    = 'djo-tiles-v1';
+// Build ao (Audit 7): Kacheln wurden unbegrenzt gespeichert. Der Cache ueberlebt jedes
+// Update (er steht auf der Ausnahmeliste in `activate`), und „Karte offline speichern"
+// legt pro Klick bis zu 500 Kacheln ab. Auf einem Handy waechst das ueber Monate auf
+// hunderte MB – dann raeumt der Browser irgendwann selbst auf, und zwar alles.
+// Jetzt: harte Obergrenze, aelteste zuerst raus (FIFO).
+const TILE_LIMIT    = 1500;      // ≈ 20–30 MB; genug fuer mehrere Touren offline
+
+async function trimTileCache() {
+  try {
+    const cache = await caches.open(TILE_CACHE);
+    const keys  = await cache.keys();
+    if (keys.length <= TILE_LIMIT) return 0;
+    const weg = keys.length - TILE_LIMIT;
+    // Cache-Keys sind in Einfuege-Reihenfolge -> die ersten sind die aeltesten
+    for (let i = 0; i < weg; i++) await cache.delete(keys[i]);
+    return weg;
+  } catch (e) { return 0; }
+}
 const SHELL_ASSETS  = [
   '/',
   '/static/css/style.css',
@@ -33,7 +51,8 @@ self.addEventListener('activate', event => {
         keys.filter(k => k !== CACHE_VERSION && k !== TILE_CACHE)
             .map(k => caches.delete(k))
       )
-    )
+    // Build ao (Audit 7): Bei jeder neuen Build-Version einmal durchzaehmen.
+    ).then(() => trimTileCache())
   );
   self.clients.claim();
 });
@@ -53,7 +72,11 @@ self.addEventListener('fetch', event => {
         cache.match(req).then(cached => {
           if (cached) return cached;
           return fetch(req).then(resp => {
-            if (resp.ok) cache.put(req, resp.clone());
+            if (resp.ok) {
+              cache.put(req, resp.clone());
+              // Build ao: gelegentlich aufraeumen (nicht bei jeder Kachel)
+              if (Math.random() < 0.02) trimTileCache();
+            }
             return resp;
           }).catch(() => cached || new Response('', {status: 408}));
         })
@@ -157,6 +180,8 @@ self.addEventListener('message', event => {
       tiles.forEach(url => {
         fetch(url).then(r => { if (r.ok) cache.put(url, r); }).catch(() => {});
       });
+      // Build ao: nach dem Voraus-Cachen die Obergrenze durchsetzen
+      setTimeout(() => { trimTileCache(); }, 3000);
     });
     event.ports[0]?.postMessage({ok: true, count: tiles.length});
   }

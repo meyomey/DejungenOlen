@@ -1,4 +1,38 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ao) – Audit 7: zwei Fehler, ein Leck, toter Code
+- **Komplett-Audit über 72 Commits seit Audit 6** (Build p, 04.11.) – vollständiger Bericht in
+  `docs/AUDIT_BERICHT.md`. Ergebnis: **keine Sicherheitslücke**, aber vier echte Befunde.
+- **B1 (Mittel, Bedienung) – Kartensperre nach dem Vollbild falsch.** `saverStufe()` schrieb den
+  Frei-Zustand auch im Vollbild. Wer dort den Stromsparmodus beendete, fand die Karte beim
+  Verlassen gesperrt vor, obwohl sie vorher frei war (gemessen: `drag` false statt true, Pill
+  zurück). Jetzt fasst `saverStufe()` den Guard im Vollbild nicht mehr an.
+- **B2 (Mittel, Ressourcen) – Kachel-Cache wuchs unbegrenzt.** Der Offline-Kachel-Cache ist
+  bewusst von der Löschung bei Updates ausgenommen, wurde aber nie begrenzt: „Karte offline
+  speichern" legt bis 500 Kacheln je Klick ab. Über Monate hunderte MB – irgendwann räumt der
+  Browser alles auf, auch die offline gespeicherten Touren. Jetzt Obergrenze **1500 Kacheln**
+  (FIFO, älteste zuerst), aufgeräumt bei jeder neuen Build-Version, nach dem Voraus-Cachen und
+  gelegentlich beim Laden.
+- **B3 (Niedrig, Performance) – fehlende Indizes.** `EXPLAIN QUERY PLAN` zeigte `SCAN tours`,
+  `SCAN users`, `SCAN tour_videos`, obwohl nach `group_id`/`tour_id` bei jeder Anfrage gefiltert
+  wird. Acht Indizes ergänzt (über das bestehende `CREATE INDEX IF NOT EXISTS`-Muster, greift
+  also auch auf der laufenden Datenbank). Nachgemessen: `SCAN` → `SEARCH … USING INDEX`.
+- **B5 (Niedrig, Wartbarkeit) – toter Code entfernt.** `saverTap()` (rund 40 Zeilen) lief seit
+  Build ai nie mehr, dazu `const aufKarte`. Zwei Tests prüften den toten Code und hätten ihn
+  festgehalten – sie zeigen jetzt auf die Stelle, die wirklich läuft.
+- **B4 (Niedrig, Doku):** README beschrieb die Live-Karte auf dem Stand von Build p –
+  Stromsparmodus, ehrliches „Bildschirm bleibt an" und die Sperre fehlten.
+- **Nebenbei:** `.env.example` benennt jetzt die Folge eines nicht geänderten `SECRET_KEY`
+  (die ersten 20 Zeichen sind der Cron-Token).
+- **Geprüft und ohne Befund:** Mandantentrennung (8 Endpunkte gegen eine fremde Tour → 404/403,
+  auch die Listen), XSS mit gespeicherten Payloads in Titel/Treffpunkt/Beschreibung, Uploads
+  (Magic Bytes, serverseitige Dateinamen), Login-Links, Cron-Token (`compare_digest`),
+  Deploy-ZIPs (keine `.env`/DB/Backups), 20 Fuzzing-Fälle (**kein 500er**), SQL-Zähler flach
+  (9–29 je Seite), `node --check` über alle 36 Inline-Skript-Blöcke.
+
+Geänderte Dateien: `templates/touren/live.html`, `static/sw.js`, `app.py`, `README.md`,
+`.env.example`, `docs/AUDIT_BERICHT.md`, `tests/test_build_ad.py`, `tests/test_build_ag.py`,
+`CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build an) – Kein Sperren im Vollbild, Sperrknopf über dem Info-Block
 - **Rückmeldung:** „1. Beim Vollbild muss die Sperre nicht sein. 2. Der Sperrknopf soll lieber unten über dem grünen/orangen InfoBlock erscheinen."
 - **(1) Vollbild:** `guardWanted()` gibt dort jetzt immer `false` zurück, der 🔒-Knopf wird gar nicht erst eingeblendet. Eine vor dem Vollbild gesetzte Sperre wird gemerkt und beim Verlassen wiederhergestellt; nach dem Vollbild startet die Karte frei.

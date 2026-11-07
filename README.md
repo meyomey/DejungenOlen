@@ -37,6 +37,9 @@ Eine selbst gehostete Web-App für Radgruppen. Gebaut mit Python/Flask, SQLite u
 - Höhenprofil (Chart.js)
 - Kartenvorschau auf Tourenkarten (lazy-loading Leaflet Mini-Maps)
 - Live-Karte je Tour (`/touren/<id>/live`): zuschauen oder Standort teilen, Mitfahrer mit Initialen, Streckenkilometer, Vollbild, Wake Lock
+- Stromsparmodus auf der Live-Karte (2026-11-07): dunkelt den **ganzen** Bildschirm ab, das Display darf ausgehen; **einmal tippen** = 4 s kurz schauen, **zweimal tippen** = dauerhaft hell (Karte dann voll bedienbar), **nochmals zweimal** = zurück, ✕ beendet. Im Sparmodus zoomt die Zwei-Finger-Geste nur die Karte, nie die Seite; ein Doppeltipp zoomt dort nicht
+- „Bildschirm bleibt an“ ehrlich (2026-11-07): der Zustand steht am 🔆-Knopf, „bestätigt“ erst nach 40 s ohne Unterbrechung gemessen – ohne grüne Erfolgs-Boxen, Warnungen bleiben
+- Karte sperren (2026-11-07): 🔒 direkt über dem grünen/orangen Info-Block. Immer verfügbar – auch während Fahrt und Folgen; im Vollbild bewusst nicht. Beim Sperren springt die Karte auf ihren Anfangsausschnitt zurück
 - Live-Karte als Aufzeichnung (Build af): geteilte Positionen bleiben als Spur erhalten; Tourleitung übernimmt sie als GPX-Track der Tour (mit Zeitstempeln) oder lädt sie herunter, jeder kann seine eigene löschen, automatische Löschung nach 30 Tagen
 - Fahrmodus (2026-11-04): „Fahren“ auf der Tourseite oder der Blitzstart `/fahren` (auch als App-Verknüpfung) öffnet die Live-Karte mit direkt startender Fahrt; Pause per Knopf oder automatisch nach ~3 min Stillstand, Weiterfahren setzt sie selbst fort; einheitliche Begriffe „Fahrt starten“/„⏹ Fahrt beenden“, Beenden spätestens nach 8 Stunden
 - Fahrt bleibt app-weit aktiv (2026-11-04): Seitenwechsel beendet sie nicht – roter „Fahrt läuft“-Punkt unten rechts mit „Zur Karte“/„✕“; der pulsierende Live-Punkt in der Navbar („N unterwegs · ⏺“) und der Zustand auf der Tourseite („Fahrt läuft“/„Fahren“) aktualisieren sich selbst alle 30 s

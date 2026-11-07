@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-07 an'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-07 ao'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2786,7 +2786,7 @@ def tour_upload_photos(tour_id):
 @login_required
 @organizer_required
 def tour_add_participant(tour_id):
-    tour = _tour_or_404(tour_id)
+    _tour_or_404(tour_id)          # Audit 7: Zugriffspruefung; die Tour selbst wird hier nicht gebraucht
     user_id = request.form.get('user_id', type=int)
     if not user_id:
         flash('Bitte einen Nutzer auswählen.', 'warning')
@@ -7225,7 +7225,7 @@ def gastro_import(spot_id):
 def tour_upload_video(tour_id):
     """MP4/Video-Datei zu einer Tour hochladen – direkt auf Disk streamen."""
     import traceback as _tb
-    tour = _tour_or_404(tour_id)
+    _tour_or_404(tour_id)          # Audit 7: Zugriffspruefung; die Tour selbst wird hier nicht gebraucht
 
     try:
         f = request.files.get('video')
@@ -11117,6 +11117,19 @@ def migrate_db():
     add_index('gastro_spots',      'spot_type')
     add_index('gastro_reviews',    'spot_id')
     add_index('gastro_reviews',    'user_id')
+    # Audit 7 (Build ao): Diese Spalten wurden bei JEDER Anfrage gefiltert, hatten aber
+    # keinen Index – SQLite machte daraus einen vollen Tabellendurchlauf („SCAN tours").
+    # Gemessen mit EXPLAIN QUERY PLAN: tours.group_id, users.group_id,
+    # tour_videos.tour_id. Bei ein paar hundert Touren ist das noch schnell, waechst aber
+    # linear mit; die Indizes kosten fast nichts.
+    add_index('tours',             'group_id')
+    add_index('users',             'group_id')
+    add_index('tour_videos',       'tour_id')
+    add_index('tour_videos',       'user_id')
+    add_index('tour_comments',     'parent_id')
+    add_index('route_ratings',     'tour_id')
+    add_index('time_votes',        'tour_id')
+    add_index('password_resets',   'user_id')
 
 
 

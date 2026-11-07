@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 an')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ao')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2037,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 an')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ao')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2532,3 +2532,47 @@ class WakeLockErneuerungTest(AppTestCase):
         # (dort ist ausdrücklich erlaubt, dass das Display ausgeht).
         self.assertIn('if (!wakeWanted && !saverOn) setWakeWanted(true);', live)
         self.assertNotIn('Sparmodus braucht das Display', live)
+
+
+class Audit7IndizesTest(AppTestCase):
+    """Audit 7 (Build ao): tours.group_id, users.group_id und tour_videos.tour_id wurden bei
+    jeder Anfrage gefiltert, hatten aber keinen Index (EXPLAIN QUERY PLAN: „SCAN tours")."""
+
+    def test_indizes_werden_angelegt(self):
+        from sqlalchemy import text as _text, inspect as _inspect
+        import app as appmod
+        with appmod.app.app_context():
+            appmod._auto_migrate_once()
+            ins = _inspect(appmod.db.engine)
+            for tabelle, spalte in [('tours', 'group_id'), ('users', 'group_id'),
+                                    ('tour_videos', 'tour_id')]:
+                idx = {i['name'] for i in ins.get_indexes(tabelle)}
+                self.assertIn(f'ix_{tabelle}_{spalte}', idx, f'{tabelle}.{spalte} ohne Index')
+
+    def test_abfrage_nutzt_den_index(self):
+        from sqlalchemy import text as _text
+        import app as appmod
+        with appmod.app.app_context():
+            appmod._auto_migrate_once()
+            plan = appmod.db.session.execute(
+                _text('EXPLAIN QUERY PLAN SELECT * FROM tours WHERE group_id = 1')).all()
+            self.assertIn('USING INDEX', plan[0][-1])
+
+
+class Audit7KachelCacheTest(AppTestCase):
+    """Audit 7 (Build ao): Der Kachel-Cache im Service Worker wuchs unbegrenzt – er ist in
+    `activate` von der Löschung ausgenommen, und „Karte offline speichern" legt bis 500
+    Kacheln je Klick ab. Jetzt mit Obergrenze und FIFO."""
+
+    def test_obergrenze_und_rotation(self):
+        sw = open(os.path.join(ROOT, 'static', 'sw.js'), encoding='utf-8').read()
+        self.assertIn('const TILE_LIMIT    = 1500;', sw)
+        self.assertIn('async function trimTileCache()', sw)
+        # aelteste zuerst (Cache-Keys stehen in Einfuege-Reihenfolge)
+        self.assertIn('for (let i = 0; i < weg; i++) await cache.delete(keys[i]);', sw)
+        # aufgeraeumt wird bei Aktivierung, nach dem Voraus-Cachen und gelegentlich
+        self.assertIn('.then(() => trimTileCache())', sw)
+        self.assertIn('setTimeout(() => { trimTileCache(); }, 3000);', sw)
+        self.assertIn('if (Math.random() < 0.02) trimTileCache();', sw)
+        # der Cache selbst ueberlebt weiterhin Deploys (offline-Karten!)
+        self.assertIn('k !== CACHE_VERSION && k !== TILE_CACHE', sw)

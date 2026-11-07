@@ -228,7 +228,10 @@ class StromsparZweiStufenTest(unittest.TestCase):
 
     def test_einmal_tippen_hellt_kurz_auf(self):
         live = _live()
-        self.assertIn('function saverTap()', live)
+        # Build ao (Audit 7): saverTap() war seit Build ai toter Code (nie aufgerufen) und
+        # wurde entfernt. Geprueft wird die Stelle, die wirklich laeuft.
+        self.assertNotIn('function saverTap()', live)
+        self.assertIn('function saverBlick()', live)
         self.assertIn('function saverStufe(', live)
         # 4 s hell, dann wieder dunkel
         self.assertIn('}, 4000);', live)
@@ -236,9 +239,11 @@ class StromsparZweiStufenTest(unittest.TestCase):
 
     def test_zweimal_tippen_bleibt_hell(self):
         live = _live()
-        # Doppeltipp erkennt der zweite Tipp innerhalb der Wartezeit
-        self.assertIn('if (saverTapTimer) {', live)
-        self.assertIn("saverStufe(!saverHell);", live)
+        # Doppeltipp erkennt der zweite Tipp innerhalb der Wartezeit – Build ai: im
+        # Dokument-Listener, der beide Zustaende gleich behandelt.
+        block = live.split("document.addEventListener('click', e => {", 1)[1].split('}, true);', 1)[0]
+        self.assertIn('const nah = _saverTippAt && (jetzt - _saverTippAt) < 400 &&', block)
+        self.assertIn("saverStufe(!saverHell);", block)
         css = _css()
         off = css.split('#saver-dim.saver-off {', 1)[1].split('}', 1)[0]
         self.assertIn('background: transparent', off)
@@ -534,3 +539,38 @@ class SperrknopfUeberDemInfoBlockTest(unittest.TestCase):
         # die alte Lage oben links ist weg
         self.assertNotIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
         self.assertNotIn('#live-guard-lock { position: absolute; top: 80px; left: 10px;', live)
+
+
+class Audit7SperreUndVollbildTest(unittest.TestCase):
+    """Audit 7 (Build ao): Zustandsfehler der Kartensperre nach dem Vollbild.
+
+    Gefunden im Audit-Durchlauf: Wer im Vollbild den Stromsparmodus beendete, verlor den
+    gemerkten Frei-Zustand. `saverStufe()` schrieb `guardUnlocked` auch dort, wo der
+    Vollbild-Zustand gilt – nach dem Verlassen war die Karte gesperrt, obwohl sie vorher
+    frei war (gemessen: `map.dragging` false statt true, Pill zurück).
+    """
+
+    def test_sparstufe_fasst_den_guard_im_vollbild_nicht_an(self):
+        live = _live()
+        block = live.split('function saverStufe(hell) {', 1)[1].split('const dim2', 1)[0]
+        self.assertIn('if (_fsAn()) { /* Vollbild regelt den Guard selbst */ }', block)
+        # die Guard-Zeilen haengen jetzt am else-Zweig
+        self.assertIn('else if (saverHell) { guardUnlocked = true; setLiveGuard(); }', block)
+
+
+class Audit7ToterCodeTest(unittest.TestCase):
+    """Audit 7 (Build ao): saverTap() lief seit Build ai nie mehr (Tipp-Erkennung am
+    Dokument) und war nur noch Ballast – dazu `const aufKarte`."""
+
+    def test_saverTap_ist_weg(self):
+        live = _live()
+        self.assertNotIn('function saverTap()', live)
+        # aufKarte darf nur noch im Grabstein-Kommentar stehen, nicht als Code
+        for zeile in live.splitlines():
+            if 'aufKarte' in zeile:
+                self.assertTrue(zeile.strip().startswith('//'), f'Code statt Kommentar: {zeile!r}')
+
+    def test_die_echte_stelle_bleibt(self):
+        live = _live()
+        self.assertIn("document.addEventListener('click', e => {", live)
+        self.assertIn('function saverBlick()', live)
