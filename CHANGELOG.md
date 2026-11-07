@@ -1,4 +1,34 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build at) – Der kurze Blick zeigt, wo man ist
+- **Frage:** „Wenn man einmal tippt aus dem Stromspar kann man ja nichts bedienen, aber es
+  sollte dann gezoomt werden auf einen selber um zu sehen wo man sich befindet, oder?"
+  **Ja** – und genau das fehlte.
+- **Vorher:** Ein Tipp im dunklen Sparmodus hellte den Bildschirm nur auf. Die Karte blieb
+  stehen, wo sie war – nach dem Folgen-Abbruch oder nach dem Wegscrollen zeigte der kurze
+  Blick also irgendwo ins Leere, statt die eine Frage zu beantworten, für die man aufhellt.
+- **Jetzt:** Der kurze Blick holt die Karte auf die **eigene Position**, Zoom **mindestens 16**
+  (dieselbe Stufe wie beim Folgen – Straßen und Wege lesbar).
+
+  Gemessen im Browser (404 × 854):
+
+  | | Zoom | Kartenmitte |
+  |---|---|---|
+  | vorher | 13 | 53.4661 / 9.7995 |
+  | nach einem Tipp | **16** | **53.55 / 9.99** (eigene Position) |
+
+- **Bewusst zurückhaltend, drei Bedingungen:**
+  - nur beim **kurzen** Blick – nicht beim dauerhaften Hellschalten (dort will man die Karte
+    bedienen, ein Sprung wäre störend),
+  - nur wenn die **eigene Position bekannt** ist (sonst bleibt die Karte, wie sie ist),
+  - nur wenn die Karte **wirklich woanders** steht – liegt der eigene Punkt schon im mittleren
+    Bereich und der Zoom ist ausreichend, passiert nichts (kein Zappeln bei jedem Tipp).
+- **Geprüft:** zweiter Blick bei bereits zentrierter Karte ändert nichts (`[16, 53.55]` →
+  `[16, 53.55]`), dauerhaft hell lässt den Zoom bei 13, nach 4 s dunkelt es wieder ab.
+- 5 neue Tests (407 gesamt), `node --check` OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build as) – Ein Schloss für alle Karten, unten statt oben rechts
 - **Rückmeldung:** „Das Schloss sollte auch jetzt im unteren Bereich erscheinen und nicht weiter
   oben rechts sein. Die Darstellung des Schlosses sind momentan unterschiedlich Live-Karte und

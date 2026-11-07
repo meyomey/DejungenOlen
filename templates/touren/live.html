@@ -1372,6 +1372,24 @@ function refreshSaverChip() {
     : 'Einmal tippen = kurz schauen · zweimal tippen = dauerhaft hell · ✕ = aus';
 }
 
+// Build at: Karte auf die eigene Position holen – mit Ruhe, wenn sie schon dort steht.
+// Der Vergleich laeuft ueber die Pixel: liegt die eigene Position ohnehin im sichtbaren
+// Ausschnitt und ist der Zoom brauchbar, wird nicht eingegriffen. Sonst: hinfahren.
+function saverAufMich() {
+  if (typeof map === 'undefined' || !map || !ownLatLng) return false;
+  try {
+    const ziel = Math.max(map.getZoom(), 16);
+    const punkt = map.latLngToContainerPoint(ownLatLng);
+    const groesse = map.getSize();
+    // „Schon zu sehen": eigener Punkt im mittleren Bereich und Zoom mindestens 16.
+    const imBild = punkt.x > groesse.x * 0.15 && punkt.x < groesse.x * 0.85 &&
+                   punkt.y > groesse.y * 0.15 && punkt.y < groesse.y * 0.85;
+    if (imBild && map.getZoom() >= 16) return false;      // steht schon richtig – nicht zappeln
+    map.setView(ownLatLng, ziel, {animate: true});
+    return true;
+  } catch (e) { return false; }
+}
+
 // Build ag: Der kurze Blick muss JEDES MAL wieder zurückdunkeln.
 // Fehler in Build af: saverTap() setzte die Aufhellung direkt, aber ohne Zeitgeber zum
 // Zurückdunkeln – der 4-s-Timer lebte nur in saverStufe() und lief einmal beim Einschalten.
@@ -1380,6 +1398,18 @@ function refreshSaverChip() {
 function saverBlick() {
   const dim = document.getElementById('saver-dim');
   if (!dim) return;
+  // Build at: „Wenn man einmal tippt aus dem Stromspar kann man ja nichts bedienen, aber es
+  // sollte dann gezoomt werden auf einen selber um zu sehen wo man sich befindet."
+  // Genau: Wer aus dem dunklen Modus kurz aufhellt, will EINE Frage beantwortet haben –
+  // wo bin ich? Bisher blieb die Karte stehen, wo sie war; nach dem Folgen-Abbruch oder
+  // nach dem Wegscrollen zeigte der kurze Blick then irgendwo ins Leere.
+  // Jetzt zentriert der kurze Blick auf die eigene Position (Zoom mindestens 16, wie beim
+  // Folgen – Straßen und Wege lesbar). Bewusst zurueckhaltend:
+  //   – nur beim KURZEN Blick, nicht wenn dauerhaft hell geschaltet wird (dort will man
+  //     die Karte bedienen, ein Sprung waere stoerend),
+  //   – nur wenn die eigene Position bekannt ist (sonst bleibt die Karte, wie sie ist),
+  //   – und nur wenn die Karte wirklich woanders steht (sonst zappelt sie bei jedem Tipp).
+  saverAufMich();
   dim.classList.add('saver-peek');
   dim.classList.remove('saver-tipp');        // Hinweis kurz zeigen (schmaler Streifen)
   clearTimeout(saverPeekTimer);

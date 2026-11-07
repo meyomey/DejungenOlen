@@ -754,3 +754,48 @@ class EinheitlichesSchlossTest(unittest.TestCase):
         # alte Logik schob den Stil-Knopf immer nach links, sobald ein Lock existierte
         self.assertIn('var gleicheZeile = g.top < b.bottom && g.bottom > b.top;', js)
         self.assertIn("btn.style.right = '8px';", js)
+
+
+class BlickZentriertAufMichTest(unittest.TestCase):
+    """Build at: „Wenn man einmal tippt aus dem Stromspar kann man ja nichts bedienen, aber
+    es sollte dann gezoomt werden auf einen selber um zu sehen wo man sich befindet, oder?"
+
+    Ja – genau das war die Lücke: `saverBlick()` hellte nur auf, die Karte blieb stehen, wo
+    sie war. Nach dem Folgen-Abbruch oder nach dem Wegscrollen zeigte der kurze Blick also
+    irgendwo ins Leere, statt die eine Frage zu beantworten, für die man aufhellt.
+
+    Im Browser gemessen (404 × 854): Ausgangslage Zoom 13, Mitte 53.4661/9.7995 –
+    nach einem Tipp: **Zoom 16, Mitte 53.55/9.99** (die eigene Position).
+    """
+
+    def test_kurzer_blick_zentriert_auf_eigene_position(self):
+        live = _live()
+        self.assertIn('function saverAufMich()', live)
+        self.assertIn('map.setView(ownLatLng, ziel, {animate: true});', live)
+        # wird aus saverBlick() gerufen, nicht aus saverStufe()
+        block = live.split('function saverBlick()', 1)[1].split('function ', 1)[0]
+        self.assertIn('saverAufMich();', block)
+
+    def test_zoom_ist_mindestens_16(self):
+        live = _live()
+        # wie beim Folgen: Strassen und Wege lesbar
+        self.assertIn('const ziel = Math.max(map.getZoom(), 16);', live)
+
+    def test_kein_zappeln_wenn_schon_dort(self):
+        live = _live()
+        # eigener Punkt im mittleren Bereich + Zoom schon ausreichend -> nicht eingreifen
+        self.assertIn('const imBild = punkt.x > groesse.x * 0.15 && punkt.x < groesse.x * 0.85 &&', live)
+        self.assertIn("if (imBild && map.getZoom() >= 16) return false;", live)
+
+    def test_ohne_position_bleibt_die_karte(self):
+        live = _live()
+        block = live.split('function saverAufMich()', 1)[1].split('\n}\n', 1)[0]
+        self.assertIn('if (typeof map === \'undefined\' || !map || !ownLatLng) return false;', block)
+        # try/catch: eine kaputte Karten-API darf den Sparmodus nicht blockieren
+        self.assertIn('catch (e) { return false; }', block)
+
+    def test_dauerhaft_hell_zentriert_nicht(self):
+        live = _live()
+        # im dauerhaft hellen Zustand will man die Karte bedienen – kein Sprung
+        stufe = live.split('function saverStufe(', 1)[1].split('\nfunction ', 1)[0]
+        self.assertNotIn('saverAufMich', stufe)
