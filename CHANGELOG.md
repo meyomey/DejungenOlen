@@ -1,4 +1,37 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build al) – Im Stromsparmodus zoomt nur die Karte, nicht der Bildschirm
+- **Rückmeldung:** „Im Stromsparmodus zoomt der ganze Screen und nicht nur die Karte."
+- **Nachgemessen** (echte Zwei-Finger-Touch-Events über CDP):
+
+  | Zustand | `visualViewport.scale` | Kartenzoom |
+  |---|---|---|
+  | ohne Sparmodus | 1.0 | 12 → 14 ✅ |
+  | Sparmodus, dunkel | **1 → 1.12** ❌ | 12 (steht) |
+  | Sparmodus, hell | 1.0 | 12 → 14 ✅ |
+
+- **Ursache:** Das Abdunklungs-Overlay hatte `touch-action: auto`. Leaflets `touch-action: none` liegt auf der Kartenfläche – die verdeckt das Overlay im dunklen Zustand, also zoomte der Browser die **Seite**.
+- **Behoben:**
+  - `#saver-dim` sperrt den Seiten-Zoom (`touch-action: none`). `manipulation` allein reicht **nicht** – getestet, die Seite zoomte weiter (1 → 1.14).
+  - Neu `saverPinch`: Das Script misst den Fingerabstand und setzt den **Kartenzoom** selbst (Leaflet-Logik: doppelter Abstand = eine Stufe), zwei Finger verschieben die Karte mit. `passive: false`, damit `preventDefault` greift.
+- **Im Browser belegt** (mit und ohne Vollbild, je 2 Durchläufe):
+
+  | Prüfung | Ergebnis |
+  |---|---|
+  | Seitenskalierung beim Pinch | bleibt **1.0** ✅ |
+  | Karte zoomt auf | 13 → 15 ✅ |
+  | Karte zoomt zu | 15 → 13 ✅ |
+  | Pinch im hellen Zustand | Karte zoomt, bleibt hell ✅ |
+  | Sparmodus bleibt an, Stufe unverändert | ja ✅ |
+  | Doppeltipp schaltet weiter ohne Zoom | ja, 0 Zoom-Ereignisse ✅ |
+  | Einzeltipp | 4 s hell, kein Seiten-Zoom ✅ |
+  | Drei-Finger-Wisch | Seite scrollt/zoomt nicht ✅ |
+  | Pinch direkt nach einem Tipp | kein falscher Doppeltipp ✅ |
+
+- 3 neue Tests (374 gesamt), py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `static/css/style.css`, `templates/touren/live.html`, `templates/hilfe.html`, `app.py`,
+`tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ak) – Zweimal tippen zoomt die Karte nicht mehr
 - **Rückmeldung:** „Blöd ist noch, dass die Karte gezoomt wird wenn man zweimal tippt und in Stromsparen geht."
 - **Nachgemessen und reproduziert:** `zoom 15 → 16` beim Zurückschalten von hell auf dunkel. Im hellen Zustand ist die Karte bedienbar, also erreicht der Doppeltipp auch Leaflet – und Leaflet zoomt bei jedem `dblclick` eine Stufe hinein.

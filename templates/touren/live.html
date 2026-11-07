@@ -1362,6 +1362,50 @@ function saverTap() {
   saverBlick();
 }
 
+// Build al: Im dunklen Sparmodus deckt #saver-dim die Karte ab – und mit `touch-action: none`
+// (Build al, damit nicht die ganze Seite zoomt) kommt auch keine Zwei-Finger-Geste mehr bei
+// Leaflet an. Der Nutzer: „Im Stromsparmodus zoomt der ganze Screen und nicht nur die Karte."
+// Deshalb reicht dieser Handler die Geste selbst an die Karte weiter: Er misst den
+// Fingerabstand und setzt den Kartenzoom entsprechend – genau wie Leaflets eigener Handlers.
+// Verschieben mit zwei Fingern geht ueber map.panBy mit.
+let _saverPinch = null;
+function saverPinchStart(e) {
+  if (e.touches.length !== 2) { _saverPinch = null; return; }
+  const [a, b] = e.touches;
+  _saverPinch = {
+    d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+    z0: map.getZoom(),
+    cx: (a.clientX + b.clientX) / 2,
+    cy: (a.clientY + b.clientY) / 2
+  };
+}
+function saverPinchMove(e) {
+  if (!_saverPinch || e.touches.length !== 2) return;
+  e.preventDefault();                       // Seite darf nicht zoomen (trotz touch-action)
+  const [a, b] = e.touches;
+  const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  if (_saverPinch.d0 < 10 || d < 10) return;
+  // Leaflet rechnet in log2-Schritten: doppelter Fingerabstand = eine Zoomstufe.
+  const ziel = Math.round(_saverPinch.z0 + Math.log2(d / _saverPinch.d0));
+  const z = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), ziel));
+  if (z !== map.getZoom()) map.setZoom(z, {animate: false});
+  // Mittelpunkt der Geste mitfuehren (zwei Finger verschieben = Karte verschieben)
+  const ncx = (a.clientX + b.clientX) / 2, ncy = (a.clientY + b.clientY) / 2;
+  if (Math.abs(ncx - _saverPinch.cx) > 2 || Math.abs(ncy - _saverPinch.cy) > 2) {
+    map.panBy([_saverPinch.cx - ncx, _saverPinch.cy - ncy], {animate: false});
+    _saverPinch.cx = ncx; _saverPinch.cy = ncy;
+  }
+}
+function saverPinchEnd() { _saverPinch = null; }
+(function () {
+  const dim = document.getElementById('saver-dim');
+  if (!dim) return;
+  dim.addEventListener('touchstart', saverPinchStart, {passive: true});
+  dim.addEventListener('touchmove', saverPinchMove, {passive: false});   // preventDefault noetig
+  dim.addEventListener('touchend', saverPinchEnd, {passive: true});
+  dim.addEventListener('touchcancel', saverPinchEnd, {passive: true});
+})();
+
 // Build ai: Der Doppeltipp-Erkenner sitzt NICHT mehr am Overlay, sondern am Dokument.
 // Fehler bis Build ah: Im hellen Zustand hat das Overlay `pointer-events: none`, damit die
 // Karte bedienbar ist – dadurch bekam saverTap() keinen einzigen Tipp mehr zu sehen,

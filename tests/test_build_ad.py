@@ -428,3 +428,39 @@ class SaverDoppeltippSchaltetNichtDasWachhaltenTest(unittest.TestCase):
         live = _live()
         self.assertIn('id="btn-wake" onclick="toggleWake()"', live)
         self.assertIn('function toggleWake()', live)
+
+
+class SaverSeitenZoomTest(unittest.TestCase):
+    """Build al: „Im Stromsparmodus zoomt der ganze Screen und nicht nur die Karte."
+
+    Gemessen mit echten Zwei-Finger-Touch-Events: Bei aktivem Sparmodus sprang
+    `visualViewport.scale` von 1 auf 1.12 (die SEITE zoomte), während die Karte bei Zoom 12
+    stehen blieb. Grund: `#saver-dim` hatte `touch-action: auto`; Leaflets `touch-action: none`
+    liegt auf der Kartenfläche, die das Overlay verdeckt.
+
+    Behoben: Das Overlay sperrt den Seiten-Zoom (`touch-action: none`) und das Script reicht
+    die Zwei-Finger-Geste selbst an die Karte weiter (saverPinch).
+    """
+
+    def test_overlay_sperrt_den_seitenzoom(self):
+        css = _css()
+        block = css.split('#saver-dim { touch-action:', 1)
+        self.assertEqual(len(block), 2, 'touch-action fuer #saver-dim fehlt')
+        self.assertIn('none', block[1].split('}', 1)[0])
+        # 'manipulation' allein reicht nicht – der Versuch ist dokumentiert
+        self.assertIn('manipulation', css)
+
+    def test_zweifinger_geht_an_die_karte(self):
+        live = _live()
+        self.assertIn('function saverPinchStart(', live)
+        self.assertIn('function saverPinchMove(', live)
+        self.assertIn('map.setZoom(z, {animate: false});', live)
+        # passive:false, sonst greift preventDefault nicht und die Seite zoomt doch
+        self.assertIn("dim.addEventListener('touchmove', saverPinchMove, {passive: false});", live)
+        # die Geste zaehlt nicht als Tipp -> Sparstufe bleibt, wie sie ist
+        self.assertIn('if (e.touches.length !== 2) { _saverPinch = null; return; }', live)
+
+    def test_doppeltipp_zoom_bleibt_trotzdem_aus(self):
+        live = _live()
+        # Build ak darf durch Build al nicht verloren gehen
+        self.assertIn('if (saverOn) map.doubleClickZoom.disable();', live)

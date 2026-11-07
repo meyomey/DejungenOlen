@@ -685,6 +685,17 @@ footer {
    Fehler bis Build ag: `background: transparent` machte das Overlay nur unsichtbar; es lag
    weiter über allem und fing jeden Tipp ab. Man konnte nur schauen, nicht bedienen/zoomen.
    Jetzt gibt es die Fläche frei; nur der ✕-Knopf und (kurz) der Hinweis bleiben anklickbar. */
+/* Build al: Der Pinch-Zoom gehoert der KARTE, nicht der Seite.
+   Gemessen: mit dem Overlay davor zoomte der Browser den ganzen Screen (visualViewport.scale
+   1 -> 1.12) und die Karte blieb stehen (Zoom 12). Grund: #saver-dim hatte `touch-action: auto`;
+   Leaflet setzt `touch-action: none` nur auf seiner eigenen Flaeche, die das Overlay verdeckt.
+   Mit `manipulation` gibt es kein Doppeltipp-Zoomen und kein Pinch-Zoomen der Seite mehr –
+   Zwei-Finger-Zoom und Verschieben erreichen damit die Karte.
+   `manipulation` allein reicht NICHT (erlaubt Pinch weiter, gemessen 1 -> 1.14), deshalb
+   `none`: Die Seite zoomt und scrollt nicht mehr. Die Zwei-Finger-Geste reicht das Script
+   selbst an die Karte weiter (siehe saverPinch in live.html). Im hellen Zustand ist das
+   Overlay ohnehin durchlaessig – dort zoomt Leaflet von allein. */
+#saver-dim { touch-action: none; }
 #saver-dim.saver-off {
   background: transparent;
   pointer-events: none;          /* Tipps gehen an Karte, Symbole und Knopfleiste durch */
