@@ -1276,6 +1276,15 @@ function saverStufe(hell) {
   // Stelle. Hier bleibt nur der Zustandswechsel dunkel↔dauerhaft hell.
   const dim2 = document.getElementById('saver-dim');
   if (dim2) dim2.classList.remove('saver-tipp');    // im hellen Zustand Streifen stehen lassen
+  // Build ak: Der Doppeltipp gehoert im Sparmodus der Stufe (1x kurz, 2x dauerhaft hell),
+  // NICHT der Karte. Leaflet zoomt bei jedem dblclick eine Stufe hinein – der Nutzer tippte
+  // zweimal, um zurueck in den Sparmodus zu kommen, und die Karte sprang dabei mit
+  // (gemessen: Zoom 15 -> 16 beim Umschalten hell -> dunkel). Darum ist der Doppeltipp-Zoom
+  // ausgeschaltet, solange der Sparmodus laeuft; Zoomen per +/− und per zwei Fingern bleibt.
+  if (typeof map !== 'undefined' && map && map.doubleClickZoom) {
+    if (saverOn) map.doubleClickZoom.disable();
+    else map.doubleClickZoom.enable();
+  }
   const b = document.getElementById('btn-saver');
   if (b) {
     b.classList.toggle('on', saverOn);
@@ -1433,6 +1442,11 @@ document.addEventListener('click', e => {
 // Der Doppeltipp-Zoom von Leaflet läuft parallel und ist beim Fahren ohnehin nützlich.
 let _lastTapAt = 0;
 document.getElementById('live-wrap').addEventListener('touchend', function () {
+  // Build ak: Im Sparmodus gehoert der Doppeltipp der Spar-Stufe (kurz schauen / dauerhaft
+  // hell). Vorher schaltete derselbe Doppeltipp ZUSAETZLICH das Wachhalten um – der Nutzer
+  // wollte nur zurueck in den Stromsparmodus und bekam dabei ungefragt „Bildschirm an".
+  // Der Sonnen-Knopf (🔆) bleibt fuer das Wachhalten zustaendig.
+  if (saverOn) return;
   const now = Date.now();
   if (now - _lastTapAt < 350) {
     _lastTapAt = 0;

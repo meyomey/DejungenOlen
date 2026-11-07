@@ -1,4 +1,28 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ak) – Zweimal tippen zoomt die Karte nicht mehr
+- **Rückmeldung:** „Blöd ist noch, dass die Karte gezoomt wird wenn man zweimal tippt und in Stromsparen geht."
+- **Nachgemessen und reproduziert:** `zoom 15 → 16` beim Zurückschalten von hell auf dunkel. Im hellen Zustand ist die Karte bedienbar, also erreicht der Doppeltipp auch Leaflet – und Leaflet zoomt bei jedem `dblclick` eine Stufe hinein.
+- **Behoben:** Solange der Sparmodus läuft, ist der **Doppeltipp-Zoom der Karte aus** (`map.doubleClickZoom`). Er wird beim Beenden des Sparmodus wieder eingeschaltet. Zoomen per **+ / −**, per **zwei Fingern** und per Mausrad bleibt unberührt.
+- **Zweiter Fehler dabei gefunden und behoben:** Derselbe Doppeltipp schaltete zusätzlich das **Wachhalten** um. Wer nur zurück in den Stromsparmodus wollte, bekam ungefragt „Bildschirm an". Im Sparmodus gehört der Doppeltipp jetzt allein der Spar-Stufe; der **🔆-Knopf** ist für das Wachhalten zuständig.
+- **Im Browser belegt** (Chromium, Smartphone-Profil, echte Touch-Tipps, **mit und ohne Vollbild**, je 3 Runden):
+
+  | Prüfung | Ergebnis |
+  |---|---|
+  | Doppeltipp-Zoom im Sparmodus | aus ✅ |
+  | 3× hin und zurück | hell/dunkel korrekt ✅ |
+  | Zoom dabei | bleibt konstant (13), **0 Zoom-Ereignisse** ✅ |
+  | Wachhalten beim Doppeltipp | bleibt unberührt ✅ |
+  | Zoom-Knopf im hellen Zustand | funktioniert (13 → 14) ✅ |
+  | Verschieben | bleibt hell ✅ |
+  | Einzeltipp | kurz hell, nach 4,3 s dunkel ✅ |
+  | Sparmodus beendet | Doppeltipp-Zoom wieder an ✅ |
+  | Doppeltipp ohne Sparmodus | zoomt weiterhin (14 → 15) ✅ |
+
+- 4 neue Tests (371 gesamt), py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.py`, `tests/test_build_ad.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build aj) – Grüne Selbsttest-Boxen entfernt
 - **Rückmeldung:** „Deine grünen Boxen mit test hinweisen können entfernt werden?"
 - **Entfernt** (die Erfolgsmeldungen über den Hauptknöpfen):

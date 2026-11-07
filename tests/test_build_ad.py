@@ -382,3 +382,49 @@ class SaverDoppeltippMitKarteTest(unittest.TestCase):
         self.assertIn('pointer-events: none', off)
         # kein Streifen, der im hellen Zustand etwas verdeckt
         self.assertIn('body.saver-hell #saver-dim .saver-chip { display: none; }', css)
+
+
+class SaverDoppeltippOhneZoomTest(unittest.TestCase):
+    """Build ak: „Blöd ist noch, dass die Karte gezoomt wird wenn man zweimal tippt und in
+    Stromsparen geht."
+
+    Im hellen Zustand ist die Karte bedienbar, also erreicht der Doppeltipp auch Leaflet –
+    und Leaflet zoomt bei jedem dblclick eine Stufe hinein. Gemessen: Zoom 15 → 16 beim
+    Zurückschalten in den Sparmodus. Der Doppeltipp-Zoom ist deshalb aus, solange der
+    Sparmodus läuft; Zoomen per +/− und per zwei Fingern bleibt unberührt.
+    """
+
+    def test_doppeltipp_zoom_im_sparmodus_aus(self):
+        live = _live()
+        self.assertIn('if (saverOn) map.doubleClickZoom.disable();', live)
+        self.assertIn('else map.doubleClickZoom.enable();', live)
+        # und zwar an der Stelle, die beide Wege erreichen (Knopf und Doppeltipp)
+        block = live.split('function saverStufe(hell) {', 1)[1].split('refreshSaverChip();', 1)[0]
+        self.assertIn('doubleClickZoom', block)
+
+    def test_zoom_knoepfe_bleiben_nutzbar(self):
+        live = _live()
+        # +/− nicht abschalten – nur den Doppeltipp
+        self.assertNotIn('map.zoomControl.remove', live)
+        self.assertNotIn('touchZoom.disable', live)
+        self.assertIn("const map = L.map('live-map', {zoomControl: true, attributionControl: false});", live)
+
+
+class SaverDoppeltippSchaltetNichtDasWachhaltenTest(unittest.TestCase):
+    """Build ak: Derselbe Doppeltipp schaltete zusätzlich das Wachhalten um.
+
+    Der Nutzer wollte nur zurück in den Stromsparmodus und bekam dabei ungefragt
+    „Bildschirm an". Im Sparmodus gehört der Doppeltipp der Spar-Stufe; 🔆 bleibt
+    für das Wachhalten zuständig.
+    """
+
+    def test_wachhalten_reagiert_im_sparmodus_nicht(self):
+        live = _live()
+        block = live.split("document.getElementById('live-wrap').addEventListener('touchend', function () {", 1)[1]
+        kopf = block.split('const now = Date.now();', 1)[0]
+        self.assertIn('if (saverOn) return;', kopf)
+
+    def test_wachhalten_bleibt_ueber_den_knopf_erreichbar(self):
+        live = _live()
+        self.assertIn('id="btn-wake" onclick="toggleWake()"', live)
+        self.assertIn('function toggleWake()', live)
