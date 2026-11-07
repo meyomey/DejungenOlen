@@ -1,4 +1,26 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ai) – Zweimal tippen funktioniert jetzt auch bei großgestellter Karte
+- **Rückmeldung:** „Wenn die Karte auf groß gestellt ist, funktioniert zweimal tippen nicht mehr."
+- **Der eigentliche Fehler hatte nichts mit dem Vollbild zu tun** – dort ist er nur aufgefallen, weil man die Karte dann wirklich bedient. Zwei Ursachen, beide von mir:
+  1. **Seit Build ah hat das Overlay im hellen Zustand `pointer-events: none`** (damit die Karte bedienbar ist). Damit bekam der Tipp-Erkenner, der am Overlay hing, **keinen einzigen Tipp** mehr – „zweimal tippen" war tot.
+  2. **Ein pauschales „es wurde bewegt"-Flag** blockierte den Doppeltipp zusätzlich: Jede Mausbewegung und jedes Finger-Wackeln setzte es.
+- **Behoben:**
+  - Die Tipp-Erkennung sitzt jetzt **am Dokument** statt am Overlay – sie zählt Tipps auf der Karte, auf Knöpfen und auf der Leiste gleichermaßen.
+  - Das Bewegungs-Flag ist ersetzt durch einen **Vergleich des Kartenausschnitts** (`Zoom@Mittelpunkt`). Nur wenn sich die Karte zwischen den beiden Tipps **nicht** verändert hat, wird umgeschaltet – Zoomen und Verschieben lösen also nichts aus.
+  - Echte Bedienelemente (Links, Knöpfe, Leaflet-Steuerung, Marker, Strecke) setzen die Messung zurück und zählen nie als Tipp.
+  - Im hellen Zustand gibt es keinen Hinweis-Streifen mehr, der etwas verdecken könnte; der Mond-Knopf bleibt zum Abschalten erreichbar.
+- **Im Browser belegt** (Chromium, Smartphone-Profil, **mit und ohne Vollbild** – beide Läufe identisch):
+  - dunkel → 2× tippen → hell ✅
+  - 2× **zoomen** → bleibt hell (Zoom 12 → 13) ✅
+  - 2× **verschieben** → bleibt hell ✅
+  - Knopf „Alle" → bleibt hell ✅
+  - 2× tippen → zurück auf dunkel ✅
+  - 1× tippen → kurz hell, nach 4,2 s wieder dunkel ✅
+- 4 neue Tests (366 gesamt), py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templates/hilfe.html`, `app.py`,
+`templates/base.html`, `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ah) – Im hellen Stromspar-Zustand ist die Karte wieder bedienbar
 - **Rückmeldung:** „man kann nur schauen und nicht bedienen oder zoomen nach einem Doppelklick aus dem Stromsparen?"
 - **Ursache (mein Fehler in Build af):** `background: transparent` machte das Overlay im dauerhaft hellen Zustand nur **unsichtbar**. Es lag weiterhin über der ganzen Seite und fing jeden Tipp ab – man konnte zusehen, aber nichts bedienen. Zwei weitere Sperren kamen dazu:

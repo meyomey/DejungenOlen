@@ -706,6 +706,13 @@ footer {
   border-radius: 999px; padding: .4rem .85rem; max-width: min(22rem, calc(100% - 24px));
   opacity: 1; transition: opacity .2s;
 }
+/* Build ai: Im hellen Zustand wandert der Streifen nach OBEN in die freie Kartenfläche.
+   Unten liegen Statuszeile, Hinweisbalken und Knopfleiste – dort stand er im Weg.
+   Oben stoert er nichts und bleibt trotzdem bequem erreichbar. */
+/* Build ai: Im hellen Zustand ist die Seite voll bedienbar – dann braucht es keinen
+   Streifen mehr, der irgendetwas verdecken koennte. Der Mond-Knopf (🌙) bleibt erreichbar
+   und schaltet den Sparmodus ab; zweimal auf die freie Flaeche tippen schaltet zurueck. */
+body.saver-hell #saver-dim .saver-chip { display: none; }
 /* im aufgehellten Zustand: Hinweis nach 2 s ausblenden, damit nichts im Weg steht */
 #saver-dim.saver-tipp .saver-chip { opacity: 0; }
 #saver-dim.saver-tipp .saver-chip,

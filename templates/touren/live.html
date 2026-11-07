@@ -1279,6 +1279,8 @@ function saverStufe(hell) {
   else if (!sharing && !following) { guardUnlocked = false; setLiveGuard(); }
   // Build ag: Den Blick (4 s hell, Hinweis nach 2 s weg) macht saverBlick() – an EINER
   // Stelle. Hier bleibt nur der Zustandswechsel dunkel↔dauerhaft hell.
+  const dim2 = document.getElementById('saver-dim');
+  if (dim2) dim2.classList.remove('saver-tipp');    // im hellen Zustand Streifen stehen lassen
   const b = document.getElementById('btn-saver');
   if (b) {
     b.classList.toggle('on', saverOn);
@@ -1356,10 +1358,80 @@ function saverTap() {
   saverBlick();
 }
 
-document.getElementById('saver-dim').addEventListener('click', e => {
-  if (e.target && e.target.id === 'saver-off') return;   // ✕ hat sein eigenes onclick
-  saverTap();
-});
+// Build ai: Der Doppeltipp-Erkenner sitzt NICHT mehr am Overlay, sondern am Dokument.
+// Fehler bis Build ah: Im hellen Zustand hat das Overlay `pointer-events: none`, damit die
+// Karte bedienbar ist – dadurch bekam saverTap() keinen einzigen Tipp mehr zu sehen,
+// und „zweimal tippen" zum Zurückschalten war tot (aufgefallen im Vollbild, weil man dort
+// die Karte wirklich bedient).
+// Jetzt zaehlt das Dokument die Tipps – egal ob sie auf der Karte, einem Knopf oder der
+// Leiste landen. Ausgenommen: der ✕-Knopf, sowie alles, was als Verschieben/Zoomen
+// gedacht ist (Bewegung zwischen den Tipps).
+let _saverTippAt = 0, _saverTippX = 0, _saverTippY = 0, _saverStandBeiTipp = '';
+// Kurzzeichen des Kartenzustands: Zoom + Mittelpunkt. Aendert er sich, wurde bedient.
+function _saverMapStand() {
+  try { return map.getZoom() + '@' + map.getCenter().lat.toFixed(6) + ',' + map.getCenter().lng.toFixed(6); }
+  catch (e) { return ''; }
+}
+document.addEventListener('click', e => {
+  if (!saverOn) return;
+  // ✕ beendet den Modus – nicht als Spar-Tipp zaehlen.
+  let el = e.target, istKnopf = false;
+  while (el && el !== document.documentElement) {
+    if (el.id === 'saver-off') return;
+    const tag = (el.tagName || '').toLowerCase();
+    // Build ai: Auch die Karten-Steuerung zaehlt als Bedienung. Zoom+/− liegen nur ~35 px
+    // auseinander – zweimal schnell zoomen wurde sonst als Doppeltipp missverstanden und
+    // schaltete den Sparmodus zurueck.
+    const cls = el.className ? String(el.className) : '';
+    // Build ai: NUR echte Bedienelemente. Die Kartenflaeche und die Pane-Flächen zaehlen
+    // NICHT als Knopf – sonst waere jeder Tipp auf die Karte ausgeschlossen und der
+    // Doppeltipp zum Zurueckschalten tot. Ob die Karte bedient wurde, entscheidet
+    // stattdessen der Vergleich des Kartenstands (Zoom + Mittelpunkt).
+    if (tag === 'a' || tag === 'button' ||
+        cls.indexOf('leaflet-control') >= 0 ||        // Zoom, Kartenstil, Lizenz
+        cls.indexOf('leaflet-interactive') >= 0) {    // Marker, Strecke
+      istKnopf = true; break;
+    }
+    el = el.parentElement;
+  }
+  // Build ai: Bedienteile setzen die Tipp-Messung ZURUECK, zaehlen aber nie selbst.
+  // Sonst wuerde nach dem Zoomen/Verschieben der naechste Tipp mit einem alten Zeitstempel
+  // verglichen – und der Doppeltipp funktionierte gar nicht mehr.
+  if (istKnopf) { _saverTippAt = 0; return; }
+  // Auf der Kartenflaeche (im hellen Zustand voll bedienbar) schaltet der Doppeltipp NICHT
+  // zurueck – dort wuerde er beim Zoomen/Verschieben staendig ausloesen. Zum Umschalten
+  // tippt man auf die freie Flaeche (dunkler Zustand) oder auf den Streifen unten.
+  // Build ai: Auch die Karte zaehlt fuer den Doppeltipp – aber nur, wenn sie NICHT
+  // bedient wurde. Ein echtes Zoomen/Verschieben erkennt man daran, dass Leaflet die
+  // Karte veraendert hat; das prueft der Vergleich unten (_saverMapStand).
+  const aufKarte = !!(e.target.closest && e.target.closest('#live-map'));
+  const jetzt = Date.now();
+  // Build ai: Nur Zeit und Abstand entscheiden. Ein zusätzliches „es wurde bewegt"-Flag war
+  // falsch: Jede Mausbewegung – auch das winzige Wackeln eines Fingers beim Tippen – hat den
+  // Doppeltipp blockiert, weil ich pauschal auf mousemove/touchmove gehört habe.
+  // Ein echtes Verschieben erkennt man am Abstand: Es landet woanders.
+  const nah = _saverTippAt && (jetzt - _saverTippAt) < 400 &&
+              Math.abs(e.clientX - _saverTippX) < 50 && Math.abs(e.clientY - _saverTippY) < 50;
+  if (nah) {
+    // Build ai: Nur umschalten, wenn die Karte zwischen den beiden Tipps unveraendert blieb.
+    // Sonst war es Zoomen oder Verschieben – und der Sparmodus soll dann nicht springen.
+    const jetztStand = _saverMapStand();
+    if (jetztStand !== _saverStandBeiTipp) {
+      _saverTippAt = 0;
+      return;
+    }
+    // ZWEITER Tipp: dauerhaft hell <-> wieder dunkel
+    _saverTippAt = 0;
+    clearTimeout(saverTapTimer); saverTapTimer = null;
+    clearTimeout(saverPeekTimer);
+    saverStufe(!saverHell);
+    return;
+  }
+  _saverTippAt = jetzt; _saverTippX = e.clientX; _saverTippY = e.clientY;
+  _saverStandBeiTipp = _saverMapStand();        // Kartenstand beim ersten Tipp merken
+  // Ein einzelner Tipp auf die Flaeche hellt im dunklen Zustand kurz auf.
+  if (!istKnopf && !saverHell) saverBlick();
+}, true);
 
 // Build 11-06u: Doppeltipp irgendwo auf der Karte/Wrap frischt den Screen-Wake-Lock auf
 // („🔆 Bildschirm bleibt an“) – falls das System ihn fallen gelassen hat (Akkusparmodus, iOS).

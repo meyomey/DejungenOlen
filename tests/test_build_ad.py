@@ -274,17 +274,17 @@ class StromsparBlickJedesMalTest(unittest.TestCase):
 
     def test_einzeltipp_nutzt_die_gemeinsame_stelle(self):
         live = _live()
-        tap = live.split('function saverTap()', 1)[1].split('\n}', 1)[0]
-        self.assertIn('saverBlick();', tap)
-        # der alte Fehler: direktes Aufhellen ohne Timer darf nicht zurückkommen
+        # Build ai: Die Erkennung sitzt am Dokument; das Aufhellen laeuft weiter ueber saverBlick().
+        self.assertIn("if (!istKnopf && !saverHell) saverBlick();", live)
+        # der alte Fehler: direktes Aufhellen ohne Timer darf nicht zurueckkommen
         self.assertNotIn("if (!saverHell && dim) dim.classList.add('saver-peek');", live)
 
     def test_doppeltipp_in_beiden_zustaenden(self):
         live = _live()
-        tap = live.split('function saverTap()', 1)[1].split('\n}', 1)[0]
-        # die Wartezeit wird IMMER scharf gemacht – auch im hellen Zustand
-        self.assertIn("saverTapTimer = setTimeout(() => { saverTapTimer = null; }, 300);", tap)
-        self.assertIn('saverStufe(!saverHell);', tap)
+        block = live.split("document.addEventListener('click', e => {", 1)[1].split('}, true);', 1)[0]
+        # im hellen wie im dunklen Zustand derselbe Weg: saverStufe umschalten
+        self.assertIn('saverStufe(!saverHell);', block)
+        self.assertIn('_saverTippAt = jetzt;', block)
 
     def test_zurueckdunkeln_nur_wenn_nicht_hell(self):
         live = _live()
@@ -327,3 +327,46 @@ class StromsparHellBedienbarTest(unittest.TestCase):
         css = _css()
         # ohne saver-off gilt wieder die normale Overlay-Regel (pointer-events: auto)
         self.assertNotIn('#saver-dim { pointer-events: none;', css)
+
+
+class SaverDoppeltippMitKarteTest(unittest.TestCase):
+    """Build ai: „Wenn die Karte auf groß gestellt ist, funktioniert zweimal tippen nicht mehr."
+
+    Zwei Ursachen, beide von mir:
+    1. Seit Build ah hat das Overlay im hellen Zustand `pointer-events: none` (damit die Karte
+       bedienbar ist). Damit bekam der Tipp-Erkenner am Overlay keinen einzigen Tipp mehr –
+       „zweimal tippen" zum Zurückschalten war tot. Aufgefallen im Vollbild, weil man dort
+       die Karte wirklich bedient.
+    2. Ein pauschales „es wurde bewegt"-Flag blockierte den Doppeltipp zusätzlich: Jede
+       Mausbewegung und jedes Finger-Wackeln setzte es.
+    """
+
+    def test_erkennung_haengt_am_dokument_nicht_am_overlay(self):
+        live = _live()
+        # der alte Listener am Overlay darf nicht mehr existieren
+        self.assertNotIn("document.getElementById('saver-dim').addEventListener('click'", live)
+        block = live.split("document.addEventListener('click', e => {", 1)[1].split('}, true);', 1)[0]
+        self.assertIn('saverStufe(!saverHell);', block)
+
+    def test_kein_pauschales_bewegungsflag(self):
+        live = _live()
+        self.assertNotIn('_saverBewegt', live)
+        # stattdessen: Kartenstand vergleichen
+        self.assertIn('function _saverMapStand()', live)
+        self.assertIn('_saverStandBeiTipp', live)
+
+    def test_bedienelemente_zaehlen_nicht_als_tipp(self):
+        live = _live()
+        block = live.split("document.addEventListener('click', e => {", 1)[1].split('}, true);', 1)[0]
+        self.assertIn("cls.indexOf('leaflet-control') >= 0", block)
+        self.assertIn('if (istKnopf) { _saverTippAt = 0; return; }', block)
+        # die Kartenflaeche selbst darf NICHT ausgeschlossen sein
+        self.assertNotIn("cls.indexOf('leaflet-pane') >= 0", block)
+        self.assertNotIn("el.id === 'live-map'", block)
+
+    def test_heller_zustand_voll_bedienbar(self):
+        css = _css()
+        off = css.split('#saver-dim.saver-off {', 1)[1].split('}', 1)[0]
+        self.assertIn('pointer-events: none', off)
+        # kein Streifen, der im hellen Zustand etwas verdeckt
+        self.assertIn('body.saver-hell #saver-dim .saver-chip { display: none; }', css)
