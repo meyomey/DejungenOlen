@@ -1,4 +1,20 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ap) – Vollbild-Knopf zeigt keine ✕ mehr
+- **Rückmeldung:** „Das X irritiert. Man denkt hier beendet man was komplett."
+- **Geändert:** Im Vollbild ersetzte der Knopf sein Symbol durch ein großes **✕**. Jetzt ist es
+  das übliche Gegenstück zum Auf-Symbol: **vier Pfeile nach innen** (⤡) – gleicher Platz,
+  gleiche Größe (42 × 42), nur die Richtung zeigt, was der Knopf tut.
+  - Auf-Symbol (Pfeile nach außen) = Vollbild öffnen
+  - Pfeile nach innen = Vollbild verlassen
+  - Titel und `aria-label` bleiben eindeutig: „Vollbild" / „Vollbild aus"
+- Das ✕ gibt es weiterhin für den **Stromsparmodus** (oben rechts, dort heißt es wirklich
+  „beenden") – im Vollbild war es aber doppeldeutig und ist dort verschwunden.
+- Hilfe-Seite ergänzt: im Vollbild zeigen die Pfeile nach innen, ein ✕ gibt es dort bewusst nicht.
+- 3 neue Tests, 2 alte auf das neue Symbolpaar umgestellt (390 gesamt); `node --check` OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.py`,
+`tests/test_build_ad.py`, `tests/test_build_aa.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ao) – Audit 7: zwei Fehler, ein Leck, toter Code
 - **Komplett-Audit über 72 Commits seit Audit 6** (Build p, 04.11.) – vollständiger Bericht in
   `docs/AUDIT_BERICHT.md`. Ergebnis: **keine Sicherheitslücke**, aber vier echte Befunde.

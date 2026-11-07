@@ -1553,8 +1553,14 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) wach
 // Build 11-06aa: Die beiden Vollbild-Symbole (auf/zu) an einer Stelle – der Knopf tauscht
 // nur den Inhalt, das SVG bleibt knackscharf (keine Emoji-Schrift nötig).
 const SVG_FS = document.querySelector('#btn-fs-ico') ? document.querySelector('#btn-fs-ico').innerHTML : '';
-const SVG_X = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
-              'stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+// Build ap: Im Vollbild stand hier ein großes X – das liest sich wie „beenden/abbrechen", nicht
+// wie „Vollbild verlassen" (Nutzer: „Das X irritiert. Man denkt hier beendet man was komplett.").
+// Jetzt das übliche Gegenstück zum Auf-Symbol: vier Pfeile nach innen. Am selben Platz, damit
+// nichts springt – nur die Richtung zeigt an, was der Knopf tut.
+const SVG_FS_AUS = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
+                   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                   '<path d="M9 3v4.5A1.5 1.5 0 0 1 7.5 9H3M15 3v4.5A1.5 1.5 0 0 0 16.5 9H21' +
+                   'M21 15h-4.5a1.5 1.5 0 0 0-1.5 1.5V21M3 15h4.5A1.5 1.5 0 0 1 9 16.5V21"/></svg>';
 function toggleFs() {
   const wrap = document.getElementById('live-wrap');
   const on = wrap.classList.toggle('live-fs');
@@ -1573,7 +1579,7 @@ function toggleFs() {
   document.body.style.overflow = on ? 'hidden' : '';
   // Build 11-06aa: reiner Symbol-Knopf – Icon wechselt, der Zustand steht im title/aria-label
   const fsIco = document.getElementById('btn-fs-ico');
-  if (fsIco) fsIco.innerHTML = on ? SVG_X : SVG_FS;
+  if (fsIco) fsIco.innerHTML = on ? SVG_FS_AUS : SVG_FS;
   const fsBtn = document.getElementById('btn-fs');
   if (fsBtn) {
     fsBtn.classList.toggle('on', on);

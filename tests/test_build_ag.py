@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ao')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ap')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2037,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ao')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ap')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2467,7 +2467,9 @@ class LiveKarteLesbarTest(AppTestCase):
         # Build 11-06aa: Vollbild ist ein reiner Symbol-Knopf – das Symbol tauscht, der Zustand
         # steht in title/aria-label.
         self.assertIn("const fsIco = document.getElementById('btn-fs-ico');", live)
-        self.assertIn("fsIco.innerHTML = on ? SVG_X : SVG_FS;", live)
+        # Build ap: Symbolpaar auf/zu (Pfeile nach aussen / nach innen) statt ✕
+        self.assertIn("fsIco.innerHTML = on ? SVG_FS_AUS : SVG_FS;", live)
+        self.assertIn('const SVG_FS_AUS =', live)
         self.assertIn("fsBtn.title = on ? 'Vollbild aus' : 'Vollbild';", live)
         # Build 11-06z: Der Kartenstil-Knopf ist aus der Leiste verschwunden (er sitzt
         # jetzt auf der Karte selbst) – dort bleibt es bei Icon + Text im Span.

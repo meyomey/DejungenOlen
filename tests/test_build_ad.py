@@ -574,3 +574,35 @@ class Audit7ToterCodeTest(unittest.TestCase):
         live = _live()
         self.assertIn("document.addEventListener('click', e => {", live)
         self.assertIn('function saverBlick()', live)
+
+
+class VollbildSymbolTest(unittest.TestCase):
+    """Build ap: „Das X irritiert. Man denkt hier beendet man was komplett."
+
+    Im Vollbild ersetzte der Knopf sein Symbol durch ein großes ✕ – das liest sich wie
+    „beenden/abbrechen". Jetzt ist es das übliche Gegenstück zum Auf-Symbol: vier Pfeile
+    nach innen. Gleicher Platz, gleiche Größe – nur die Richtung zeigt die Bedeutung.
+    """
+
+    def test_vollbild_zeigt_pfeile_nach_innen_statt_x(self):
+        live = _live()
+        self.assertIn('const SVG_FS_AUS =', live)
+        # das alte Kreuz darf nicht mehr als Vollbild-Symbol auftauchen
+        self.assertNotIn('const SVG_X =', live)
+        self.assertNotIn("M6 6l12 12M18 6L6 18", live)
+        self.assertIn('if (fsIco) fsIco.innerHTML = on ? SVG_FS_AUS : SVG_FS;', live)
+
+    def test_pfeile_zeigen_nach_innen(self):
+        live = _live()
+        block = live.split('const SVG_FS_AUS =', 1)[1].split(';', 2)[0] + \
+                live.split('const SVG_FS_AUS =', 1)[1].split(';', 2)[1]
+        # vier Ecken-Pfeile (ein Pfad mit vier "M"-Startpunkten)
+        self.assertIn('M9 3v4.5', block)
+        self.assertIn('M15 3v4.5', block)
+        self.assertIn('M21 15h-4.5', block)
+        self.assertIn('M3 15h4.5', block)
+
+    def test_titel_bleibt_eindeutig(self):
+        live = _live()
+        self.assertIn("fsBtn.title = on ? 'Vollbild aus' : 'Vollbild';", live)
+        self.assertIn("fsBtn.setAttribute('aria-label', on ? 'Vollbild aus' : 'Vollbild');", live)

@@ -94,7 +94,8 @@ class LiveKopfUndLeisteTest(AppTestCase):
         self.assertIn("b.classList.toggle('on', following);", h)
         self.assertIn("b.classList.toggle('on', wakeWanted && wakeActive());", h)
         self.assertIn("b.classList.toggle('warn', wakeWanted && !wakeActive());", h)
-        self.assertIn("fsIco.innerHTML = on ? SVG_X : SVG_FS;", h)
+        # Build ap: Im Vollbild keine ✕ mehr (sah nach „beenden" aus), sondern Pfeile nach innen.
+        self.assertIn("fsIco.innerHTML = on ? SVG_FS_AUS : SVG_FS;", h)
 
 
 class WakeLockMitVideoErsatzTest(AppTestCase):
