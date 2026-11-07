@@ -62,8 +62,9 @@
   /* Build 11-06aa: Die Statuszeile liegt AUF der Karte (oben links, unter dem Zoom) statt
      darüber – sie ist wichtig, braucht aber keine eigene Zeile im Kopf. Zwei Zeilen genügen;
      längere Meldungen lassen sich antippen und dann vollständig lesen. */
-  /* links unten: dort ist die Karte frei (oben links liegt der Verschiebe-Hinweis, oben rechts
-     der Kartenstil-Knopf, rechts unten die Symbolspalte) */
+  /* links unten: dort ist die Karte frei (oben links liegt der Zoom, oben rechts
+     der Kartenstil-Knopf, rechts unten die Symbolspalte). Der Verschiebe-Hinweis sitzt
+     seit Build an ebenfalls unten links, direkt ueber dieser Statuszeile. */
   #live-status { position: absolute; left: 8px; bottom: 84px; max-width: calc(100% - 74px); z-index: 1030;
                  margin: 0 !important; padding: .35rem .6rem !important; font-size: .82rem !important;
                  font-weight: 600; border-radius: 10px; line-height: 1.25;
@@ -667,7 +668,8 @@ function maybeStopWatch() {
 //
 // Build 11-06w: Der Guard liest seinen Zustand SELBST (setLiveGuard() ohne Argumente):
 //   gesperrt = kein Fahrt/Folgen/Vollbild UND nicht freigetippt (unlocked).
-// Gesperrt → Karte unbeweglich + Pill „Zum Verschieben antippen“ oben links.
+// Gesperrt → Karte unbeweglich + Pill „Zum Verschieben antippen“ UNTEN LINKS (Build an:
+// über dem Info-Block, vorher oben links unter dem Zoom).
 // Nach dem Antippen → Pill weg, Karte beweglich, 🔒-Knopf an derselben Ecke. Der sperrt
 // wieder: Seite scrollt normal, Pill kommt zurück. Während Fahrt/Folgen/Vollbild sind
 // Pill und 🔒 ausgeblendet – die Karte muss beim Fahren sofort gehen.

@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 aq')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ar')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2037,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 aq')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ar')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2328,7 +2328,12 @@ class LiveFahrKomfort2Test(AppTestCase):
     Ecken-Guard (Pill oben links) statt Mittel-Overlay; schaltet bei Fahrt/
     Folgen/Vollbild automatisch ab und zurueck. (2) Der 🚵-Knopf zeigt sichtbar
     den aktiven Kartenstil. (3) Doppeltipp-Rueckmeldung als Toast AUF der Karte,
-    mit ehrlicher Warnung, wenn Wachhalten nicht unterstuetzt wird."""
+    mit ehrlicher Warnung, wenn Wachhalten nicht unterstuetzt wird.
+
+    Nachtrag Build an: Die Pill sitzt nicht mehr oben links, sondern UNTEN LINKS
+    ueber dem Info-Block („Der Sperrknopf soll lieber unten ueber dem gruenen/
+    orangen InfoBlock erscheinen."). Build ar, nach Rueckfrage: im Browser
+    nachgemessen – links 8 px, Unterkante 160 px ueber dem Fensterrand."""
 
     def test_v_ecken_guard_und_umschaltung(self):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
@@ -2374,7 +2379,7 @@ class LiveFahrKomfort2Test(AppTestCase):
 class LiveGuardSperrenTest(AppTestCase):
     """Build 2026-11-06w: Nach dem Freischalten des Ecken-Guards lässt sich die
     Karte wieder sperren – oben links erscheint ein 🔒-Knopf (dieselbe Ecke wie
-    die Pill). Er sperrt die Karte, die Seite scrollt wieder normal und die Pill
+    die Pill; seit Build an: beide unten links, siehe Nachtrag oben). Er sperrt die Karte, die Seite scrollt wieder normal und die Pill
     kommt zurück. Der Guard liest seinen Zustand selbst (setLiveGuard() ohne
     Argumente, guardArmed = true als Startwert).
 

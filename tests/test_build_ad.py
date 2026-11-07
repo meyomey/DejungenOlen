@@ -639,3 +639,35 @@ class KartenHinweisUntenTest(unittest.TestCase):
         js = self._js()
         # rechts bleibt Platz fuer den Schloss-Knopf
         self.assertIn('max-width:calc(100% - 88px)', js)
+
+
+class LiveHinweisUntenLinksTest(unittest.TestCase):
+    """Build ar: Der Nutzer widersprach meiner falschen Beschreibung –
+    „Auf der Live Karte steht der Verschiebe-Hinweis unten links".
+
+    Stimmt: `#live-guard-pill { left: 8px }` + `bottom:` = unten links. Seit Build an ist das
+    die gewollte Lage („Der Sperrknopf soll lieber unten über dem grünen/orangen InfoBlock
+    erscheinen"). Falsch war nur der Hilfetext, der noch „oben links" sagte.
+
+    Im Browser nachgemessen (404 × 854): links 8 px, rechts 187 px, Unterkante 160 px über
+    dem Fensterrand – also unten links, 38 px über der Statuszeile.
+    """
+
+    def test_hilfe_sagt_unten_links(self):
+        h = open(os.path.join(ROOT, 'templates', 'hilfe.html'), encoding='utf-8').read()
+        self.assertIn('Zum Verschieben unten links', h)
+        self.assertNotIn('Zum Verschieben oben links', h)
+
+    def test_pill_haengt_links_und_unten(self):
+        live = _live()
+        # links ist fest, unten kommt aus den beiden Media-Queries (mobil/desktop)
+        self.assertIn('#live-guard-pill { position: absolute; left: 8px;', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: fixed; '
+                      'bottom: calc(58px + 64px + 30px + 8px); }', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 122px; }', live)
+
+    def test_kommentare_behaupten_nicht_mehr_oben_links(self):
+        live = _live()
+        # „seit Build an unten links" muss im Kommentar stehen, damit der Irrtum nicht zurueckkommt
+        self.assertIn('UNTEN LINKS (Build an:', live)
+        self.assertIn('seit Build an ebenfalls unten links', live)

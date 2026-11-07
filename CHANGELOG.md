@@ -1,4 +1,24 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ar) – Hilfe sagt die richtige Ecke: unten links
+- **Korrektur des Nutzers:** „Auf der Live Karte steht der Verschiebe-Hinweis unten links."
+  Ich hatte in der letzten Antwort behauptet, er sitze oben links – **das war falsch.**
+- **Nachgemessen** (404 × 854, Live-Karte): `#live-guard-pill` liegt bei **links 8 px,
+  Unterkante 160 px über dem Fensterrand** – also unten links, 38 px über der Statuszeile.
+  Das ist seit **Build an** die gewollte Lage („Der Sperrknopf soll lieber unten über dem
+  grünen/orangen InfoBlock erscheinen"). An der Lage habe ich **nichts geändert**.
+- **Falsch war nur der Text.** Die Hilfe sagte „Zum Verschieben **oben links**". Jetzt:
+  „Zum Verschieben **unten links** (unter der Karte, direkt über dem Info-Block)".
+- Zwei Code-Kommentare in `live.html` behaupteten ebenfalls „oben links" – beide korrigiert
+  und um den Stand ergänzt (seit Build an unten links). Warnung: Die Live-Karte und die
+  übrigen Karten haben damit **zwei verschiedene Orte** für denselben Hinweis (Live: unten
+  links über dem Info-Block · übrige: unten Mitte über der Quellenangabe) – gewollt, weil
+  auf der Live-Karte unten die Bedienleiste sitzt.
+- 3 neue Tests (396 gesamt): Hilfe sagt „unten links", Pill hängt an `left: 8px` + `bottom`,
+  Kommentare behaupten nicht mehr „oben links".
+
+Geänderte Dateien: `templates/hilfe.html`, `templates/touren/live.html`, `app.py`,
+`tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build aq) – Kartenhinweis sitzt unten, nicht mehr in der Kartenmitte
 - **Rückmeldung:** „Bei den anderen Karten stört mich das ‚Karte zum Verschieben antippen' in der Mitte.
   Sollte vielleicht weiter unten liegen oder was meinst du?"
