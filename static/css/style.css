@@ -663,21 +663,60 @@ footer {
 #saver-dim {
   position: fixed; inset: 0; z-index: 4000;
   background: rgba(5, 9, 20, .86);
-  display: flex; align-items: flex-end; justify-content: center;
-  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  /* Build ad: Hinweistext nach OBEN – unten bleiben Knopfleiste und Balken frei.
+     (unten 140px Luft fuer Daumenleiste + Hinweisleiste + App-Navigation) */
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: max(96px, calc(env(safe-area-inset-top) + 80px));
   cursor: pointer;
 }
+/* Build ad: Die Knopfleiste bleibt im Stromspar-Modus bedienbar.
+   Vorher fing das dunkle Overlay jeden Tipp ab – man konnte die Fahrt auf dem Rad
+   nicht beenden. Jetzt liegt die Leiste darueber; die Abdunklung endet oberhalb. */
+#live-bar { z-index: 4100 !important; }
+#saver-dim { bottom: var(--saver-frei, 0px); }
+body.saver-on #live-bar { background: rgba(18, 26, 50, .92); }
+body.saver-on #live-bar .btn { opacity: .95; }
 #saver-dim.saver-peek { background: rgba(5, 9, 20, .18); }
 #saver-dim .saver-chip {
   color: #cdd8f0; font-size: .8rem; text-align: center;
   background: rgba(18, 26, 50, .9); border: 1px solid rgba(255, 255, 255, .25);
   border-radius: 999px; padding: .4rem 1rem;
 }
+#saver-dim .saver-weg { font-size: .78rem; color: #9fb0d0; text-align: center; margin-top: .35rem; }
 #saver-off {
   position: absolute; top: max(14px, env(safe-area-inset-top)); right: 16px;
   width: 44px; height: 44px; border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, .4); background: rgba(18, 26, 50, .9);
   color: #fff; font-size: 1.15rem; line-height: 1;
+}
+
+
+/* Build ad: Rueckmeldung direkt an der Knopfleiste.
+   Bisher erschien die Meldung nur als Toast oben auf der Karte – wer unten auf einen
+   Symbol-Knopf tippt, sah davon nichts. Diese Leiste sitzt unmittelbar ueber den
+   Hauptknoepfen, dort wo der Finger ist, und bleibt 4 s stehen. */
+.bar-hinweis {
+  position: fixed; left: 8px; right: 8px;
+  bottom: calc(58px + env(safe-area-inset-bottom) + 58px);
+  z-index: 1300;
+  display: none;
+  padding: .55rem .8rem;
+  border-radius: 10px;
+  font-size: .88rem; line-height: 1.25; text-align: center;
+  color: #fff; background: rgba(20, 28, 52, .96);
+  border: 1px solid rgba(255, 255, 255, .28);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, .35);
+}
+.bar-hinweis.on { display: block; }
+.bar-hinweis.gut  { background: rgba(21, 87, 56, .97); border-color: rgba(120, 220, 170, .55); }
+.bar-hinweis.warn { background: rgba(122, 44, 20, .97); border-color: rgba(255, 170, 120, .6); }
+/* Mobil rechts Platz lassen: dort steht die Spalte der Symbolknoepfe (42 px + Rand). */
+@media (max-width: 991.98px) {
+  .bar-hinweis { right: 58px; }
+}
+@media (min-width: 992px) {
+  /* Desktop: Leiste steht unten im Fluss – Hinweis darueber, aber innerhalb der Karte */
+  .bar-hinweis { position: absolute; bottom: 64px; left: 12px; right: 12px; z-index: 1100; }
 }
 
 

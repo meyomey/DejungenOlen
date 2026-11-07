@@ -1,4 +1,25 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ad) – „Bildschirm bleibt an" endlich wirksam + Stromspar neu gedacht
+- **Rückmeldung:** „es geht nicht. Wenn ich länger auf den Button tippe, wird auch nichts angezeigt. Vielleicht sollte man den Stromsparmode nochmal neu denken." Zwei echte Fehler, ein Design-Fehler.
+- **Fehler 1 – das Video war zu klein.** Ich hatte die Regel falsch im Kopf. Im Chromium-Quelltext (`video_wake_lock.cc`) steht sie wörtlich: ein Video hält den Bildschirm nur, wenn es **hörbar** läuft **oder** zu **mindestens 20 % des Fensters** zählt **und** zu **mindestens 75 % sichtbar** ist (`kSizeThreshold = 0.2`, `kStrictVisibilityThreshold = 0.75`). Mein 2×2-Pixel-Video aus Build ac erfüllte beides **nie** – es konnte auf dem S23 gar nicht wirken.
+  - **Neu:** Das Ersatz-Video ist **bildschirmfüllend** (`inset: 0`, `object-fit: cover`), liegt **hinter** der Seite und ist mit **1 % Deckkraft** unsichtbar. Es zählt damit als 100 % Fläche und 100 % sichtbar. Echtes Clip 320×180 mit Vorbis-Tonspur, 5,8 KB, eingebettet.
+- **Fehler 2 – die App schaltete den funktionierenden Weg selbst ab.** Sobald die Wake-Lock-Schnittstelle „erteilt" meldete, wurde das Video gestoppt („spart Akku"). Verweigert das **Betriebssystem** den Lock still – im Akkusparmodus bei Samsung üblich –, ist das für JavaScript **nicht unterscheidbar** von einer echten Freigabe. Ergebnis: Die App behauptete „bleibt an", während nichts mehr hielt.
+  - **Neu:** Beide Wege laufen **gleichzeitig**, das Video wird nicht mehr abgeschaltet.
+- **Statt Hoffnung: Nachprüfung.** `wakeFacts()` misst Fläche, Sichtbarkeit und Laufzeit des Videos und prüft, ob der API-Lock noch da ist. `wakeVerify()` meldet nach 1,2 s das **geprüfte** Ergebnis. Nur wenn beides scheitert, kommt die ehrliche Warnung mit Grund („Video zu klein oder verdeckt" / „Video startet nicht").
+- **Rückmeldung am Knopf** (der zweite Teil der Meldung): Bisher erschien die Antwort nur als 2,5-s-Toast **oben auf der Karte** – wer unten auf ein Symbol tippt, sah nichts. Neu: eine **Hinweisleiste direkt über den Hauptknöpfen**, 4 s, farbig (grün = hält, rot = hält nicht), dort wo der Daumen ist. Die Statuszeile weicht so lange.
+- **Stromspar neu gedacht – das Display darf jetzt ausgehen.** Bisher verlangte der Sparmodus zusätzlich „Display bleibt an": das Gegenteil von Stromsparen und vom Betriebssystem ohnehin nicht erzwingbar. Neu:
+  - Display **darf aus**; entscheidend ist, dass kein Messpunkt verloren geht.
+  - Jeder Punkt wird **vor** dem Senden lokal gesichert (`localStorage`, bis 200 Punkte) und nach dem Aufwachen **nachgesendet** – auch nach einem Neustart der Seite. Beim Fahrtstart wird die Sicherung sofort geleert.
+  - Bildschirm-an (🔆) und Stromspar (🌙) sind jetzt **unabhängige Schalter**.
+- **Nebenbei behoben:** Im Stromsparmodus fing das dunkle Overlay **jeden Tipp ab** – die Fahrt ließ sich auf dem Rad nicht beenden. Jetzt bleiben Knopfleiste und Symbolspalte über der Abdunklung bedienbar; der Spar-Hinweis sitzt oben und überdeckt sie nicht.
+- **Im Browser belegt** (Chromium, Smartphone-Profil, ohne Autoplay-Sonderflag): Video **100 % Fläche / 100 % sichtbar**, `paused = false`, `muted = false`, Ton dekodiert (`92`), Chromium-Bedingung **erfüllt**, Knopf „an", Hinweis „🔆 Bildschirm bleibt an – Video-Ersatz, geprüft."
+  - Sicherung: 3 offene Punkte überleben das Einfrieren (`document.hidden`) und werden beim Aufwachen **in Reihenfolge** nachgesendet, `localStorage` danach leer.
+  - Stromspar: Leiste bleibt klickbar (`elementFromPoint` → `btn-share`), keine Überlappung mit der Symbolspalte.
+- 12 neue Tests (344 gesamt), py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templates/hilfe.html`, `app.py`,
+`templates/base.html`, `tests/test_build_ad.py` (neu), `tests/test_build_aa.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ac) – „Bildschirm bleibt an": der Fehler lag im Video (es war stumm)
 - **Rückmeldung:** „Leider funktioniert Bildschirm bleibt an nicht." Zu Recht – mein Ersatz-Weg aus Build ab war **wirkungslos**.
 - **Die Regel, die ich übersehen hatte:** Ein Video hält den Bildschirm nur wach, wenn es **nicht stumm** ist. Es braucht eine **Tonspur** und darf nicht `muted` sein. Das Video aus Build ab hatte gar keine Tonspur (nur ein schwarzes Bild) und war zusätzlich stummgeschaltet – der Browser hatte damit keinen Grund, das Display anzulassen.

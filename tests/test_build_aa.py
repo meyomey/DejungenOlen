@@ -188,7 +188,9 @@ class WakeLockTonspurTest(AppTestCase):
         h = self.html
         self.assertIn('function videoRunning()', h)
         self.assertIn('wakeVideo.readyState >= 2', h)
-        self.assertIn("mapToast('⚠️ Bildschirm wachhalten greift auf diesem Gerät nicht", h)
+        # Build ad: Die Warnung nennt jetzt den konkreten Grund und steht auch an der Knopfleiste.
+        self.assertIn("barHinweis('⚠️ Bildschirm wachhalten greift hier nicht", h)
+        self.assertIn('Bildschirm wachhalten greift hier nicht', h)
 
     def test_fehlertext_nennt_video_probleme(self):
         h = self.html

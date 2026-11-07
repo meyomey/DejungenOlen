@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ac')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ad')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2037,7 +2037,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ac')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ad')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2114,7 +2114,7 @@ class SaverModeAndFixesTest(AppTestCase):
         self.assertIn('async function setSaver(', live)
         self.assertIn('function saverPeek(', live)
         # Bildschirm bleibt AN: Sparmodus fordert die Wake-Lock an und meldet es
-        self.assertIn('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft im 20-s-Takt.', live)
+        self.assertIn('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', live)
         # Sparmodus hält den Bildschirm auch nach App-Wechsel wach; Ende mit der Fahrt
         self.assertIn('sharing || following || saverOn', live)
         self.assertIn('if (saverOn) setSaver(false);', live)
@@ -2135,7 +2135,7 @@ class SaverGpsThrottleTest(AppTestCase):
         self.assertIn('const sendEvery = saverOn ? 20000 : 10000, stillEvery = saverOn ? 45000 : 30000;', live)
         self.assertIn('if (turn < 25) return;', live)
         self.assertIn('prevSentPos = lastPos;', live)
-        self.assertIn('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft im 20-s-Takt.', live)
+        self.assertIn('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', live)
         # Normalmodus unverändert: 10 s / 30 s bleiben als Basis erhalten
         self.assertIn('saverOn ? 20000 : 10000', live)
 
@@ -2503,5 +2503,7 @@ class WakeLockErneuerungTest(AppTestCase):
 
     def test_y_start_und_sparmodus_setzen_den_wunsch(self):
         live = self._live()
-        self.assertIn('if (!wakeWanted) setWakeWanted(true);          // Build 11-06y: Fahrt halten den Bildschirm an', live)
-        self.assertIn('setWakeWanted(true);                          // Build 11-06y: Sparmodus braucht das Display', live)
+        # Build ad: Die Fahrt setzt den Wunsch – aber NICHT, wenn Stromspar gewollt ist
+        # (dort ist ausdrücklich erlaubt, dass das Display ausgeht).
+        self.assertIn('if (!wakeWanted && !saverOn) setWakeWanted(true);', live)
+        self.assertNotIn('Sparmodus braucht das Display', live)

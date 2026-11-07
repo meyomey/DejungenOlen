@@ -48,6 +48,10 @@
   #live-status.sharing { background: #e2f3e8; color: #1d5c38; border-color: #b9e2c8; }
   #live-status.warning { background: #fff4d6; color: #6b4e00; border-color: #eeda9c; }
   #live-status.danger  { background: #fdecea; color: #8f1f14; border-color: #f3c1bb; }
+  /* Build ad: Solange der Hinweis an der Knopfleiste steht, weicht die Statuszeile –
+     sonst laege beides uebereinander (beide sitzen ueber den Hauptknoepfen). */
+  body.bar-hinweis-an #live-status { opacity: 0; }
+  #live-status { transition: opacity .15s; }
   /* Build ab: Der Kartenstil-Knopf sitzt ganz oben rechts (nur Symbol, 42 × 42, 6 px vom Rand).
      Damit er nicht auf dem Lizenzhinweis liegt, rückt der Hinweis ein Stück nach links –
      und zwar auf DIESER Seite auch, wenn er (statt oben rechts) unten sitzt. */
@@ -97,6 +101,9 @@
                         align-items: center; justify-content: center; line-height: 1; padding: 0; }
   #live-tools .lt-btn.on { background: var(--djo-navy); color: #fff; }
   #live-tools .lt-btn.warn { background: #b06a00; color: #fff; }
+  /* Build ad: Im Stromspar-Modus liegt das dunkle Overlay ueber der Karte. Die Symbolknoepfe
+     und die Knopfleiste bleiben trotzdem bedienbar – sonst kaeme man nicht mehr heraus. */
+  body.saver-on #live-tools { z-index: 4100; }
 
   details.live-info > summary { cursor: pointer; list-style: none; }
   details.live-info > summary::marker { content: ''; }
@@ -197,7 +204,8 @@
       <!-- Build 11-06n: Stromspar-Overlay – dunkel, aber Bildschirm bleibt AN (kein Entsperren nötig);
            Tippen irgendwo hellt 4 s lang auf, ✕ oben rechts beendet den Modus -->
       <div id="saver-dim" class="d-none">
-        <div class="saver-chip">🌙 Stromspar an – Tippen = kurz aufhellen · ✕ oben rechts = aus</div>
+        <div class="saver-chip">🌙 Stromspar an – das Display darf ausgehen,<br>die Aufzeichnung läuft weiter.<br>
+          <span class="saver-weg">Tippen = kurz aufhellen · ✕ oben rechts = aus</span></div>
         <button type="button" id="saver-off" onclick="setSaver(false)" aria-label="Stromspar-Modus beenden">✕</button>
       </div>
       <div id="live-map" data-map-guard="off" data-map-style-compact="1"></div>
@@ -228,7 +236,7 @@
           <button type="button" class="lt-btn" id="btn-wake" onclick="toggleWake()"
                   title="Bildschirm bleibt an – Doppeltipp auf die Karte schaltet es auch" aria-label="Bildschirm an"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"/></svg></button>
           <button type="button" class="lt-btn" id="btn-saver" onclick="setSaver(!saverOn)"
-                  title="Stromspar: Bildschirm bleibt an, wird aber dunkel" aria-label="Stromspar"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20.5 15.2A9 9 0 0 1 8.8 3.5a9 9 0 1 0 11.7 11.7z"/></svg></button>
+                  title="Stromspar: Display darf ausgehen – die Aufzeichnung läuft weiter (Akku sparen)" aria-label="Stromspar"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20.5 15.2A9 9 0 0 1 8.8 3.5a9 9 0 1 0 11.7 11.7z"/></svg></button>
         </div>
       </div>
     </div>
@@ -292,6 +300,45 @@ function updatePauseBtn() {
 let ownLatLng = null, ownMarker = null, accCircle = null, wakeLock = null, sentCount = 0,
     saverOn = false, saverPeekTimer = null;   // Build 11-06n: Stromspar-Modus
 let lastOwnAt = 0, ownAcc = null;                 // Build af: für „📷 Foto“ (frische Position ohne neue Abfrage)
+// Build ad: Punkte, die der Server noch nicht bestätigt hat. Sie überleben ein Einfrieren
+// der Seite (Bildschirm aus) und auch einen Neustart, weil sie in localStorage liegen.
+let gesichert = [];
+const GESICHERT_MAX = 200;                        // ~3 Std. Fahrt, danach zählt der älteste
+const SICHER_KEY = 'djo_nachsend_' + TOUR_ID + '_' + ME.id;
+function sicherSpeichern() {
+  try { localStorage.setItem(SICHER_KEY, JSON.stringify(gesichert)); } catch (e) {}
+}
+function sicherLaden() {
+  try {
+    const a = JSON.parse(localStorage.getItem(SICHER_KEY) || '[]');
+    if (Array.isArray(a)) gesichert = a.filter(x => x && x.lat != null && x.lng != null);
+  } catch (e) { gesichert = []; }
+}
+sicherLaden();
+// Nachsenden: schickt die gesicherten Punkte in Reihenfolge, sobald die Seite wieder wach ist.
+function sicherNachsenden() {
+  if (!gesichert.length || !sharing) return;
+  const offen = gesichert.slice(0, 20);
+  (async () => {
+    for (const g of offen) {
+      try {
+        const r = await fetch('/api/location/update', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({tour_id: TOUR_ID, lat: g.lat, lng: g.lng, accuracy: g.accuracy,
+                                speed: g.speed, heading: g.heading, paused: !!g.paused,
+                                resume: false, since: trailSince || 0})
+        });
+        if (!r.ok) break;
+        const d = await r.json().catch(() => ({}));
+        if (d.locations) render(d.locations);
+        if (d.trails) addTrails(d.trails);
+        const ix = gesichert.findIndex(x => x.id === g.id);
+        if (ix >= 0) { gesichert.splice(ix, 1); sicherSpeichern(); }
+      } catch (e) { break; }        // kein Netz – beim nächsten Aufwachen weiter
+    }
+    if (!gesichert.length) localStorage.removeItem(SICHER_KEY);
+  })();
+}
 
 // ── Karte, Strecke, Treffpunkt, Einkehr ──────────────────────────────────────────────────────
 const map = L.map('live-map', {zoomControl: true, attributionControl: false});
@@ -476,6 +523,7 @@ setInterval(poll, 15000);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     poll();
+    sicherNachsenden();                          // Build ad: was während des Einfrierens offen blieb
     if (sharing || following || saverOn) ensureWatch();
     if (wakeWanted) requestWakeLock();          // Build 11-06y: nach Tab-Wechsel/Sperren neu holen
     if (wakeWanted && wakeVideoOn && wakeVideo && wakeVideo.paused) tryVideoAgain();   // Build ab
@@ -500,7 +548,12 @@ function startShare() {
   updateShareBtn(); updatePauseBtn();
   setStatus('Standort wird ermittelt …', 'sharing');
   ensureWatch();
-  if (!wakeWanted) setWakeWanted(true);          // Build 11-06y: Fahrt halten den Bildschirm an
+  // Build ad: Beim Fahrtstart zuerst die Sicherung leeren – Punkte, die während eines
+  // Bildschirm-Aus nicht bestätigt wurden, gehen jetzt raus und fehlen nicht in der Spur.
+  setTimeout(sicherNachsenden, 1500);
+  // Build 11-06y: Fahrt hält den Bildschirm an. Build ad: NICHT, wenn Stromspar gewollt ist –
+  // dort ist ausdrücklich erlaubt, dass das Display ausgeht (die Aufzeichnung läuft weiter).
+  if (!wakeWanted && !saverOn) setWakeWanted(true);
 }
 function showRecHint() {   // Build q: Rückfrage deutlichsichtbar machen
   const el = document.getElementById('rec-hint');
@@ -643,7 +696,7 @@ setLiveGuard();                                       // Build 11-06w: Start ges
 window.addEventListener('resize', () => setLiveGuard());   // Build 11-06w: Drehen/Größe ändern → Guard neu bewerten
 // Kurze Rückmeldung direkt AUF der Karte (statt nur in der Statuszeile darüber)
 let _toastTimer = null;
-function mapToast(msg) {
+function mapToast(msg, dauer) {
   let t = document.getElementById('map-toast');
   if (!t) {
     t = document.createElement('div');
@@ -653,7 +706,30 @@ function mapToast(msg) {
   t.textContent = msg;
   t.classList.add('on');
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => t.classList.remove('on'), 2500);
+  _toastTimer = setTimeout(() => t.classList.remove('on'), dauer || 2500);
+}
+// Build ad: Rückmeldung dort zeigen, wo der Finger ist. Bisher erschien der Toast nur
+// oben auf der Karte – wer unten auf den Symbol-Knopf tippt, sah nichts.
+// Jetzt zusätzlich eine Leiste direkt über den Hauptknöpfen, gut lesbar, 4 s.
+let _barTimer = null;
+function barHinweis(msg, art) {
+  let b = document.getElementById('bar-hinweis');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'bar-hinweis';
+    const bar = document.getElementById('live-bar');
+    if (!bar) return;
+    bar.parentNode.insertBefore(b, bar);
+  }
+  b.className = 'bar-hinweis on' + (art ? ' ' + art : '');
+  b.textContent = msg;
+  // Die Statuszeile liegt an derselben Stelle – solange der Hinweis steht, tritt sie zurück.
+  document.body.classList.add('bar-hinweis-an');
+  clearTimeout(_barTimer);
+  _barTimer = setTimeout(function () {
+    b.classList.remove('on');
+    document.body.classList.remove('bar-hinweis-an');
+  }, 4000);
 }
 // Build 11-06aa: Die Symbol-Knöpfe auf der Karte nennen beim Antippen kurz ihren Namen –
 // ein nacktes Symbol ist unterwegs nicht immer eindeutig („wofür war das nochmal?“).
@@ -741,6 +817,18 @@ function onPos(pos) {
   }
   prevSentPos = lastPos;
   lastSent = now; lastPos = ownLatLng;
+  // Build ad: „Stromspar neu gedacht" – der Messpunkt wird ZUERST lokal gesichert.
+  // Geht der Bildschirm aus, friert der Browser die Seite ein: laufende fetch-Aufrufe
+  // brechen ab, und der Punkt wäre verloren. Deshalb liegt jeder Punkt im Speicher, bis
+  // der Server ihn bestätigt; beim Aufwachen wird nachgesendet. So darf das Display
+  // ausgehen, ohne dass die Aufzeichnung ein Loch bekommt.
+  const punkt = {lat: c.latitude, lng: c.longitude, accuracy: c.accuracy,
+                 speed: (c.speed != null && !isNaN(c.speed)) ? c.speed : null,
+                 heading: (c.heading != null && !isNaN(c.heading)) ? c.heading : null,
+                 paused: isPaused(), at: now, id: 'p' + now + Math.random().toString(36).slice(2, 7)};
+  gesichert.push(punkt);
+  if (gesichert.length > GESICHERT_MAX) gesichert.shift();
+  sicherSpeichern();
   fetch('/api/location/update', {
     method: 'POST', headers: {'Content-Type': 'application/json'}, keepalive: true,
     body: JSON.stringify({tour_id: TOUR_ID, lat: c.latitude, lng: c.longitude, accuracy: c.accuracy,
@@ -755,6 +843,8 @@ function onPos(pos) {
     if (r.status === 409) { stopShare(false, false); setStatus(d.error || 'Fahrt wurde beendet – zum Neustart neu laden.', 'warning'); return; }
     if (!r.ok) { setStatus('Server meldet HTTP ' + r.status + ' – wird weiter versucht.', 'warning'); return; }
     sentCount++;
+    const ix = gesichert.findIndex(g => g.id === punkt.id);
+    if (ix >= 0) { gesichert.splice(ix, 1); sicherSpeichern(); }
     if (d.locations) render(d.locations);
     if (d.trails) addTrails(d.trails);
     if (isPaused()) {
@@ -847,7 +937,7 @@ let wakeWanted = false, wakeTried = false, wakeErr = null;
 // hält den Bildschirm nur bei einem Video wach, das NICHT stummgeschaltet ist. Ein Video
 // ohne Tonspur (oder mit muted) bewirkt nichts – das war der Fehler in Build ab.
 // Keine externe Datei, kein Netz.
-const NOSLEEP_WEBM = 'data:video/webm;base64,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';
+const NOSLEEP_WEBM = 'data:video/webm;base64,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';
 let wakeVideo = null, wakeVideoOn = false;
 function wakeSupported() { return !!(navigator.wakeLock && navigator.wakeLock.request); }
 function wakeHeld() { return !!(wakeLock && !(wakeLock.released)); }
@@ -880,7 +970,14 @@ function setFallback(on) {
         // Video hält den Bildschirm NICHT wach. Die Tonspur ist absichtlich still
         // (2 kbit/s, unhörbar), damit niemand etwas hört und der Akku kaum belastet wird.
         wakeVideo.volume = 0.02;
-        wakeVideo.style.cssText = 'position:fixed;left:-2px;bottom:-2px;width:2px;height:2px;opacity:.01;pointer-events:none';
+        // Build ad: Entscheidend ist NICHT die Videogröße in Pixeln, sondern die Fläche im
+        // Fenster. Chromium gibt den „Video Wake Lock" nur, wenn das Video zu mindestens
+        // 20 % des Fensters zählt UND zu mindestens 75 % sichtbar ist
+        // (video_wake_lock.cc: kSizeThreshold = 0.2, kStrictVisibilityThreshold = 0.75).
+        // Mein 2×2-Video erfüllte das nie – deshalb ging der Bildschirm weiter aus.
+        // Jetzt: volle Fensterfläche, 1 % Deckkraft (unsichtbar), hinter dem Inhalt.
+        wakeVideo.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;' +
+          'opacity:.01;pointer-events:none;z-index:0;object-fit:cover;background:#000';
         const src = document.createElement('source');
         src.src = NOSLEEP_WEBM; src.type = 'video/webm';
         wakeVideo.appendChild(src);
@@ -907,6 +1004,8 @@ function setFallback(on) {
 }
 function wakeFehlerText() {
   if (document.hidden) return 'Seite ist gerade im Hintergrund';
+  if (wakeErr === 'video-zu-klein') return 'das Ersatz-Video ist nicht groß genug sichtbar (Browser verlangt mindestens 20 % Bildfläche)';
+  if (wakeErr === 'video-startet-nicht') return 'das Ersatz-Video startet nicht (Autoplay gesperrt)';
   if (wakeVideo && wakeVideo.error) return 'das Ersatz-Video wird blockiert (Code ' + wakeVideo.error.code + ')';
   if (wakeVideo && wakeVideo.paused && wakeVideoOn) return 'das Ersatz-Video startet nicht (Autoplay gesperrt)';
   if (wakeErr === 'kein-wakelock') return 'dieser Browser kennt die Wake-Lock-Schnittstelle nicht (z. B. iPhone vor iOS 16.4)';
@@ -929,7 +1028,9 @@ function wakeStatusText() {
 async function requestWakeLock() {
   wakeTried = true;
   if (!wakeWanted) return false;
-  if (wakeActive()) return true;
+  // Build ad: NICHT früh aussteigen, nur weil die API schon hält – das Video soll immer
+  // mitlaufen (zweiter, unabhängiger Weg). Nur wenn beide laufen, sind wir fertig.
+  if (wakeActive() && (!wakeVideo || !wakeVideo.paused) && (!wakeSupported() || wakeHeld())) return true;
   // 1) Wake-Lock-API (nur bei sichtbarer Seite erlaubt)
   if (wakeSupported() && !document.hidden) {
     try {
@@ -942,8 +1043,15 @@ async function requestWakeLock() {
         if (wakeWanted && !wakeActive()) setFallback(true);
         if (wakeWanted) refreshWakeUi();
       });
-      setFallback(false);              // API hält → Video aus (spart Akku)
+      // Build ad: Das Video bleibt AN, auch wenn die API den Lock „erteilt" hat.
+      // Grund: Verweigert das Betriebssystem den Lock (Akkusparmodus – bei Samsung üblich),
+      // sieht JavaScript das NICHT. Die Spezifikation sagt ausdrücklich, ein vom System
+      // abgelehnter Lock ist von einem erteilten nicht zu unterscheiden. Genau deshalb
+      // meldete die App „Bildschirm bleibt an", während der Bildschirm ausging.
+      // Zwei Wege gleichzeitig = doppelte Sicherheit (so machen es auch andere Apps).
+      setFallback(true);
       refreshWakeUi();
+      wakeVerify();
       return true;
     } catch (e) {
       wakeErr = (e && e.name) || 'Fehler';
@@ -954,17 +1062,12 @@ async function requestWakeLock() {
   }
   // 2) Video-Fallback – funktioniert auch dort, wo die API fehlt oder blockiert ist
   const ok2 = setFallback(true);
-  if (ok2) wakeErr = wakeSupported() ? (wakeErr + '-video') : 'video';
-  // Build ac: kurz nachprüfen, ob das Video WIRKLICH läuft – sonst ehrlich melden.
-  if (ok2) setTimeout(() => {
-    if (!wakeWanted) return;
-    if (!wakeActive()) {
-      mapToast('⚠️ Bildschirm wachhalten greift auf diesem Gerät nicht – bitte Bildschirmsperre im Gerät abschalten.');
-    }
-    refreshWakeUi();
-  }, 900);
+  if (ok2 && !wakeVideo) wakeErr = wakeSupported() ? (wakeErr + '-video') : 'video';
+  // Build ad: Nachprüfung übernimmt wakeVerify() – sie misst Fläche, Sichtbarkeit und
+  // Laufzeit und meldet ehrlich, wenn es nicht greift (früher: pauschales „greift nicht").
+  wakeVerify();
   refreshWakeUi();
-  return ok2;
+  return ok2 || wakeHeld();
 }
 async function setWakeWanted(on) {
   wakeWanted = !!on;
@@ -977,6 +1080,53 @@ function releaseWakeLock() {
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   setFallback(false);
 }
+// Build ad: NACHPRÜFUNG statt Hoffnung.
+// Wir können nicht abfragen, ob das Betriebssystem den Bildschirm wirklich anlässt – das
+// gibt keine Schnittstelle her. Prüfbar ist aber, ob UNSERE Mittel greifen:
+//   · läuft das Ersatz-Video (paused = false, readyState >= 2)?
+//   · ist es groß genug für Chromiums Video-Wake-Lock (≥ 20 % Fläche, ≥ 75 % sichtbar)?
+//   · ist der API-Lock noch da (nicht vom Browser freigegeben)?
+// Das Ergebnis landet sichtbar im Knopf: „geprüft" oder „unsicher".
+function wakeFacts() {
+  var f = {api: wakeHeld(), video: false, flaeche: 0, sichtbar: 0, gross: false, laeuft: false};
+  if (wakeVideo) {
+    f.laeuft = !wakeVideo.paused && wakeVideo.readyState >= 2;
+    var r = wakeVideo.getBoundingClientRect();
+    var vw = window.innerWidth || 1, vh = window.innerHeight || 1;
+    f.flaeche = Math.round((r.width * r.height) / (vw * vh) * 100);
+    // sichtbarer Anteil: Schnittmenge mit dem Fenster
+    var w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+    var h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+    f.sichtbar = Math.round((w * h) / (r.width * r.height || 1) * 100);
+    f.gross = f.flaeche >= 20 && f.sichtbar >= 75;
+    f.video = f.laeuft && f.gross;
+  }
+  f.ok = f.api || f.video;
+  return f;
+}
+// Kurz warten (Video braucht einen Moment), dann Zustand prüfen und ehrlich anzeigen.
+let _verifyTimer = null;
+function wakeVerify() {
+  clearTimeout(_verifyTimer);
+  _verifyTimer = setTimeout(function () {
+    const f = wakeFacts();
+    wakeLastFacts = f;
+    if (!f.ok) {
+      wakeErr = f.laeuft ? 'video-zu-klein' : 'video-startet-nicht';
+      const grund = f.laeuft ? 'Video zu klein oder verdeckt' : 'Video startet nicht';
+      barHinweis('⚠️ Bildschirm wachhalten greift hier nicht (' + grund + ').', 'warn');
+      mapToast('⚠️ Bildschirm wachhalten greift hier nicht (' + grund +
+               ') – bitte Bildschirmsperre im Gerät abschalten.', 6000);
+    } else {
+      wakeErr = null;
+      barHinweis('🔆 Bildschirm bleibt an – ' + (f.api ? 'Browser-Freigabe' : 'Video-Ersatz') + ', geprüft.', 'gut');
+      mapToast('🔆 Bildschirm bleibt an (' + (f.api ? 'Browser-Freigabe' : 'Video-Ersatz') + ', geprüft).');
+    }
+    refreshWakeUi();
+  }, 1200);
+}
+let wakeLastFacts = null;
+
 // Rückmeldung im Knopf: 🔆 = gewollt und gehalten · ◻️ = nicht möglich · 🌙 = Stromspar
 function refreshWakeUi() {
   const b = document.getElementById('btn-wake');
@@ -996,29 +1146,57 @@ function refreshWakeUi() {
 function toggleWake() {
   if (wakeWanted) {
     setWakeWanted(false);
+    barHinweis('🌙 Bildschirm darf wieder ausgehen.', 'gut');
     mapToast('🌙 Bildschirm darf wieder aus.');
     return;
   }
+  barHinweis('🔆 wird eingeschaltet …');
   setWakeWanted(true).then(ok => {
-    mapToast(ok ? '🔆 Bildschirm bleibt an.' : '⚠️ Bildschirm wachhalten nicht möglich: ' + wakeFehlerText() + '.');
+    const f = wakeLastFacts || wakeFacts();
+    if (ok && f.ok) {
+      barHinweis('🔆 Bildschirm bleibt an – ' + (f.api ? 'Freigabe erteilt' : 'über Video-Ersatz') + ', geprüft.', 'gut');
+      mapToast('🔆 Bildschirm bleibt an.');
+    } else {
+      barHinweis('⚠️ Geht auf diesem Gerät nicht: ' + wakeFehlerText() + '.', 'warn');
+      mapToast('⚠️ ' + wakeFehlerText() + '.', 6000);
+    }
   });
 }
 
-// ── Build 11-06n: Stromspar-Modus – Display bleibt AN, wird aber dunkel überzogen ───────────────
-// Das Display ist der größte Akku-Verbraucher bei der Aufzeichnung. Der Schalter legt ein
-// dunkles Overlay über die ganze Seite: kein Entsperren nötig, ein Tipp irgendwo hellt 4 s
-// lang auf („spähen“), ✕ beendet. Die GPS-/Sende-Logik der Aufzeichnung läuft unverändert
-// weiter; die Wake-Lock (Bildschirm an) wird im Sparmodus zusätzlich angefordert.
+// ── Stromspar-Modus – Build ad: neu gedacht ────────────────────────────────────────────────
+// ALT (bis Build ac): Der Sparmodus verlangte zusätzlich, dass das Display AN bleibt. Das
+// kostet am meisten Akku, und das Betriebssystem setzt sich darüber ohnehin hinweg – es war
+// also ein Versprechen, das die App nicht halten konnte.
+// NEU: Das Display DARF ausgehen. Entscheidend ist, dass kein Messpunkt verloren geht:
+// jeder Punkt wird vor dem Senden lokal gesichert (gesichert/sicherNachsenden) und nach dem
+// Aufwachen nachgesendet. Das dunkle Overlay bleibt als Sichtschutz und zum Stromsparen;
+// ein Tipp hellt 4 s lang auf („spähen"), ✕ beendet. Wer das Display anlassen will, nimmt
+// den Sonnen-Knopf (🔆) – beide Schalter sind jetzt unabhängig voneinander.
 async function setSaver(on) {
   saverOn = on;
   const dim = document.getElementById('saver-dim');
   const b = document.getElementById('btn-saver');
   if (dim) { dim.classList.toggle('d-none', !on); if (on) dim.classList.remove('saver-peek'); }
+  document.body.classList.toggle('saver-on', !!on);
+  // Build ad: Das dunkle Overlay endet oberhalb der Knopfleiste – so bleibt sie bedienbar.
+  if (on) {
+    const bar = document.getElementById('live-bar');
+    const h = bar ? Math.round(bar.getBoundingClientRect().height + parseInt(getComputedStyle(bar).bottom || 0, 10)) : 0;
+    document.documentElement.style.setProperty('--saver-frei', (h ? h + 58 : 0) + 'px');
+  } else {
+    document.documentElement.style.removeProperty('--saver-frei');
+  }
   if (b) { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   if (on) {
-    setWakeWanted(true);                          // Build 11-06y: Sparmodus braucht das Display
-    setStatus('🌙 Stromspar an – Display dunkel, Aufzeichnung läuft im 20-s-Takt. Tippen = kurz aufhellen.', 'sharing');
+    // Build ad: Stromspar neu gedacht.
+    // Alt: „Stromspar" verlangte zusätzlich, dass das Display AN bleibt – das kostet am
+    // meisten Akku und ließ sich vom Betriebssystem ohnehin nicht erzwingen.
+    // Neu: das Display DARF ausgehen. Wichtig ist nur, dass die Aufzeichnung weiterläuft –
+    // dafür wird jeder Messpunkt vor dem Senden lokal gesichert (gesichert/sicherNachsenden).
+    // Wer das Display anlassen will, nimmt den Sonnen-Knopf (🔆) – die beiden sind getrennt.
     clearTimeout(saverPeekTimer);
+    setStatus('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt. Tippen = kurz aufhellen.', 'sharing');
+    barHinweis('🌙 Stromspar an – das Display darf jetzt ausgehen. Die Aufzeichnung läuft weiter.', 'gut');
   } else if (wakeWanted) {
     requestWakeLock();
     setStatus('🌙 Stromspar aus.', 'sharing');
@@ -1066,6 +1244,7 @@ setInterval(() => {
   // Video ein; stockt das Video (Energiesparmodus), wird es neu gestartet.
   if (document.hidden) return;
   if (wakeVideoOn && wakeVideo && wakeVideo.paused) tryVideoAgain();
+  if (gesichert.length) sicherNachsenden();                    // Build ad: Sicherung leeren
   if (wakeWanted && !wakeActive()) requestWakeLock();          // Build 11-06y: Erneuerung
   else if ((sharing || following || saverOn) && !wakeActive()) requestWakeLock();
 }, 20000);
