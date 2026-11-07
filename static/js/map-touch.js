@@ -28,12 +28,31 @@
 
     var hint = box.dataset.mapGuardHint ||
                '<i class="bi bi-hand-index me-1"></i>Karte zum Verschieben antippen';   // Build 11-06q: eindeutig (bezog sich vorher mehr auf die Tour als auf die Karte)
+    // Build aq: Der Hinweis sass MITTIG und verdeckte genau die Kartenmitte – dort, wo man
+    // hinschaut („Das stoert mich, es liegt in der Mitte. Sollte vielleicht weiter unten
+    // liegen?"). Jetzt unten in der Mitte, ueber der Quellenangabe: oben links ist der Zoom,
+    // oben rechts der Kartenstil-Knopf, unten rechts die Quellenangabe – unten in der Mitte
+    // ist die einzige Ecke, die frei bleibt.
+    //
+    // Die Karten sind sehr unterschiedlich hoch (gemessen: 100 px auf der Startseite,
+    // 460 px auf der Tourseite, 624 px auf der Karten-Seite). Auf einer 100-px-Karte waere
+    // ein 36-px-Hinweis am unteren Rand fast die halbe Karte – deshalb bei niedrigen Karten
+    // kleinere Schrift und weniger Innenabstand (unter 140 px: .72rem / 3px 9px,
+    // unter 200 px: .78rem / 5px 12px).
+    var h = box.getBoundingClientRect().height || 200;
+    var klein  = h < 140;
+    var mittel = !klein && h < 200;
+    var schrift = klein ? '.72rem' : (mittel ? '.78rem' : '.85rem');
+    var innen   = klein ? '3px 9px' : (mittel ? '5px 12px' : '6px 14px');
+    var abstand = klein ? '4px' : '6px';
     var overlay = document.createElement('div');
     overlay.className = 'mt-guard-overlay';
     overlay.style.cssText = 'position:absolute;inset:0;z-index:1000;display:flex;' +
-      'align-items:center;justify-content:center;cursor:pointer;border-radius:inherit';
-    overlay.innerHTML = '<div style="background:rgba(0,0,0,.45);color:#fff;' +
-      'padding:8px 16px;border-radius:20px;font-size:.85rem;pointer-events:none">' + hint + '</div>';
+      'align-items:flex-end;justify-content:center;cursor:pointer;border-radius:inherit';
+    overlay.innerHTML = '<div style="background:rgba(0,0,0,.5);color:#fff;' +
+      'padding:' + innen + ';border-radius:20px;font-size:' + schrift + ';' +
+      'line-height:1.2;pointer-events:none;margin-bottom:calc(' + abstand + ' + 24px);' +
+      'max-width:calc(100% - 88px);text-align:center">' + hint + '</div>';
 
     var lockBtn = document.createElement('button');
     lockBtn.type = 'button';

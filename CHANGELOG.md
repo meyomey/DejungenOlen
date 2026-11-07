@@ -1,4 +1,29 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build aq) – Kartenhinweis sitzt unten, nicht mehr in der Kartenmitte
+- **Rückmeldung:** „Bei den anderen Karten stört mich das ‚Karte zum Verschieben antippen' in der Mitte.
+  Sollte vielleicht weiter unten liegen oder was meinst du?"
+- **Zustimmung – und gemessen, wie störend es war:** Der Hinweis lag exakt mittig (`align-items: center`)
+  und verdeckte die Kartenmitte, also genau die Stelle, auf die man beim Draufschauen zielt.
+- **Geändert:** Hinweis **unten in der Mitte**, über der Quellenangabe. Das ist die einzige freie Ecke –
+  oben links sitzt der Zoom, oben rechts der Kartenstil-Knopf, unten rechts die OSM-Quellenangabe.
+- **Schrift passt sich der Kartenhöhe an**, weil die Karten sehr unterschiedlich hoch sind:
+
+  | Karte | Höhe | Hinweis | Platz darunter |
+  |---|---|---|---|
+  | Startseite (Vorschau) | 100 px | 20 px, .72 rem | 28 px |
+  | Tourenliste | 150/160 px | 25 px, .78 rem | 30 px |
+  | Tourseite | 460 px | 28 px, .85 rem | 31 px |
+  | Karten-Seite | 624 px | 28 px, .85 rem | 30 px |
+  | Gastro | 360 px | 28 px, .85 rem | 30 px |
+
+  Vorher war der Hinweis auf der 100-px-Vorschau **ein Drittel der Kartenhöhe**.
+- **Geprüft:** auf allen fünf Karten kein Konflikt mit Zoom, Kartenstil-Knopf, 🔒 oder Quellenangabe;
+  Antippen entsperrt weiterhin, 🔒 sperrt wieder; rechts bleiben 88 px frei für den Schloss-Knopf.
+- 3 neue Tests (393 gesamt), `node --check` OK.
+
+Geänderte Dateien: `static/js/map-touch.js`, `templates/hilfe.html`, `app.py`,
+`tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ap) – Vollbild-Knopf zeigt keine ✕ mehr
 - **Rückmeldung:** „Das X irritiert. Man denkt hier beendet man was komplett."
 - **Geändert:** Im Vollbild ersetzte der Knopf sein Symbol durch ein großes **✕**. Jetzt ist es

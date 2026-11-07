@@ -606,3 +606,36 @@ class VollbildSymbolTest(unittest.TestCase):
         live = _live()
         self.assertIn("fsBtn.title = on ? 'Vollbild aus' : 'Vollbild';", live)
         self.assertIn("fsBtn.setAttribute('aria-label', on ? 'Vollbild aus' : 'Vollbild');", live)
+
+
+class KartenHinweisUntenTest(unittest.TestCase):
+    """Build aq: „Bei den anderen Karten stört mich das ‚Karte zum Verschieben antippen'
+    in der Mitte. Sollte vielleicht weiter unten liegen?"
+
+    Der Hinweis lag mittig (`align-items:center`) und verdeckte genau die Kartenmitte.
+    Oben links ist der Zoom, oben rechts der Kartenstil-Knopf, unten rechts die
+    Quellenangabe – frei bleibt nur unten in der Mitte. Gemessen nach dem Umbau:
+    100-px-Karte: Hinweis 20 px hoch, 28 px Platz darunter; 624-px-Karte: 28 px hoch,
+    30 px Platz; nie ein Konflikt mit Zoom, Stil, Schloss oder Quellenangabe.
+    """
+
+    def _js(self):
+        return open(os.path.join(ROOT, 'static', 'js', 'map-touch.js'), encoding='utf-8').read()
+
+    def test_hinweis_steht_unten_nicht_mittig(self):
+        js = self._js()
+        self.assertIn("'align-items:flex-end;justify-content:center;cursor:pointer;border-radius:inherit'", js)
+        self.assertNotIn('align-items:center;justify-content:center;cursor:pointer', js)
+
+    def test_schrift_groesse_passt_sich_der_kartenhoehe_an(self):
+        js = self._js()
+        # sehr niedrige Karten (Startseite: 100 px) bekommen kleineren Text
+        self.assertIn('var klein  = h < 140;', js)
+        self.assertIn('var mittel = !klein && h < 200;', js)
+        self.assertIn("var schrift = klein ? '.72rem' : (mittel ? '.78rem' : '.85rem');", js)
+        self.assertIn("var abstand = klein ? '4px' : '6px';", js)
+
+    def test_kein_ueberlauf_auf_schmalen_karten(self):
+        js = self._js()
+        # rechts bleibt Platz fuer den Schloss-Knopf
+        self.assertIn('max-width:calc(100% - 88px)', js)
