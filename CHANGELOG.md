@@ -1,4 +1,20 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ag) – Einmal tippen dunkelt jetzt jedes Mal wieder ab
+- **Rückmeldung:** „Einmal tippen funktioniert nur einmal. Wenn man erneut nach einer längeren Zeit auf den abgedunkelten Screen einmal tippt, bleibt er immer an."
+- **Ursache (klarer Fehler in Build af):** `saverTap()` hellte direkt auf (`classList.add('saver-peek')`), setzte aber **keinen Zeitgeber zum Zurückdunkeln**. Der 4-Sekunden-Timer lebte nur in `saverStufe()` und lief einmal beim Einschalten des Sparmodus. Nach der ersten Aufhellung blieb deshalb jeder weitere Einzeltipp für immer hell.
+- **Behoben:** Es gibt jetzt genau **eine** Stelle, die den kurzen Blick steuert – `saverBlick()`. Sie setzt bei **jedem** Tipp beide Timer neu: Abdunkeln nach 4 s, Hinweis weg nach 2 s. `saverStufe()` macht nur noch den Zustandswechsel dunkel ↔ dauerhaft hell.
+- **Zweiter Fehler gleich mit behoben:** Im dauerhaft hellen Zustand setzte der Einzeltipp keinen Warte-Timer. Dadurch wurde der nächste Tipp wieder als „erster" gezählt – **das Zurückschalten per Doppeltipp ging verloren**. Die 300-ms-Erkennung ist jetzt in beiden Zuständen gleich scharf.
+- **Im Browser belegt** (Chromium, Smartphone-Profil, echte Tap-Ereignisse):
+  - Drei Runden hintereinander: Tipp → hell (`0.18`), nach 9 s Wartezeit → wieder dunkel (`0.86`). Alle drei „OK".
+  - Doppeltipp (120 ms Abstand) → dauerhaft hell, bleibt auch nach 6 s offen.
+  - Einzeltipp im hellen Zustand → bleibt hell (kein versehentliches Abdunkeln).
+  - Doppeltipp → zurück auf dunkel (`0.86`).
+  - Erneuter Einzeltipp nach 6 s → hell, nach 4,5 s wieder dunkel. **Genau der gemeldete Fall.**
+- 4 neue Tests (358 gesamt), py_compile und JS-Syntax OK.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `templates/base.html`,
+`tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build af) – Stromspar mit zwei Stufen, Hinweis versperrt die Karte nicht mehr
 - **Gute Nachricht vom Gerät:** „Der Bildschirm bleibt 40 s an, vom Gerät bestätigt." Der Selbsttest aus Build ae funktioniert also – das Wachhalten hält auf dem S23 und die Meldung ist belegt statt behauptet.
 - **Wunsch:** „Wenn der Stromsparen aktiv ist, soll bei einmal tippen das Display kurz angehen um kurz schauen zu können und bei zweimal tippen soll das Display anbleiben. Wenn man erneut zweimal tippt, wieder in Stromsparen gehen."

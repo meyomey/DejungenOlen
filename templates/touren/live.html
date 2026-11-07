@@ -1236,6 +1236,7 @@ async function setSaver(on) {
     setStatus('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', 'sharing');
     barHinweis('🌙 Stromspar an – das Display darf jetzt ausgehen. Einmal tippen = kurz schauen, zweimal = dauerhaft hell.', 'gut');
     saverStufe(false);                        // Build af: frisch eingeschaltet = dunkel
+    saverBlick();                             // Build ag: kurz zeigen, dass es dunkel ist
   } else {
     saverStufe(false);
     if (dim) { dim.classList.add('d-none'); dim.classList.remove('saver-off', 'saver-peek', 'saver-tipp'); }
@@ -1264,20 +1265,8 @@ function saverStufe(hell) {
   clearTimeout(saverPeekTimer);
   clearTimeout(saverTapTimer);
   clearTimeout(saverHintTimer);
-  if (saverOn && !saverHell) {
-    // Nach dem kurzen Blick wieder dunkel.
-    saverPeekTimer = setTimeout(() => {
-      const d = document.getElementById('saver-dim');
-      if (d && !saverHell) d.classList.remove('saver-peek');
-    }, 4000);
-    // Build af: Der Hinweis wird schon nach 2 s ausgeblendet – er stand der Karte im Weg.
-    // Beim Aufwachen muss man ihn einmal kurz sehen können, danach ist die Karte frei.
-    clearTimeout(saverHintTimer);
-    saverHintTimer = setTimeout(() => {
-      const d = document.getElementById('saver-dim');
-      if (d && !saverHell) d.classList.add('saver-tipp');
-    }, 2000);
-  }
+  // Build ag: Den Blick (4 s hell, Hinweis nach 2 s weg) macht saverBlick() – an EINER
+  // Stelle. Hier bleibt nur der Zustandswechsel dunkel↔dauerhaft hell.
   const b = document.getElementById('btn-saver');
   if (b) {
     b.classList.toggle('on', saverOn);
@@ -1297,26 +1286,61 @@ function refreshSaverChip() {
     : 'Einmal tippen = kurz schauen · zweimal tippen = dauerhaft hell · ✕ = aus';
 }
 
+// Build ag: Der kurze Blick muss JEDES MAL wieder zurückdunkeln.
+// Fehler in Build af: saverTap() setzte die Aufhellung direkt, aber ohne Zeitgeber zum
+// Zurückdunkeln – der 4-s-Timer lebte nur in saverStufe() und lief einmal beim Einschalten.
+// Deshalb blieb der Bildschirm beim zweiten Einzeltipp für immer hell.
+// Jetzt gibt es genau EINE Stelle, die den Blick steuert: saverBlick().
+function saverBlick() {
+  const dim = document.getElementById('saver-dim');
+  if (!dim) return;
+  dim.classList.add('saver-peek');
+  dim.classList.remove('saver-tipp');        // Hinweis kurz zeigen (schmaler Streifen)
+  clearTimeout(saverPeekTimer);
+  saverPeekTimer = setTimeout(() => {
+    const d = document.getElementById('saver-dim');
+    // Nur zurückdunkeln, wenn inzwischen nicht dauerhaft hell gewählt wurde.
+    if (d && !saverHell) d.classList.remove('saver-peek');
+  }, 4000);
+  clearTimeout(saverHintTimer);
+  saverHintTimer = setTimeout(() => {
+    const d = document.getElementById('saver-dim');
+    if (d && !saverHell) d.classList.add('saver-tipp');     // Hinweis weg, Karte frei
+  }, 2000);
+}
+
 // Einmal vs. zweimal: Der erste Tipp wartet kurz, ob ein zweiter folgt (Doppeltipp-Zoom
 // von Leaflet liegt darunter und ist hier ohnehin abgedunkelt).
+// Build ag: Die Doppeltipp-Erkennung läuft fuer BEIDE Zustände gleich.
+// Fehler in der ersten Fassung: Im dauerhaft hellen Zustand setzte der Einzeltipp keinen
+// Warte-Timer – der nächste Tipp wurde dann wieder als „erster" gezählt, und das Zurück-
+// schalten per Doppeltipp ging verloren.
 function saverTap() {
   if (!saverOn) return;
-  const dim = document.getElementById('saver-dim');
   if (saverTapTimer) {                       // zweiter Tipp innerhalb der Wartezeit
     clearTimeout(saverTapTimer);
     saverTapTimer = null;
+    clearTimeout(saverPeekTimer);            // Blick-Timer nicht in den Hell-Zustand tragen
     saverStufe(!saverHell);
     return;
   }
-  // erster Tipp: sofort kurz aufhellen (damit man gleich etwas sieht) …
-  if (!saverHell && dim) dim.classList.add('saver-peek');
-  saverTapTimer = setTimeout(() => {
-    saverTapTimer = null;
+  // Wartezeit immer scharf machen – egal in welchem Zustand.
+  saverTapTimer = setTimeout(() => { saverTapTimer = null; }, 300);
+  if (saverHell) {
+    // Dauerhaft hell ist schon hell – ein Einzeltipp sagt nur, wie man zurückkommt.
+    const dim = document.getElementById('saver-dim');
     if (dim) {
-      dim.classList.add('saver-peek');
-      dim.classList.add('saver-tipp');       // blendet den Hinweis nach 2 s aus
+      dim.classList.remove('saver-tipp');
+      clearTimeout(saverHintTimer);
+      saverHintTimer = setTimeout(() => {
+        const d = document.getElementById('saver-dim');
+        if (d) d.classList.add('saver-tipp');
+      }, 2000);
     }
-  }, 300);
+    return;
+  }
+  // erster Tipp im dunklen Zustand: sofort kurz aufhellen (damit man gleich etwas sieht)
+  saverBlick();
 }
 
 document.getElementById('saver-dim').addEventListener('click', e => {

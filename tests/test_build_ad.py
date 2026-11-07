@@ -248,3 +248,43 @@ class StromsparZweiStufenTest(unittest.TestCase):
         self.assertIn('#saver-dim.saver-tipp .saver-chip { opacity: 0; }', css)
         # Hinweis sitzt über der Leiste, nicht auf der Karte
         self.assertIn('padding-bottom: calc(122px + env(safe-area-inset-bottom));', css)
+
+
+class StromsparBlickJedesMalTest(unittest.TestCase):
+    """Build ag: „Einmal tippen funktioniert nur einmal. Wenn man erneut nach einer
+    längeren Zeit auf den abgedunkelten Screen einmal tippt, bleibt er immer an."
+
+    Ursache: saverTap() setzte die Aufhellung direkt (`classList.add('saver-peek')`), aber
+    ohne Zeitgeber zum Zurückdunkeln. Der 4-s-Timer lebte nur in saverStufe() und lief
+    einmal beim Einschalten. Danach blieb der Bildschirm dauerhaft hell.
+    Jetzt gibt es genau eine Stelle, die den Blick steuert (saverBlick) – sie setzt BEIDE
+    Timer bei jedem Tipp neu.
+    """
+
+    def test_blick_setzt_immer_beide_timer(self):
+        live = _live()
+        self.assertIn('function saverBlick()', live)
+        block = live.split('function saverBlick()', 1)[1].split('\n}', 1)[0]
+        self.assertIn('saverPeekTimer = setTimeout', block)     # zurückdunkeln nach 4 s
+        self.assertIn('saverHintTimer = setTimeout', block)     # Hinweis weg nach 2 s
+        self.assertIn('}, 4000);', block)
+        self.assertIn('}, 2000);', block)
+
+    def test_einzeltipp_nutzt_die_gemeinsame_stelle(self):
+        live = _live()
+        tap = live.split('function saverTap()', 1)[1].split('\n}', 1)[0]
+        self.assertIn('saverBlick();', tap)
+        # der alte Fehler: direktes Aufhellen ohne Timer darf nicht zurückkommen
+        self.assertNotIn("if (!saverHell && dim) dim.classList.add('saver-peek');", live)
+
+    def test_doppeltipp_in_beiden_zustaenden(self):
+        live = _live()
+        tap = live.split('function saverTap()', 1)[1].split('\n}', 1)[0]
+        # die Wartezeit wird IMMER scharf gemacht – auch im hellen Zustand
+        self.assertIn("saverTapTimer = setTimeout(() => { saverTapTimer = null; }, 300);", tap)
+        self.assertIn('saverStufe(!saverHell);', tap)
+
+    def test_zurueckdunkeln_nur_wenn_nicht_hell(self):
+        live = _live()
+        block = live.split('function saverBlick()', 1)[1].split('\n}', 1)[0]
+        self.assertIn('if (d && !saverHell) d.classList.remove(\'saver-peek\');', block)
