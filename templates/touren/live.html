@@ -580,10 +580,15 @@ function addTrails(obj) {
   });
   updateTrailKm();          // Build au: die gefahrene Strecke mitwachsen lassen
 }
-addTrails(TRAILS);
-
+// Build aw: ACHTUNG Reihenfolge. Build au hatte addTrails(TRAILS) HIER stehen und die
+// km-Logik darunter – addTrails() ruft updateTrailKm() auf, das auf `trailKm` und `SVG_RAD`
+// zugreift. Beide sind `const` und waren noch nicht initialisiert:
+//   ReferenceError: Cannot access 'trailKm' before initialization
+// Damit brach das GESAMTE Skript ab, sobald Spurpunkte vorhanden waren (also sobald man
+// gefahren war) – „Fahrt starten" tat nichts, der Knopf blieb gruen, keine Meldung. Genau
+// das war die Meldung. Jetzt steht die km-Logik VOR dem ersten addTrails().
+//
 // Build au: Zurueckgelegte Strecke je Person, live mitwachsend.
-// „kann man die zurueckgelegte Route auch schon in der Live Karte anzeigen lassen?"
 // Die Spur wurde schon gezeichnet (addTrails), aber niemand konnte sehen, WIE VIEL man
 // geschafft hat. Die Zahl steht sonst erst nach der Fahrt auf der Tourseite (dort aus
 // _live_track_summaries). Hier wird sie aus denselben Punkten mitgerechnet – pro Person,
@@ -634,6 +639,10 @@ function updateTrailKm() {
     if (el && st && st.m >= 50) el.textContent = ' · ' + fmtKm(Math.round(st.m)) + ' km';
   });
 }
+
+// Build aw: JETZT erst die vorhandenen Spuren zeichnen – nach der km-Logik, damit
+// addTrails() nicht auf noch nicht initialisierte consts zugreift (siehe Kommentar oben).
+addTrails(TRAILS);
 
 // ── Polling (für alle Zuschauer) ──────────────────────────────────────────────────────────────
 function poll() {

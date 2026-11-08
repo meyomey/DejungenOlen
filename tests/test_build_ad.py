@@ -916,3 +916,78 @@ class FahrtStartFunktioniertTest(unittest.TestCase):
         live = _live()
         # doppelte Absicherung: auch wenn das disabled-Attribut fehlte, bricht startShare ab
         self.assertIn('if (!CAN_SHARE) return;', live)
+
+
+class SkriptReihenfolgeTest(unittest.TestCase):
+    """Build aw: „Der grüne Button Fahrt starten bleibt weiterhin grün nach Drücken.
+    Es passiert nichts. Eine Meldung sehe ich auch nicht."
+
+    Das war ein Fehler aus Build au, den ich selbst eingebaut hatte: `addTrails(TRAILS)`
+    stand VOR `const trailKm` / `const SVG_RAD`. `addTrails()` ruft `updateTrailKm()` auf,
+    das beide benutzt – bei `const` gilt die Temporal Dead Zone:
+
+        ReferenceError: Cannot access 'trailKm' before initialization
+
+    Damit brach das **gesamte** Skript ab, sobald Spurpunkte vorhanden waren (also nach dem
+    ersten Fahren oder wenn jemand anderes gefahren war). Alles danach – `toggleShare`,
+    `startShare`, `setLiveGuard`, sämtliche Klick-Handler – wurde nie registriert.
+    Deshalb blieb der Knopf grün und nichts geschah.
+
+    Warum es durchgerutscht ist: mein Test rief `addTrails()` nur mit **leerer** Spur auf;
+    die Schleife lief nie, `updateTrailKm()` wurde nie erreicht. Im Browser mit vorhandenen
+    Punkten schlug es sofort zu. Diese Klasse prüft jetzt beide Fälle.
+    """
+
+    def _js(self):
+        live = _live()
+        return live.split('<script>', 1)[1].split('</script>', 1)[0]
+
+    @staticmethod
+    def _zeile(js, muster):
+        """Erste Zeile mit dem Muster – Kommentare zählen nicht mit."""
+        for i, z in enumerate(js.split('\n')):
+            if muster in z.split('//')[0]:
+                return i
+        return -1
+
+    def test_km_logik_steht_vor_dem_ersten_addtrails(self):
+        js = self._js()
+        aufruf = self._zeile(js, 'addTrails(TRAILS)')
+        trail_km = self._zeile(js, 'const trailKm')
+        svg_rad = self._zeile(js, 'const SVG_RAD')
+        self.assertGreater(aufruf, 0, 'addTrails(TRAILS) fehlt')
+        self.assertGreater(trail_km, 0)
+        self.assertGreater(svg_rad, 0)
+        self.assertLess(trail_km, aufruf,
+                        'const trailKm muss VOR addTrails(TRAILS) stehen (Temporal Dead Zone)')
+        self.assertLess(svg_rad, aufruf,
+                        'const SVG_RAD muss VOR addTrails(TRAILS) stehen (Temporal Dead Zone)')
+
+    def test_update_trail_km_nutzt_beide_konstanten(self):
+        js = self._js()
+        block = js.split('function updateTrailKm()', 1)[1].split('\n}', 1)[0]
+        # updateTrailKm() greift ueber trailStand() auf trailKm zu und setzt SVG_RAD ein
+        self.assertIn('trailStand(', block)
+        self.assertIn('SVG_RAD', block)
+        stand = js.split('function trailStand(uid)', 1)[1].split('\n}', 1)[0]
+        self.assertIn('trailKm[uid]', stand)
+        # und addTrails ruft updateTrailKm auf -> genau diese Kette brach
+        add = js.split('function addTrails(obj)', 1)[1].split('\n}', 1)[0]
+        self.assertIn('updateTrailKm();', add)
+
+    def test_km_konstanten_werden_nirgends_vorher_benutzt(self):
+        """Gezielter Waechter statt Parser: die beiden Konstanten, die den Fehler ausloesten,
+        duerfen VOR ihrer Definition im Code nicht vorkommen. Ein allgemeiner Parser ueber
+        das ganze Skript verwechselt lokale Variablen in Funktionen mit globalen consts
+        (gemessen: 5 Fehlalarme) - hier zaehlt nur der reale Fehlerfall.
+        """
+        import re
+        js = self._js()
+        for name in ('trailKm', 'SVG_RAD'):
+            defn = self._zeile(js, 'const ' + name)
+            self.assertGreater(defn, 0, f'const {name} fehlt')
+            davor = js.split('\n')[:defn]
+            treffer = [f'Zeile {i+1}: {z.strip()[:60]}'
+                       for i, z in enumerate(davor)
+                       if re.search(r'(?<![\w.])' + re.escape(name) + r'(?![\w:])', z.split('//')[0])]
+            self.assertEqual(treffer, [], f'{name} wird vor seiner Definition benutzt: {treffer[:3]}')

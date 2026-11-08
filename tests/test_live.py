@@ -190,3 +190,51 @@ class LiveTest(AppTestCase):
         self.assertIn('Gruppen-Karte</a>', html)
         self.assertNotIn('Live-Karte</a></li>', html)
         self.assertIn('Gruppen-Karte', self.get_html('/hilfe'))
+
+class LiveSkriptReihenfolgeTest(AppTestCase):
+    """Build aw: Die Seite muss auch MIT vorhandenen Spurpunkten fehlerfrei laden.
+
+    Der Fehler aus Build au: `addTrails(TRAILS)` stand vor `const trailKm`, was bei
+    vorhandenen Spurpunkten `ReferenceError: Cannot access 'trailKm' before initialization`
+    auslöste. Das brach das ganze Skript ab – „Fahrt starten" tat nichts, der Knopf blieb
+    grün, keine Meldung. Statisch war das schwer zu fassen, deshalb prüft dieser Test die
+    gerenderte Seite mit echten Spurpunkten.
+    """
+
+    def test_live_mit_spurpunkten_ohne_reihenfolgefehler(self):
+        import datetime as dt
+        import re as _re
+        self.login_org()
+        with app.app_context():
+            t = db.session.get(M.Tour, self.t_plan_id)
+            base = dt.datetime.utcnow() - dt.timedelta(minutes=30)
+            for i in range(6):
+                db.session.add(M.LiveTrackPoint(
+                    tour_id=t.id, user_id=self.org_id,
+                    lat=53.55 + i * 0.0008, lng=9.99 + i * 0.0012, accuracy=8,
+                    recorded_at=base + dt.timedelta(seconds=30 * i)))
+            db.session.commit()
+
+        html = self.get_html(f'/touren/{self.t_plan_id}/live')
+        m = _re.search(r'const TRAILS\s*=\s*(\{.*?\});', html, _re.S)
+        self.assertIsNotNone(m, 'TRAILS fehlt im HTML')
+        self.assertRegex(m.group(1), r'"\d+": \[\[53\.5')      # Punkte sind wirklich da
+        # Nur echte Code-Zeilen zaehlen – Kommentare enthalten dieselben Woerter und
+        # haben den Test beim ersten Versuch fehlschlagen lassen (Treffer im Kommentar).
+        # Den Block nehmen, der die Spur-Logik enthaelt (die Seite hat mehrere <script>)
+        js = next(b.split('</script>', 1)[0] for b in html.split('<script>')[1:]
+                  if 'addTrails(TRAILS)' in b)
+        zeilen = [z.split('//')[0] for z in js.split('\n')]
+
+        def erste(muster):
+            return next((i for i, z in enumerate(zeilen) if muster in z), -1)
+
+        i_km = erste('const trailKm')
+        i_svg = erste('const SVG_RAD')
+        i_add = erste('addTrails(TRAILS)')
+        self.assertGreater(i_km, 0)
+        self.assertGreater(i_svg, 0)
+        self.assertGreater(i_add, 0)
+        # VOR dem Zeichnen definiert – sonst Temporal Dead Zone
+        self.assertLess(i_km, i_add, 'const trailKm nach addTrails(TRAILS)')
+        self.assertLess(i_svg, i_add, 'const SVG_RAD nach addTrails(TRAILS)')

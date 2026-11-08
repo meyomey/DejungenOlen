@@ -1,4 +1,40 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build aw) – „Fahrt starten" tat nichts: Skript brach ab
+- **Meldung:** „Der grüne Button ‚Fahrt starten' bleibt weiterhin grün nach Drücken. Es passiert
+  nichts. Eine Meldung sehe ich auch nicht."
+- **Es war diesmal kein Anzeigeproblem — das Skript brach ab.** Ursache ist ein Fehler, den
+  **Build au** eingebaut hat (also meine eigene Änderung von vorhin):
+
+  ```
+  ReferenceError: Cannot access 'trailKm' before initialization
+  ```
+
+  `addTrails(TRAILS)` stand **vor** `const trailKm` / `const SVG_RAD`. `addTrails()` ruft
+  `updateTrailKm()` auf, das beide Konstanten benutzt — bei `const` gilt die Temporal Dead
+  Zone, der Zugriff wirft. Damit stand das **komplette** Skript: `toggleShare`, `startShare`,
+  `setLiveGuard`, alle Klick-Handler wurden nie registriert. Deshalb blieb der Knopf grün,
+  es kam keine Meldung, und der Stromspar-/Sperr-Knopf reagierte ebenfalls nicht.
+
+  **Der Auslöser war eine vorhandene Aufzeichnung**: bei leerer Spur lief die Schleife in
+  `addTrails()` nie, `updateTrailKm()` wurde nie erreicht — deshalb fiel es beim Testen mit
+  frischer Datenbank nicht auf. Sobald Spurpunkte da waren (nach dem ersten Fahren oder wenn
+  jemand anderes gefahren war), schlug es sofort zu.
+
+- **Behoben:** Die km-Logik steht jetzt vor dem ersten `addTrails()`. Nachgemessen im Browser
+  mit 10 echten Spurpunkten: **keine JS-Fehler**, Klick auf „Fahrt starten" → `sharing = true`,
+  Knopf wird rot mit „⏹ Fahrt beenden", Statuszeile meldet „Du teilst deinen Standort seit
+  10:26 Uhr". Zweiter Klick beendet die Fahrt.
+- **Warum es durchgerutscht ist** (und was jetzt anders ist): mein Test rief `addTrails()` nur
+  mit leerer Spur auf. Neu sind **4 Tests**, die genau diesen Fall abdecken:
+  - `const`-Definitionen müssen **vor** `addTrails(TRAILS)` stehen (mit Kommentaren ausgefiltert)
+  - die gerenderte Live-Seite **mit echten Spurpunkten** wird geprüft
+  - Gegenprobe gemacht: mit absichtlich wieder eingebautem Fehler schlagen 2 Tests fehl,
+  ohne ihn sind alle grün.
+- 4 neue Tests (423 gesamt).
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad.py`,
+`tests/test_live.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build av) – „Fahrt starten" sieht nicht mehr klickbar aus, wenn es gesperrt ist
 - **Meldung:** „Jetzt kann ich bei Tour auf ‚Fahren' klicken, dann erscheint die Live Karte und
   dort ist der Button ‚Fahrt starten' weiter grün. Ein Draufklicken bringt keine Änderung.
