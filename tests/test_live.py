@@ -127,7 +127,10 @@ class LiveTest(AppTestCase):
         html = self.get_html(f'/touren/{self.t_plan_id}/live')
         self.assertIn('Live-Karte: Deichtour, mit Komma', html)
         self.assertIn('id="btn-share"', html)
-        self.assertIn('disabled title="Fahren ist ab dem Vortag', html)
+        # Build av: Der Knopf traegt kein `title` mehr (der Grund steht in der Statuszeile
+        # und ist aria-describedby-verknuepft); bernstein statt gruen, damit man es sieht.
+        self.assertIn('btn-fahrt-gesperrt', html)
+        self.assertIn('disabled aria-describedby="share-hint"', html)
         self.assertIn('const CAN_SHARE = false', html)
         self.assertIn('"initials": "HM"', html)
         self.assertIn('Bahnhof, Gleis 1', html)                    # Treffpunkt

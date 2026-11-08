@@ -1,4 +1,37 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build av) – „Fahrt starten" sieht nicht mehr klickbar aus, wenn es gesperrt ist
+- **Meldung:** „Jetzt kann ich bei Tour auf ‚Fahren' klicken, dann erscheint die Live Karte und
+  dort ist der Button ‚Fahrt starten' weiter grün. Ein Draufklicken bringt keine Änderung.
+  Irgendwo hakt es."
+- **Es hakte nicht – der Knopf war absichtlich gesperrt, aber man sah es nicht.** Fahren ist nur
+  vom Vortag bis einen Tag nach dem Tourtag erlaubt (Organisatoren jederzeit). Außerhalb dieses
+  Fensters hatte der Knopf `disabled` — im Browser gemessen:
+
+  | | gesperrt | aktiv |
+  |---|---|---|
+  | Hintergrund | **grün `rgb(25,135,84)`** | grün |
+  | Deckkraft | 0,65 | 1,0 |
+  | Cursor | **`pointer`** (Hand) | pointer |
+
+  Nur 35 % Transparenz unterschieden ihn — auf dem Handy praktisch unsichtbar. Der erklärende
+  Hinweis stand klein **über** der Karte, nicht am Knopf.
+- **Jetzt:**
+  - **Bernsteinfarben** `#D98E04` statt grün, mit **Schloss-Symbol** und dem Wort **„Fahren"**
+    statt „Fahrt starten" — man sieht schon am Knopf, dass es nicht losgeht.
+  - **`cursor: not-allowed`** statt Hand.
+  - **Der Grund steht in der Statuszeile**, dort wo alle Live-Meldungen stehen:
+    „🔒 Fahren ist ab dem Vortag der Tour möglich (Tourtag: 18.11.2026). Zuschauen geht jederzeit."
+  - **Der alte Hinweisblock über der Karte ist weg** — er verdeckte beim Fahren genau den
+    Bereich, den man anschaut.
+- **Gegengeprüft, dass der erlaubte Knopf wirklich funktioniert:** Klick → `sharing = true`,
+  Knopf wird rot mit „⏹ Fahrt beenden", Statuszeile meldet „Du teilst deinen Standort seit
+  10:15 Uhr"; zweiter Klick beendet die Fahrt. Der gesperrte Knopf bleibt stumm, auch wenn man
+  das `disabled` umgeht (`if (!CAN_SHARE) return;`).
+- 7 neue Tests, 2 alte auf den neuen Knopf umgestellt (419 gesamt).
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad.py`,
+`tests/test_build_ag.py`, `tests/test_live.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build au) – Live-Karte zeigt die zurückgelegte Strecke
 - **Frage:** „kann man die zurückgelegte Route auch schon in der Live Karte anzeigen lassen?"
 - **Die Route war schon da:** Seit Build af zeichnet die Live-Karte die Spuren aller

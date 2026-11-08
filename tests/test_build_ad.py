@@ -841,3 +841,78 @@ class LiveStreckeTest(unittest.TestCase):
         # updateTrailKm() haengt am Ende von addTrails()
         block = live.split('function addTrails(obj)', 1)[1].split('\nfunction ', 1)[0]
         self.assertIn('updateTrailKm();', block)
+
+
+class FahrtGesperrtSichtbarTest(unittest.TestCase):
+    """Build av: „Jetzt kann ich bei Tour auf ‚Fahren' klicken, dann erscheint die Live Karte
+    und dort ist der Button ‚Fahrt starten' weiter grün. Ein Draufklicken bringt keine Änderung."
+
+    Der Knopf war tatsächlich `disabled` – aber er blieb **grün** und zeigte `cursor: pointer`.
+    Im Browser gemessen: gesperrt `rgb(25,135,84)` (dasselbe Grün wie aktiv), nur Deckkraft
+    0,65; der erklärende Hinweis stand klein über der Karte, nicht am Knopf.
+
+    Jetzt: bernsteinfarben `#D98E04`, Schloss-Symbol, Text „Fahren", `cursor: not-allowed`,
+    und der Grund steht sofort in der Statuszeile (dort, wo alle Live-Meldungen stehen).
+    """
+
+    def _js(self):
+        live = _live()
+        return live.split('<script>', 1)[1]
+
+    def test_gesperrt_ist_nicht_mehr_gruen(self):
+        live = _live()
+        # der Knopf bekommt bei Sperre eine eigene Klasse statt btn-success
+        self.assertIn("{% if can_share %}btn-success{% else %}btn-fahrt-gesperrt{% endif %}", live)
+        # und die Klasse ist sichtbar anders: bernstein, kein Hand-Cursor
+        self.assertIn('#live-bar .btn-fahrt-gesperrt,', live)
+        self.assertIn('background: #D98E04 !important;', live)
+        self.assertIn('cursor: not-allowed;', live)
+
+    def test_text_sagt_dass_es_nicht_geht(self):
+        live = _live()
+        # „Fahren" statt „Fahrt starten" – man sieht schon am Wort, dass es nicht losgeht
+        self.assertIn('{% if can_share %}▶ Fahrt starten{% else %}', live)
+        self.assertIn('</svg> Fahren{% endif %}</button>', live)
+
+    def test_grund_steht_in_der_statuszeile(self):
+        live = _live()
+        self.assertIn('const SHARE_HINT = {{ share_hint|tojson }};', live)
+        self.assertIn("if (!CAN_SHARE && SHARE_HINT) setStatus('🔒 ' + SHARE_HINT + "
+                      "' Zuschauen geht jederzeit.', 'warning');", live)
+
+    def test_kein_hinweisblock_ueber_der_karte(self):
+        live = _live()
+        # der alte Block ueber der Karte ist weg (er verdeckte beim Fahren genau den Blick)
+        self.assertNotIn('id="share-hint"', live)
+        self.assertNotIn('hat-hinweis', live)
+
+
+class FahrtStartFunktioniertTest(unittest.TestCase):
+    """Zweite Hälfte der Meldung: „Ein Draufklicken bringt keine Änderung."
+
+    Bei erlaubtem Fahren muss der Klick wirklich etwas tun – `toggleShare()` →
+    `startShare()` setzt `sharing`, tauscht den Knopf auf „⏹ Fahrt beenden" (rot) und
+    aktiviert die Standortabfrage. Diese Kette wird hier festgehalten, damit ein
+    gesperrter Knopf nicht versehentlich der einzige Zustand bleibt.
+    """
+
+    def test_klick_startet_die_fahrt(self):
+        live = _live()
+        self.assertIn('id="btn-share" onclick="toggleShare()"', live)
+        self.assertIn('function toggleShare() { if (sharing) stopShare(false); else startShare(); }', live)
+        # startShare setzt den Zustand und tauscht die Beschriftung
+        block = live.split('function startShare()', 1)[1].split('function ensureWatch', 1)[0]
+        self.assertIn('sharing = true;', block)
+        self.assertIn('updateShareBtn();', block)
+        self.assertIn('ensureWatch();', block)
+
+    def test_knopf_wird_rot_und_beschriftet_um(self):
+        live = _live()
+        self.assertIn("b.textContent = sharing ? '⏹ Fahrt beenden' : '▶ Fahrt starten';", live)
+        self.assertIn("b.classList.toggle('btn-success', !sharing);", live)
+        self.assertIn("b.classList.toggle('btn-danger', sharing);", live)
+
+    def test_gesperrter_knopf_bleibt_wirklich_stumm(self):
+        live = _live()
+        # doppelte Absicherung: auch wenn das disabled-Attribut fehlte, bricht startShare ab
+        self.assertIn('if (!CAN_SHARE) return;', live)

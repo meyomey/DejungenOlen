@@ -43,6 +43,15 @@
              padding: .3rem .7rem; font-size: .82rem; font-weight: 600;
              box-shadow: 0 1px 5px rgba(0,0,0,.35); pointer-events: none; }
   body.saver-on:not(.saver-hell) #live-km { visibility: hidden; }
+  /* Build av: gesperrtes Fahren – bernsteinfarben statt gruen, kein Hand-Cursor, klar blass.
+     Bisher blieb der Knopf gruen und sah klickbar aus; ein Tipp tat nichts und niemand
+     erfuhr warum (der Hinweis stand woanders). */
+  #live-bar .btn-fahrt-gesperrt,
+  #live-bar .btn-fahrt-gesperrt:disabled { background: #D98E04 !important; border-color: #b87903 !important;
+             color: #fff !important; opacity: 1; cursor: not-allowed; box-shadow: none; }
+  #live-bar .btn-fahrt-gesperrt:disabled:hover { background: #D98E04 !important; }
+  /* Der Grund steht direkt unter dem Knopf – sichtbar, ohne die Karte zu verdecken. */
+  #share-hint { margin-bottom: .5rem; }
   #live-guard-pill { position: absolute; left: 8px; z-index: 1100;
                      background: rgba(20, 30, 60, .88); color: #fff; border: 0; border-radius: 20px;
                      padding: .45rem .8rem; font-size: .85rem; line-height: 20px;
@@ -218,9 +227,9 @@
   </div>
 </details>
 
-{% if not can_share %}
-<div class="alert alert-info py-2 small mb-2" id="share-hint"><i class="bi bi-info-circle me-1"></i>{{ share_hint }} Zuschauen geht jederzeit.</div>
-{% endif %}
+{# Build av: Der Hinweis steht jetzt UNTER der Knopfleiste (siehe unten) – über der Karte
+   verdeckte er genau den Bereich, den man beim Fahren anschaut, und war weit weg vom Knopf,
+   der nicht reagierte. #}
 
 {# Build q (2026-11-04): Nach dem Beenden direkt an die Aufzeichnung erinnern – sonst wird das
    Sichern leicht vergessen. Tourleitung: Übernahme als GPX-Track; Mitglieder: eigener GPX-Download. #}
@@ -257,8 +266,14 @@
         {# Build b (2026-11-04): lb-main = die 3 Fahrt-Knöpfe (mobil unten groß in der Daumenzone),
            lb-sec = Sekundär-Funktionen (mobil eine schmale Reihe darüber) #}
         <div class="lb-main">
-          <button type="button" class="btn btn-success" id="btn-share" onclick="toggleShare()"
-                  {% if not can_share %}disabled title="{{ share_hint }}"{% else %}title="Fahrt starten – dein Standort wird für alle geteilt und dein Weg aufgezeichnet"{% endif %}>▶ Fahrt starten</button>
+          {# Build av: „Jetzt kann ich bei Tour auf Fahren klicken, dann erscheint die Live Karte und
+             dort ist der Button ‚Fahrt starten' weiter grün. Ein Draufklicken bringt keine Änderung."
+             Ursache: Außerhalb des Fahrtfensters (Vortag bis Tag danach) war der Knopf zwar
+             `disabled`, blieb aber GRÜN – nur 35 % Deckkraft unterschieden ihn, auf dem Handy
+             praktisch nicht zu sehen. Und der Hinweis stand klein über der Karte, nicht am Knopf.
+             Jetzt: bernsteinfarben, Schloss-Symbol, und der Grund steht IM Knopf. #}
+          <button type="button" class="btn {% if can_share %}btn-success{% else %}btn-fahrt-gesperrt{% endif %}" id="btn-share" onclick="toggleShare()"
+                  {% if not can_share %}disabled aria-describedby="share-hint"{% else %}title="Fahrt starten – dein Standort wird für alle geteilt und dein Weg aufgezeichnet"{% endif %}>{% if can_share %}▶ Fahrt starten{% else %}<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg> Fahren{% endif %}</button>
           <button type="button" class="btn btn-warning d-none" id="btn-pause" onclick="togglePause()"
                   title="Aufzeichnung pausieren (z. B. Pause/Einkehr) – dein Standort bleibt für alle sichtbar">⏸ Pause</button>
           <button type="button" class="btn btn-light" id="btn-photo" onclick="document.getElementById('live-cam').click()"
@@ -306,6 +321,11 @@ const MEETING   = {{ meeting_json|safe }};
 const EINKEHR   = {{ einkehr_json|safe }};
 const ME        = {{ me_json|safe }};
 const CAN_SHARE = {{ 'true' if can_share else 'false' }};
+// Build av: Ist Fahren gerade nicht erlaubt, steht der Grund in der Statuszeile – dort, wo
+// alle Meldungen der Live-Karte stehen (der Versuch, ihn unter die Karte zu setzen, kollidierte
+// mit Knopfleiste, unterer Navigation und der Karte selbst). Der Knopf selbst ist bernstein
+// mit Schloss, damit niemand vergeblich tippt.
+const SHARE_HINT = {{ share_hint|tojson }};
 const DL_URL = {{ url_for('tour_live_recording_download', tour_id=tour.id, user_id=current_user.id)|tojson }};   // Build q: eigene Aufzeichnung als GPX
 const CAN_TAKEOVER = {{ 'true' if can_takeover else 'false' }};   // Build q: darf dieser Nutzer als GPX-Track übernehmen?
 const FRESH_S   = {{ fresh_s }};
@@ -829,6 +849,11 @@ function setLiveGuard() {                             // Build 11-06w: Zustand s
   }
 }
 setLiveGuard();                                       // Build 11-06w: Start gesperrt – Seite scrollt, Pill bietet Verschieben an
+// Build av: Ist Fahren gerade nicht erlaubt (Tour zu weit weg, abgesagt, ohne Termin), steht
+// der Grund sofort in der Statuszeile – und der Knopf ist bernstein mit Schloss. Vorher war er
+// gruen und `disabled`: ein Tipp tat nichts, und der Grund stand klein ueber der Karte, wo er
+// beim Fahren verdeckt war.
+if (!CAN_SHARE && SHARE_HINT) setStatus('🔒 ' + SHARE_HINT + ' Zuschauen geht jederzeit.', 'warning');
 window.addEventListener('resize', () => setLiveGuard());   // Build 11-06w: Drehen/Größe ändern → Guard neu bewerten
 // Kurze Rückmeldung direkt AUF der Karte (statt nur in der Statuszeile darüber)
 let _toastTimer = null;

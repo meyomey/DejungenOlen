@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 au')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 av')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -841,7 +841,9 @@ class VideoSmoothTest(AppTestCase):
         # „Standort teilen“), der rote „⏹ Fahrt beenden“; auch die Zeitfenster-Hinweise in
         # app.py sagen „Fahren“ statt „Standort teilen“.
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
-        self.assertIn('>▶ Fahrt starten</button>', live)
+        # Build av: Der Knopf hat zwei Zustaende – „▶ Fahrt starten“ nur, wenn Fahren erlaubt ist.
+        self.assertIn('{% if can_share %}▶ Fahrt starten{% else %}', live)
+        self.assertIn('Fahren{% endif %}</button>', live)
         self.assertNotIn('Standort teilen', live)                  # alter Begriff auf der Live-Seite komplett weg
         self.assertIn('Wer die Fahrt startet („▶ Fahrt starten“)', live)   # Hinweise-Block gleicher Begriff
         self.assertIn('Fahrt nach 8 Stunden automatisch beendet', live)
@@ -2037,7 +2039,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 au')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 av')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
