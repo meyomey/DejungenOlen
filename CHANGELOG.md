@@ -1,4 +1,47 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ax) – Hellere Hinweise, km + Fahrzeit unten links
+- **Drei Wünsche auf einmal:** „die Meldungen ‚Zum verschieben tippen' sind mir zu dunkel,
+  könnten irgendwie halbtransparent sein auf allen Karten. Die zurückgelegten Kilometer sollen
+  auch lieber unten links angezeigt werden. Zusätzlich dazu auch noch die reine Fahrzeit ohne
+  Pausen."
+
+### 1. Hinweise halbtransparent
+`rgba(20,30,60,.88)` → **`rgba(20,30,60,.54)`** plus `blur(3px)` und eine feine weiße Kante.
+Die Karte scheint jetzt durch, die weiße Schrift bleibt kontrastreich. Gilt für **alle** Karten:
+
+| Wo | Element |
+|---|---|
+| Live-Karte | „Zum Verschieben antippen", 🔒, km-/Zeit-Chip |
+| Startseite, Tourseite, Karten-Seite, Gastro | „Karte zum Verschieben antippen" |
+| Alle Karten | 🔒 unten links |
+
+Im Browser auf allen vier Seiten gemessen: überall `rgba(20, 30, 60, 0.54)` + `blur(3px)`.
+
+### 2. Kilometer nach unten links
+Der Chip saß oben links unter dem Zoom, jetzt **unten links** — dort, wo auch Verschiebe-Hinweis
+und Schloss sind, direkt darüber.
+
+### 3. Reine Fahrzeit ohne Pausen
+`addTrails()` verwarf die Zeitstempel der Spurpunkte; jetzt werden sie mitgeschrieben
+(`trailPunkte`). Eine **Lücke von mehr als 2 Minuten** zwischen zwei Punkten gilt als Pause und
+zählt nicht — gesendet wird alle 10–30 s, die Reihe reißt also nur, wenn man steht.
+
+Gemessen im Browser: 20 Punkte im 20-s-Takt mit **einer 20-Minuten-Pause** dazwischen:
+
+| | Wert |
+|---|---|
+| Gesamtspanne | 1580 s (26 min) |
+| **angezeigte Fahrzeit** | **360 s (6 min)** ✅ |
+
+Der Chip zeigt beides zusammen: **„1,7 km · 6 min"**. Unter 50 m und unter einer Minute bleibt
+er weg („0,0 km · 3 s" beim Losfahren wäre nur Lärm). Uhr und Rad als Inline-SVG — Emojis
+wurden auf Geräten ohne Emoji-Schrift zu leeren Kästchen.
+
+- 8 neue Tests, 4 alte auf die neuen Werte umgestellt (431 gesamt).
+
+Geänderte Dateien: `templates/touren/live.html`, `static/js/map-touch.js`, `app.py`,
+`tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build aw) – „Fahrt starten" tat nichts: Skript brach ab
 - **Meldung:** „Der grüne Button ‚Fahrt starten' bleibt weiterhin grün nach Drücken. Es passiert
   nichts. Eine Meldung sehe ich auch nicht."

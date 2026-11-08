@@ -58,10 +58,16 @@
     // Der Hinweis erscheint nur im gesperrten Zustand, das Schloss nur im freien – sie sind
     // nie gleichzeitig da und tauschen sich an derselben Stelle aus.
     overlay.style.paddingLeft = '8px';
-    overlay.innerHTML = '<div style="background:rgba(20,30,60,.88);color:#fff;' +
+    // Build ax: „die Meldungen ‚Zum verschieben tippen' sind mir zu dunkel, könnten
+    // irgendwie halbtransparent sein auf allen Karten." Also: heller Grund (54 % statt 88 %),
+    // weiche Kante und ein leichter Blur – der Text bleibt gut lesbar (weisse Schrift auf
+    // dunklem Grund bleibt kontrastreich, auch bei 54 %), aber die Karte scheint durch.
+    overlay.innerHTML = '<div style="background:rgba(20,30,60,.54);color:#fff;' +
+      '-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);' +
+      'border:1px solid rgba(255,255,255,.22);' +
       'padding:.45rem .8rem;border-radius:20px;font-size:.85rem;line-height:20px;' +
       'pointer-events:none;margin-bottom:11px;max-width:calc(100% - 16px);' +
-      'box-shadow:0 1px 5px rgba(0,0,0,.35)">' + hint + '</div>';
+      'box-shadow:0 1px 5px rgba(0,0,0,.22)">' + hint + '</div>';
 
     // Build as: Schloss unten mittig, exakt wie auf der Live-Karte. Vorher stand es oben rechts
     // als 32-px-Kaestchen mit Icon-Font (bi-lock-fill) und schwarzem Grund – die Live-Karte
@@ -86,7 +92,8 @@
     // Mit Innenabstand schrumpfte das SVG auf 16 px und das Schloss wirkte kleiner als auf
     // der Live-Karte; ohne bleibt es bei 17 px wie dort.
     lockBtn.style.cssText = 'position:absolute;left:8px;bottom:11px;z-index:1001;' +
-      'background:rgba(20,30,60,.88);color:#fff;border:0;border-radius:20px;' +
+      'background:rgba(20,30,60,.54);color:#fff;border:1px solid rgba(255,255,255,.22);border-radius:20px;' +
+      '-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);' +
       'padding:0;height:34px;width:38px;' +
       'display:none;align-items:center;justify-content:center;cursor:pointer;' +
       'box-shadow:0 1px 5px rgba(0,0,0,.35)';

@@ -34,15 +34,21 @@
      und die uebrigen Karten (map-touch.js) uebernehmen exakt diese Werte:
        Hoehe 34 px = 14 px Innenabstand + 20 px Zeile, Radius 20 px, Grund rgba(20,30,60,.88)
      Pill und 🔒 sind gleich hoch, damit beim Umschalten nichts springt. */
-  /* Build au: Zurueckgelegte Strecke – kleiner Chip AUF der Karte, oben links unter dem
-     Zoom. Bewusst nicht in der Karte „Unterwegs": die liegt auf dem Handy unter der Karte,
-     man saehe die Zahl beim Fahren also nie. Beim Stromsparen wird er mit abgedunkelt
-     (er gehoert zur Karte), im hellen Zustand ist er sichtbar. */
-  #live-km { position: absolute; left: 10px; top: 82px; z-index: 1050;
-             background: rgba(20, 30, 60, .88); color: #fff; border-radius: 20px;
+  /* Build au: Zurueckgelegte Strecke als Chip auf der Karte.
+     Build ax: „Die zurueckgelegten Kilometer sollen auch lieber unten links angezeigt
+     werden." Also von oben links (unter dem Zoom) nach UNTEN LINKS – dorthin, wo auch
+     Verschiebe-Hinweis und Schloss sitzen. Der Chip steht direkt darueber, in einer Reihe
+     mit der Fahrzeit. Beides gehoert zur Karte und dunkelt im Stromsparmodus mit ab. */
+  #live-km { position: absolute; left: 8px; bottom: calc(58px + 64px + 34px + 8px + 40px); z-index: 1050;
+             background: rgba(20, 30, 60, .54); color: #fff; border-radius: 20px;
+             border: 1px solid rgba(255,255,255,.22);
+             -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
              padding: .3rem .7rem; font-size: .82rem; font-weight: 600;
-             box-shadow: 0 1px 5px rgba(0,0,0,.35); pointer-events: none; }
+             box-shadow: 0 1px 5px rgba(0,0,0,.22); pointer-events: none;
+             display: flex; gap: .5rem; align-items: center; }
+  #live-km .km-trenner { opacity: .45; }
   body.saver-on:not(.saver-hell) #live-km { visibility: hidden; }
+  @media (min-width: 992px) { #live-km { bottom: 166px; } }
   /* Build av: gesperrtes Fahren – bernsteinfarben statt gruen, kein Hand-Cursor, klar blass.
      Bisher blieb der Knopf gruen und sah klickbar aus; ein Tipp tat nichts und niemand
      erfuhr warum (der Hinweis stand woanders). */
@@ -52,16 +58,20 @@
   #live-bar .btn-fahrt-gesperrt:disabled:hover { background: #D98E04 !important; }
   /* Der Grund steht direkt unter dem Knopf – sichtbar, ohne die Karte zu verdecken. */
   #share-hint { margin-bottom: .5rem; }
+  /* Build ax: „zu dunkel" – halbtransparent statt fast deckend (.88 -> .54), mit weicher
+     Kante und leichtem Blur. Die weisse Schrift bleibt kontrastreich. */
   #live-guard-pill { position: absolute; left: 8px; z-index: 1100;
-                     background: rgba(20, 30, 60, .88); color: #fff; border: 0; border-radius: 20px;
+                     background: rgba(20, 30, 60, .54); color: #fff; border: 1px solid rgba(255,255,255,.22); border-radius: 20px;
                      padding: .45rem .8rem; font-size: .85rem; line-height: 20px;
-                     box-shadow: 0 1px 5px rgba(0,0,0,.35); }
+                     -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+                     box-shadow: 0 1px 5px rgba(0,0,0,.22); }
   /* Build 11-06w: 🔒 ersetzt die Pill an derselben Stelle und sperrt wieder.
      Build an: unten über dem Info-Block. Build as: gleiche Maße wie in map-touch.js. */
   #live-guard-lock { position: absolute; left: 8px; z-index: 1100;
-                     background: rgba(20, 30, 60, .88); color: #fff; border: 0; border-radius: 20px;
+                     background: rgba(20, 30, 60, .54); color: #fff; border: 1px solid rgba(255,255,255,.22); border-radius: 20px;
                      padding: .45rem .7rem; font-size: .95rem; line-height: 20px;
-                     box-shadow: 0 1px 5px rgba(0,0,0,.35); }
+                     -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+                     box-shadow: 0 1px 5px rgba(0,0,0,.22); }
   .map-toast { position: absolute; top: 124px; left: 50%; transform: translateX(-50%); z-index: 1150;
                background: rgba(20, 30, 60, .92); color: #fff; border-radius: 20px;
                padding: .6rem 1rem; font-size: 1rem; font-weight: 600; max-width: 92%;
@@ -576,6 +586,9 @@ function addTrails(obj) {
       trails[uid].addLatLng([p[0], p[1]]);
       trailLast[uid] = p[2];
       if (p[2] > trailSince) trailSince = p[2];
+      // Build ax: Zeitstempel mitschreiben – addLatLng() kennt keine Zeit, und ohne sie
+      // laesst sich die reine Fahrzeit nicht berechnen.
+      (trailPunkte[uid] = trailPunkte[uid] || []).push([p[2], p[0], p[1]]);
     });
   });
   updateTrailKm();          // Build au: die gefahrene Strecke mitwachsen lassen
@@ -616,18 +629,58 @@ const SVG_RAD = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" str
                 'style="vertical-align:-2px">' +
                 '<circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/>' +
                 '<path d="M15 6h4l-1.5 8M9 17.5l3-8h3M7 10h5"/></svg>';
+// Build ax: Uhr als Inline-SVG – ein ⏱ waere auf Geraeten ohne Emoji-Schrift ein leeres Kaestchen.
+const SVG_UHR = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' +
+                'style="vertical-align:-2px">' +
+                '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>';
+// Build ax: „Zusätzlich dazu auch noch die reine Fahrzeit ohne Pausen."
+// Grundlage sind die Zeitstempel der Spurpunkte. Eine Pause erkennt man an einer LUECKE
+// zwischen zwei Punkten: solange man faehrt, kommen alle 10–30 s Punkte; steht man
+// (Pause/Einkehr), reisst die Reihe. Alles, was laenger als PAUSE_LUECKE_S auseinanderliegt,
+// zaehlt nicht als Fahrzeit – und von der Luecke selbst wird nur die normale Taktzeit
+// abgezogen, damit ein einzelner spaeter Punkt die Fahrt nicht um Minuten verkuerzt.
+const trailPunkte = {};      // user_id -> [[ts, lat, lng], …]
+const PAUSE_LUECKE_S = 120;  // ab 2 Minuten ohne Punkt gilt es als Pause (gesendet wird alle 10–30 s)
+const TAKT_S = 20;           // normale Zeit zwischen zwei Punkten, wird von der Luecke abgezogen
+function fahrzeitSek(uid) {
+  const pts = trailPunkte[uid];
+  if (!pts || pts.length < 2) return 0;
+  let sek = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const d = pts[i][0] - pts[i - 1][0];
+    if (d <= 0) continue;                       // gleicher Zeitstempel: nichts zaehlen
+    if (d > PAUSE_LUECKE_S) continue;           // Pause: gar nicht mitzaehlen
+    sek += d;
+  }
+  return sek;
+}
+// „1:05 h" bzw. „12 min" – kurz und ohne Sekunden, weil es live mitlaeuft.
+function fmtDauer(sek) {
+  if (sek < 60) return Math.round(sek) + ' s';
+  const min = Math.round(sek / 60);
+  if (min < 60) return min + ' min';
+  return Math.floor(min / 60) + ':' + String(min % 60).padStart(2, '0') + ' h';
+}
+
 // km-Anzeige aktualisieren (eigene Zeile in der Liste + Chip auf der Karte)
 function updateTrailKm() {
   const ich = trailStand(ME.id);
   const chip = document.getElementById('live-km');
   if (chip) {
-    if (ich && ich.m >= 50) {
-      // Build au: Symbol als Inline-SVG, kein Emoji – auf manchen Geraeten fehlt die
-      // Emoji-Schrift und es bliebe ein leerer Kasten (im Test genau so gesehen).
-      chip.innerHTML = SVG_RAD + ' ' + fmtKm(Math.round(ich.m)) + ' km gefahren';
+    const km = ich ? ich.m : 0;
+    const sek = fahrzeitSek(ME.id);
+    // Build ax: Strecke UND reine Fahrzeit (ohne Pausen) – beides unten links.
+    // Unter 50 m und unter einer Minute bleibt der Chip weg; „0,0 km · 3 s" beim
+    // Losfahren waere nur Laerm.
+    if (km >= 50 || sek >= 60) {
+      const teile = [];
+      if (km >= 50) teile.push(SVG_RAD + ' ' + fmtKm(Math.round(km)) + ' km');
+      if (sek >= 60) teile.push(SVG_UHR + ' ' + fmtDauer(sek));
+      chip.innerHTML = teile.join(' <span class="km-trenner">·</span> ');
       chip.classList.remove('d-none');
     } else {
-      chip.classList.add('d-none');            // unter 50 m ist keine Zahl – kein „0,0 km"
+      chip.classList.add('d-none');
     }
   }
   // Auch die anderen: ihre km in der Personenliste ergaenzen

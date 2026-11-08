@@ -714,10 +714,11 @@ class EinheitlichesSchlossTest(unittest.TestCase):
         js = self._js()
         # 38 x 34, Radius 20, kein Innenabstand, dunkelblau - exakt wie #live-guard-lock
         self.assertIn("'padding:0;height:34px;width:38px;'", js)
-        self.assertIn("'background:rgba(20,30,60,.88);color:#fff;border:0;border-radius:20px;'", js)
+        # Build ax: halbtransparent (.54) – vorher .88, „zu dunkel" (Nutzerwunsch)
+        self.assertIn("background:rgba(20,30,60,.54)", js)
         live = _live()
         self.assertIn('#live-guard-lock { position: absolute; left: 8px; z-index: 1100;', live)
-        self.assertIn('background: rgba(20, 30, 60, .88)', live)
+        self.assertIn('background: rgba(20, 30, 60, .54)', live)
 
     def test_kein_emoji_und_kein_icon_font_im_schloss(self):
         js = self._js()
@@ -821,20 +822,23 @@ class LiveStreckeTest(unittest.TestCase):
         live = _live()
         # auf der Karte, oben links unter dem Zoom
         self.assertIn('<span id="live-km" class="d-none"', live)
-        self.assertIn('#live-km { position: absolute; left: 10px; top: 82px;', live)
+        # Build ax: nicht mehr oben links (top: 82px), sondern unten links
+        self.assertIn('#live-km { position: absolute; left: 8px; bottom: calc(', live)
         # der Chip im Card-Footer ist wieder weg (dort waere er auf dem Handy unsichtbar)
         self.assertNotIn('<span id="live-km" class="badge bg-secondary d-none"></span>', live)
 
     def test_unter_50_meter_keine_zahl(self):
         live = _live()
-        self.assertIn('if (ich && ich.m >= 50) {', live)
+        # Build ax: km ODER Fahrzeit – „unter 50 m und unter einer Minute bleibt der Chip weg"
+        self.assertIn('if (km >= 50 || sek >= 60) {', live)
 
     def test_kein_emoji_im_chip(self):
         live = _live()
         # Emoji fehlt auf manchen Geraeten -> leeres Kaestchen; daher Inline-SVG
         self.assertIn('const SVG_RAD =', live)
-        self.assertIn("chip.innerHTML = SVG_RAD + ' ' + fmtKm(Math.round(ich.m)) + ' km gefahren';", live)
-        self.assertNotIn("chip.textContent = '🚴 '", live)
+        # Build ax: km und Fahrzeit zusammen, gebaut aus Teilen
+        self.assertIn('teile.push(SVG_RAD', live)
+        self.assertNotIn("chip.innerHTML = '🚴 '", live)
 
     def test_waechst_bei_jedem_neuen_punkt(self):
         live = _live()
@@ -991,3 +995,79 @@ class SkriptReihenfolgeTest(unittest.TestCase):
                        for i, z in enumerate(davor)
                        if re.search(r'(?<![\w.])' + re.escape(name) + r'(?![\w:])', z.split('//')[0])]
             self.assertEqual(treffer, [], f'{name} wird vor seiner Definition benutzt: {treffer[:3]}')
+
+
+class HinweisHalbtransparentTest(unittest.TestCase):
+    """Build ax: „die Meldungen ‚Zum verschieben tippen' sind mir zu dunkel, könnten irgendwie
+    halbtransparent sein auf allen Karten."
+
+    Vorher: `rgba(20,30,60,.88)` – fast deckend, die Karte war darunter nicht mehr zu sehen.
+    Im Browser gemessen: überall `rgba(20, 30, 60, 0.54)` plus `blur(3px)`, auf allen vier
+    Karten (Startseite, Tourseite, Karten-Seite, Gastro) und auf der Live-Karte.
+    """
+
+    def _js(self):
+        return open(os.path.join(ROOT, 'static', 'js', 'map-touch.js'), encoding='utf-8').read()
+
+    def test_hinweis_der_anderen_karten_ist_halbtransparent(self):
+        js = self._js()
+        self.assertIn('background:rgba(20,30,60,.54);color:#fff;', js)
+        self.assertIn('backdrop-filter:blur(3px)', js)
+        # das alte, fast deckende Dunkelblau darf fuer den Hinweis nicht mehr auftauchen
+        self.assertNotIn('background:rgba(20,30,60,.88);color:#fff;\' +\n      \'padding:.45rem', js)
+
+    def test_live_pill_und_schloss_sind_halbtransparent(self):
+        live = _live()
+        self.assertIn('background: rgba(20, 30, 60, .54)', live)
+        self.assertIn('backdrop-filter: blur(3px)', live)
+        # Pill, Lock und der km-/Zeit-Chip – alle drei mit demselben halbtransparenten Grund
+        self.assertEqual(live.count('background: rgba(20, 30, 60, .54)'), 3)
+
+    def test_schloss_der_anderen_karten_auch(self):
+        js = self._js()
+        self.assertIn("'background:rgba(20,30,60,.54);color:#fff;border:1px solid rgba(255,255,255,.22);border-radius:20px;'", js)
+
+
+class FahrzeitOhnePausenTest(unittest.TestCase):
+    """Build ax: „Zusätzlich dazu auch noch die reine Fahrzeit ohne Pausen."
+
+    Die Spur liefert Zeitstempel; `addTrails()` verwarf sie bisher. Jetzt werden sie in
+    `trailPunkte` mitgeschrieben und ausgewertet: eine Lücke von mehr als 2 Minuten gilt als
+    Pause und zählt nicht (gesendet wird alle 10–30 s, also reißt die Reihe nur beim Stehen).
+
+    Im Browser gemessen: 20 Punkte im 20-s-Takt mit EINER 20-Minuten-Pause dazwischen
+    (Gesamtspanne 1580 s) → **360 s Fahrzeit** (19 Abstände à 20 s, die Pause komplett raus).
+    """
+
+    def test_zeitstempel_werden_mitgeschrieben(self):
+        live = _live()
+        self.assertIn('const trailPunkte = {};', live)
+        block = live.split('function addTrails(obj)', 1)[1].split('\nfunction ', 1)[0]
+        self.assertIn('(trailPunkte[uid] = trailPunkte[uid] || []).push([p[2], p[0], p[1]]);', block)
+
+    def test_pausen_werden_erkannt(self):
+        live = _live()
+        self.assertIn('const PAUSE_LUECKE_S = 120;', live)
+        block = live.split('function fahrzeitSek(uid)', 1)[1].split('\nfunction ', 1)[0]
+        self.assertIn('if (d > PAUSE_LUECKE_S) continue;', block)
+
+    def test_dauer_kurz_formatiert(self):
+        live = _live()
+        self.assertIn("if (sek < 60) return Math.round(sek) + ' s';", live)
+        self.assertIn("if (min < 60) return min + ' min';", live)
+        self.assertIn("return Math.floor(min / 60) + ':' + String(min % 60).padStart(2, '0') + ' h';", live)
+
+    def test_km_und_zeit_stehen_zusammen_unten_links(self):
+        live = _live()
+        # Build au hatte den Chip oben links (top: 82px) – jetzt unten links
+        self.assertIn('#live-km { position: absolute; left: 8px; bottom: calc(', live)
+        self.assertNotIn('#live-km { position: absolute; left: 10px; top: 82px;', live)
+        # km und Fahrzeit in einem Chip
+        block = live.split('function updateTrailKm()', 1)[1].split('\n}', 1)[0]
+        self.assertIn('if (km >= 50) teile.push(SVG_RAD', block)
+        self.assertIn('if (sek >= 60) teile.push(SVG_UHR', block)
+
+    def test_uhr_ist_ein_svg_kein_emoji(self):
+        live = _live()
+        self.assertIn('const SVG_UHR =', live)
+        self.assertNotIn("teile.push('⏱", live)
