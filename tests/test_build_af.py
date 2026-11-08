@@ -185,11 +185,15 @@ class RecordingApiTest(AppTestCase):
         self.assertIn('attachment', r.headers.get('Content-Disposition', ''))
         self.assertIn(b'<trkpt', r.data)
         self.login('fiete@test.de')
-        self.assertEqual(self.client.get(f'/touren/{self.t_plan_id}/live/aufzeichnung.gpx').status_code, 404)   # hat keine
+        # Build ay: keine Aufzeichnung -> Umleitung mit Meldung statt 404-HTML als „.gpx"
+        r = self.client.get(f'/touren/{self.t_plan_id}/live/aufzeichnung.gpx')
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('#live-aufzeichnung', r.headers.get('Location', ''))
         self.assertEqual(self.client.get(f'/touren/{self.t_plan_id}/live/aufzeichnung.gpx?user_id={self.mem_id}').status_code, 403)
         self.login_org()
         self.assertEqual(self.client.get(f'/touren/{self.t_plan_id}/live/aufzeichnung.gpx?user_id={self.mem_id}').status_code, 200)
         self.login('fremd@test.de')
+        # fremde Gruppe -> 404 (Gruppenschutz greift vor der Rechtepruefung)
         self.assertEqual(self.client.get(f'/touren/{self.t_plan_id}/live/aufzeichnung.gpx?user_id={self.mem_id}').status_code, 404)
 
     def test_adopt_as_gpx_and_place_photos(self):
@@ -199,8 +203,14 @@ class RecordingApiTest(AppTestCase):
                                    taken_at=LOCAL_START + dt.timedelta(minutes=5)))
         db.session.commit()
         self.login_member()
-        r = self.client.post(f'/touren/{self.t_open_id}/live/aufzeichnung', data={'action': 'adopt', 'user_id': self.mem_id})
+        # Build ay: die EIGENE Aufzeichnung darf ein Mitglied jetzt uebernehmen (vorher 403 –
+        # „Irgendwie wird bei mir anschliessend kein Track angezeigt"). Fremde bleibt gesperrt.
+        r = self.client.post(f'/touren/{self.t_open_id}/live/aufzeichnung', data={'action': 'adopt', 'user_id': self.mem2_id})
         self.assertEqual(r.status_code, 403)
+        r = self.client.post(f'/touren/{self.t_open_id}/live/aufzeichnung', data={'action': 'adopt', 'user_id': self.mem_id})
+        self.assertEqual(r.status_code, 302)
+        # wieder aufraeumen: die naechste Uebernahme soll ein frischer Track sein („nicht ersetzt")
+        t0 = self.tour(self.t_open_id); t0.gpx_file = None; t0.gpx_km = None; db.session.commit()
         self.assertEqual(self.client.post(f'/touren/{self.t_open_id}/live/aufzeichnung', data={'action': 'x'}).status_code, 400)
         self.login_org()
         r = self.client.post(f'/touren/{self.t_open_id}/live/aufzeichnung',

@@ -246,13 +246,19 @@
 <div id="rec-hint" class="alert alert-warning py-2 px-3 mb-2 d-none" role="alert">
   <div class="fw-semibold">⏹ Fahrt beendet – was passiert jetzt mit der Aufzeichnung?</div>
   <div class="small mt-1">Dein Weg ist gespeichert, wird aber nach {{ keep_days }} Tagen automatisch gelöscht.
-    {% if can_takeover %}Übernimm ihn am besten jetzt als GPX-Track der Tour – dann bleibt er dauerhaft erhalten.{% else %}Sichere ihn dir als GPX-Datei oder sprich deine Tourleitung an, ihn als Track der Tour zu übernehmen.{% endif %}</div>
+    {% if tour.gpx_file %}Diese Tour hat schon einen GPX-Track – sichere deine Aufzeichnung als Datei.{% else %}Übernimm ihn am besten jetzt als Track der Tour – dann bleibt er dauerhaft erhalten und erscheint auf der Tourseite.{% endif %}</div>
   <div class="d-flex gap-2 flex-wrap mt-2">
-    {% if can_takeover %}
-    <a class="btn btn-sm btn-success" href="{{ url_for('tour_detail', tour_id=tour.id) }}#live-aufzeichnung">✓ Als GPX übernehmen</a>
-    {% else %}
-    <a class="btn btn-sm btn-success" href="{{ url_for('tour_live_recording_download', tour_id=tour.id, user_id=current_user.id) }}">⬇ GPX speichern</a>
-    {% endif %}
+    {# Build ay: „Irgendwie wird bei mir anschließend kein Track angezeigt." – Vorher bekam ein
+       MITGLIED hier nur „⬇ GPX speichern": die Datei landete auf dem Handy und die Tour blieb
+       ohne Track. Jetzt übernimmt „✓ Als Track übernehmen" die eigene Aufzeichnung direkt –
+       ein Klick statt Datei-Zirkus. Hat die Tour schon einen Track, bleibt es beim Download. #}
+    <form method="post" action="{{ url_for('tour_live_recording', tour_id=tour.id) }}" class="d-inline">
+      <input type="hidden" name="action" value="adopt">
+      <input type="hidden" name="user_id" value="{{ current_user.id }}">
+      <button type="submit" class="btn btn-sm btn-success">✓ Als Track übernehmen</button>
+    </form>
+    <a class="btn btn-sm {% if tour.gpx_file %}btn-success{% else %}btn-outline-success{% endif %}"
+       href="{{ url_for('tour_live_recording_download', tour_id=tour.id, user_id=current_user.id) }}">⬇ GPX speichern</a>
     <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideRecHint()">Später</button>
   </div>
 </div>

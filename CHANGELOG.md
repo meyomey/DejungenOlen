@@ -1,4 +1,37 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ay) – „GPX speichern" ließ die Tour ohne Track
+- **Meldung:** „Checke die Funktion ‚Als GPX speichern'. Irgendwie wird bei mir anschließend
+  kein Track angezeigt."
+- **Die Datei war in Ordnung — die Tour bekam sie nur nie.** Nachgefragt: Knopf auf der
+  Live-Karte nach „Fahrt beenden", kurze Fahrt mit dem Handy. Genau da lag es:
+
+  | Wer | Was passierte |
+  |---|---|
+  | Tourleitung | „✓ Als GPX übernehmen" → Track landet auf der Tour, Karte zeigt ihn |
+  | **Mitglied** | nur „⬇ GPX speichern" → Datei aufs Handy, **Tour bleibt ohne Track** |
+
+  `gpx_file` blieb `None`, `GPX_DATA` war `null`, die Karte hatte 0 Linien. Die Übernahme war
+  hart auf `_can_manage_tour()` beschränkt — ein Mitglied kam nicht einmal an den Knopf.
+
+- **Behoben:** Wer eine **eigene** Aufzeichnung hat, darf sie jetzt selbst als Track übernehmen.
+  Auf der Live-Karte heißt der Knopf „✓ Als Track übernehmen" (ein Klick, kein Datei-Umweg),
+  auf der Tourseite „Meine Aufzeichnung als Track übernehmen".
+  Gemessen (Mitglied, 45 Punkte, 1,9 km): vorher 0 Linien → nachher **2 Linien, 45 Punkte,
+  Zoom 14**, Kennzahlen 1,9 km und 0:10 h Fahrzeit.
+- **Grenzen bleiben:** fremde Aufzeichnungen weiter nur für die Tourleitung (403), und einen
+  **vorhandenen** Track darf ein Mitglied nicht ersetzen — dort kommt eine Meldung mit dem
+  Hinweis, die Datei herunterzuladen.
+
+### Zweiter Fehler, gleich mit behoben
+Wer „GPX speichern" ohne brauchbare Aufzeichnung drückte, bekam **keine Fehlermeldung, sondern
+eine Datei**: der Server antwortete mit der HTML-404-Seite, der Browser speicherte sie trotzdem
+als `…_live_….gpx`. Diese Datei kann kein Programm lesen. Jetzt gibt es eine Meldung, die die
+Ursache nennt — zu kurze Fahrt (unter 8 Punkte) oder ungenaues GPS (WLAN-Ortung, über 100 m).
+- 11 neue Tests, 3 alte auf das neue Verhalten umgestellt (442 gesamt).
+
+Geänderte Dateien: `app.py`, `templates/touren/live.html`, `templates/touren/detail.html`,
+`tests/test_build_ay.py`, `tests/test_build_af.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ax) – Hellere Hinweise, km + Fahrzeit unten links
 - **Drei Wünsche auf einmal:** „die Meldungen ‚Zum verschieben tippen' sind mir zu dunkel,
   könnten irgendwie halbtransparent sein auf allen Karten. Die zurückgelegten Kilometer sollen

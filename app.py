@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-07 ax'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-07 ay'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5452,7 +5452,14 @@ def tour_live_recording_download(tour_id):
         abort(403)
     summary = _live_summary_or_none(tour, uid)
     if not summary:
-        abort(404)
+        # Build ay: Bisher kam hier die HTML-404-Seite – der Browser speicherte sie trotzdem als
+        # „…_live_….gpx", und der Nutzer hielt eine kaputte Datei in der Hand, ohne Hinweis.
+        # Jetzt gibt es eine klare Meldung. Ursache ist fast immer eine zu kurze (< 8 Punkte)
+        # oder zu ungenaue Aufzeichnung (WLAN-Ortung, Genauigkeit > 100 m).
+        flash('Für diese Tour liegt keine brauchbare Aufzeichnung von dir vor. Sie braucht '
+              'mindestens 8 Punkte mit GPS-Genauigkeit – bei einer sehr kurzen Fahrt oder in '
+              'Gebäuden (WLAN-Ortung) kommt nichts zusammen.', 'warning')
+        return redirect(url_for('tour_detail', tour_id=tour_id) + '#live-aufzeichnung')
     xml = _live_track_gpx_xml(summary, tour)
     from io import BytesIO as _BytesIO
     safe = secure_filename(tour.title)[:40] or 'tour'
@@ -5484,11 +5491,21 @@ def tour_live_recording(tour_id):
         return redirect(url_for('tour_detail', tour_id=tour_id))
     if action != 'adopt':
         abort(400)
-    if not _can_manage_tour(tour):
-        abort(403)
+    # Build ay: „Irgendwie wird bei mir anschließend kein Track angezeigt." – Ein MITGLIED durfte
+    # seine Aufzeichnung nur herunterladen; „Als GPX speichern" legte die Datei aufs Handy, die
+    # Tour blieb ohne Track (gpx_file=None, Karte leer). Jetzt darf jede Person, die eine eigene
+    # Aufzeichnung hat, sie auch als Track übernehmen. Fremde Aufzeichnungen und das Ersetzen
+    # eines vorhandenen Tracks bleiben der Tourleitung vorbehalten.
     summaries = _live_track_summaries(tour.id)
     uid = _parse_int(raw_uid)
     summary = next((d for d in summaries if d['user_id'] == uid), None) if uid else (summaries[0] if summaries else None)
+    if not _can_manage_tour(tour):
+        if not summary or summary['user_id'] != current_user.id:
+            abort(403)
+        if tour.gpx_file:
+            flash('Diese Tour hat schon einen GPX-Track. Deine Aufzeichnung kannst du als GPX '
+                  'herunterladen – oder die Tourleitung fragen, sie zu übernehmen.', 'warning')
+            return redirect(target)
     if not summary:
         flash('Keine brauchbare Live-Aufzeichnung für diese Tour gefunden.', 'warning')
         return redirect(target)

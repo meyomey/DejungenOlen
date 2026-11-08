@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ax')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ay')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -737,6 +737,9 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('function hideRecHint()', live)
         self.assertIn('function stopShare(viaBeacon, withHint)', live)
         self.assertIn('if (withHint) { showRecHint(); }', live)
+        # Build ay: „✓ Als Track übernehmen" (Formular, uebernimmt direkt) statt nur eines Links
+        # auf die Tourseite – Mitglieder landeten sonst ohne Track da.
+        self.assertIn('✓ Als Track übernehmen', live)
         self.assertEqual(live.count('stopShare(false, false)'), 3)   # 403 + 409-Siegel (11-06s) + GPS verweigert
         self.assertIn('hideRecHint();', live)                        # Start räumt alte Rückfrage weg
         self.assertIn('const CAN_TAKEOVER = ', live)
@@ -744,11 +747,13 @@ class VideoSmoothTest(AppTestCase):
         self.login_org()
         orga = self.client.get(f'/touren/{self.t_plan_id}/live').get_data(as_text=True)
         self.assertIn('⏹ Fahrt beendet – was passiert jetzt mit der Aufzeichnung?', orga)
-        self.assertIn('✓ Als GPX übernehmen</a>', orga)
+        # Build ay: EIN Knopf für alle, die eine eigene Aufzeichnung haben – vorher bekam ein
+        # Mitglied nur den Download und die Tour blieb ohne Track.
+        self.assertIn('✓ Als Track übernehmen', orga)
         self.login_member()
         mem = self.client.get(f'/touren/{self.t_plan_id}/live').get_data(as_text=True)
+        self.assertIn('✓ Als Track übernehmen', mem)
         self.assertIn('⬇ GPX speichern</a>', mem)
-        self.assertNotIn('✓ Als GPX übernehmen</a>', mem)
 
     def test_p_audit_group_scope_and_overflow(self):
         # Build p / Audit 6 (2026-11-04): Zwei Befunde behoben –
@@ -2039,7 +2044,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ax')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-07 ay')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()

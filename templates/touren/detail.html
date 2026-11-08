@@ -473,10 +473,21 @@
           </table>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
-          {% if can_manage %}
+          {# Build ay: „Irgendwie wird bei mir anschließend kein Track angezeigt." – Bisher durfte
+             nur die Tourleitung übernehmen. Ein Mitglied sah hier gar keinen Knopf, lud die GPX
+             herunter und die Tour blieb ohne Track. Jetzt darf jede Person ihre EIGENE
+             Aufzeichnung übernehmen, solange die Tour noch keinen Track hat. #}
+          {% if can_manage or (live_rec_mine and not tour.gpx_file) %}
           <form method="post" action="{{ url_for('tour_live_recording', tour_id=tour.id) }}" class="d-flex flex-wrap align-items-center gap-2"
-                onsubmit="return confirm('{% if tour.gpx_file %}Den vorhandenen GPX-Track dieser Tour durch die Live-Aufzeichnung ersetzen?{% else %}Live-Aufzeichnung als GPX-Track der Tour übernehmen?{% endif %}')">
+                onsubmit="return confirm('{% if tour.gpx_file %}Den vorhandenen GPX-Track dieser Tour durch die Live-Aufzeichnung ersetzen?{% else %}Deine Live-Aufzeichnung als GPX-Track der Tour übernehmen? Danach erscheint die Strecke hier auf der Karte.{% endif %}')">
             <input type="hidden" name="action" value="adopt">
+            {% if not can_manage %}
+            <input type="hidden" name="user_id" value="{{ current_user.id }}">
+            <button type="submit" class="btn btn-sm btn-success"
+                    title="Deine Aufzeichnung wird zum GPX-Track der Tour: Strecke auf der Karte, Kennzahlen, Fotos per Aufnahmezeit">
+              <i class="bi bi-geo-alt me-1"></i>Meine Aufzeichnung als Track übernehmen
+            </button>
+            {% else %}
             {% if live_recs|length > 1 %}
             <select name="user_id" class="form-select form-select-sm" style="width:auto">
               {% for r in live_recs %}<option value="{{ r.user_id }}">{{ r.name }} ({{ r.km|de1 }} km)</option>{% endfor %}
@@ -488,6 +499,7 @@
                     title="Die Aufzeichnung wird zum GPX-Track der Tour (mit Zeitstempeln): Karte, Kennzahlen, Fotos per Aufnahmezeit{% if tour.gpx_file %} – ersetzt den bisherigen Track{% endif %}">
               <i class="bi bi-geo-alt me-1"></i>Als GPX-Track der Tour übernehmen
             </button>
+            {% endif %}
           </form>
           {% endif %}
           {% if live_rec_mine %}
