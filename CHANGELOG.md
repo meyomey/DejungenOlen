@@ -1,4 +1,38 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build az) – Nachtrag: „Ich hatte das als Admin gemacht"
+- **Korrektur des Nutzers:** „Ich hatte das vorher als Admin gemacht, nicht als Mitglied."
+  Damit war meine Erklärung aus Build ay nur die halbe Wahrheit. Ich habe den Admin-Weg in
+  Build ax nachgestellt — und den Fehler dort gefunden:
+
+  **Der Knopf, den ein Admin sah, hat nichts übernommen.** Er war ein reiner Link:
+
+  ```html
+  <a href="/touren/1#live-aufzeichnung">✓ Als GPX übernehmen</a>
+  ```
+
+  Ein Klick sprang nur auf die Tourseite. Die Strecke blieb weg; man musste dort ein
+  **zweites Mal** „Als GPX-Track der Tour übernehmen" drücken. Wer nach dem ersten Klick
+  nichts weiter tat, sah zu Recht keinen Track.
+
+  In Build ax als Admin gemessen (45 Punkte, 1,9 km): nach dem Klick **0 Linien,
+  `GPX_DATA = null`** — genau das Bild, das gemeldet wurde.
+
+- **Behoben:** Es gibt jetzt **einen** Knopf für alle, die eine eigene Aufzeichnung haben –
+  ein POST-Formular, das sofort übernimmt. Kein Seitenwechsel, kein zweiter Klick:
+  „05 Als Track übernehmen". Danach landet man auf der Tourseite, die Strecke steht oben auf
+  der Karte (gemessen: 2 Linien, 45 Punkte, Meldung „als GPX-Track übernommen: 1.9 km …").
+
+- **Was aus Build ay bleibt:** Die Rechte-Änderung (Mitglieder dürfen ihre eigene Aufzeichnung
+  übernehmen) und die Meldung statt der HTML-404 als `.gpx`. Beides war richtig, deckte den
+  gemeldeten Fall aber nicht ab — als Admin kam man an eine andere Stelle.
+
+- 3 neue Tests, die genau diesen Fehler festhalten (Formular statt Link, gleicher Knopf für
+  Admin und Mitglied). **Gegenprobe:** mit dem alten Link-Knopf schlagen 4 Tests fehl,
+  mit dem Fix sind alle grün. 445 gesamt.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ay) – „GPX speichern" ließ die Tour ohne Track
 - **Meldung:** „Checke die Funktion ‚Als GPX speichern'. Irgendwie wird bei mir anschließend
   kein Track angezeigt."

@@ -116,3 +116,42 @@ class DownloadFehlerTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class AuchAdminBrauchtEinenEchtenKnopfTest(unittest.TestCase):
+    """Build ay, Nachtrag: „Ich hatte das vorher als Admin gemacht, nicht als Mitglied."
+
+    Damit war die erste Erklärung unvollständig. Der Knopf, den ein ADMIN in Build ax sah,
+    war ein LINK auf die Tourseite („✓ Als GPX übernehmen" -> /touren/1#live-aufzeichnung).
+    Er hat nichts übernommen – er hat nur die Seite gewechselt. Die Strecke blieb weg, weil
+    man auf der Tourseite noch einmal „Als GPX-Track der Tour übernehmen" drücken musste.
+
+    Gemessen in Build ax (Admin, 45 Punkte, 1,9 km): nach dem Klick 0 Linien, GPX_DATA=null.
+    Jetzt: ein POST-Formular, das direkt übernimmt – 2 Linien, 45 Punkte, Meldung sichtbar.
+    """
+
+    def test_uebernehmen_postet_direkt_statt_zu_verlinken(self):
+        html = _read('templates', 'touren', 'live.html')
+        block = html.split('id="rec-hint"', 1)[1].split('</form>', 1)[0]
+        self.assertIn('<form method="post"', block)
+        self.assertIn('name="action" value="adopt"', block)
+        # der alte, folgenlose Link darf dort nicht mehr stehen
+        self.assertNotIn("href=\"{{ url_for('tour_detail', tour_id=tour.id) }}#live-aufzeichnung\"", block)
+
+    def test_admin_und_mitglied_bekommen_denselben_knopf(self):
+        """Kein Unterschied mehr zwischen den Rollen – beide uebernehmen mit einem Klick."""
+        html = _read('templates', 'touren', 'live.html')
+        block = html.split('id="rec-hint"', 1)[1].split('</form>', 1)[0]
+        self.assertNotIn('{% if can_takeover %}', block)
+        self.assertIn('✓ Als Track übernehmen', block)
+
+    def test_kein_link_ohne_wirkung_mehr_im_status(self):
+        """Auch die Statusmeldung nach dem Beenden schickte nur auf die Tourseite."""
+        html = _read('templates', 'touren', 'live.html')
+        # der Status darf weiter auf die Tourseite hinweisen (dort steht die Aufzeichnung),
+        # aber der KNOPF im Hinweis muss uebernehmen
+        block = html.split('id="rec-hint"', 1)[1].split('</form>', 1)[0]
+        self.assertIn('type="submit"', block)
+
+
+if __name__ == "__main__":
+    unittest.main()
