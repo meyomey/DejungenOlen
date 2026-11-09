@@ -48,8 +48,10 @@ class LiveKopfUndLeisteTest(AppTestCase):
         self.assertIn('id="live-status"', h)
         self.assertIn('max-height: 3.1em', h)                   # zwei Zeilen, antippbar
         self.assertIn('#live-status.open { max-height: 12em;', h)
-        # Auf dem Handy hängt der Chip am Fenster (die Leiste ist dort fixed)
-        self.assertIn('@media (max-width: 991.98px) {\n    #live-status { position: fixed;', h)
+        # Build bm: Die Meldung haengt an der KARTE (absolute in #live-wrap) – als `fixed` blieb
+        # sie beim Scrollen stehen und lag dann ueber dem „Unterwegs"-Kasten.
+        self.assertIn('#live-status { position: absolute; left: 8px; bottom: 89px;', h)
+        self.assertNotIn('#live-status { position: fixed;', h)
 
     # ── 2. Leiste: drei große Knöpfe, Rest als Symbole auf der Karte ─────────────────────
     def test_drei_grosse_hauptknoepfe(self):
@@ -87,7 +89,8 @@ class LiveKopfUndLeisteTest(AppTestCase):
     def test_karte_bekommt_den_platz(self):
         h = self.html
         self.assertIn('#live-map  { height: calc(100vh - 205px); min-height: 330px; }', h)
-        self.assertIn('#live-map { height: calc(100vh - 168px); }', h)      # sehr schmal
+        # Build bm: die Hoehe haengt jetzt am verfuegbaren Platz (Kasten + Navigation bleiben frei)
+        self.assertIn('#live-map { height: max(300px, calc(100vh - 380px)); }', h)
         self.assertIn('html body { padding-bottom: calc(106px', h)          # flache Leiste
 
     def test_zustaende_der_symbole(self):

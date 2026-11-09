@@ -1,4 +1,61 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bm) – Seite passt ins Fenster, Bedienung am unteren Kartenrand
+- **Meldung:** „immer noch nicht gut. immer noch zu hoch. Der Hinweis liegt so mittendrin."
+- **Der Screenshot des Nutzers zeigte Build bj** (nachgerechnet: Chip 147 px und Schloss 186 px
+  über der Kartenunterkante — das sind exakt die bj-Werte; bk/bl standen auf 98). Die letzten
+  beiden Builds waren auf dem Gerät nie angekommen.
+
+### Die eigentliche Ursache (gemessen)
+Die Live-Seite war **höher als das Fenster**: bei 461×934 gemessen Dokument **1253 px** —
+Karte 729 + „Unterwegs"-Kasten 118 + Fußzeile 69 + Seite-Padding 68 + untere App-Navigation 51.
+Beim Scrollen wanderte die Karte nach oben; Chip, Hinweis und Symbole landeten mitten im Bild,
+unten blieb ein leerer Kartenstreifen. Genau das zeigte der Screenshot (die Kartenoberkante war
+abgeschnitten, die Kopfzeile „Live-Karte" fehlte).
+
+### Jetzt
+- **Die Seite passt ins Fenster:** Karte `max(300px, 100vh - 275px)`, Fußzeile auf der
+  Live-Seite ausgeblendet, Seiten-Padding reduziert. Dokumenthöhe = Fensterhöhe → nichts
+  scrollt mehr, die Lage bleibt.
+- **Alles sitzt am unteren Kartenrand** (Kartenkoordinaten): Chip und Symbolspalte **8 px**,
+  Verschiebe-Hinweis **47 px**, Statuszeile **89 px**.
+- **Der Hinweis liegt nicht mehr mittendrin:** Bei 461×934 endet die Karte bei y 787, der
+  Hinweis steht bei 706–740 — vorher (bj) lag er bei 499–536, also mitten im Bild.
+- **Statuszeile hängt jetzt an der Karte** (`absolute` statt `fixed`): Vorher blieb sie beim
+  Scrollen stehen und schob sich über den „Unterwegs"-Kasten — im Screenshot des Nutzers war
+  das die grüne Zeile über der Kartenüberschrift.
+
+### Damit kein alter Stand mehr angezeigt wird
+- **Service Worker:** HTML-Seiten kamen aus dem Cache, wenn das Netz langsam war — nach einem
+  Deploy sah man weiter die alte Seite. Jetzt Netz zuerst mit 4-s-Zeitlimit, Cache nur als
+  Rückfall.
+- **Selbst-Update:** Registriert sich ein neuer Service Worker, lädt die Seite einmal neu.
+  So kann kein Build mehr „unsichtbar" bleiben.
+
+### Drei Fehler, die beim Nachmessen auffielen
+- **Die Knopfleiste lag über dem „Unterwegs"-Kasten.** Bei 461×934 deckte die feste Leiste
+  (820–876) den Kasten (803–921) zu — sichtbar blieb nur ein 17-px-Streifen der blauen
+  Überschrift, genau der Rest, der auf dem Screenshot über „Fahrt starten" stand.
+  Jetzt ist die Karte 105 px kürzer (`100vh - 380px`): Karte endet bei 682, der Kasten liegt
+  vollständig bei 698–816, die Leiste beginnt bei 820. Dokumenthöhe = Fensterhöhe.
+- **Auf dem Desktop lagen Symbole und Leiste übereinander.** Die Regel für Chip und Symbole
+  (`bottom: 66px`) stand im Stylesheet VOR der Basisregel (`bottom: 8px`) und wurde von ihr
+  überschrieben — gleiche Spezifität, spätere Regel gewinnt. Gemessen: Symbole 498–693,
+  Leiste 643–701. Die Regel steht jetzt nach der Basisregel: Symbole 440–635, Leiste 643–701.
+- **Im Vollbild lagen Statuszeile und Symbole 9 px übereinander** (Statuszeile 147, Symbole
+  bis 156). Die Statuszeile steht wieder auf 164, der Zuschauer-Hinweis auf 213.
+
+### Gemessen
+461×934 (Screenshot-Größe), 452×767, 390×844, 360×740 und 1024×768: keine Überlappung,
+alle fünf Symbole treffbar, Chip/Hinweis/Symbole wandern mit der Karte. Im Vollbild
+(461×934, 390×844, 360×740) ebenfalls keine Überlappung.
+
+- 488 Tests. 17 ältere prüften die Werte aus bk/bl und wurden umgestellt.
+  **Gegenprobe:** alte Anordnung zurück → Tests rot.
+
+Geänderte Dateien: `templates/touren/live.html`, `templates/base.html`, `static/sw.js`,
+`app.py`, `CHANGELOG.md`, `tests/test_build_ay.py`, `tests/test_build_ad.py`,
+`tests/test_build_ag.py`, `tests/test_build_aa.py`.
+
 ## 1.5.0 – 2026-11-09 (Build bl) – Lücke geschlossen, Symbole zurück nach rechts
 - **Meldung:** „Alles immer noch zu weit in der Mitte. **Großer Zwischenraum** zwischen
   ‚Zum verschieben antippen' und Zeit/km. Die Symbole waren schon gut vorher auf der rechten

@@ -118,14 +118,19 @@ self.addEventListener('fetch', event => {
   // API-Calls: network-only (kein Cache)
   if (url.pathname.startsWith('/api/')) return;
 
-  // HTML-Seiten: network-first, Fallback auf Cache
+  // HTML-Seiten: network-first mit Zeitlimit, Fallback auf Cache.
+  // Build bm: `fetch` wartete ohne Grenze – im Mobilfunknetz hing die Seite dadurch lange
+  // und der Browser zeigte so lange die ALTE Seite aus dem Cache. Nach 4 s ohne Antwort
+  // kommt jetzt die gespeicherte Seite; sonst immer die frische vom Server.
   event.respondWith(
-    fetch(req).then(resp => {
-      if (resp.ok) caches.open(CACHE_VERSION).then(c => c.put(req, resp.clone()));
-      return resp;
-    }).catch(() =>
-      caches.match(req).then(c => c || caches.match('/'))
-    )
+    Promise.race([
+      fetch(req).then(resp => {
+        if (resp.ok) caches.open(CACHE_VERSION).then(c => c.put(req, resp.clone()));
+        return resp;
+      }),
+      new Promise(resolve => setTimeout(() => resolve(null), 4000))
+    ]).then(resp => resp || caches.match(req).then(c => c || fetch(req)))
+      .catch(() => caches.match(req).then(c => c || caches.match('/')))
   );
 });
 

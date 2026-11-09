@@ -407,7 +407,20 @@
 <!-- PWA service worker registration -->
 <script>
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js', {scope: '/'}).catch(() => {});
+  // Build bm: Der Service Worker liefert Seiten aus dem Cache, wenn das Netz zaehlt –
+  // nach einem Deploy sah man dadurch weiter die ALTE Seite (gemessen: km-Chip auf einem
+  // Wert, den nur der vorherige Build hatte) und hielt den neuen Build fuer kaputt.
+  // Jetzt aktualisiert sich die Seite selbst: neuer Service Worker -> einmal neu laden.
+  let _swReload = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (_swReload) return;
+    _swReload = true;
+    window.location.reload();
+  });
+  navigator.serviceWorker.register('/sw.js', {scope: '/'}).then(reg => {
+    // Bei jedem Seitenaufbau nachsehen, ob ein neuer Build bereitliegt
+    reg.update().catch(() => {});
+  }).catch(() => {});
 }
 
 // HTML-Escaper für Nutzerdaten in JS-generiertem HTML (Karten-Popups etc.) – Audit 1.4.0

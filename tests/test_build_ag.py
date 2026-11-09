@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bl')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bm')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2044,7 +2044,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bl')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bm')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2305,7 +2305,8 @@ class LiveFahrKomfortTest(AppTestCase):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('data-map-guard="off"', live)
         self.assertIn('min-height: 330px', live)
-        self.assertIn('height: calc(100vh - 168px)', live)
+        # Build bm: die Hoehe passt jetzt zum freien Platz unter dem Kopf
+        self.assertIn('height: max(300px, calc(100vh - 380px))', live)
 
     def test_u_wege_knopf_und_fahrzoom(self):
         # Build 11-06z: Der eigene 🚵-Kachelknopf der Live-Karte ist weg – den Stil
@@ -2456,8 +2457,8 @@ class LiveKarteLesbarTest(AppTestCase):
         self.assertNotIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
         self.assertNotIn('top: 56px; left: 8px;', live)
         # unten ueber dem Info-Block – Build bi: beide an der Karte (vorher mobil am Fenster)
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 137px; }', live)
-        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 105px; }', live)   # Build bl
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 47px; }', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 105px; }', live)   # Build bm
         # Toast rutscht mit, damit er nicht auf der Pill sitzt
         self.assertIn('.map-toast { position: absolute; top: 124px;', live)
 
@@ -2467,7 +2468,7 @@ class LiveKarteLesbarTest(AppTestCase):
         self.assertIn('#live-bar .lb-sec  { display: none; }', live)      # Nebenknöpfe sind jetzt Symbole auf der Karte
         self.assertIn('#live-tools .lt-btn { width: 35px; height: 35px;', live)   # Build bl
         # Build bl: zurueck als Spalte rechts, ganz unten (98 in der Karte) und flacher
-        self.assertIn('#live-tools { position: absolute; right: 8px; bottom: 98px;', live)
+        self.assertIn('#live-tools { position: absolute; right: 8px; bottom: 8px;', live)
         # Umbruch statt Ellipse in der Sekundärreihe
         # Build bl: 35 × 35 px – die Spalte ist damit 195 statt 234 px hoch.
         self.assertIn("#live-tools .lt-btn { width: 35px; height: 35px;", live)

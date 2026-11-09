@@ -5,6 +5,7 @@
 <style>
   /* Build aa: Live-Karte – schlanke Seite für unterwegs (große Knöpfe, Vollbild, wenig Ballast) */
   #live-wrap { position: relative; border-radius: 10px; overflow: hidden; background: #e9ecef; }
+
   /* Build 11-06aa: Der Karte gehört fast der ganze Bildschirm – oben nur noch EINE Titelzeile,
      die Nebenknöpfe sitzen als kleine Symbole AUF der Karte, unten nur die drei dicken Knöpfe.
      Vorher fraß der Kopf (Zurück + Titel + Datum + Hinweise + Status) über 300 px. */
@@ -14,7 +15,29 @@
   #live-bar  { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; gap: 6px; flex-wrap: wrap;
                justify-content: center; padding: 8px; background: linear-gradient(to top, rgba(255,255,255,.95), rgba(255,255,255,.6)); }
   #live-bar .btn { font-size: 1rem; padding: .5rem .9rem; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
-  @media (max-width: 575px) { #live-bar .btn { font-size: .9rem; padding: .45rem .6rem; } #live-map { height: calc(100vh - 168px); } }
+  @media (max-width: 575px) { #live-bar .btn { font-size: .9rem; padding: .45rem .6rem; } }
+  /* Build bm: „immer noch zu hoch, der Hinweis liegt so mittendrin."
+     Ursache: Die Seite war hoeher als das Fenster. Gemessen bei 461x934: Dokument 1253 px,
+     davon Karte 729 + „Unterwegs"-Kasten 118 + Fusszeile 69 + Kopf 144. Beim Scrollen wanderte
+     die Karte nach oben – Chip, Hinweis und Symbole landeten mitten im Bild, unten blieb ein
+     leerer Kartenstreifen. Genau das war im Screenshot zu sehen.
+     Jetzt passt die Seite ins Fenster (Karte 100vh - 342px, mindestens 330), sodass es nichts
+     zu scrollen gibt: Lage bleibt, alles sitzt unten. */
+  @media (max-width: 991.98px) {
+    /* Kopf 144 + Karte + „Unterwegs"-Kasten 118 = Fenster. Fusszeile und das Seiten-Padding
+       entfallen hier – sie schoben die Seite um 146 px ueber das Fenster und machten das
+       Scrollen noetig (gemessen: Dokument 1080 statt 934). */
+    /* Gemessen 461x934 mit 100vh - 275: Die Karte endete bei 787, der „Unterwegs"-Kasten lag
+       bei 803..921 – und die feste Knopfleiste (820..876) deckte ihn zu. Sichtbar blieb ein
+       17-px-Streifen der Kartenüberschrift. Das Dokument war 1027 px hoch (Fenster 934).
+       Jetzt reicht die Karte bis knapp über den Kasten, der Kasten bis knapp über die Leiste:
+       Kopf 68 + Titel 38 + Karte + 16 Abstand + „Unterwegs" 118 + Leiste 56 + Navigation 58.
+       Daraus 100vh - 380 (gemessen: Karte endet 4 px über dem Kasten, Kasten 4 px über der
+       Leiste, Dokumenthöhe = Fensterhöhe, also kein Scrollen). */
+    #live-map { height: max(300px, calc(100vh - 380px)); }
+    footer.djo-footer, body > footer { display: none; }
+    main.container { padding-top: .5rem !important; padding-bottom: 0 !important; }
+  }
   .live-pin { width: 36px; height: 36px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 13px;
               display: flex; align-items: center; justify-content: center; border: 3px solid #fff;
               box-shadow: 0 1px 5px rgba(0,0,0,.45); position: relative; letter-spacing: .3px; }
@@ -39,18 +62,15 @@
      werden." Also von oben links (unter dem Zoom) nach UNTEN LINKS – dorthin, wo auch
      Verschiebe-Hinweis und Schloss sitzen. Der Chip steht direkt darueber, in einer Reihe
      mit der Fahrzeit. Beides gehoert zur Karte und dunkelt im Stromsparmodus mit ab. */
-  /* Build bk: „Symbole, Hinweis, Zeit/km befinden sich immer noch zu weit in der Mitte."
-     Build bl: „Alles immer noch zu weit in der Mitte. Grosser Zwischenraum zwischen
-     ,Zum verschieben antippen' und Zeit/km."
-     Die Luecke kam daher, dass die Statuszeile ueber dem Chip MITGERECHNET wurde – sie steht
-     waehrend der Fahrt aber gar nicht auf der Karte (Meldung gehoert zum „Unterwegs"-Kasten).
-     Jetzt zaehlt nur noch, was wirklich da ist:
-       #live-wrap endet 24 px ueber dem Fensterrand; die Leiste ist FEST und beginnt bei 114
-       (Oberkante). Chip-Unterkante soll 8 px darueber = 122 (Fenster) = 98 (Karte).
-       Pill 8 px ueber dem Chip (31 hoch) = 137 (Karte).
-     Die Statuszeile kommt NUR, wenn sie wirklich etwas anzeigt, ebenfalls unten links
-     (0 = unterste Kante) und deckt dann Chip und Pill ab. */
-  #live-km { position: absolute; left: 8px; bottom: 98px; z-index: 1080;
+  /* Build bm: „immer noch zu hoch. Der Hinweis liegt so mittendrin."
+     Kern des Problems: Die Karte reicht 56 px UNTER die Knopfleiste (die Leiste schwimmt
+     darauf). Alles, was „unten in der Karte" stand, war damit 56 px zu hoch.
+     Jetzt haengt alles an der KARTE (absolute in #live-wrap) und damit so tief wie moeglich:
+       Chip 8 px ueber der Leistenoberkante · Pill 8 px darueber · Symbole rechts daneben.
+     Die Werte stehen in Kartenkoordinaten (0 = untere Kartenkante); die Karte endet 24 px
+     ueber dem Fensterrand, die Leiste beginnt bei 114 (Fenster) = 90 (Karte).
+     Auf 452x767 gemessen: Chip 614..645, Pill 573..607 – die Bildmitte (384) bleibt frei. */
+  #live-km { position: absolute; left: 8px; bottom: 8px; z-index: 1080;
              background: rgba(20, 30, 60, .54); color: #fff; border-radius: 20px;
              border: 1px solid rgba(255,255,255,.22);
              -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
@@ -59,8 +79,10 @@
              display: flex; gap: .5rem; align-items: center; }
   #live-km .km-trenner { opacity: .45; }
   body.saver-on:not(.saver-hell) #live-km { visibility: hidden; }
-  /* Build bk: Desktop – Leiste (58) sitzt in der Karte, Chip 8 px darueber = 66. */
-  @media (min-width: 992px) { #live-km { bottom: 66px; } #live-tools { bottom: 66px; } }
+  /* Build bm: Desktop – die Werte fuer Chip und Symbole stehen bei #live-tools (weiter unten).
+     Hier stand die Regel VOR der Basisregel und wurde von ihr ueberschrieben
+     (gleiche Spezifitaet, spaetere Regel gewinnt) – auf dem Desktop lagen Symbole und
+     Leiste dadurch uebereinander. */
   /* Build av: gesperrtes Fahren – bernsteinfarben statt gruen, kein Hand-Cursor, klar blass.
      Bisher blieb der Knopf gruen und sah klickbar aus; ein Tipp tat nichts und niemand
      erfuhr warum (der Hinweis stand woanders). */
@@ -110,7 +132,7 @@
   /* links unten: dort ist die Karte frei (oben links liegt der Zoom, oben rechts
      der Kartenstil-Knopf, rechts unten die Symbolspalte). Der Verschiebe-Hinweis sitzt
      seit Build an ebenfalls unten links, direkt ueber dieser Statuszeile. */
-  #live-status { position: absolute; left: 8px; bottom: 203px; max-width: calc(100% - 74px); z-index: 1090;
+  #live-status { position: absolute; left: 8px; bottom: 89px; max-width: calc(100% - 74px); z-index: 1090;
                  margin: 0 !important; padding: .35rem .6rem !important; font-size: .82rem !important;
                  font-weight: 600; border-radius: 10px; line-height: 1.25;
                  max-height: 3.1em; overflow: hidden; cursor: pointer;
@@ -121,7 +143,14 @@
      Pill und Chip zusammen – genau die Luecke, die der Nutzer gesehen hat. Ist sie sichtbar,
      fuellt sie den Platz ueber der Pill (203 = 195 + 8) und ueberlappt nichts. */
   @media (max-width: 991.98px) {
-    #live-status { position: fixed; left: 8px; bottom: 203px; max-width: calc(100% - 74px); z-index: 1090; }
+    /* Build bm: Steht nur da, wenn sie wirklich etwas meldet (waehrend der Fahrt ist sie
+       unsichtbar und belegt keinen Platz). Sie liegt dann unten am Fensterrand, ueber der
+       Leiste – dort deckt sie Chip und Pill ab statt sie nach oben zu schieben. */
+    /* Build bm: Die Meldung haengt an der KARTE, nicht am Fenster. Vorher war sie `fixed` –
+       beim Scrollen blieb sie stehen und lag dann ueber dem „Unterwegs"-Kasten (im Bild des
+       Nutzers genau so zu sehen: die gruene Zeile schob sich ueber die Kartenueberschrift).
+       Jetzt wird sie mit der Karte beschnitten und kann nie darueber rutschen. */
+    #live-status { position: absolute; left: 8px; bottom: 89px; max-width: calc(100% - 74px); z-index: 1090; }
   }
   #live-status.open { max-height: 12em; overflow-y: auto; }
   /* Build bl: Desktop – ebenfalls unten links ueber Chip und Pill, ohne reservierten Platz. */
@@ -154,8 +183,11 @@
      die Bildmitte reicht, sind die Knoepfe 35 statt 42 px und der Abstand 5 statt 6 px:
      5 * 35 + 4 * 5 = 195 px statt 234. Gemessen 452x767: Spalte von y 450 bis 645 –
      die Bildmitte (384) bleibt frei. */
-  #live-tools { position: absolute; right: 8px; bottom: 98px; z-index: 1040;
+  #live-tools { position: absolute; right: 8px; bottom: 8px; z-index: 1040;
                 display: flex; flex-direction: column; gap: 5px; }
+  /* Build bm: Desktop – die Leiste (58 px) liegt IN der Karte; Chip und Symbole stehen
+     8 px darueber, also bottom: 66. Diese Regel steht bewusst NACH der Basisregel. */
+  @media (min-width: 992px) { #live-km { bottom: 66px; } #live-tools { bottom: 66px; } }
   #live-tools .lt-btn svg { display: block; }
   #live-tools .lt-btn { width: 35px; height: 35px; border-radius: 10px; border: 0;
                         background: rgba(255,255,255,.94); color: var(--djo-navy);
@@ -199,7 +231,7 @@
        beschnitten, kann also nie ueber die Liste darunter rutschen.
        Build bj: Der km/Zeit-Chip sitzt jetzt unten (147) – die Pill steht darueber bei 186
        (147 + 31 Chiphoehe + 8 Luft). */
-    #live-guard-pill, #live-guard-lock { position: absolute; bottom: 137px; }
+    #live-guard-pill, #live-guard-lock { position: absolute; bottom: 47px; }
     #live-guard-pill { height: 34px; display: inline-flex; align-items: center; }
     #live-guard-lock { height: 34px; width: 38px; display: inline-flex; align-items: center;
                        justify-content: center; padding: 0; }
@@ -253,6 +285,9 @@
     #live-wrap.live-fs #live-bar { bottom: 0; border-radius: 0; }
     /* Build bl: Im Vollbild liegt die Leiste unten am Rand (0..58) – die Statuszeile steht
        ueber Pill (105..139) und Chip (66..97), damit nichts uebereinander liegt. */
+    /* Build bm: Gemessen im Vollbild 461x934: Symbole 837..868 (unten 66, Hoehe 90 -> Oberkante
+       bei 156), Statuszeile bei 147..188. Sie ueberlappten sich um 9 px. Jetzt steht die
+       Statuszeile auf 164 (156 + 8 Luft), wie vor bm. */
     #live-wrap.live-fs #live-status { bottom: 164px; }
     #live-wrap.live-fs #live-guard-pill,
     #live-wrap.live-fs #live-guard-lock { bottom: 105px; }
@@ -269,7 +304,8 @@
         grid-template-columns: repeat(3, 42px); grid-auto-rows: 42px; gap: 6px; justify-content: end; }
     /* Build bc: Der Hinweis steht ueber dem km-Chip. Beide auf derselben Kante lagen
        aufeinander (gemessen bei 460x972, 390x844 und 360x740: Ueberlappung km/hint). */
-    #live-wrap.live-fs #rec-hint-fs { bottom: 205px; }
+    /* Build bm: Statuszeile 164 + Hoehe 41 + 8 Luft = 213 (war 205 und lag auf der Kante). */
+    #live-wrap.live-fs #rec-hint-fs { bottom: 213px; }
     /* Build 11-06aa: Unten nur noch die DREI wichtigen Knöpfe – groß genug für den Daumen,
        ohne dass die Leiste die Karte zudeckt (vorher fünf Reihen, ≈ 200 px). */
     #live-bar { padding: 5px 8px; }
