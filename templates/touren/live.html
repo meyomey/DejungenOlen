@@ -320,12 +320,16 @@
     #live-wrap.live-fs #live-tools { bottom: 152px; }
     /* Build bc: Der Hinweis steht ueber dem km-Chip. Beide auf derselben Kante lagen
        aufeinander (gemessen bei 460x972, 390x844 und 360x740: Ueberlappung km/hint). */
-    /* Build bo: Der Zuschauer-Hinweis rueckt nach RECHTS – die Symbolspalte steht jetzt
-       senkrecht rechts (195 px hoch). Der Hinweis wird so breit beschnitten, dass er links
-       der Spalte bleibt (rechts 8 + 35 + 8 = 51 px Abstand), und darf zwei Zeilen hoch sein.
-       Gemessen 360x740: Hinweis bleibt links der Spalte, nichts liegt aufeinander. */
+    /* Build bq: „Der gelbe Hinweis ist abgeschnitten in der großen Karte."
+       Ursache: Build bo hatte hier `-webkit-line-clamp: 2` gesetzt (damit der Hinweis nicht
+       auf die senkrechte Symbolspalte laeuft). Der Kasten enthaelt aber Titel + Knopfreihe +
+       ⓘ – gemessen 412x915: sichtbar 77 px von 183 px Inhalt, alle drei Knoepfe halb weg.
+       Jetzt KEINE Klemmung mehr: Der Kasten darf seine volle Hoehe haben. Der Platz dafuer
+       kommt daher, dass er im Vollbild bis unter die Karte reichen darf; die drei Knoepfe
+       sind das Wichtigste auf dem Schirm (Aufzeichnung sichern), sie duerfen nicht fehlen.
+       Gemessen 412x915: Kasten 403..648 (245 px), Knopfreihe ab 469, alles sichtbar. */
     #live-wrap.live-fs #rec-hint-fs { bottom: 152px; max-width: calc(100% - 51px);
-        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        overflow: visible; }
     /* Build 11-06aa: Unten nur noch die DREI wichtigen Knöpfe – groß genug für den Daumen,
        ohne dass die Leiste die Karte zudeckt (vorher fünf Reihen, ≈ 200 px). */
     #live-bar { padding: 5px 8px; }

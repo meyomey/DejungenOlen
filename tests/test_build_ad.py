@@ -1122,3 +1122,32 @@ class SparmodusDunkeltVonSelbstAbTest(unittest.TestCase):
     def test_hinweis_nennt_die_frist(self):
         live = _live()
         self.assertIn('Hell für 1 Minute · tippen verlängert', live)
+
+
+class GelberHinweisNichtAbgeschnittenTest(unittest.TestCase):
+    """Build bq: „Der gelbe Hinweis ist abgeschnitten in der großen Karte."
+
+    Ursache: Build bo hatte `-webkit-line-clamp: 2` auf #rec-hint-fs gesetzt, damit der Kasten
+    nicht auf die senkrechte Symbolspalte laeuft. Der Kasten enthaelt aber Titel + drei
+    Knoepfe + ⓘ-Zeile – gemessen 412x915: sichtbar 77 px von 183 px Inhalt, der gruene Knopf
+    „Als Track uebernehmen" war zur Haelfte weg. Genau der Knopf, mit dem die Aufzeichnung
+    gesichert wird, darf nicht fehlen.
+    """
+
+    def test_keine_zeilenbegrenzung_am_gelben_kasten(self):
+        live = _live()
+        i = live.find('#live-wrap.live-fs #rec-hint-fs { bottom:')
+        self.assertGreater(i, 0)
+        block = live[i:].split('}', 1)[0]
+        self.assertNotIn('-webkit-line-clamp', block, 'Kasten wird wieder abgeschnitten')
+        self.assertNotIn('-webkit-box-orient', block)
+        self.assertIn('overflow: visible', block)
+
+    def test_knoepfe_bleiben_im_html(self):
+        live = _live()
+        for txt in ('✓ Als Track übernehmen', '⬇ GPX speichern', 'Später entscheiden'):
+            self.assertIn(txt, live)
+
+    def test_breite_bleibt_links_der_symbolspalte(self):
+        live = _live()
+        self.assertIn('max-width: calc(100% - 51px)', live)   # 8 Rand + 35 Spalte + 8 Luft

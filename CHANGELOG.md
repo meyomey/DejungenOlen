@@ -1,4 +1,36 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bq) – Gelber Hinweis im Vollbild wieder vollständig
+- **Meldung:** „Der gelbe Hinweis ist abgeschnitten in der großen Karte."
+
+### Ursache (selbst eingebaut)
+Build bo setzte `-webkit-line-clamp: 2` auf `#rec-hint-fs`, damit der Kasten nicht auf die
+senkrechte Symbolspalte läuft. Der Kasten enthält aber **Titel + drei Knöpfe + ⓘ-Zeile** —
+gemessen bei 412×915 (deiner Gerätegröße): **77 px sichtbar von 183 px Inhalt**. Der grüne
+Knopf „✓ Als Track übernehmen" war zur Hälfte weg, „⬇ GPX speichern" und „Später entscheiden"
+ganz. Genau der Knopf, mit dem die Aufzeichnung gesichert wird.
+
+### Jetzt
+- **Keine Zeilenbegrenzung mehr** am gelben Kasten — er bekommt seine volle Höhe.
+- Die Breite bleibt begrenzt (`max-width: calc(100% - 51px)`), damit er links der Symbolspalte
+  bleibt. Der Abstand entsteht jetzt über die Breite statt über die Höhe.
+
+### Gemessen (Vollbild, Hinweis offen)
+
+| Fenster | Kasten | Inhalt sichtbar | Knöpfe |
+|---|---|---|---|
+| 412×915 | 578–763 (185 px) | 183 von 183 px | alle sichtbar |
+| 461×934 | 619–782 (163 px) | 161 von 161 px | alle sichtbar |
+| 390×844 | 468–692 (224 px) | vollständig | alle sichtbar |
+| 360×740 | 364–588 (224 px) | 222 von 222 px | alle sichtbar |
+
+Keine Überlappung mit Symbolspalte (13 px Abstand), Statuszeile oder km-Chip.
+
+- 494 Tests + **3 neue**: keine Zeilenbegrenzung mehr, alle drei Knöpfe im HTML, Breite bleibt
+  links der Spalte.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `CHANGELOG.md`,
+`tests/test_build_ad.py`, `tests/test_build_ag.py`.
+
 ## 1.5.0 – 2026-11-09 (Build bp) – Stromspar: „dauerhaft hell" dunkelt nach 1 Minute selbst ab
 - **Meldung:** „Im stromsparmodus soll der Screen nach einer gewissen Zeit automatisch wieder
   abdunkeln wenn er vorher durch zweimal tippen aktiviert wurde, falls man vergisst ihn
