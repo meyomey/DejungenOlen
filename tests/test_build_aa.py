@@ -66,7 +66,8 @@ class LiveKopfUndLeisteTest(AppTestCase):
         for bid in ('btn-follow', 'btn-all', 'btn-fs', 'btn-wake', 'btn-saver'):
             self.assertIn('class="lt-btn" id="%s"' % bid, h, f'{bid} fehlt')
         self.assertIn('#live-bar .lb-sec  { display: none; }', h)   # keine zweite Knopfreihe
-        self.assertIn('#live-tools .lt-btn { width: 42px; height: 42px;', h)
+        # Build bk: eine flache Reihe mit 36-px-Knoepfen statt der 234 px hohen Spalte
+        self.assertIn('#live-tools .lt-btn { width: 36px; height: 36px;', h)
 
     def test_symbole_ohne_icon_font(self):
         """Unterwegs ohne Netz lädt Bootstrap Icons nicht – die Symbole müssen trotzdem da sein."""

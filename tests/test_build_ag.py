@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bj')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bk')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2044,7 +2044,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bj')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bk')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2456,8 +2456,8 @@ class LiveKarteLesbarTest(AppTestCase):
         self.assertNotIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
         self.assertNotIn('top: 56px; left: 8px;', live)
         # unten ueber dem Info-Block – Build bi: beide an der Karte (vorher mobil am Fenster)
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 186px; }', live)
-        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 176px; }', live)   # Build bj
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 191px; }', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 163px; }', live)   # Build bk
         # Toast rutscht mit, damit er nicht auf der Pill sitzt
         self.assertIn('.map-toast { position: absolute; top: 124px;', live)
 
@@ -2465,12 +2465,12 @@ class LiveKarteLesbarTest(AppTestCase):
         live = self._live()
         # 3+2-Raster statt einer gequetschten Fünferspalte
         self.assertIn('#live-bar .lb-sec  { display: none; }', live)      # Nebenknöpfe sind jetzt Symbole auf der Karte
-        self.assertIn('#live-tools .lt-btn { width: 42px; height: 42px;', live)
-        # Build bj: 122 px – ueber der Leistenoberkante (gemessen: mit 66 ragte sie 8 px hinein)
-        self.assertIn('#live-tools { position: absolute; right: 8px; bottom: 122px;', live)
+        self.assertIn('#live-tools .lt-btn { width: 36px; height: 36px;', live)   # Build bk
+        # Build bk: eine flache Reihe (36 px hoch) auf der untersten Zeile (98 in der Karte)
+        self.assertIn('#live-tools { position: absolute; right: 8px; bottom: 98px;', live)
         # Umbruch statt Ellipse in der Sekundärreihe
-        # Build 11-06aa: Die Nebenknöpfe sind jetzt Symbole auf der Karte (42 × 42 px).
-        self.assertIn("#live-tools .lt-btn { width: 42px; height: 42px;", live)
+        # Build bk: Die Nebenknöpfe sind Symbole in einer flachen Reihe (36 × 36 px).
+        self.assertIn("#live-tools .lt-btn { width: 36px; height: 36px;", live)
         # Build 11-06z: „Standard" ist aus der Leiste raus (Kartenstil-Knopf sitzt auf der Karte)
         # Build 11-06aa: Die Namen stehen jetzt in title/aria-label der Symbol-Knöpfe
         for wort in ('title="Folgen:', 'title="Alle:', 'aria-label="Vollbild"', 'aria-label="Stromspar"'):

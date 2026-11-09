@@ -1,4 +1,34 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bk) – Symbole, Hinweis und km/Zeit ganz nach unten
+- **Meldung:** „Symbole, Hinweis, Zeit/km befinden sich immer noch zu weit in der Mitte."
+- **Nachgemessen am Screenshot (452 × 767):** Chip-Unterkante y = 534, Statuszeile erst bei
+  y = 747 — dazwischen **213 px** leere Karte. Die Symbole begannen bei y = 287, also genau
+  in der Bildmitte (384).
+
+### Ursache
+Nicht ein einzelner Wert, sondern die **Reihenfolge**. Unten sind zwei Balken fest vergeben
+(Knopfleiste 56 px, Statuszeile 41 px = bis 114 px), also wurde alles darüber gestapelt:
+Chip 147, Hinweis 186, Symbole als **234 px hohe Spalte** von 122 bis 356. Die Spalte allein
+reichte damit bis in die Bildmitte — egal wie tief der Chip stand.
+
+### Jetzt
+- **Die fünf Symbole stehen in EINER Reihe** (36 px statt 42 px, 200 px breit) — Höhe
+  **36 px statt 234 px**. Damit ist unten Platz.
+- **Unterste Zeile (122 px):** links der km/Zeit-Chip, rechts die Symbolreihe.
+- **Darüber:** Statuszeile (166) und Verschiebe-Hinweis (215).
+- **km/Zeit ist das unterste der drei**, wie gewünscht („Zeit/km ist das unterste").
+- Desktop: Chip und Symbole auf 66, Status 110, Hinweis 163. Vollbild: 66 / 110 / 205.
+- **Gemessen** auf 452×767 (Screenshot-Größe), 460×972, 390×844, 360×740 und 1024×768:
+  keine Überlappung, alle fünf Symbole treffbar, alles unterhalb der Bildmitte.
+- **Scrollen** (452×767, 360×740): Chip, Hinweis und Symbole wandern **300 px** mit der
+  Karte — die Statuszeile bleibt als Meldung am Fenster.
+- 2 neue Tests („alles in der unteren Bildhälfte", „Symbolreihe flach"), 20 ältere prüften
+  die Werte aus Build bj und wurden umgestellt. **Gegenprobe:** bj-Lage zurück → 5 Tests rot.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `CHANGELOG.md`,
+`tests/test_build_ay.py`, `tests/test_build_ad.py`, `tests/test_build_ag.py`,
+`tests/test_build_aa.py`.
+
 ## 1.5.0 – 2026-11-09 (Build bj) – km/Zeit nach unten, Symbole an die Karte
 - **Meldung:** „zu weit oben. Zeit/km sollen im unteren Bereich positioniert werden."
 - **Gemessen vorher:** Der Chip stand **206 px** (Handy) bzw. **166 px** (Desktop) über der
