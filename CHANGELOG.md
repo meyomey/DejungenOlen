@@ -1,4 +1,37 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bl) – Lücke geschlossen, Symbole zurück nach rechts
+- **Meldung:** „Alles immer noch zu weit in der Mitte. **Großer Zwischenraum** zwischen
+  ‚Zum verschieben antippen' und Zeit/km. Die Symbole waren schon gut vorher auf der rechten
+  Seite, nur zu hoch."
+
+### Ursache der Lücke (gemessen, nicht geschätzt)
+Die Statuszeile wurde als **fester Posten zwischen Hinweis und Chip** mitgerechnet — 41 px
+Höhe + 8 px Abstand. Sie steht während der Fahrt aber **gar nicht auf der Karte** (die Meldung
+„Du teilst deinen Standort seit …" gehört zum „Unterwegs"-Kasten). Gemessen im Zustand
+„Fahrt läuft" bei 452×767: Hinweis unten 161, Chip unten 122 → **62 px Leerraum**, davon
+41 px unsichtbare Statuszeile.
+
+### Jetzt
+- **Statuszeile hängt an der Pill, nicht zwischen Pill und Chip** (203 statt 166). Fehlt sie,
+  rücken Pill und Chip zusammen — der Abstand ist immer **8 px**.
+- **Symbole wieder als Spalte rechts** (wie vorher), aber ganz unten und flacher:
+  35 px statt 42 px, 5 px Abstand → **195 px** statt 234 px hoch. Gemessen 452×767:
+  Spalte von y 450 bis 645, die Bildmitte (384) bleibt frei.
+- **km/Zeit unten links** (98 in Kartenkoordinaten = 122 im Fenster, 8 px über der Leiste).
+- Desktop: Chip/Symbole 66, Pill 105, Status 147. Vollbild: 66 / 105 / 147.
+
+### Gemessen
+452×767, 469×903 (Screenshot-Größe), 390×844, 360×740 — **je in beiden Zuständen**
+(Zuschauer mit Meldung / Fahrt läuft ohne): keine Überlappung, alle fünf Symbole treffbar,
+Lücke konstant 8 px, alles unterhalb der Bildmitte.
+
+- 1 neuer Test („keine Lücke zwischen Hinweis und Chip"), 15 ältere auf die neuen Werte
+  umgestellt. **Gegenprobe:** alte Anordnung zurück → 4 Tests rot. 487 gesamt.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `CHANGELOG.md`,
+`tests/test_build_ay.py`, `tests/test_build_ad.py`, `tests/test_build_ag.py`,
+`tests/test_build_aa.py`.
+
 ## 1.5.0 – 2026-11-09 (Build bk) – Symbole, Hinweis und km/Zeit ganz nach unten
 - **Meldung:** „Symbole, Hinweis, Zeit/km befinden sich immer noch zu weit in der Mitte."
 - **Nachgemessen am Screenshot (452 × 767):** Chip-Unterkante y = 534, Statuszeile erst bei

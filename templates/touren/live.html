@@ -40,15 +40,16 @@
      Verschiebe-Hinweis und Schloss sitzen. Der Chip steht direkt darueber, in einer Reihe
      mit der Fahrzeit. Beides gehoert zur Karte und dunkelt im Stromsparmodus mit ab. */
   /* Build bk: „Symbole, Hinweis, Zeit/km befinden sich immer noch zu weit in der Mitte."
-     Im Screenshot (452x767) gemessen: Chip-Unterkante 534, Statuszeile erst 747 – dazwischen
-     213 px. Ursache: unten ist der Platz von Knopfleiste (56 px) UND Statuszeile (41 px)
-     belegt, deshalb wurde alles darueber gestapelt.
-     Jetzt ist der Chip das UNTERSTE Element: er sitzt direkt ueber der Knopfleiste, die
-     Statuszeile rueckt unter ihn.
-     ACHTUNG Bezugsart: Der Chip haengt an der KARTE (absolute in #live-wrap), die mobil
-     24 px ueber dem Fensterrand endet. Die Leiste ist 56 px hoch und endet 58 px ueber dem
-     Rand -> ihre Oberkante liegt bei 114. Chip 8 px darueber = 122 (Fenster), in
-     Kartenkoordinaten 122 − 24 = 98. Status (fixed) bei 130 (122 + 8), Pill bei 179. */
+     Build bl: „Alles immer noch zu weit in der Mitte. Grosser Zwischenraum zwischen
+     ,Zum verschieben antippen' und Zeit/km."
+     Die Luecke kam daher, dass die Statuszeile ueber dem Chip MITGERECHNET wurde – sie steht
+     waehrend der Fahrt aber gar nicht auf der Karte (Meldung gehoert zum „Unterwegs"-Kasten).
+     Jetzt zaehlt nur noch, was wirklich da ist:
+       #live-wrap endet 24 px ueber dem Fensterrand; die Leiste ist FEST und beginnt bei 114
+       (Oberkante). Chip-Unterkante soll 8 px darueber = 122 (Fenster) = 98 (Karte).
+       Pill 8 px ueber dem Chip (31 hoch) = 137 (Karte).
+     Die Statuszeile kommt NUR, wenn sie wirklich etwas anzeigt, ebenfalls unten links
+     (0 = unterste Kante) und deckt dann Chip und Pill ab. */
   #live-km { position: absolute; left: 8px; bottom: 98px; z-index: 1080;
              background: rgba(20, 30, 60, .54); color: #fff; border-radius: 20px;
              border: 1px solid rgba(255,255,255,.22);
@@ -109,20 +110,22 @@
   /* links unten: dort ist die Karte frei (oben links liegt der Zoom, oben rechts
      der Kartenstil-Knopf, rechts unten die Symbolspalte). Der Verschiebe-Hinweis sitzt
      seit Build an ebenfalls unten links, direkt ueber dieser Statuszeile. */
-  #live-status { position: absolute; left: 8px; bottom: 84px; max-width: calc(100% - 74px); z-index: 1030;
+  #live-status { position: absolute; left: 8px; bottom: 203px; max-width: calc(100% - 74px); z-index: 1090;
                  margin: 0 !important; padding: .35rem .6rem !important; font-size: .82rem !important;
                  font-weight: 600; border-radius: 10px; line-height: 1.25;
                  max-height: 3.1em; overflow: hidden; cursor: pointer;
                  background: rgba(255,255,255,.95); box-shadow: 0 1px 5px rgba(0,0,0,.25); }
-  /* Auf dem Handy liegt die Leiste FEST am Fenster – die Karte reicht darunter hinaus.
-     Deshalb hängt der Status-Chip dort ebenfalls am Fenster, direkt über der Leiste. */
+  /* Build bl: Die Statuszeile bekommt KEINEN eigenen Platz mehr reserviert – sie riss sonst
+     eine 62-px-Luecke zwischen „Zum Verschieben antippen" und den km-Chip auf.
+     Wichtig: Sie belegt KEINEN festen Platz. Ist sie unsichtbar (waehrend der Fahrt), ruecken
+     Pill und Chip zusammen – genau die Luecke, die der Nutzer gesehen hat. Ist sie sichtbar,
+     fuellt sie den Platz ueber der Pill (203 = 195 + 8) und ueberlappt nichts. */
   @media (max-width: 991.98px) {
-    #live-status { position: fixed; left: 8px; bottom: 166px; max-width: calc(100% - 74px); }
+    #live-status { position: fixed; left: 8px; bottom: 203px; max-width: calc(100% - 74px); z-index: 1090; }
   }
   #live-status.open { max-height: 12em; overflow-y: auto; }
-  /* Build bk: Die Statuszeile steht jetzt UEBER dem km-Chip (der ist das unterste Element):
-     Chip 66 + 31 Hoehe + 8 = 105. Vorher lag sie bei 84 und damit darunter. */
-  @media (min-width: 992px) { #live-status { font-size: .9rem !important; max-width: 60%; bottom: 110px; } }
+  /* Build bl: Desktop – ebenfalls unten links ueber Chip und Pill, ohne reservierten Platz. */
+  @media (min-width: 992px) { #live-status { font-size: .9rem !important; max-width: 60%; bottom: 147px; z-index: 1090; } }
 
   /* Build 11-06aa: Kopfzeile – EINE Zeile (Zurück · Titel · ℹ️). Datum und Hinweise
      stecken im ℹ️-Aufklapper, damit die Karte den Bildschirm bekommt. */
@@ -146,15 +149,15 @@
      Gemessen ist die Leiste 56 px hoch und endet bei 58 ueber dem Fensterrand, ihre Oberkante
      liegt also bei 114. Die Spalte (234 px hoch, ausgerichtet an ihrer UNTERKANTE) muss
      darueber beginnen: 114 + 8 Luft = 122. */
-  /* Build bk: Fuenf Knoepfe uebereinander sind 234 px – die Spalte reichte damit bis in die
-     Bildmitte (im Screenshot ab y=287 bei 767 px Hoehe). Ab Build bk stehen sie in EINER
-     Reihe nebeneinander: 36 px hoch, 200 px breit. Damit liegt die ganze Bedienung unten:
-     Chip + Symbole in der untersten Zeile, Statuszeile und Hinweis darueber. */
+  /* Build bl: „Die Symbole waren schon gut vorher auf der rechten Seite, nur zu hoch."
+     Also zurueck in die Spalte rechts – aber ganz unten. Damit die Spalte nicht wieder bis in
+     die Bildmitte reicht, sind die Knoepfe 35 statt 42 px und der Abstand 5 statt 6 px:
+     5 * 35 + 4 * 5 = 195 px statt 234. Gemessen 452x767: Spalte von y 450 bis 645 –
+     die Bildmitte (384) bleibt frei. */
   #live-tools { position: absolute; right: 8px; bottom: 98px; z-index: 1040;
-                display: grid; grid-template-columns: repeat(5, 36px);
-                grid-auto-rows: 36px; gap: 5px; justify-content: end; }
+                display: flex; flex-direction: column; gap: 5px; }
   #live-tools .lt-btn svg { display: block; }
-  #live-tools .lt-btn { width: 36px; height: 36px; border-radius: 11px; border: 0;
+  #live-tools .lt-btn { width: 35px; height: 35px; border-radius: 10px; border: 0;
                         background: rgba(255,255,255,.94); color: var(--djo-navy);
                         box-shadow: 0 1px 6px rgba(0,0,0,.3); display: inline-flex;
                         align-items: center; justify-content: center; line-height: 1; padding: 0; }
@@ -196,7 +199,7 @@
        beschnitten, kann also nie ueber die Liste darunter rutschen.
        Build bj: Der km/Zeit-Chip sitzt jetzt unten (147) – die Pill steht darueber bei 186
        (147 + 31 Chiphoehe + 8 Luft). */
-    #live-guard-pill, #live-guard-lock { position: absolute; bottom: 191px; }
+    #live-guard-pill, #live-guard-lock { position: absolute; bottom: 137px; }
     #live-guard-pill { height: 34px; display: inline-flex; align-items: center; }
     #live-guard-lock { height: 34px; width: 38px; display: inline-flex; align-items: center;
                        justify-content: center; padding: 0; }
@@ -204,7 +207,7 @@
   @media (min-width: 992px) {
     /* Desktop: der Status-Chip sitzt in der Karte (bottom: 84px, 45 px hoch -> Oberkante 129).
        Build bj: der km-Chip sitzt jetzt unten (137), die Pill darueber (137 + 31 + 8 = 176). */
-    #live-guard-pill, #live-guard-lock { bottom: 163px; }
+    #live-guard-pill, #live-guard-lock { bottom: 105px; }
   }
 
   details.live-info > summary { cursor: pointer; list-style: none; }
@@ -248,9 +251,11 @@
     #rec-hint-fs { display: none; bottom: 128px; }            /* Build bc: aus dem Inline-Style geholt */
     #live-wrap.live-fs #rec-hint-fs { display: block; }
     #live-wrap.live-fs #live-bar { bottom: 0; border-radius: 0; }
-    #live-wrap.live-fs #live-status { bottom: 110px; }
+    /* Build bl: Im Vollbild liegt die Leiste unten am Rand (0..58) – die Statuszeile steht
+       ueber Pill (105..139) und Chip (66..97), damit nichts uebereinander liegt. */
+    #live-wrap.live-fs #live-status { bottom: 164px; }
     #live-wrap.live-fs #live-guard-pill,
-    #live-wrap.live-fs #live-guard-lock { bottom: 163px; }
+    #live-wrap.live-fs #live-guard-lock { bottom: 105px; }
     /* Build bc: „dann sollte die Zeit und km Anzeige auch mitwandern nach unten" – Ja.
        Die alte Formel zaehlte Pill (34) und 🔒 (34) mit, obwohl beide im Vollbild gar nicht
        erscheinen. Gemessen stand der Chip dadurch 155 px ueber der Statuszeile.
@@ -258,7 +263,10 @@
     #live-wrap.live-fs #live-km { bottom: 66px; }
     /* Symbolspalte: 5 Knoepfe à 42 px = 234 px hoch. Ganz unten wuerde sie die Knopfleiste
        treffen (gemessen: Ueberlappung True). Sie steht deshalb direkt ueber der Statuszeile. */
-    #live-wrap.live-fs #live-tools { bottom: 66px; }
+    /* Build bl: Im Vollbild liegt die Karte bis zum Fensterrand – eine 234 px hohe Spalte
+       reichte dort bis in die Bildmitte. Deshalb hier DREI Spalten (2 Reihen, 90 px). */
+    #live-wrap.live-fs #live-tools { bottom: 66px; display: grid;
+        grid-template-columns: repeat(3, 42px); grid-auto-rows: 42px; gap: 6px; justify-content: end; }
     /* Build bc: Der Hinweis steht ueber dem km-Chip. Beide auf derselben Kante lagen
        aufeinander (gemessen bei 460x972, 390x844 und 360x740: Ueberlappung km/hint). */
     #live-wrap.live-fs #rec-hint-fs { bottom: 205px; }

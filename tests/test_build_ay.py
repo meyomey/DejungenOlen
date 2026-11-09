@@ -232,7 +232,7 @@ class VollbildKnoepfeWeiterUntenTest(unittest.TestCase):
 
     def test_statuszeile_und_pill_ruecken_mit(self):
         html = _read('templates', 'touren', 'live.html')
-        self.assertIn('#live-wrap.live-fs #live-status { bottom: 110px; }', html)
+        self.assertIn('#live-wrap.live-fs #live-status { bottom: 164px; }', html)
         self.assertIn('#live-wrap.live-fs #live-guard-pill,\n    #live-wrap.live-fs #live-guard-lock', html)
 
     def test_symbolspalte_ueber_der_statuszeile(self):
@@ -253,8 +253,9 @@ class VollbildKnoepfeWeiterUntenTest(unittest.TestCase):
         """Ausserhalb des Vollbilds liegt die App-Navigation unten – dort bleiben die 58 px."""
         html = _read('templates', 'touren', 'live.html')
         self.assertIn('bottom: calc(58px + env(safe-area-inset-bottom));', html)
-        # Build bk: die Statuszeile steht ueber dem km-Chip (Chip 122 + 31 + 8 = 161)
-        self.assertIn('#live-status { position: fixed; left: 8px; bottom: 166px;', html)
+        # Build bl: die Statuszeile belegt keinen festen Platz mehr – sie reiht sich ueber der
+        # Pill ein (Pill 161 + 34 + 8 = 203) und laesst Chip/Pill zusammenruecken, wenn sie fehlt.
+        self.assertIn('#live-status { position: fixed; left: 8px; bottom: 203px;', html)
 
 
 if __name__ == "__main__":
@@ -285,7 +286,7 @@ class KmChipWandertMitTest(unittest.TestCase):
         (66), die Statuszeile steht darueber (110 = 66 + 31 + 8 + 5)."""
         html = _read('templates', 'touren', 'live.html')
         self.assertIn('#live-wrap.live-fs #live-km { bottom: 66px; }', html)
-        self.assertIn('#live-wrap.live-fs #live-status { bottom: 110px; }', html)
+        self.assertIn('#live-wrap.live-fs #live-status { bottom: 164px; }', html)
 
     def test_hinweis_ueber_dem_chip(self):
         html = _read('templates', 'touren', 'live.html')
@@ -528,7 +529,7 @@ class KartenhinweiseBleibenInDerKarteTest(unittest.TestCase):
 
     def test_pill_haengt_an_der_karte_nicht_am_fenster(self):
         html = _read('templates', 'touren', 'live.html')
-        i = html.find('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 191px; }')
+        i = html.find('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 137px; }')
         self.assertGreater(i, 0, 'Pill sitzt nicht mehr an der Karte')
         # die alte, fensterfeste Lage darf nicht zurueckkommen
         self.assertNotIn('position: fixed; bottom: calc(58px + 64px + 34px + 8px)', html)
@@ -538,7 +539,7 @@ class KartenhinweiseBleibenInDerKarteTest(unittest.TestCase):
         darueber (147 + 31 Chiphoehe + 8 = 186)."""
         html = _read('templates', 'touren', 'live.html')
         self.assertIn('#live-km { position: absolute; left: 8px; bottom: 98px;', html)
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 191px; }', html)
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 137px; }', html)
 
     def test_chip_haengt_nicht_mehr_an_der_fensterleiter(self):
         """Die alte Formel zaehlte Leiste (58), Status (64), Pill (34) und Abstaende mit."""
@@ -569,44 +570,60 @@ class ChipUntenUndSymboleAnDerKarteTest(unittest.TestCase):
     """
 
     def test_chip_sitzt_unten(self):
-        # Build bk: noch weiter runter – Chip als UNTERSTES Element (122 px ueber dem
-        # Fensterrand = 98 in Kartenkoordinaten, weil die Karte 24 px tiefer endet).
+        # Build bl: Chip 8 px ueber der Leistenoberkante (114) -> 122 im Fenster
+        # = 98 in Kartenkoordinaten (#live-wrap endet 24 px ueber dem Fensterrand).
         html = _read('templates', 'touren', 'live.html')
         self.assertIn('#live-km { position: absolute; left: 8px; bottom: 98px;', html)
         self.assertIn('#live-km { bottom: 66px; }', html)           # Desktop
         self.assertNotIn('bottom: 206px', html)                     # die alte Lage ist weg
-        self.assertNotIn('bottom: 147px;', html)                    # auch bj ist ueberholt
+        self.assertNotIn('#live-km { position: absolute; left: 8px; bottom: 147px;', html)  # bj ist ueberholt
 
     def test_pill_steht_ueber_dem_chip(self):
-        """Build bk: Der Chip ist jetzt das unterste Element, der Hinweis rueckt darueber:
-        122 + 31 + 8 = 161 (Fenster) = 191 in Kartenkoordinaten. Desktop 163."""
+        """Build bl: Der Hinweis steht 7-8 px ueber dem Chip (122 + 31 + 8 = 161 im
+        Fenster) = 137 in Kartenkoordinaten. Desktop 105 (Chip 66 + 31 + 8)."""
         html = _read('templates', 'touren', 'live.html')
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 191px; }', html)
-        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 163px; }', html)
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 137px; }', html)
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 105px; }', html)
 
     def test_alles_liegt_in_der_unteren_bildhaelfte(self):
-        """Build bk: „Symbole, Hinweis, Zeit/km befinden sich immer noch zu weit in der Mitte."
+        """Build bl: „Alles immer noch zu weit in der Mitte. Grosser Zwischenraum zwischen
+        ,Zum verschieben antippen' und Zeit/km."
 
-        Der Fehler war nicht ein einzelner Wert, sondern die Reihenfolge: Chip und Symbole
-        wurden uebereinander gestapelt und rutschten damit nach oben. Jetzt gilt von unten
-        nach oben: Chip/Symbole (122) · Statuszeile (166) · Verschiebe-Hinweis (215).
-        Bei 767 px Fensterhoehe (Bildmitte 384) bleibt alles unter der Mitte.
+        Ursache der Luecke: Die Statuszeile wurde als fester Posten mitgerechnet, obwohl sie
+        waehrend der Fahrt gar nicht auf der Karte steht. Jetzt stapelt sich von unten:
+        Chip (122) · Pill (161) · Statuszeile (203, nur wenn sichtbar) – Abstand 7-8 px.
         """
         html = _read('templates', 'touren', 'live.html')
-        self.assertIn('#live-status { position: fixed; left: 8px; bottom: 166px;', html)
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 191px; }', html)
-        # 122 (Chip/Symbole) < 166 (Status) < 215 (Hinweis) – nichts steht mehr uebereinander
-        self.assertLess(122, 166)
-        self.assertLess(166 + 41, 215)
-        # bei 767 px Hoehe: Hinweis-Oberkante 215 + 34 = 249 -> 518 px von oben, Mitte ist 384
-        self.assertGreater(767 - (215 + 34), 384)
+        self.assertIn('#live-km { position: absolute; left: 8px; bottom: 98px;', html)
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 137px; }', html)
+        # Pill-Unterkante (161) minus Chip-Oberkante (122 + 31 = 153) = 8 px Luft
+        self.assertEqual(161 - (122 + 31), 8)
+
+    def test_keine_luecke_zwischen_hinweis_und_chip(self):
+        """Build bl: „Grosser Zwischenraum zwischen ,Zum verschieben antippen' und Zeit/km."
+
+        Gemessen im Zustand „Fahrt läuft" (Statuszeile unsichtbar): Der Hinweis stand auf
+        161, der Chip auf 122 – aber die Statuszeile dazwischen wurde mit 41 px + 8 px
+        mitgerechnet, obwohl sie gar nicht angezeigt wurde. Ergebnis: 62 px Leerraum.
+
+        Jetzt haengt die Statuszeile an der Pill (203) statt zwischen Pill und Chip – wenn
+        sie fehlt, ruecken Pill und Chip zusammen. Der Abstand ist immer 8 px.
+        """
+        html = _read('templates', 'touren', 'live.html')
+        self.assertIn('#live-km { position: absolute; left: 8px; bottom: 98px;', html)
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 137px; }', html)
+        self.assertIn('#live-status { position: fixed; left: 8px; bottom: 203px;', html)
+        # Chip-Unterkante (122) + 31 Hoehe = 153 · Pill beginnt bei 161 -> 8 px, nicht 62
+        self.assertEqual(161 - (122 + 31), 8)
+        # die Statuszeile steht UEBER der Pill (203 > 195), nicht zwischen Pill und Chip
+        self.assertGreater(203, 161 + 34)
 
     def test_symbolreihe_ist_flach_nicht_hoch(self):
         """Fuenf Knoepfe untereinander waren 234 px hoch und reichten bis in die Bildmitte."""
         html = _read('templates', 'touren', 'live.html')
-        self.assertIn('grid-template-columns: repeat(5, 36px)', html)
-        self.assertIn('#live-tools .lt-btn { width: 36px; height: 36px;', html)
-        self.assertNotIn('flex-direction: column; gap: 6px; }', html.split('#live-tools')[1][:400])
+        # Build bl: zurueck als Spalte rechts, aber 35-px-Knoepfe -> 195 px statt 234 px
+        self.assertIn('display: flex; flex-direction: column; gap: 5px; }', html)
+        self.assertIn('#live-tools .lt-btn { width: 35px; height: 35px;', html)
 
     def test_symbolspalte_ist_eigenes_kind_der_karte(self):
         """Sie darf NICHT mehr in #live-bar stecken – die ist am Handy `fixed`."""
@@ -622,7 +639,7 @@ class ChipUntenUndSymboleAnDerKarteTest(unittest.TestCase):
         derselben Zeile wie der Chip – nicht mehr als 234-px-Spalte bis in die Bildmitte."""
         html = _read('templates', 'touren', 'live.html')
         self.assertIn('#live-tools { position: absolute; right: 8px; bottom: 98px;', html)
-        self.assertIn('grid-template-columns: repeat(5, 36px)', html)
+        self.assertIn('5 * 35 + 4 * 5 = 195 px', html)
 
 
 if __name__ == "__main__":

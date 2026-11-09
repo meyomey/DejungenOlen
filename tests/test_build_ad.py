@@ -534,9 +534,9 @@ class SperrknopfUeberDemInfoBlockTest(unittest.TestCase):
         live = _live()
         # Build bi: Die Pill haengt an der KARTE, nicht mehr am Fenster (sie wanderte
         # beim Scrollen nicht mit). Build bk: ueber Chip UND Statuszeile -> 191.
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 191px; }', live)
-        # Desktop: Pill ueber Chip (66) und Statuszeile (110) -> 163
-        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 163px; }', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 137px; }', live)
+        # Desktop: Pill 8 px ueber dem Chip (66 + 31 + 8) -> 105
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 105px; }', live)
         # die alte Lage oben links ist weg
         self.assertNotIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
         self.assertNotIn('#live-guard-lock { position: absolute; top: 80px; left: 10px;', live)
@@ -672,8 +672,8 @@ class LiveHinweisUntenLinksTest(unittest.TestCase):
         # links ist fest, unten kommt aus den beiden Media-Queries (mobil/desktop)
         self.assertIn('#live-guard-pill { position: absolute; left: 8px;', live)
         # Build bi: an der Karte statt am Fenster (bk: ueber Chip und Statuszeile)
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 191px; }', live)
-        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 163px; }', live)   # Build bk
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 137px; }', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 105px; }', live)   # Build bl
 
     def test_kommentare_behaupten_nicht_mehr_oben_links(self):
         live = _live()
