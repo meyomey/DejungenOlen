@@ -1,4 +1,33 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bo) – Symbole auch im Vollbild senkrecht rechts
+- **Meldung:** „Auch auf der großen Karte sollen die Symbole wie gehabt rechts untereinander
+  dargestellt werden."
+
+### Jetzt
+- **Im Vollbild stehen die fünf Symbole wieder senkrecht untereinander** am rechten Rand –
+  dieselbe Spalte wie im Normalbetrieb (5 × 35 + 4 × 5 = 195 px). Vorher lagen sie dort in
+  einem 3×2-Raster (138 × 90 px) und wirkten wie ein Block statt wie eine Spalte.
+- **Die Spalte steht über Chip und Statuszeile:** 113 (Chip) + 31 + 8 = **152**.
+- **Der Zuschauer-Hinweis rückt nach rechts,** damit er nicht auf der Spalte liegt: rechts
+  51 px Abstand (8 Rand + 35 Spalte + 8 Luft), höchstens zwei Zeilen.
+
+### Gemessen (Vollbild, Playwright, Service Worker aus)
+| Fenster | Spalte x | Spalte y | Überlappung |
+|---|---|---|---|
+| 461×934 | 418–453 | 587–782 | keine |
+| 390×844 | 347–382 | 497–692 | keine |
+| 360×740 | 317–352 | 393–588 | keine |
+| 452×767 | 409–444 | 420–615 | keine |
+
+Der weiße Hinweis hat in allen vier Größen **23 px** Luft zur Spalte. Im Normalbetrieb
+(ohne Vollbild) ändert sich nichts.
+
+- 488 Tests. Drei prüften das alte Raster (155/253) und wurden auf die Spalte umgestellt;
+  sie schließen jetzt ausdrücklich aus, dass `grid-template-columns` zurückkommt.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `CHANGELOG.md`,
+`tests/test_build_ag.py`, `tests/test_build_ay.py`.
+
 ## 1.5.0 – 2026-11-09 (Build bn) – Weißer Hinweis unten links am Kartenrand
 - **Meldung:** „Der weiße Hinweis Bereich soll unten links am Rand der Karte erscheinen" (Bild 16).
 

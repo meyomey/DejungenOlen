@@ -236,10 +236,15 @@ class VollbildKnoepfeWeiterUntenTest(unittest.TestCase):
         self.assertIn('#live-wrap.live-fs #live-guard-pill,\n    #live-wrap.live-fs #live-guard-lock', html)
 
     def test_symbolspalte_ueber_der_statuszeile(self):
-        """5 Knöpfe à 42 px = 234 px. Ganz unten traf sie die Knopfleiste (gemessen)."""
+        """Build bo: „Auch auf der großen Karte sollen die Symbole wie gehabt rechts
+        untereinander dargestellt werden." – im Vollbild also KEIN Raster, sondern die
+        senkrechte Spalte wie im Normalbetrieb (5 x 35 + 4 x 5 = 195 px).
+        Sie steht ueber Chip (113) und Statuszeile: 113 + 31 + 8 = 152."""
         html = _read('templates', 'touren', 'live.html')
         block = html.split('#live-wrap.live-fs #live-tools {', 1)[1].split('}', 1)[0]
-        self.assertIn('bottom: 155px', block)   # Build bn: ueber der Statuszeile
+        self.assertIn('bottom: 152px', block)
+        self.assertNotIn('grid-template-columns', block)   # kein 3x2-Raster mehr
+        self.assertNotIn('grid-auto-rows', block)
 
     def test_vollbild_hinweis_rueckt_mit(self):
         # Build bc: nicht mehr auf 64 px (dort lag er auf dem km-Chip), sondern ueber ihm
@@ -247,7 +252,8 @@ class VollbildKnoepfeWeiterUntenTest(unittest.TestCase):
         i = html.find('#live-wrap.live-fs #rec-hint-fs { bottom:')
         self.assertGreater(i, 0)
         block = html[i:].split('}', 1)[0]
-        self.assertIn('bottom: 253px', block)   # Build bn: ueber der Symbolspalte
+        self.assertIn('bottom: 152px', block)   # Build bo: rechts neben der Symbolspalte
+        self.assertIn('max-width: calc(100% - 51px)', block)   # 8 + 35 + 8 Luft zur Spalte
 
     def test_normalbetrieb_bleibt_unveraendert(self):
         """Ausserhalb des Vollbilds liegt die App-Navigation unten – dort bleiben die 58 px."""
@@ -293,8 +299,8 @@ class KmChipWandertMitTest(unittest.TestCase):
         i = html.find('#live-wrap.live-fs #rec-hint-fs { bottom:')
         self.assertGreater(i, 0)
         block = html[i:].split('}', 1)[0]
-        # Build bk: hinweis steht ueber der Statuszeile (110 + 41 + 8 = 159)
-        self.assertIn('bottom: 253px', block)
+        # Build bo: rechts neben der Symbolspalte, auf deren Unterkante (152)
+        self.assertIn('bottom: 152px', block)
 
     def test_kein_inline_bottom_mehr_am_hinweis(self):
         """Genau daran scheiterte die erste Korrektur: Inline-Style gewinnt immer."""
