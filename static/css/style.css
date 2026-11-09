@@ -728,10 +728,17 @@ body.saver-hell #saver-dim .saver-chip { display: none; }
    Streifen unten am Fensterrand ab – sichtbar, aber ohne die Karte zu verdecken.
    Der Streifen laeuft von rechts nach links weg (scaleX faellt von 1 auf 0), damit die
    Bewegung ohne Layout-Arbeit laeuft (requestAnimationFrame im Template). */
+/* Build br: „unten läuft ein gelber Balken" den man beim Fahren nicht so gut sehen,
+   evtl. ist rot besser." – Zu Recht: Gelb (#ffc93c) auf den hellen Kartenkacheln ist
+   fast unsichtbar, besonders bei Sonne. Jetzt die Markenfarbe --djo-red (#C0392B):
+   Rot liegt im Farbkreis am weitesten von Straßen-Gelb und Rasen-Grün entfernt und ist
+   bei Tageslicht am auffälligsten. Dazu 6 statt 4 px hoch und mit weissem Rand oben –
+   damit der Balken auch über dunklen Flaechen (schattierte Karte, Nachtmodus) abgrenzt. */
 #saver-dim #saver-rest {
-  position: fixed; left: 0; right: 0; bottom: 0; height: 4px; z-index: 4010;
-  background: #ffc93c; transform-origin: left center; transform: scaleX(0);
+  position: fixed; left: 0; right: 0; bottom: 0; height: 6px; z-index: 4010;
+  background: var(--djo-red, #C0392B); transform-origin: left center; transform: scaleX(0);
   opacity: 0; pointer-events: none;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, .65);
   transition: opacity .25s;
 }
 /* Sichtbar nur in den letzten 10 s – das Script schaltet die Klasse .rest-aktiv. */

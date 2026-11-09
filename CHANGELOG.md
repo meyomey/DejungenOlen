@@ -1,4 +1,30 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build br) – Stromspar-Balken rot statt gelb
+- **Meldung:** „unten läuft ein gelber Balken" den man beim Fahren nicht so gut sehen,
+  evtl. ist rot besser."
+
+### Warum Gelb schlecht war
+Gelb (`#ffc93c`) liegt auf den hellen Kartenkacheln fast auf demselben Farbton wie Straßen
+und Wege — bei Sonne praktisch unsichtbar. Dazu war der Balken nur 4 px hoch.
+
+### Jetzt
+- **Rot in der Markenfarbe** `--djo-red` (`#C0392B`) — dieselbe Farbe wie „schwer" bei den
+  Schwierigkeits-Badges. Rot liegt im Farbkreis am weitesten von Straßen-Gelb und Rasen-Grün
+  entfernt und ist bei Tageslicht am auffälligsten.
+- **6 statt 4 px hoch** — beim Fahren aus dem Augenwinkel erkennbar.
+- **Weißer Rand oben** (1 px): grenzt den Balken auch über dunklen Flächen ab (Nachtmodus,
+  schattierte Karte, dunkelblaue App-Navigation).
+
+### Gemessen (Playwright, 461×934)
+Berechnete Farbe `rgb(192, 57, 43)`, Höhe 6 px, weißer Rand vorhanden, Balken erscheint erst
+in den letzten 10 Sekunden (Klasse `.rest-aktiv`). Keine Änderung an der 60-s-Frist.
+
+- 497 Tests + **3 neue**: Balken ist rot (und nicht mehr gelb), ist 6 px hoch, hat den
+  weißen Rand.
+
+Geänderte Dateien: `static/css/style.css`, `app.py`, `CHANGELOG.md`, `tests/test_build_ad.py`,
+`tests/test_build_ag.py`.
+
 ## 1.5.0 – 2026-11-09 (Build bq) – Gelber Hinweis im Vollbild wieder vollständig
 - **Meldung:** „Der gelbe Hinweis ist abgeschnitten in der großen Karte."
 

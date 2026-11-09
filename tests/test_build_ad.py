@@ -1119,6 +1119,32 @@ class SparmodusDunkeltVonSelbstAbTest(unittest.TestCase):
         self.assertIn('#saver-dim #saver-rest', css)
         self.assertIn('#saver-dim #saver-rest.rest-aktiv { opacity: 1; }', css)
 
+
+class SparbalkenIstRotTest(unittest.TestCase):
+    """Build br: „unten läuft ein gelber Balken" den man beim Fahren nicht so gut sehen,
+    evtl. ist rot besser."
+
+    Gelb (#ffc93c) verschwindet auf den hellen Kartenkacheln, besonders bei Sonne –
+    Straßen sind selbst gelblich. Rot (Markenfarbe --djo-red #C0392B) liegt im Farbkreis
+    am weitesten davon entfernt und ist bei Tageslicht am auffaelligsten.
+    """
+
+    def test_balken_ist_rot_nicht_gelb(self):
+        css = _css()
+        block = css.split('#saver-dim #saver-rest {', 1)[1].split('}', 1)[0]
+        self.assertIn('var(--djo-red, #C0392B)', block)
+        self.assertNotIn('#ffc93c', block, 'gelber Balken ist zurueck')
+
+    def test_balken_ist_dick_genug(self):
+        css = _css()
+        block = css.split('#saver-dim #saver-rest {', 1)[1].split('}', 1)[0]
+        self.assertIn('height: 6px', block)          # vorher 4 px
+
+    def test_balken_hat_weissen_rand_fuer_dunkle_flaechen(self):
+        css = _css()
+        block = css.split('#saver-dim #saver-rest {', 1)[1].split('}', 1)[0]
+        self.assertIn('box-shadow: 0 -1px 0 rgba(255, 255, 255, .65)', block)
+
     def test_hinweis_nennt_die_frist(self):
         live = _live()
         self.assertIn('Hell für 1 Minute · tippen verlängert', live)
