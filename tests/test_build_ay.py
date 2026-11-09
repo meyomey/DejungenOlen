@@ -586,10 +586,14 @@ class ChipUntenUndSymboleAnDerKarteTest(unittest.TestCase):
 
     def test_pill_steht_ueber_dem_chip(self):
         """Build bl: Der Hinweis steht 7-8 px ueber dem Chip (122 + 31 + 8 = 161 im
-        Fenster) = 137 in Kartenkoordinaten. Desktop 105 (Chip 66 + 31 + 8)."""
+        Fenster) = 137 in Kartenkoordinaten.
+
+        Build bt: Desktop 160 statt 105 – dort sitzt der Chip jetzt bei 119..150
+        (ueber der Statuszeile 66..111), die Pill steht 10 px darueber.
+        """
         html = _read('templates', 'touren', 'live.html')
         self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 57px; }', html)
-        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 105px; }', html)
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 160px; }', html)
 
     def test_alles_liegt_in_der_unteren_bildhaelfte(self):
         """Build bl: „Alles immer noch zu weit in der Mitte. Grosser Zwischenraum zwischen

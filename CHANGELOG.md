@@ -1,4 +1,35 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bt) – Desktop: Statuszeile verdeckte „Fahren" und „Pause"
+- **Meldung:** „beim Desktop wird Fahren - Pause Knopf vom Hinweis überdeckt" (Bild 17:
+  die grüne Zeile „Du teilst deinen Standort seit 22:05 Uhr …" lag über der Knopfleiste).
+
+### Ursache
+`#live-status` hatte auf dem Desktop `bottom: 8px`. Die Knopfleiste ist 58 px hoch und sitzt
+bei `bottom: 0` – die Statuszeile lag also **genau darin**, mit `z-index: 1090` über der Leiste
+(`z-index: 1000`). Build bm hatte beim Umbau nur den km-Chip und die Symbolspalte auf
+`bottom: 66px` gehoben; die Statuszeile wurde dabei vergessen.
+
+### Gemessen (Chromium, vorher → nachher)
+| Breite | Status vorher | Status nachher | Leiste | Treffer auf „Pause" vorher → nachher |
+|---|---|---|---|---|
+| 1104×1070 | y 966..1011 | y 908..953 | 961..1019 | `live-status` → `btn-pause` |
+| 1280×800 | y 696..741 | y 638..683 | 691..749 | `live-status` → `btn-pause` |
+| 1440×900 | y 786..831 | y 728..773 | 781..839 | `live-status` → `btn-pause` |
+
+`elementFromPoint` auf der Knopfmitte lieferte vorher `live-status` – die Knöpfe waren auf dem
+Desktop **nicht antippbar**. Jetzt liegen Statuszeile (66..111), km-Chip (119..150) und
+Sperr-Knopf (160..194) über der Leiste (0..58).
+
+### Weitere geprüft
+- **Kein Text-Abschneiden:** Lange Meldungen bleiben auf zwei Zeilen begrenzt und lassen sich
+  antippen (`.open`, bis 12 em) – aufgeklappt wächst der Kasten **nach oben**, überlappt bei
+  1104 und 1366 px weiterhin nichts
+- **Vollbild:** Status y 959..1004, Pause 1020..1062 – ebenfalls frei
+- **Schmale Desktops** 992/1024/1366 px: keine Überlappung, Treffer überall `btn-pause`
+- Der zweite, widersprüchliche Desktop-Wert für den Sperr-Knopf (`bottom: 105px`) ist entfernt –
+  er hätte die Pill in die Statuszeile geschoben
+- 6 neue Tests in `tests/test_build_bt.py` (lesen die CSS-Werte, rechnen die Kette nach)
+
 ## 1.5.0 – 2026-11-09 (Build bs) – Audit 8: CSRF-Lücke geschlossen, Kommentar-Sperre nachgezogen
 Achtes Komplett-Audit. Drei Befunde behoben, davon **einer mit Sicherheitswirkung**.
 

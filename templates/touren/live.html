@@ -161,7 +161,11 @@
   #live-status.open { max-height: 12em; overflow-y: auto; }
   /* Build bl: Desktop – ebenfalls unten links ueber Chip und Pill, ohne reservierten Platz. */
   /* Build bn: Auch auf dem Desktop sitzt der Hinweis unten links am Kartenrand. */
-  @media (min-width: 992px) { #live-status { font-size: .9rem !important; max-width: 60%; bottom: 8px; z-index: 1090; } }
+  /* Build bt: Hier stand `bottom: 8px` – damit lag die Zeile auf dem Desktop GENAU in der
+     58 px hohen Knopfleiste und deckte „Fahren" und „Pause" zu (gemessen: Status 966..1011,
+     Leiste 961..1019; `elementFromPoint` auf der Knopfmitte lieferte `live-status`).
+     Sie sitzt jetzt wie km-Chip und Symbolspalte 8 px ueber der Leiste (bottom: 66). */
+  @media (min-width: 992px) { #live-status { font-size: .9rem !important; max-width: 60%; bottom: 66px; z-index: 1090; } }
 
   /* Build 11-06aa: Kopfzeile – EINE Zeile (Zurück · Titel · ℹ️). Datum und Hinweise
      stecken im ℹ️-Aufklapper, damit die Karte den Bildschirm bekommt. */
@@ -194,7 +198,23 @@
                 display: flex; flex-direction: column; gap: 5px; }
   /* Build bm: Desktop – die Leiste (58 px) liegt IN der Karte; Chip und Symbole stehen
      8 px darueber, also bottom: 66. Diese Regel steht bewusst NACH der Basisregel. */
-  @media (min-width: 992px) { #live-km { bottom: 66px; } #live-tools { bottom: 66px; } }
+  /* Build bt: „beim Desktop wird Fahren - Pause Knopf vom Hinweis überdeckt" (Bild 17).
+     Ursache: Die Statuszeile stand auf dem Desktop weiter bei `bottom: 8px` – also GENAU
+     in der Knopfleiste (58 px hoch, `bottom: 0`). Build bm hatte nur den km-Chip und die
+     Symbolspalte nach oben geholt, die Statuszeile vergessen. Gemessen 1104/1280/1440:
+     Status y 966..1011 bei Leiste y 961..1019, `elementFromPoint` auf der Knopfmitte von
+     „Pause" und „Fahren" lieferte `live-status` – die Knoepfe waren nicht antippbar.
+     Jetzt sitzt sie wie Chip und Symbole 8 px ueber der Leiste (bottom: 66).
+     Die Hoehe 45 px ist gemessen (Schrift .9rem, 2 Zeilen): 66 + 45 = 111. Der Chip
+     darueber rueckt auf 119, damit sich beide nicht beruehren (spiegelbildlich zum Handy). */
+  @media (min-width: 992px) {
+    #live-km { bottom: 66px; } #live-tools { bottom: 66px; }
+    /* Der km-Chip rueckt ueber die Statuszeile (66 + 45 = 111 -> 119), damit sich beide
+       nicht beruehren. Die Statuszeile selbst bekommt ihren Wert weiter oben in ihrem
+       eigenen Desktop-Block – hier nicht noch einmal, sonst gibt es zwei Wahrheiten. */
+    #live-km { bottom: 119px; }
+    #live-guard-pill, #live-guard-lock { bottom: 160px; }
+  }
   #live-tools .lt-btn svg { display: block; }
   #live-tools .lt-btn { width: 35px; height: 35px; border-radius: 10px; border: 0;
                         background: rgba(255,255,255,.94); color: var(--djo-navy);
@@ -244,11 +264,10 @@
     #live-guard-lock { height: 34px; width: 38px; display: inline-flex; align-items: center;
                        justify-content: center; padding: 0; }
   }
-  @media (min-width: 992px) {
-    /* Desktop: der Status-Chip sitzt in der Karte (bottom: 84px, 45 px hoch -> Oberkante 129).
-       Build bj: der km-Chip sitzt jetzt unten (137), die Pill darueber (137 + 31 + 8 = 176). */
-    #live-guard-pill, #live-guard-lock { bottom: 105px; }
-  }
+  /* Build bt: Die Stacking-Reihenfolge auf dem Desktop steht jetzt an EINER Stelle – oben
+     bei #live-km/#live-tools (Build bm/bt): Leiste 0..58 · Status 66..111 · km 119..150 ·
+     Sperr-Knopf 160..194. Vorher stand hier `bottom: 105px` – das haette die Pill in die
+     Statuszeile geschoben, sobald die einmal hoeher rueckt. Die Regel ist deshalb raus. */
 
   details.live-info > summary { cursor: pointer; list-style: none; }
   details.live-info > summary::marker { content: ''; }
