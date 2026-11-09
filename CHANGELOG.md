@@ -1,4 +1,30 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bi) – Kartenhinweise bleiben in der Karte
+- **Meldung:** „Wenn ich scrolle, verschiebt sich die Karte, aber ‚Zum Verschieben antippen'
+  bleibt unten. Die Zeitanzeige ist auch nicht optimal positioniert."
+- **Gemessen** (460×972): Beim Scrollen um 200 px wanderte die Karte von oben 144 auf −56 —
+  der Verschiebe-Hinweis blieb bei 774 stehen. Grund: `position: fixed` (am **Fenster**).
+  Der km/Zeit-Chip hing an einer eigenen, fensterbezogenen Leiter (204 px) und riss dadurch
+  von der Pill ab — in deinem Screenshot stand „5 min" deshalb oben am Kartenrand, der
+  Hinweis unten.
+
+### Jetzt (deine Wahl: beides wandert mit der Karte)
+- Verschiebe-Hinweis und 🔒 hängen an **#live-wrap** (`absolute`), 164 px über der
+  Kartenunterkante. Sie werden vom `overflow: hidden` der Karte beschnitten und können
+  nicht über die Liste darunter rutschen.
+- Der km/Zeit-Chip sitzt direkt darüber: 206 px = 164 + 34 (Pill) + 8. Gemessen exakt
+  **8,00 px** Abstand.
+
+**Nachgemessen auf 460×972, 390×844, 360×740:** Verschiebung beim Scrollen bei Karte und
+Pill exakt **200 px** — beide wandern mit. Keine Überlappung mit Statuszeile, Leiste oder
+Symbolspalte; Vollbild unverändert.
+
+- 4 neue Tests. 5 ältere Tests prüften die alte Fensterlage und wurden auf den neuen Stand
+  umgestellt. **Gegenprobe:** alte Lage zurück → 3 Tests rot. 481 gesamt.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `CHANGELOG.md`,
+`tests/test_build_ay.py`, `tests/test_build_ad.py`, `tests/test_build_ag.py`.
+
 ## 1.5.0 – 2026-11-09 (Build bh) – Tour-Titel führt in die Details + Datum korrigiert
 - **Wunsch:** „Wenn man auf den Titel klickt, soll man auch in die Details kommen."
 - **Gemessen vorher** (`/touren`, 460×972): Der Titel war ein `<span class="fw-semibold">`

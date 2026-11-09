@@ -532,9 +532,9 @@ class SperrknopfUeberDemInfoBlockTest(unittest.TestCase):
 
     def test_knopf_und_pill_sitzen_ueber_dem_infoblock(self):
         live = _live()
-        # mobil: dieselbe Kante wie der Status-Chip (58 + 64), plus dessen Hoehe und 8 px Luft
-        # Build as: 34 px hoch (vorher 30) – gleiche Masse wie das Schloss auf allen Karten
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: fixed; bottom: calc(58px + 64px + 34px + 8px); }', live)
+        # Build bi: Die Pill haengt jetzt an der KARTE, nicht mehr am Fenster (sie wanderte
+        # beim Scrollen nicht mit). 164 px ueber der Kartenunterkante.
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 164px; }', live)
         # Desktop: der Status-Chip sitzt in der Karte bei bottom: 84px -> Knopf bei 122px
         self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 126px; }', live)
         # die alte Lage oben links ist weg
@@ -671,8 +671,8 @@ class LiveHinweisUntenLinksTest(unittest.TestCase):
         live = _live()
         # links ist fest, unten kommt aus den beiden Media-Queries (mobil/desktop)
         self.assertIn('#live-guard-pill { position: absolute; left: 8px;', live)
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: fixed; '
-                      'bottom: calc(58px + 64px + 34px + 8px); }', live)
+        # Build bi: an der Karte statt am Fenster
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 164px; }', live)
         self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 126px; }', live)
 
     def test_kommentare_behaupten_nicht_mehr_oben_links(self):
@@ -823,7 +823,8 @@ class LiveStreckeTest(unittest.TestCase):
         # auf der Karte, oben links unter dem Zoom
         self.assertIn('<span id="live-km" class="d-none"', live)
         # Build ax: nicht mehr oben links (top: 82px), sondern unten links
-        self.assertIn('#live-km { position: absolute; left: 8px; bottom: calc(', live)
+        # Build bi: fester Wert direkt ueber der Pill (206 = 164 + 34 + 8) statt Fenster-Leiter
+        self.assertIn('#live-km { position: absolute; left: 8px; bottom: 206px;', live)
         # der Chip im Card-Footer ist wieder weg (dort waere er auf dem Handy unsichtbar)
         self.assertNotIn('<span id="live-km" class="badge bg-secondary d-none"></span>', live)
 
@@ -1060,7 +1061,8 @@ class FahrzeitOhnePausenTest(unittest.TestCase):
     def test_km_und_zeit_stehen_zusammen_unten_links(self):
         live = _live()
         # Build au hatte den Chip oben links (top: 82px) – jetzt unten links
-        self.assertIn('#live-km { position: absolute; left: 8px; bottom: calc(', live)
+        # Build bi: 206 px = direkt ueber der Pill (164 + 34 + 8)
+        self.assertIn('#live-km { position: absolute; left: 8px; bottom: 206px;', live)
         self.assertNotIn('#live-km { position: absolute; left: 10px; top: 82px;', live)
         # km und Fahrzeit in einem Chip
         block = live.split('function updateTrailKm()', 1)[1].split('\n}', 1)[0]

@@ -507,3 +507,43 @@ class TourTitelIstLinkTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class KartenhinweiseBleibenInDerKarteTest(unittest.TestCase):
+    """Build bi: „Wenn ich scrolle, verschiebt sich die Karte, aber ‚Zum Verschieben antippen'
+    bleibt unten. Die Zeitanzeige ist auch nicht optimal positioniert."
+
+    Gemessen vorher (460x972): Karte wanderte beim Scrollen von oben 144 auf -56 (200 px),
+    die Pill blieb bei 774 stehen (`position: fixed`) – sie hing am FENSTER, nicht an der Karte.
+    Der km/Zeit-Chip hing an einer eigenen, fensterbezogenen Leiter (204 px) und riss dadurch
+    von der Pill ab.
+
+    Gemessen nachher: Pill `absolute` in #live-wrap, 164 px über der Kartenunterkante;
+    Chip 206 px (= 164 + 34 Pill + 8) – Abstand exakt 8.00 px, Verschiebung beim Scrollen
+    bei Karte UND Pill exakt 200 px.
+    """
+
+    def test_pill_haengt_an_der_karte_nicht_am_fenster(self):
+        html = _read('templates', 'touren', 'live.html')
+        i = html.find('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 164px; }')
+        self.assertGreater(i, 0, 'Pill sitzt nicht mehr an der Karte')
+        # die alte, fensterfeste Lage darf nicht zurueckkommen
+        self.assertNotIn('position: fixed; bottom: calc(58px + 64px + 34px + 8px)', html)
+
+    def test_chip_steht_direkt_ueber_der_pill(self):
+        """164 (Pill) + 34 (Pillhoehe) + 8 (Abstand) = 206."""
+        html = _read('templates', 'touren', 'live.html')
+        self.assertIn('#live-km { position: absolute; left: 8px; bottom: 206px;', html)
+
+    def test_chip_haengt_nicht_mehr_an_der_fensterleiter(self):
+        """Die alte Formel zaehlte Leiste (58), Status (64), Pill (34) und Abstaende mit."""
+        html = _read('templates', 'touren', 'live.html')
+        self.assertNotIn('bottom: calc(58px + 64px + 34px + 8px + 40px)', html)
+
+    def test_vollbild_lage_unveraendert(self):
+        """Im Vollbild gilt weiter die eigene Kante (ueber Statuszeile + Chip)."""
+        html = _read('templates', 'touren', 'live.html')
+        self.assertIn('#live-wrap.live-fs #live-km { bottom: calc(64px + 3.1em + 8px); }', html)
+
+
+if __name__ == "__main__":
+    unittest.main()

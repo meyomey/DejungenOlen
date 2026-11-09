@@ -39,7 +39,12 @@
      werden." Also von oben links (unter dem Zoom) nach UNTEN LINKS – dorthin, wo auch
      Verschiebe-Hinweis und Schloss sitzen. Der Chip steht direkt darueber, in einer Reihe
      mit der Fahrzeit. Beides gehoert zur Karte und dunkelt im Stromsparmodus mit ab. */
-  #live-km { position: absolute; left: 8px; bottom: calc(58px + 64px + 34px + 8px + 40px); z-index: 1050;
+  /* Build bi: Der Chip stand auf einer eigenen, fensterbezogenen Leiter (204 px) – beim
+     Scrollen riss er dadurch von der Pill ab (im Screenshot: „5 min" oben am Kartenrand,
+     der Verschiebe-Hinweis unten am Fenster). Jetzt direkt ueber der Pill, gleiche Bezugsart:
+     164 + 34 (Pill) + 7 = 205. Gemessen ist der Chip 32 px hoch (29 + 1 px Rahmen je Seite),
+     mit 208 lagen 9 px dazwischen – mit 206 sind es die gewollten 8 px. */
+  #live-km { position: absolute; left: 8px; bottom: 206px; z-index: 1050;
              background: rgba(20, 30, 60, .54); color: #fff; border-radius: 20px;
              border: 1px solid rgba(255,255,255,.22);
              -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
@@ -166,9 +171,14 @@
      fest am Fenster (Unterkante 122 px über dem Rand) – also beginnen Pill und 🔒 8 px
      darüber. Statuszeile und Knopf sind gleich hoch (30 px), damit nichts springt. */
   @media (max-width: 991.98px) {
-    /* Build as: Pill und 🔒 auf DERSELBEN Kante – sie tauschen sich aus, es springt nichts.
-       34 px hoch wie auf allen anderen Karten (map-touch.js nutzt dieselben Werte). */
-    #live-guard-pill, #live-guard-lock { position: fixed; bottom: calc(58px + 64px + 34px + 8px); }
+    /* Build bi: Der Nutzer: „Wenn ich scrolle, verschiebt sich die Karte, aber ‚Zum Verschieben
+       antippen' bleibt unten." – Gemessen: Karte wanderte beim Scrollen von oben 144 auf -56,
+       die Pill blieb bei 774 (position: fixed = am FENSTER). Sie gehoert aber zur Karte.
+       Jetzt `absolute` in #live-wrap: sie wandert mit und wird vom overflow:hidden der Karte
+       beschnitten, kann also nie ueber die Liste darunter rutschen.
+       164 px = Abstand zur Unterkante der Karte; bei ungescrollter Seite sind das 188 px
+       ueber dem Fensterrand – dieselbe Hoehe wie vorher (164 + 24 px Seitenabstand). */
+    #live-guard-pill, #live-guard-lock { position: absolute; bottom: 164px; }
     #live-guard-pill { height: 34px; display: inline-flex; align-items: center; }
     #live-guard-lock { height: 34px; width: 38px; display: inline-flex; align-items: center;
                        justify-content: center; padding: 0; }
