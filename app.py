@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-09 br'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-09 bs'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -111,6 +111,41 @@ _PRIVATE_UPLOAD_PREFIXES = tuple(
 def _protect_private_uploads():
     if request.path.startswith(_PRIVATE_UPLOAD_PREFIXES) and not current_user.is_authenticated:
         abort(404)
+
+
+# Audit 8: CSRF-Schutz ohne Token-Pflicht in allen Formularen (die App hat hunderte
+# Formulare; ein nachträgliches Pflicht-Token hätte jede einzelne Vorlage gebraucht).
+# Stattdessen die Herkunftsprüfung: Ein POST mit `Origin` (oder ersatzweise `Referer`)
+# von einer FREMDEN Seite wird abgewiesen. Browser schicken `Origin` bei POST immer mit,
+# und Skripte von außen können den Kopf nicht fälschen. Der eigene Host ist erlaubt;
+# fehlt beides (ältere Browser, curl, Cron), bleibt es beim bisherigen Verhalten.
+from urllib.parse import urlsplit as _urlsplit
+
+_CSRF_FREI = ('/api/', '/login', '/registrieren', '/passwort-vergessen')
+
+
+def _host_von(url):
+    try:
+        return (_urlsplit(url).hostname or '').lower()
+    except Exception:
+        return ''
+
+
+@app.before_request
+def _csrf_herkunft():
+    if request.method not in ('POST', 'PUT', 'PATCH', 'DELETE'):
+        return None
+    if any(request.path.startswith(p) for p in _CSRF_FREI):
+        return None
+    quelle = request.headers.get('Origin') or request.headers.get('Referer') or ''
+    if not quelle:
+        return None
+    fremder = _host_von(quelle)
+    eigener = (request.host or '').split(':')[0].lower()
+    if fremder and eigener and fremder != eigener:
+        app.logger.warning(f'CSRF: {request.method} {request.path} von {quelle} abgewiesen')
+        abort(403, description='Anfrage von einer fremden Seite abgewiesen.')
+    return None
 
 
 @app.context_processor
@@ -7914,7 +7949,14 @@ def tour_comment(tour_id):
 @app.route('/touren/<int:tour_id>/kommentare/<int:comment_id>/loeschen', methods=['POST'])
 @login_required
 def comment_delete(tour_id, comment_id):
+    # Audit 8: Erst die Tour prüfen (Gruppenzugehörigkeit), dann den Kommentar. Vorher
+    # genügte ein eigener Kommentar, dessen tour_id auf eine fremde Tour zeigt – die Route
+    # löschte ihn und leitete auf /touren/<fremde_id> um (302 nach 404). Jetzt 404, bevor
+    # irgendetwas geschrieben wird.
+    _tour_or_404(tour_id)
     comment = TourComment.query.get_or_404(comment_id)
+    if comment.tour_id != tour_id:
+        abort(404)
     if comment.user_id != current_user.id and not current_user.is_admin:
         abort(403)
     db.session.delete(comment)

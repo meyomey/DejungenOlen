@@ -1,4 +1,35 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bs) – Audit 8: CSRF-Lücke geschlossen, Kommentar-Sperre nachgezogen
+Achtes Komplett-Audit. Drei Befunde behoben, davon **einer mit Sicherheitswirkung**.
+
+- **CSRF (Mittel, Sicherheit):** Es gab weder ein Token noch eine Herkunftsprüfung. Ein POST
+  von einer fremden Seite wurde angenommen – gemessen: eine Teilnahme an einer Tour wurde
+  ohne Zutun des Angreifers angelegt (`SameSite=Lax` schützt bei Top-Level-Formularen nicht).
+  Jetzt weist `_csrf_herkunft()` POST/PUT/PATCH/DELETE mit fremdem `Origin`/`Referer` mit
+  **403** ab. Der eigene Host ist erlaubt, `/api/` und die Anmeldung bleiben frei (Cron-Token,
+  Login-Hilfsskripte). Fehlt beides (ältere Browser, curl, Cron), bleibt alles wie bisher –
+  kein Formular musste angefasst werden.
+- **Kommentar an fremder Tour löschbar (Niedrig, war seit Audit 7 offen):**
+  `comment_delete` prüfte nur den Autor. Ein Mitglied konnte einen **eigenen** Kommentar
+  löschen, dessen `tour_id` auf eine fremde Tour zeigt – Antwort 302 mit Umleitung auf
+  `/touren/<fremde_id>` (dort 404). Jetzt: erst `_tour_or_404(tour_id)`, dann
+  `comment.tour_id != tour_id → 404`. Es wird nichts geschrieben.
+- **Hilfe widersprach dem Code (Niedrig, Doku):** Die Hilfe sagte beim 🔒-Knopf „auch im
+  Vollbild"; Code (`guardWanted() → if (_fsAn()) return false`) und die gleiche Seite weiter
+  oben sagen das Gegenteil. Der Text folgt jetzt dem Code: **im Vollbild gibt es kein 🔒,
+  die Karte ist dort immer frei** (sonst beim Fahren nicht verschiebbar).
+
+### Geprüft und in Ordnung (Auszug)
+- Mandantentrennung: 8 Endpunkte gegen eine fremde Tour (GET und POST) → alle 404;
+  kein fremder Titel in Start, Touren, Archiv, Karte, Rangliste, Mitglieder
+- XSS: gespeicherte Payloads in Titel, Beschreibung, Treffpunkt → überall escaped
+- Uploads: Endungs-Allowlist, Dateiname serverseitig (`token_hex`), kein Pfad-Traversal
+  (8 Varianten), `.htaccess` sperrt Direktzugriff auf `gpx/photos/videos`
+- Fuzzing: 1 656 Anfragen (GET/POST/Upload/JSON) → **kein 500er**
+- Performance: 10–48 SQL je Seite, alle unter 13 ms, `EXPLAIN` durchweg `SEARCH … USING INDEX`
+- Deploy-ZIPs: keine `.env`, keine Datenbank, keine Uploads, kein `__pycache__`
+- **515 Tests** (vorher 500), 15 neue in `tests/test_build_bs.py`
+
 ## 1.5.0 – 2026-11-09 (Build br) – Stromspar-Balken rot statt gelb
 - **Meldung:** „unten läuft ein gelber Balken" den man beim Fahren nicht so gut sehen,
   evtl. ist rot besser."

@@ -1,3 +1,140 @@
+# Audit-Bericht – De jungen Olen, Audit 8 (Version 1.5.0, Build br → bs, 09.11.2026)
+
+Achtes Komplett-Audit, Stand Build **br**. Scope: der Zuwachs seit Audit 7 (Build an,
+07.11.2026) – **54 Commits, 20 Builds (ao–br)**, alles auf der Live-Karte: der weiße Hinweis
+unten links am Kartenrand, die Symbole im Vollbild als senkrechte Spalte rechts, km/Zeit unten
+links, der gelbe Hinweis im Vollbild vollständig sichtbar, der Stromsparmodus, der sich nach
+60 s selbst abdunkelt (bp), und der Stromspar-Reststreifen in Rot statt Gelb (br).
+
+Ergebnis im Satz: **eine echte Sicherheitslücke gefunden und geschlossen** (kein CSRF-Schutz –
+ein POST von einer fremden Seite wurde angenommen, nachgestellt mit einer angelegten Teilnahme),
+dazu **ein seit Audit 7 offener Zugriffsfehler** (Kommentar an fremder Tour löschbar) und eine
+**Doku-Stelle, die dem Code widersprach**.
+
+## Vorgehen
+
+- **Statisch:** `py_compile` über app/models/config/exif_gps/make_deploy_zip/passenger_wsgi →
+  sauber; **pyflakes** → 3 Hinweise, alle drei absichtliche Verfügbarkeitstests mit `# noqa`
+  (`PIL._imaging`, `py_vapid.Vapid02`, `pywebpush`) – kein Befund; **36 Inline-`<script>`-Blöcke**
+  aus den Templates einzeln durch `node --check` → **0 Syntaxfehler**; `node --check` über
+  `static/sw.js` und `static/js/map-touch.js` → sauber
+- **Gefährliche Muster:** `eval` 0, `os.system` 0, `shell=True` 0, `pickle.load` 0,
+  `yaml.load` 0, rohe SQL-Strings 0; `exec(` 1× **nur im Test** (`test_build_ag`, führt einen
+  Funktionsquelltext aus); `render_template_string` 2× (Import + ein Aufruf mit **fester
+  Konstante** als Fallback, kein Injection-Pfad); `Markup()` 1×, mit `escape()` umschlossen
+- **Sicherheit (dynamisch, Test-DB):**
+  - **Mandantenprobe** gegen eine Tour der **fremden Gruppe** mit einem Nicht-Admin: 8 Endpunkte
+    (Detail, Bearbeiten, Live, Teilnehmerliste, Kommentar, RSVP, Zeitabstimmung, Löschen),
+    GET und POST → **alle 404**; geprüft, dass der POST **nichts geschrieben** hat (0 Teilnahmen,
+    Tour existiert noch). Gegenprobe: eigene Tour 200, Admin darf gruppenübergreifend
+  - **Gruppenisolation der Listen:** Start, Touren, Archiv, Karte, Rangliste, Mitglieder – der
+    Titel der fremden Tour taucht nirgends im HTML auf
+  - **XSS:** Tour mit `<img src=x onerror=alert(1)>` als Titel, `"><script>alert(2)</script>`
+    als Beschreibung und `<svg onload=alert(3)>` als Treffpunkt → auf Tourseite, Liste und Start
+    vollständig escaped, kein rohes Vorkommen
+  - **CSRF (neu geprüft, → B1):** POST mit `Origin: https://boese.example` legte eine Teilnahme
+    an. **Es gab keine CSRF-Abwehr** – weder Token noch Herkunftsprüfung
+  - **Uploads:** 42 böse Uploads über 6 Feldnamen und 3 Endpunkte (`.php`, `.svg`, `.htaccess`,
+    `../../evil.jpg`, `x.jpg\x00.php`) → nur 3 Dateien gespeichert, **alle mit
+    serverseitigem Namen** (`avatar_1_<hex>.jpg`, `1_<hex>.gpx`); kein `.php`, kein `.svg`,
+    kein `..` im Pfad
+  - **Pfad-Traversal in der Auslieferung:** 8 Varianten (`../../app.py`, URL-kodiert,
+    doppelte Punkte) gegen `/fotos/img/`, `/videos/file/`, `/gpx/` → **alle 404/308**, keine
+    Datei außerhalb des Upload-Ordners
+  - **Auth:** Start, Touren, Profil, Karte ohne Login → Umleitung; Cron-Endpunkte ohne und mit
+    falschem Token → 403 `invalid token`
+  - **Deploy-ZIPs:** 21 bzw. 96 Dateien, **keine** `.env`, keine Datenbank, keine Uploads,
+    kein `__pycache__`, nur `.env.example`
+- **Robustheit/Fuzzing:** **1 656 Anfragen** – 1 596 GET mit 14 bösen Werten × 6 Parametern auf
+  19 Seiten, 9 kaputte/leere Formulare, 42 Uploads, 9 JSON-Körper (`{`, `[]`, `1e400`, …)
+  → **kein einziger 500er, keine Ausnahme**
+- **Performance:** SQL-Zähler je Seite mit 120 Touren/31 Nutzern/1 404 Teilnahmen:
+  10–48 Abfragen, **1,9–12,7 ms**, kein N+1; `EXPLAIN QUERY PLAN` für die vier häufigsten
+  Abfragen → durchweg `SEARCH … USING INDEX` (kein Tabellendurchlauf)
+- **Browser (Chromium 153, Smartphone-Profil, 461×934):** 15 Seiten durchlaufen; Zustandsmaschine
+  der Live-Karte (Vollbild × Stromsparmodus × Sperre, 7 Schritte) mit Messwerten; Reststreifen
+  über die vollen 60 s in 5-s-Schritten verfolgt; gelber Hinweis in drei Größen auf Überlauf und
+  Knopf-Abschneidung geprüft
+- **Tests:** **515** (vorher 500), 15 neue in `tests/test_build_bs.py`
+
+## Befunde
+
+| Nr. | Schwere | Befund | Status (Build bs) |
+|---|---|---|---|
+| B1 | **Mittel** (Sicherheit) | **Kein CSRF-Schutz.** Weder Flask-WTF-Token noch Herkunftsprüfung. Nachgestellt: ein `POST /touren/<id>/rsvp` mit `Origin: https://boese.example` wurde angenommen und **legte eine Teilnahme an**. `SESSION_COOKIE_SAMESITE='Lax'` hilft dabei nicht zuverlässig, weil ein Top-Level-Formular-POST das Cookie mitnimmt | **behoben:** `_csrf_herkunft()` als `before_request` – POST/PUT/PATCH/DELETE mit fremdem `Origin` bzw. `Referer` → **403** (mit Log-Zeile). Eigener Host erlaubt, `/api/`, `/login`, `/registrieren`, `/passwort-vergessen` frei; fehlen beide Köpfe, bleibt es beim alten Verhalten. Kein Formular musste geändert werden. 8 Tests |
+| B2 | Niedrig (Zugriff) | **Kommentar an einer fremden Tour löschbar** – der in Audit 7 nur *notierte* Punkt. `comment_delete` prüfte nur den Autor: Ein Mitglied löschte einen **eigenen** Kommentar, dessen `tour_id` auf eine fremde Tour zeigt, bekam **302** und wurde auf `/touren/<fremde_id>` umgeleitet (dort 404). Kein Datenabfluss, aber eine Route, die auf ein unerreichbares Objekt schreibt und den Fehler verschleiert | **behoben:** erst `_tour_or_404(tour_id)`, dann `comment.tour_id != tour_id → 404`. Nachgestellt: 404, Kommentar bleibt in der DB. Gegenprobe: eigener Kommentar an eigener Tour weiter 302 + gelöscht. 4 Tests |
+| B3 | Niedrig (Doku) | **Hilfe widersprach dem Code.** `templates/hilfe.html` sagte beim 🔒-Knopf „**immer** da, auch … im Vollbild"; `guardWanted()` beginnt aber mit `if (_fsAn()) return false;` und die gleiche Hilfeseite sagt 30 Zeilen höher „im Vollbild nicht: dort ist die Karte immer frei". Wer sich auf den ersten Satz verlässt, sucht im Vollbild einen Knopf, den es nicht gibt | **behoben:** der Satz folgt jetzt dem Code („Im Vollbild gibt es ihn nicht – dort ist die Karte immer frei, sonst könnte man sie beim Fahren nicht verschieben"). 2 Tests (Text **und** Code-Seite) |
+
+## Bestätigt (ohne Handlungsbedarf)
+
+- **Mandantentrennung hält** – 8 Endpunkte gegen eine fremde Tour, alle 404, kein Schreibzugriff;
+  kein fremder Titel in irgendeiner Liste; Admin darf bewusst gruppenübergreifend
+- **XSS-Abwehr hält** – gespeicherte Payloads in Titel, Beschreibung und Treffpunkt werden auf
+  allen geprüften Seiten escaped
+- **Uploads** vergeben Dateinamen serverseitig (`secrets.token_hex`) und prüfen die Endung;
+  bösartige Namen (`.php`, `.svg`, `.htaccess`, `..`) landen nicht im Dateisystem
+- **Kein Pfad-Traversal** in der Auslieferung von Fotos, Videos und GPX (8 Varianten)
+- **Keine 500er** in 1 656 Fuzzing-Anfragen
+- **Cron-Token** weiterhin Pflicht; ohne/mit falschem Token 403 `invalid token`
+- **Deploy-Pakete** enthalten keine Geheimnisse, keine Daten, keine Caches
+- **Performance** flach und indiziert: 10–48 SQL, < 13 ms, `EXPLAIN` ohne Tabellendurchlauf
+- **`comment_delete`-Randfall aus Audit 7** ist mit B2 mit erledigt
+- **`.env.example`** warnt seit Audit 7 ausdrücklich, dass der Beispiel-`SECRET_KEY` öffentlich
+  bekannt ist und zugleich der Cron-Token ist – die damalige Anmerkung ist damit erledigt
+
+## Am Code gemessen (Browser, Build br/bs)
+
+**Stromspar-Reststreifen (br), 461×934, Sekunde für Sekunde:**
+
+| Sekunde | Rest (ms) | Opazität | Klasse | Breite |
+|---|---|---|---|---|
+| 5–45 | 54 996 → 14 945 | 0 | — | unsichtbar |
+| 50 | 9 938 | 0,15 → 1 | `rest-aktiv` | 459 px (von 461) |
+| 55 | 4 876 | 1 | `rest-aktiv` | 225 px |
+| 60 | — | — | entfernt | `saverHell` zurück auf `false` |
+
+Farbe `rgb(192, 57, 43)` = `#C0392B`, Höhe 6 px, `y = 928` (Fenster 934) – der Balken liegt
+bündig am unteren Rand, `documentElement.scrollHeight == innerHeight` (keine Scrollverschiebung).
+
+**Gelber Hinweis im Vollbild (bq), kein Überlauf, alle Knöpfe ganz sichtbar:**
+
+| Größe | Kasten | Überlauf | Knöpfe |
+|---|---|---|---|
+| 461×934 | y 611–782 (171 px) | 0 px | 4/4 |
+| 412×915 | y 570–763 (193 px) | 0 px | 4/4 |
+| 360×740 | y 356–588 (232 px) | 0 px | 4/4 |
+
+**Kartensperre × Vollbild (7 Schritte, gemessen `map.dragging.enabled()` und Sichtbarkeit):**
+
+| Schritt | Vollbild | Karte | 🔒 sichtbar |
+|---|---|---|---|
+| Start | nein | gesperrt (Pill „Zum Verschieben antippen") | nein |
+| Vollbild an | ja | frei | nein ✓ |
+| + Stromsparmodus | ja | frei | nein ✓ |
+| Vollbild aus | nein | frei | ja |
+| ausdrücklich sperren | nein | gesperrt | ja |
+| sperren + Vollbild | ja | frei ✓ | nein ✓ |
+| Vollbild aus | nein | **wieder gesperrt** ✓ | ja |
+
+Der letzte Schritt belegt, dass die in Audit 7 behobene Regression (B1/ao) hält: Die vor dem
+Vollbild gesetzte Sperre kommt danach zurück, statt verloren zu gehen.
+
+## Anmerkungen (kein Befund, zur Kenntnis)
+
+- **CSRF-Prüfung ist eine Herkunftsprüfung, kein Token.** Sie deckt Browser-Angriffe ab
+  (`Origin` lässt sich von einer Webseite nicht fälschen). Ein Nicht-Browser-Client, der den
+  Kopf einfach weglässt, kommt weiter durch – das ist bewusst so, weil Cron, Erinnerungs-Skripte
+  und `curl`-Aufrufe sonst alle ein Token bräuchten. Für diese App (kleine geschlossene Gruppe)
+  ist das Verhältnis richtig; ein echtes Token wäre der nächste Schritt.
+- **`/api/` bleibt von der Herkunftsprüfung ausgenommen.** Die Live-Karte schickt Standorte per
+  `fetch` von der eigenen Seite; die Endpunkte prüfen Login und Tour-Zugehörigkeit selbst.
+- **`Query.get()` ist SQLAlchemy-Legacy** und erzeugt bei jedem Start Warnungen (unverändert
+  seit Audit 7). Bei einem SQLAlchemy-3-Umstieg bricht es.
+- **Testdauer** 79 s für 515 Tests (vorher 74 s für 500).
+- **Umgebungsgrenzen der Sandbox** (keine Befunde): Open-Meteo (`api.open-meteo.com`), die
+  OSM-Kachelserver und die CDN-Hosts sind hier nicht erreichbar – im Browser-Durchlauf wurden
+  die CDN-Dateien lokal ausgeliefert und die Kachel-Fehler als erwartet eingeordnet.
+
 # Audit-Bericht – De jungen Olen, Audit 7 (Version 1.5.0, Build an, 07.11.2026)
 
 Siebtes Komplett-Audit, Stand Build an. Scope: der Zuwachs seit Audit 6 (Build p, 04.11.2026) –
