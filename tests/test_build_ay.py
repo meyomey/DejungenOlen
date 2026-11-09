@@ -390,7 +390,7 @@ class SpaeterErklaertTest(unittest.TestCase):
         for name, block in (('aussen', aussen), ('Vollbild', innen)):
             self.assertIn('Tourseite', block, f'{name}: Ort fehlt')
             self.assertIn('Live-Aufzeichnung', block, f'{name}: Abschnitt fehlt')
-        self.assertIn('Nichts geht verloren', aussen)
+        self.assertIn('nichts geht verloren', aussen)
 
     def test_link_springt_in_den_abschnitt(self):
         html = _read('templates', 'touren', 'live.html')
@@ -403,6 +403,70 @@ class SpaeterErklaertTest(unittest.TestCase):
         detail = _read('templates', 'touren', 'detail.html')
         self.assertIn('id="live-aufzeichnung"', detail)
         self.assertIn('Live-Aufzeichnung', detail)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+class RecInfoAufklapperTest(unittest.TestCase):
+    """Build bg: Erklärung hinter einem ⓘ, das erst auf Tippen aufklappt.
+
+    Vorher stand die ganze Erklärung offen – gemessen war der Hinweis dadurch
+    328–367 px hoch (normal) bzw. 286 px (Vollbild) und schob die Karte zusammen.
+
+    Gemessen nachher (460x972 / 390x844 / 360x740):
+      normal: 298 / 357 / 418 px zugeklappt, +85/+104/+123 px aufgeklappt
+      Vollbild 460x972: 214 -> 279 px; 360x740: 224 -> 348 px
+    """
+
+    def test_beide_kopien_haben_den_aufklapper(self):
+        html = _read('templates', 'touren', 'live.html')
+        self.assertEqual(html.count('class="rec-info-btn"'), 2)
+        self.assertIn("toggleRecInfo(this, 'rec-info-text')", html)
+        self.assertIn("toggleRecInfo(this, 'rec-info-fs-text')", html)
+
+    def test_startet_zugeklappt_und_sagt_es_an(self):
+        html = _read('templates', 'touren', 'live.html')
+        i = html.find('class="rec-info-btn"')
+        block = html[i:i+400]
+        self.assertIn('aria-expanded="false"', block)
+        self.assertIn('aria-controls="rec-info-text"', block)
+        self.assertIn('class="rec-info d-none"', html)
+
+    def test_js_klappt_um_und_pflegt_aria(self):
+        html = _read('templates', 'touren', 'live.html')
+        fn = html.split('function toggleRecInfo(btn, id)', 1)[1].split('\n}', 1)[0]
+        self.assertIn("classList.toggle('d-none')", fn)
+        self.assertIn("setAttribute('aria-expanded'", fn)
+
+    def test_kern_bleibt_offen_sichtbar(self):
+        """Der Nutzer soll ohne Tippen sehen: nichts geht verloren."""
+        html = _read('templates', 'touren', 'live.html')
+        ausserhalb_des_aufklappers = html.split('class="rec-info d-none"')[0]
+        self.assertIn('nichts geht verloren', ausserhalb_des_aufklappers)
+
+    def test_erklaerung_nennt_die_tage(self):
+        """Die Zahl „30 Tage" steht jetzt im Aufklapp-Text – sie muss bleiben."""
+        html = _read('templates', 'touren', 'live.html')
+        # die Tagesangabe steht im Fliesstext ueber dem Aufklapper (aussen)
+        i, j = html.find('id="rec-hint"'), html.find('<div class="row g-3">')
+        self.assertGreater(i, 0); self.assertGreater(j, i)
+        self.assertIn('{{ keep_days }}', html[i:j])
+
+    def test_symbolspalte_ueberlappt_den_hinweis_nicht(self):
+        """Gemessen 360x740: Symbolspalte 310..352 lag auf dem Text des Hinweises (12..348).
+
+        Behoben über den rechten Rand des Hinweises (`margin-right: 48px`), nicht über die
+        Symbolspalte – ein Versuch mit zweispaltiger Spalte hat es im Vollbild schlimmer
+        gemacht und wurde verworfen.
+        """
+        html = _read('templates', 'touren', 'live.html')
+        i = html.find('#rec-hint { margin-right: 48px; }')
+        self.assertGreater(i, 0, 'Breiten-Fix fehlt')
+        block = html[max(0, i-200):i+100]
+        self.assertIn('@media (max-width: 575px)', block)
+        # nicht wieder die zweispaltige Spalte einbauen
+        self.assertNotIn('body.rec-hint-an #live-tools', html)
 
 
 if __name__ == "__main__":

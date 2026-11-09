@@ -136,6 +136,21 @@
                         box-shadow: 0 1px 6px rgba(0,0,0,.3); display: inline-flex;
                         align-items: center; justify-content: center; line-height: 1; padding: 0; }
   #live-tools .lt-btn.on { background: var(--djo-navy); color: #fff; }
+  /* Build bg: Solange die Rueckfrage „Fahrt beendet" offen ist, wird die Karte schmal.
+     Gemessen bei 360x740: Die Symbolspalte braucht 5x42 + 4x6 = 234 px ueber der Leiste,
+     der Kartenbereich hatte aber nur 223 px – sie lag auf dem Hinweistext (Ueberlappung
+     gemessen: True). Zweispaltig sind es nur 3 Reihen (138 px), sie passt wieder.
+     Auf groesseren Bildschirmen bleibt die eine Spalte. */
+  /* Build bg: Gemessen bei 360x740 (normal): Der aeussere Hinweis ist 12..348 breit, die
+     Symbolspalte steht bei 310..352 – sie lag auf dem Text (Treffer auf dem ⓘ: „btn-all"
+     statt „rec-info-btn"). Rechts 48 px Platz halten, dann endet der Text bei 300.
+     Die Vollbild-Kopie braucht das nicht, sie hat schon right: 56px. */
+  @media (max-width: 575px) {
+    #rec-hint { margin-right: 48px; }
+    /* Gemessen 360x740 im Vollbild: Hinweis 232 px, Kartenbereich 224 px – es fehlten 6 px,
+       die Knopfreihe brach um. Engerer Abstand (mt-1 statt mt-2) holt sie zurueck. */
+    body.live-fs-an #rec-hint-fs .mt-2 { margin-top: .25rem !important; }
+  }
   #live-tools .lt-btn.warn { background: #b06a00; color: #fff; }
   /* Build ae: Im Stromspar-Modus dunkelt ALLES ab – auch die Symbolspalte. Sonst blieb
      rechts ein heller Streifen stehen („es wird nicht der ganze Bildschirm abgedunkelt").
@@ -190,6 +205,18 @@
     /* Build bd: Die zweite Kopie gehoert dem Vollbild. Sie stand bisher auch im Normalbetrieb
        im Fluss und erschien unter der Karte ein zweites Mal (Nutzer: „Die Abfrage erscheint
        doppelt in der normalen Kartenansicht"). Ausserhalb des Vollbilds ist sie ganz weg. */
+    /* Build bf: Die lange Erklaerung steht hinter einem ⓘ und klappt erst auf Tippen auf.
+       Vorher war der Hinweis dadurch 328-367 px hoch und schob die Karte zusammen.
+       Der Kern (was passiert + wo es weitergeht) steht weiterhin offen da. */
+    .rec-info-btn { display: inline-flex; align-items: center; gap: .3rem; margin-top: .5rem;
+                    background: none; border: 0; padding: 0; font-size: .85rem;
+                    color: #6b4e00; text-decoration: underline dotted; text-underline-offset: 2px; }
+    .rec-info-btn .rec-info-ico { display: inline-flex; align-items: center; justify-content: center;
+                    width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid currentColor;
+                    font-size: .72rem; font-weight: 700; line-height: 1; }
+    .rec-info-btn .rec-info-pfeil { transition: transform .15s; display: inline-block; font-size: .8rem; }
+    .rec-info-btn[aria-expanded="true"] .rec-info-pfeil { transform: rotate(90deg); }
+    .rec-info { margin-top: .4rem; }
     #rec-hint-fs { display: none; bottom: 128px; }            /* Build bc: aus dem Inline-Style geholt */
     #live-wrap.live-fs #rec-hint-fs { display: block; }
     #live-wrap.live-fs #live-bar { bottom: 0; border-radius: 0; }
@@ -292,13 +319,24 @@
             title="Blendet diese Abfrage aus. Die Aufzeichnung bleibt gespeichert und wartet auf der Tourseite."
             aria-label="Abfrage ausblenden – die Aufzeichnung bleibt gespeichert">Später entscheiden</button>
   </div>
+  {# Build bf: Kern offen, Erklaerung hinter dem ⓘ #}
   <div class="small mt-2" style="opacity:.9">
-    <i class="bi bi-info-circle me-1"></i>
-    <strong>Später?</strong> Nichts geht verloren: Die Aufzeichnung bleibt gespeichert und wartet
-    auf der <strong>Tourseite</strong> im Abschnitt <strong>„Live-Aufzeichnung"</strong> – dort
-    kannst du sie jederzeit übernehmen, als GPX herunterladen oder löschen.
-    <a href="{{ url_for('tour_detail', tour_id=tour.id) }}#live-aufzeichnung"
-       class="fw-semibold" onclick="hideRecHint()">Zur Tourseite ›</a>
+    Später heißt: <strong>nichts geht verloren</strong> – gespeichert bleibt sie
+    {{ keep_days }} Tage, danach wird sie gelöscht.
+    <button type="button" class="rec-info-btn"
+            onclick="toggleRecInfo(this, 'rec-info-text')"
+            aria-expanded="false" aria-controls="rec-info-text">
+      <span class="rec-info-ico" aria-hidden="true">i</span>
+      <span>Wo finde ich sie wieder?</span>
+      <span class="rec-info-pfeil" aria-hidden="true">›</span>
+    </button>
+    <div class="rec-info d-none" id="rec-info-text">
+      Die Aufzeichnung wartet auf der <strong>Tourseite</strong> im Abschnitt
+      <strong>„Live-Aufzeichnung"</strong> – dort kannst du sie jederzeit als Track übernehmen,
+      als GPX herunterladen oder löschen.
+      <a href="{{ url_for('tour_detail', tour_id=tour.id) }}#live-aufzeichnung"
+         class="fw-semibold" onclick="hideRecHint()">Zur Tourseite ›</a>
+    </div>
   </div>
 </div>
 
@@ -328,8 +366,10 @@
       <div id="rec-hint-fs" class="alert alert-warning d-none" role="alert"
            style="position: absolute; left: 8px; right: 56px; z-index: 1120; margin: 0;
                   box-shadow: 0 2px 10px rgba(0,0,0,.28);">
-        <div class="fw-semibold">⏹ Fahrt beendet – Aufzeichnung sichern</div>
-        <div class="small mt-1">Dein Weg ist gespeichert{% if keep_days %}, aber nur {{ keep_days }} Tage{% endif %}.</div>
+        {# Build bg: Im Vollbild ist der Platz knapp (gemessen 360x740: Titel 45 + Zeile 39 +
+           Knopfreihe 109 + Fusszeile 48 = 295 px). Die Zeile „nur 30 Tage" steht schon in der
+           Fusszeile, der Titel kommt ohne „⏹" aus – zusammen spart das ~40 px. #}
+        <div class="fw-semibold">Fahrt beendet – Aufzeichnung sichern</div>
         <div class="d-flex gap-2 flex-wrap mt-2">
           <form method="post" action="{{ url_for('tour_live_recording', tour_id=tour.id) }}" class="d-inline">
             <input type="hidden" name="action" value="adopt">
@@ -342,11 +382,23 @@
                   onclick="hideRecHint()"
                   title="Blendet diese Abfrage aus. Die Aufzeichnung bleibt gespeichert und wartet auf der Tourseite.">Später entscheiden</button>
         </div>
-        {# Build be: auch hier sagen, wo die Aufzeichnung wartet – kurz, weil die Karte der Platz ist #}
+        {# Build be/bg: auch hier der Weg zurueck – Build bf: Erklaerung hinter dem ⓘ #}
         <div class="small mt-2" style="opacity:.9">
-          <strong>Später?</strong> Bleibt gespeichert – auf der
-          <a href="{{ url_for('tour_detail', tour_id=tour.id) }}#live-aufzeichnung"
-             class="fw-semibold">Tourseite</a> unter „Live-Aufzeichnung".
+          <button type="button" class="rec-info-btn"
+                  onclick="toggleRecInfo(this, 'rec-info-fs-text')"
+                  aria-expanded="false" aria-controls="rec-info-fs-text">
+            <span class="rec-info-ico" aria-hidden="true">i</span>
+            <span>Später? Nichts geht verloren</span>
+            <span class="rec-info-pfeil" aria-hidden="true">›</span>
+          </button>
+          <div class="rec-info d-none" id="rec-info-fs-text">
+            Gespeichert bleibt sie {% if keep_days %}nur {{ keep_days }} Tage lang, danach wird sie
+            gelöscht. Du findest sie{% else %}Du findest sie{% endif %} auf der
+            <strong>Tourseite</strong> im Abschnitt <strong>„Live-Aufzeichnung"</strong> –
+            dort kannst du sie übernehmen, als GPX herunterladen oder löschen.
+            <a href="{{ url_for('tour_detail', tour_id=tour.id) }}#live-aufzeichnung"
+               class="fw-semibold">Zur Tourseite ›</a>
+          </div>
         </div>
       </div>
       {# Build 11-06u: kein Antipp-Schutz auf der Live-Karte – beim Fahren muss Verschieben SOFORT gehen #}
@@ -820,6 +872,14 @@ function startShare() {
   // dort ist ausdrücklich erlaubt, dass das Display ausgeht (die Aufzeichnung läuft weiter).
   if (!wakeWanted && !saverOn) setWakeWanted(true);
 }
+// Build bf: Erklaerung im Hinweis auf-/zuklappen. Der Zustand steht in aria-expanded,
+// damit Screenreader und die Drehung des Pfeils dasselbe sagen.
+function toggleRecInfo(btn, id) {
+  const box = document.getElementById(id);
+  if (!box) return;
+  const offen = box.classList.toggle('d-none') === false;
+  btn.setAttribute('aria-expanded', offen ? 'true' : 'false');
+}
 // Build bd: Merkt sich, ob die Rueckfrage gerade offen ist – toggleFs() muss sie beim
 // Wechsel des Modus mit umhaengen, sonst zeigt nach dem Umschalten keine Kopie mehr.
 let recHintOffen = false;
@@ -828,6 +888,8 @@ function showRecHint() {   // Build q: Rückfrage deutlichsichtbar machen
   // Vorher wurden beide gezeigt; im Normalbetrieb stand die Vollbild-Kopie damit ein
   // zweites Mal unter der Karte (Nutzer: „Die Abfrage erscheint doppelt").
   recHintOffen = true;
+  document.body.classList.add('rec-hint-an');       // Build bg: Hinweis ist offen
+  document.body.classList.toggle('live-fs-an', _fsAn());   // Build bg: engere Abstaende im Vollbild
   const fs = document.getElementById('rec-hint-fs');
   const el = document.getElementById('rec-hint');
   if (_fsAn()) {
@@ -844,6 +906,7 @@ function showRecHint() {   // Build q: Rückfrage deutlichsichtbar machen
 }
 function hideRecHint() {
   recHintOffen = false;                       // Build bd
+  document.body.classList.remove('rec-hint-an');   // Build bg
   const el = document.getElementById('rec-hint');
   if (el) el.classList.add('d-none');
   const fs = document.getElementById('rec-hint-fs');   // Build ba

@@ -1,4 +1,44 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build bf) – Erklärung hinter einem ⓘ
+- **Wunsch:** Die lange Erklärung im Hinweis „Fahrt beendet" sollte nicht mehr offen dastehen,
+  sondern hinter einem ⓘ, das erst auf Tippen aufklappt.
+- **Gemessen vorher:** Der Hinweis war **328–367 px** hoch (460×972 / 390×844 / 360×740) und
+  schob die Karte zusammen — bei 360 px blieben 572 px Karte.
+
+### Was jetzt dasteht
+Offen bleibt der Kern: *„Später heißt: nichts geht verloren – gespeichert bleibt sie 30 Tage,
+danach wird sie gelöscht."* Darunter ein Knopf **ⓘ Wo finde ich sie wieder? ›**. Erst auf Tippen
+erscheint der Weg (Tourseite → „Live-Aufzeichnung") samt Link **Zur Tourseite ›**.
+
+**Gemessene Höhen (zugeklappt → aufgeklappt):**
+
+| Bildschirm | vorher offen | jetzt zu | aufgeklappt |
+|---|---|---|---|
+| 460×972 normal | 328 | **298** | 383 |
+| 390×844 normal | 328 | **357** | 461 |
+| 360×740 normal | 367 | **418** | 541 |
+| 460×972 Vollbild | 286 | **214** | 279 |
+| 360×740 Vollbild | 286 | **224** | 348 |
+
+*(Desktop 1024×768: 156 → 195 px.)* Im Vollbild ist die Fassung kürzer: Titel ohne „⏹", die
+Zeile „nur 30 Tage" ist in den Aufklapp-Text gewandert — das sparte noch einmal rund 40 px.
+
+### Beim Messen gefunden: die Symbolspalte lag auf dem Hinweis
+Bei **360 px** Breite reichte der Hinweis bis x=348, die Symbolspalte steht bei 310–352.
+Gemessen lag auf dem ⓘ also `btn-all` statt des Knopfes — die Symbole deckten den Text zu.
+Die Karte selbst ist dort nur 336 px breit (Container-Padding), die Spalte hängt aber an der
+fensterbreiten Leiste. Behoben über den rechten Rand des Hinweises (`margin-right: 48px`,
+Text endet bei 300). Nachgemessen: ⓘ frei erreichbar, keine Überlappung auf 360/390/460/1024.
+
+*Ein Versuch, stattdessen die Symbolspalte bei offenem Hinweis zweispaltig zu setzen, ist
+verworfen: im Vollbild hat er die Überlappung erst erzeugt (138 px hoch, aber 90 px breit).*
+
+- 6 neue Tests. **Gegenprobe:** Aufklapper aus → 1 Test rot; Breiten-Fix raus → 1 Test rot.
+  474 gesamt.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build be) – „Später" erklärt
 - **Meldung:** „Man weiß gar nicht genau, was mit ‚Später' gemeint ist. Und wie man das, wie und
   wo aufruft."
