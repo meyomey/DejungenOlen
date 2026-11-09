@@ -284,7 +284,21 @@
     </form>
     <a class="btn btn-sm {% if tour.gpx_file %}btn-success{% else %}btn-outline-success{% endif %}"
        href="{{ url_for('tour_live_recording_download', tour_id=tour.id, user_id=current_user.id) }}">⬇ GPX speichern</a>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideRecHint()">Später</button>
+    {# Build be: Der Nutzer: „Man weiß gar nicht genau was mit 'Später' gemeint ist. Und wie man
+       das wie und wo aufruft." – Der Knopf sagt jetzt, was er tut, und darunter steht der Weg
+       zurueck: die Aufzeichnung liegt auf der Tourseite im Abschnitt „Live-Aufzeichnung". #}
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            onclick="hideRecHint()"
+            title="Blendet diese Abfrage aus. Die Aufzeichnung bleibt gespeichert und wartet auf der Tourseite."
+            aria-label="Abfrage ausblenden – die Aufzeichnung bleibt gespeichert">Später entscheiden</button>
+  </div>
+  <div class="small mt-2" style="opacity:.9">
+    <i class="bi bi-info-circle me-1"></i>
+    <strong>Später?</strong> Nichts geht verloren: Die Aufzeichnung bleibt gespeichert und wartet
+    auf der <strong>Tourseite</strong> im Abschnitt <strong>„Live-Aufzeichnung"</strong> – dort
+    kannst du sie jederzeit übernehmen, als GPX herunterladen oder löschen.
+    <a href="{{ url_for('tour_detail', tour_id=tour.id) }}#live-aufzeichnung"
+       class="fw-semibold" onclick="hideRecHint()">Zur Tourseite ›</a>
   </div>
 </div>
 
@@ -324,7 +338,15 @@
           </form>
           <a class="btn btn-sm btn-outline-success"
              href="{{ url_for('tour_live_recording_download', tour_id=tour.id, user_id=current_user.id) }}">⬇ GPX speichern</a>
-          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideRecHint()">Später</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  onclick="hideRecHint()"
+                  title="Blendet diese Abfrage aus. Die Aufzeichnung bleibt gespeichert und wartet auf der Tourseite.">Später entscheiden</button>
+        </div>
+        {# Build be: auch hier sagen, wo die Aufzeichnung wartet – kurz, weil die Karte der Platz ist #}
+        <div class="small mt-2" style="opacity:.9">
+          <strong>Später?</strong> Bleibt gespeichert – auf der
+          <a href="{{ url_for('tour_detail', tour_id=tour.id) }}#live-aufzeichnung"
+             class="fw-semibold">Tourseite</a> unter „Live-Aufzeichnung".
         </div>
       </div>
       {# Build 11-06u: kein Antipp-Schutz auf der Live-Karte – beim Fahren muss Verschieben SOFORT gehen #}

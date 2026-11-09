@@ -1,4 +1,36 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build be) – „Später" erklärt
+- **Meldung:** „Man weiß gar nicht genau, was mit ‚Später' gemeint ist. Und wie man das, wie und
+  wo aufruft."
+- **Berechtigt.** Der Knopf hieß nur „Später" (gemessen: ohne `title`) und im Hinweis stand kein
+  Wort darüber, dass die Aufzeichnung auf der Tourseite wartet. Den Abschnitt gibt es wirklich —
+  gemessen auf der Tourseite: **„Live-Aufzeichnung"** mit „Als GPX-Track der Tour übernehmen",
+  „⬇ GPX", „Meine Aufzeichnung löschen".
+
+### Was jetzt dasteht
+Unter den drei Knöpfen, in beiden Kopien (über der Karte und im Vollbild):
+
+> **Später?** Nichts geht verloren: Die Aufzeichnung bleibt gespeichert und wartet auf der
+> **Tourseite** im Abschnitt **„Live-Aufzeichnung"** — dort kannst du sie jederzeit übernehmen,
+> als GPX herunterladen oder löschen. **Zur Tourseite ›**
+
+- Der Knopf heißt jetzt **„Später entscheiden"** statt „Später" und hat einen `title`
+  („Blendet diese Abfrage aus. Die Aufzeichnung bleibt gespeichert und wartet auf der Tourseite.").
+- **Zur Tourseite ›** springt direkt in den Abschnitt (`#live-aufzeichnung`) und blendet die
+  Abfrage dabei aus. Gemessen: landet auf `/touren/1#live-aufzeichnung`, der Abschnitt steht
+  bei `top: 0` im Bild.
+- Im Vollbild steht die Kurzfassung („Bleibt gespeichert — auf der Tourseite unter
+  ‚Live-Aufzeichnung'"), weil die Karte der Platz ist.
+
+Nachgemessen im Vollbild auf 460×972, 390×844 und 360×740: Hinweis und Link sichtbar und
+klickbar, keine Überlappung (`ueber = {}`), passt jeweils ins Bild.
+
+- 5 neue Tests. **Gegenprobe:** mit dem alten Zustand (nur „Später", ohne Erklärung)
+  schlagen 3 Tests fehl. 468 gesamt.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build bd) – Hinweis nicht mehr doppelt
 - **Meldung:** „Die Abfrage 'Als Track übernehmen' erscheint doppelt in der normalen
   Kartenansicht in der Live Karte"

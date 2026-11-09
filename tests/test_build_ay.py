@@ -351,3 +351,59 @@ class HinweisNichtDoppeltTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class SpaeterErklaertTest(unittest.TestCase):
+    """Build be: „Man weiß gar nicht genau was mit 'Später' gemeint ist. Und wie man das wie und
+    wo aufruft."
+
+    Gemessen vorher: der Knopf hiess nur „Später" (ohne title), und im Hinweis stand kein Wort
+    darueber, dass die Aufzeichnung auf der Tourseite im Abschnitt „Live-Aufzeichnung" wartet.
+    Den gibt es wirklich – gemessen auf /touren/1 mit den Knoepfen
+    „Als GPX-Track der Tour übernehmen" / „⬇ GPX" / „Meine Aufzeichnung löschen".
+
+    Gemessen nachher: Klick auf „Zur Tourseite" landet auf /touren/1#live-aufzeichnung,
+    der Abschnitt steht bei top=0 im Bild.
+    """
+
+    def test_knopf_sagt_was_er_tut(self):
+        html = _read('templates', 'touren', 'live.html')
+        self.assertEqual(html.count('Später entscheiden'), 2)      # beide Kopien
+        self.assertNotIn('onclick="hideRecHint()">Später<', html)
+
+    def test_knopf_hat_erklaerung(self):
+        html = _read('templates', 'touren', 'live.html')
+        i = html.find('Später entscheiden')
+        block = html[max(0, i-400):i]
+        self.assertIn('title="Blendet diese Abfrage aus', block)
+
+    @staticmethod
+    def _block(html, marke, ende):
+        i = html.find(marke)
+        j = html.find(ende, i)
+        assert i > 0 and j > i, f'Block {marke} nicht gefunden'
+        return html[i:j]
+
+    def test_erklaerung_nennt_den_ort(self):
+        html = _read('templates', 'touren', 'live.html')
+        aussen = self._block(html, 'id="rec-hint"', '<div class="row g-3">')
+        innen = self._block(html, 'id="rec-hint-fs"', 'id="live-bar"')
+        for name, block in (('aussen', aussen), ('Vollbild', innen)):
+            self.assertIn('Tourseite', block, f'{name}: Ort fehlt')
+            self.assertIn('Live-Aufzeichnung', block, f'{name}: Abschnitt fehlt')
+        self.assertIn('Nichts geht verloren', aussen)
+
+    def test_link_springt_in_den_abschnitt(self):
+        html = _read('templates', 'touren', 'live.html')
+        aussen = self._block(html, 'id="rec-hint"', '<div class="row g-3">')
+        self.assertIn("#live-aufzeichnung", aussen)
+        self.assertIn('Zur Tourseite', aussen)
+
+    def test_abschnitt_existiert_wirklich(self):
+        """Der Ort, auf den verwiesen wird, muss es auch geben."""
+        detail = _read('templates', 'touren', 'detail.html')
+        self.assertIn('id="live-aufzeichnung"', detail)
+        self.assertIn('Live-Aufzeichnung', detail)
+
+
+if __name__ == "__main__":
+    unittest.main()
