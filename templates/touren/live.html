@@ -277,6 +277,28 @@
       <span id="live-km" class="d-none" title="Zurückgelegte Strecke auf dieser Fahrt"></span>
       {# Build 11-06aa: Statusanzeige als Karte-Chip – kostet keine Höhe über der Karte #}
       <div id="live-status" title="Antippen für die ganze Meldung">Du schaust nur zu – Standorte werden alle 15 Sekunden aktualisiert.</div>
+      {# Build ba: „Wenn in der Live Karte die große Kartendarstellung aktiv ist und die Fahrt beendet
+         sieht man keinen Hinweis auf Track/GPX speichern." – Der Hinweis stand AUSSERHALB von
+         #live-wrap. Im Vollbild ist #live-wrap aber `position: fixed; inset: 0` mit z-index 2000 und
+         deckt ihn komplett ab (gemessen: elementFromPoint ergab „live-map").
+         Deshalb liegt hier eine ZWEITE Kopie INNERHALB der Karte. Sichtbar ist immer nur eine:
+         ausserhalb des Vollbilds die normale, im Vollbild diese. #}
+      <div id="rec-hint-fs" class="alert alert-warning d-none" role="alert"
+           style="position: absolute; left: 8px; right: 56px; bottom: 128px; z-index: 1120; margin: 0;
+                  box-shadow: 0 2px 10px rgba(0,0,0,.28);">
+        <div class="fw-semibold">⏹ Fahrt beendet – Aufzeichnung sichern</div>
+        <div class="small mt-1">Dein Weg ist gespeichert{% if keep_days %}, aber nur {{ keep_days }} Tage{% endif %}.</div>
+        <div class="d-flex gap-2 flex-wrap mt-2">
+          <form method="post" action="{{ url_for('tour_live_recording', tour_id=tour.id) }}" class="d-inline">
+            <input type="hidden" name="action" value="adopt">
+            <input type="hidden" name="user_id" value="{{ current_user.id }}">
+            <button type="submit" class="btn btn-sm btn-success">✓ Als Track übernehmen</button>
+          </form>
+          <a class="btn btn-sm btn-outline-success"
+             href="{{ url_for('tour_live_recording_download', tour_id=tour.id, user_id=current_user.id) }}">⬇ GPX speichern</a>
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideRecHint()">Später</button>
+        </div>
+      </div>
       {# Build 11-06u: kein Antipp-Schutz auf der Live-Karte – beim Fahren muss Verschieben SOFORT gehen #}
       <div id="live-bar">
         {# Build b (2026-11-04): lb-main = die 3 Fahrt-Knöpfe (mobil unten groß in der Daumenzone),
@@ -749,14 +771,22 @@ function startShare() {
   if (!wakeWanted && !saverOn) setWakeWanted(true);
 }
 function showRecHint() {   // Build q: Rückfrage deutlichsichtbar machen
+  // Build ba: zwei Kopien – eine ausserhalb der Karte, eine IM Vollbild. Beide zeigen.
+  const fs = document.getElementById('rec-hint-fs');
+  if (fs) fs.classList.remove('d-none');
   const el = document.getElementById('rec-hint');
   if (!el) return;
   el.classList.remove('d-none');
+  // Im Vollbild waere scrollIntoView sinnlos (die Karte deckt alles ab) – dort steht die
+  // Kopie fest ueber der Knopfleiste.
+  if (_fsAn()) return;
   try { el.scrollIntoView({behavior: 'smooth', block: 'center'}); } catch (e) { el.scrollIntoView(); }
 }
 function hideRecHint() {
   const el = document.getElementById('rec-hint');
   if (el) el.classList.add('d-none');
+  const fs = document.getElementById('rec-hint-fs');   // Build ba
+  if (fs) fs.classList.add('d-none');
 }
 function stopShare(viaBeacon, withHint) {
   if (saverOn) setSaver(false);   // Build 11-06n: Sparmodus endet mit der Fahrt

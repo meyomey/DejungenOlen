@@ -155,3 +155,53 @@ class AuchAdminBrauchtEinenEchtenKnopfTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class HinweisAuchImVollbildTest(unittest.TestCase):
+    """Build ba: „Wenn in der Live Karte die große Kartendarstellung aktiv ist und die Fahrt
+    beendet sieht man keinen Hinweis auf Track/GPX speichern."
+
+    Der Hinweis stand AUSSERHALB von #live-wrap. Im Vollbild ist das aber
+    `position: fixed; inset: 0` mit z-index 2000 und deckte ihn komplett ab.
+    Gemessen vorher: `elementFromPoint` an der Stelle des Hinweises ergab „live-map",
+    beide Knoepfe „nicht sichtbar". Jetzt gibt es eine zweite Kopie INNERHALB der Karte.
+    Gemessen nachher: im Vollbild sichtbar und klickbar, ausserhalb unsichtbar – nie beide.
+    """
+
+    def test_zweite_kopie_liegt_in_der_karte(self):
+        html = _read('templates', 'touren', 'live.html')
+        i_wrap = html.find('<div id="live-wrap">')
+        i_hint = html.find('id="rec-hint-fs"')
+        i_end = html.find('id="live-bar"')
+        self.assertGreater(i_wrap, 0)
+        self.assertGreater(i_hint, i_wrap, 'Vollbild-Hinweis liegt nicht in #live-wrap')
+        self.assertLess(i_hint, i_end)
+
+    def test_kopie_hat_track_und_gpx_knopf(self):
+        html = _read('templates', 'touren', 'live.html')
+        block = html.split('id="rec-hint-fs"', 1)[1].split('</div>\n      </div>', 1)[0]
+        self.assertIn('✓ Als Track übernehmen', block)
+        self.assertIn('⬇ GPX speichern', block)
+        self.assertIn('name="action" value="adopt"', block)
+
+    def test_beide_kopien_werden_zusammen_geschaltet(self):
+        html = _read('templates', 'touren', 'live.html')
+        show = html.split('function showRecHint()', 1)[1].split('\nfunction ', 1)[0]
+        hide = html.split('function hideRecHint()', 1)[1].split('\nfunction ', 1)[0]
+        self.assertIn("getElementById('rec-hint-fs')", show)
+        self.assertIn("getElementById('rec-hint-fs')", hide)
+
+    def test_kein_scrollen_im_vollbild(self):
+        """Im Vollbild waere scrollIntoView sinnlos – die Karte deckt alles ab."""
+        html = _read('templates', 'touren', 'live.html')
+        show = html.split('function showRecHint()', 1)[1].split('\nfunction ', 1)[0]
+        self.assertIn('if (_fsAn()) return;', show)
+
+    def test_hinweis_weicht_der_symbolspalte_rechts(self):
+        """Gemessen: mit right:8px lag die Symbolspalte auf dem dritten Knopf."""
+        html = _read('templates', 'touren', 'live.html')
+        block = html.split('id="rec-hint-fs"', 1)[1].split('>', 1)[0]
+        self.assertIn('right: 56px', block)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,4 +1,32 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build ba) – Hinweis fehlte im Vollbild
+- **Meldung:** „Wenn in der Live Karte die große Kartendarstellung aktiv ist und die Fahrt beendet
+  sieht man keinen Hinweis auf Track/GPX speichern."
+- **Genau so war es.** Der Hinweis („⏹ Fahrt beendet – was passiert jetzt mit der Aufzeichnung?")
+  stand **außerhalb** von `#live-wrap`. Im Vollbild ist `#live-wrap` aber `position: fixed;
+  inset: 0` mit `z-index: 2000` — er deckte den Hinweis vollständig ab.
+
+  Gemessen im Browser (Vollbild, Fahrt beendet):
+  | | vorher | nachher |
+  |---|---|---|
+  | Hinweis im DOM | `display: block` | `display: block` |
+  | was liegt darüber | **`live-map`** | Hinweis selbst |
+  | „✓ Als Track übernehmen" sichtbar | **nein** | **ja** |
+  | „⬇ GPX speichern" sichtbar | **nein** | **ja** |
+
+- **Behoben:** Es gibt jetzt eine **zweite Kopie** des Hinweises **innerhalb** der Karte
+  (`#rec-hint-fs`), fest über der Knopfleiste. Sichtbar ist immer nur eine:
+  außerhalb des Vollbilds die normale, im Vollbild diese. „Später" räumt beide weg.
+- **Beim Messen aufgefallen:** Mit `right: 8px` lag die Symbolspalte (🔒/🌗) auf dem dritten
+  Knopf. Der Hinweis hat jetzt rechts 56 px Platz — alle drei Knöpfe sind frei.
+- Im Vollbild entfällt das Scrollen zum Hinweis (`scrollIntoView` wäre sinnlos, die Karte deckt
+  ohnehin alles ab).
+- 5 neue Tests. **Gegenprobe:** ohne die Kopie schlagen 3 Tests fehl, mit ihr sind alle grün.
+  450 gesamt.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build az) – Nachtrag: „Ich hatte das als Admin gemacht"
 - **Korrektur des Nutzers:** „Ich hatte das vorher als Admin gemacht, nicht als Mitglied."
   Damit war meine Erklärung aus Build ay nur die halbe Wahrheit. Ich habe den Admin-Weg in
