@@ -1,4 +1,30 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bn) – Weißer Hinweis unten links am Kartenrand
+- **Meldung:** „Der weiße Hinweis Bereich soll unten links am Rand der Karte erscheinen" (Bild 16).
+
+### Jetzt
+- **Der weiße Hinweis sitzt unten am Kartenrand:** 8 px über der Unterkante, 8 px vom linken
+  Rand – auf derselben Linie wie Chip und Symbolspalte. Vorher stand er 89 px höher, mitten
+  auf der Karte.
+- **Pill und Chip rücken mit nach oben,** damit nichts übereinander liegt: von unten
+  Hinweis 8–49 · „Zum Verschieben antippen" 57–91 · Zeit/km 99–130. Abstände 8 px.
+- **Vollbild genauso, neu gestaffelt:** Leiste 0–56 · Hinweis 64–105 · Chip 113–144 ·
+  Symbolspalte 155–245 · Zuschauer-Hinweis ab 253. Vorher lagen die Symbole (66–156) auf
+  dem Hinweis (64–105).
+- **Desktop:** Hinweis ebenfalls 8 px über der Kartenkante (vorher 147).
+
+### Gemessen (Playwright, Service Worker aus)
+461×934, 390×844, 360×740 und 1024×768: Hinweis jeweils **8 px** über dem Kartenende und
+**8 px** vom linken Rand, keine Überlappung mit Chip, Pill oder Symbolen. Vollbild
+461×934 und 390×844 ebenfalls ohne Überlappung.
+
+- 488 Tests. 20 ältere prüften die Werte aus bm und wurden auf die neue Staffelung
+  umgestellt (Hinweis 8, Pill 57, Chip 99; Vollbild 64/113/155/253).
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `CHANGELOG.md`,
+`tests/test_build_aa.py`, `tests/test_build_ad.py`, `tests/test_build_ag.py`,
+`tests/test_build_ay.py`.
+
 ## 1.5.0 – 2026-11-09 (Build bm) – Seite passt ins Fenster, Bedienung am unteren Kartenrand
 - **Meldung:** „immer noch nicht gut. immer noch zu hoch. Der Hinweis liegt so mittendrin."
 - **Der Screenshot des Nutzers zeigte Build bj** (nachgerechnet: Chip 147 px und Schloss 186 px

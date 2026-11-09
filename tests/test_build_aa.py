@@ -50,7 +50,7 @@ class LiveKopfUndLeisteTest(AppTestCase):
         self.assertIn('#live-status.open { max-height: 12em;', h)
         # Build bm: Die Meldung haengt an der KARTE (absolute in #live-wrap) – als `fixed` blieb
         # sie beim Scrollen stehen und lag dann ueber dem „Unterwegs"-Kasten.
-        self.assertIn('#live-status { position: absolute; left: 8px; bottom: 89px;', h)
+        self.assertIn('#live-status { position: absolute; left: 8px; bottom: 8px;', h)   # Build bn: unten links am Kartenrand
         self.assertNotIn('#live-status { position: fixed;', h)
 
     # ── 2. Leiste: drei große Knöpfe, Rest als Symbole auf der Karte ─────────────────────

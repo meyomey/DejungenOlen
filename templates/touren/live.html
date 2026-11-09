@@ -70,7 +70,9 @@
      Die Werte stehen in Kartenkoordinaten (0 = untere Kartenkante); die Karte endet 24 px
      ueber dem Fensterrand, die Leiste beginnt bei 114 (Fenster) = 90 (Karte).
      Auf 452x767 gemessen: Chip 614..645, Pill 573..607 – die Bildmitte (384) bleibt frei. */
-  #live-km { position: absolute; left: 8px; bottom: 8px; z-index: 1080;
+  /* Build bn: Der weiße Hinweis sitzt jetzt unten am Kartenrand (8 px). Chip und Pill
+     ruecken nach oben: Statuszeile 8..49, Pill 57..91, Chip 99..130. */
+  #live-km { position: absolute; left: 8px; bottom: 99px; z-index: 1080;
              background: rgba(20, 30, 60, .54); color: #fff; border-radius: 20px;
              border: 1px solid rgba(255,255,255,.22);
              -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
@@ -132,7 +134,11 @@
   /* links unten: dort ist die Karte frei (oben links liegt der Zoom, oben rechts
      der Kartenstil-Knopf, rechts unten die Symbolspalte). Der Verschiebe-Hinweis sitzt
      seit Build an ebenfalls unten links, direkt ueber dieser Statuszeile. */
-  #live-status { position: absolute; left: 8px; bottom: 89px; max-width: calc(100% - 74px); z-index: 1090;
+  /* Build bn: „Der weiße Hinweis Bereich soll unten links am Rand der Karte erscheinen"
+     (Bild 16). Vorher stand er 89 px ueber der Kartenkante, jetzt 8 px – also buendig mit
+     Chip und Symbolspalte am unteren Kartenrand. Pill und Chip ruecken dafuer nach oben:
+     Statuszeile 8..49, Pill 57..91, Chip 99..130. */
+  #live-status { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 74px); z-index: 1090;
                  margin: 0 !important; padding: .35rem .6rem !important; font-size: .82rem !important;
                  font-weight: 600; border-radius: 10px; line-height: 1.25;
                  max-height: 3.1em; overflow: hidden; cursor: pointer;
@@ -150,11 +156,12 @@
        beim Scrollen blieb sie stehen und lag dann ueber dem „Unterwegs"-Kasten (im Bild des
        Nutzers genau so zu sehen: die gruene Zeile schob sich ueber die Kartenueberschrift).
        Jetzt wird sie mit der Karte beschnitten und kann nie darueber rutschen. */
-    #live-status { position: absolute; left: 8px; bottom: 89px; max-width: calc(100% - 74px); z-index: 1090; }
+    #live-status { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 74px); z-index: 1090; }
   }
   #live-status.open { max-height: 12em; overflow-y: auto; }
   /* Build bl: Desktop – ebenfalls unten links ueber Chip und Pill, ohne reservierten Platz. */
-  @media (min-width: 992px) { #live-status { font-size: .9rem !important; max-width: 60%; bottom: 147px; z-index: 1090; } }
+  /* Build bn: Auch auf dem Desktop sitzt der Hinweis unten links am Kartenrand. */
+  @media (min-width: 992px) { #live-status { font-size: .9rem !important; max-width: 60%; bottom: 8px; z-index: 1090; } }
 
   /* Build 11-06aa: Kopfzeile – EINE Zeile (Zurück · Titel · ℹ️). Datum und Hinweise
      stecken im ℹ️-Aufklapper, damit die Karte den Bildschirm bekommt. */
@@ -231,7 +238,8 @@
        beschnitten, kann also nie ueber die Liste darunter rutschen.
        Build bj: Der km/Zeit-Chip sitzt jetzt unten (147) – die Pill steht darueber bei 186
        (147 + 31 Chiphoehe + 8 Luft). */
-    #live-guard-pill, #live-guard-lock { position: absolute; bottom: 47px; }
+    /* Build bn: Statuszeile sitzt jetzt unten am Rand (8..49). Pill 57..91, Chip 99..130. */
+    #live-guard-pill, #live-guard-lock { position: absolute; bottom: 57px; }
     #live-guard-pill { height: 34px; display: inline-flex; align-items: center; }
     #live-guard-lock { height: 34px; width: 38px; display: inline-flex; align-items: center;
                        justify-content: center; padding: 0; }
@@ -288,24 +296,28 @@
     /* Build bm: Gemessen im Vollbild 461x934: Symbole 837..868 (unten 66, Hoehe 90 -> Oberkante
        bei 156), Statuszeile bei 147..188. Sie ueberlappten sich um 9 px. Jetzt steht die
        Statuszeile auf 164 (156 + 8 Luft), wie vor bm. */
-    #live-wrap.live-fs #live-status { bottom: 164px; }
+    /* Build bn: „Der weiße Hinweis soll unten links am Rand der Karte" – auch im Vollbild.
+       Gestaffelt von unten: Leiste 0..56 · Statuszeile 64..105 · Chip 113..144 ·
+       Symbolspalte 155..245 (zwei Reihen à 42 + 6) · Zuschauer-Hinweis ab 253.
+       Gemessen 461x934: vorher lagen Symbole (66..156) auf der Statuszeile (64..105). */
+    #live-wrap.live-fs #live-status { bottom: 64px; }
     #live-wrap.live-fs #live-guard-pill,
-    #live-wrap.live-fs #live-guard-lock { bottom: 105px; }
+    #live-wrap.live-fs #live-guard-lock { bottom: 113px; }
     /* Build bc: „dann sollte die Zeit und km Anzeige auch mitwandern nach unten" – Ja.
        Die alte Formel zaehlte Pill (34) und 🔒 (34) mit, obwohl beide im Vollbild gar nicht
        erscheinen. Gemessen stand der Chip dadurch 155 px ueber der Statuszeile.
        Jetzt direkt auf deren Kante: 64 px + 8 px Abstand. */
-    #live-wrap.live-fs #live-km { bottom: 66px; }
+    #live-wrap.live-fs #live-km { bottom: 113px; }
     /* Symbolspalte: 5 Knoepfe à 42 px = 234 px hoch. Ganz unten wuerde sie die Knopfleiste
        treffen (gemessen: Ueberlappung True). Sie steht deshalb direkt ueber der Statuszeile. */
     /* Build bl: Im Vollbild liegt die Karte bis zum Fensterrand – eine 234 px hohe Spalte
        reichte dort bis in die Bildmitte. Deshalb hier DREI Spalten (2 Reihen, 90 px). */
-    #live-wrap.live-fs #live-tools { bottom: 66px; display: grid;
+    #live-wrap.live-fs #live-tools { bottom: 155px; display: grid;
         grid-template-columns: repeat(3, 42px); grid-auto-rows: 42px; gap: 6px; justify-content: end; }
     /* Build bc: Der Hinweis steht ueber dem km-Chip. Beide auf derselben Kante lagen
        aufeinander (gemessen bei 460x972, 390x844 und 360x740: Ueberlappung km/hint). */
-    /* Build bm: Statuszeile 164 + Hoehe 41 + 8 Luft = 213 (war 205 und lag auf der Kante). */
-    #live-wrap.live-fs #rec-hint-fs { bottom: 213px; }
+    /* Build bn: ueber der Symbolspalte (155 + 90 = 245) mit 8 px Luft. */
+    #live-wrap.live-fs #rec-hint-fs { bottom: 253px; }
     /* Build 11-06aa: Unten nur noch die DREI wichtigen Knöpfe – groß genug für den Daumen,
        ohne dass die Leiste die Karte zudeckt (vorher fünf Reihen, ≈ 200 px). */
     #live-bar { padding: 5px 8px; }

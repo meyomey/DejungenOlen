@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bm')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bn')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2044,7 +2044,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bm')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bn')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
@@ -2457,7 +2457,7 @@ class LiveKarteLesbarTest(AppTestCase):
         self.assertNotIn('#live-guard-pill { position: absolute; top: 80px; left: 10px;', live)
         self.assertNotIn('top: 56px; left: 8px;', live)
         # unten ueber dem Info-Block – Build bi: beide an der Karte (vorher mobil am Fenster)
-        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 47px; }', live)
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 57px; }', live)
         self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 105px; }', live)   # Build bm
         # Toast rutscht mit, damit er nicht auf der Pill sitzt
         self.assertIn('.map-toast { position: absolute; top: 124px;', live)
