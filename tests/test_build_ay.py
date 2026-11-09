@@ -205,3 +205,45 @@ class HinweisAuchImVollbildTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class VollbildKnoepfeWeiterUntenTest(unittest.TestCase):
+    """Build bb: „Könnte man die Symbole und Knöpfe bei der Vollkarte weiter nach unten bringen?"
+
+    Im Vollbild liegt die Karte über der unteren App-Navigation. Gemessen: bottom-nav
+    NICHT sichtbar, `navUnten = 0` – trotzdem hielten Knopfleiste, Statuszeile, Pill und 🔒
+    die 58 px für sie frei. Unter der Leiste blieb ein leerer Streifen von 58 px.
+
+    Nach dem Umbau gemessen (460×900, Vollbild):
+      Leiste     unten 0    (vorher 58)
+      Status     unten 64   (vorher 122)
+      Symbolspalte über der Statuszeile, keine Überlappung (vorher stieß sie an die Leiste)
+    """
+
+    def test_leiste_geht_im_vollbild_an_den_rand(self):
+        html = _read('templates', 'touren', 'live.html')
+        self.assertIn('#live-wrap.live-fs #live-bar { bottom: 0;', html)
+
+    def test_statuszeile_und_pill_ruecken_mit(self):
+        html = _read('templates', 'touren', 'live.html')
+        self.assertIn('#live-wrap.live-fs #live-status { bottom: 64px; }', html)
+        self.assertIn('#live-wrap.live-fs #live-guard-pill,\n    #live-wrap.live-fs #live-guard-lock', html)
+
+    def test_symbolspalte_ueber_der_statuszeile(self):
+        """5 Knöpfe à 42 px = 234 px. Ganz unten traf sie die Knopfleiste (gemessen)."""
+        html = _read('templates', 'touren', 'live.html')
+        block = html.split('#live-wrap.live-fs #live-tools {', 1)[1].split('}', 1)[0]
+        self.assertIn('bottom: calc(64px + 3.1em + 8px)', block)
+
+    def test_vollbild_hinweis_rueckt_mit(self):
+        html = _read('templates', 'touren', 'live.html')
+        self.assertIn('#live-wrap.live-fs #rec-hint-fs { bottom: 64px; }', html)
+
+    def test_normalbetrieb_bleibt_unveraendert(self):
+        """Ausserhalb des Vollbilds liegt die App-Navigation unten – dort bleiben die 58 px."""
+        html = _read('templates', 'touren', 'live.html')
+        self.assertIn('bottom: calc(58px + env(safe-area-inset-bottom));', html)
+        self.assertIn('#live-status { position: fixed; left: 8px; bottom: calc(58px + 64px);', html)
+
+
+if __name__ == "__main__":
+    unittest.main()

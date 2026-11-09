@@ -182,6 +182,20 @@
       background: rgba(255, 255, 255, .97); border-radius: 14px 14px 0 0;
       padding: 7px 8px; box-shadow: 0 -3px 14px rgba(0, 0, 0, .28);
     }
+    /* Build bb: „Könnte man die Symbole und Knöpfe bei der Vollkarte weiter nach unten
+       bringen?" – Ja. Im Vollbild liegt die Karte über der unteren App-Navigation
+       (gemessen: bottom-navSichtbar = false, navUnten = 0), trotzdem hielten Leiste,
+       Statuszeile, Pill und 🔒 die 58 px für sie frei. Gemessen waren das 58 px leerer
+       Streifen unter der Knopfleiste. Im Vollbild wandert alles an den unteren Rand. */
+    #live-wrap.live-fs #live-bar { bottom: 0; border-radius: 0; }
+    #live-wrap.live-fs #live-status { bottom: 64px; }
+    #live-wrap.live-fs #live-guard-pill,
+    #live-wrap.live-fs #live-guard-lock { bottom: calc(64px + 34px + 8px); }
+    #live-wrap.live-fs #live-km { bottom: calc(64px + 34px + 8px + 34px + 8px + 40px); }
+    /* Symbolspalte: 5 Knoepfe à 42 px = 234 px hoch. Ganz unten wuerde sie die Knopfleiste
+       treffen (gemessen: Ueberlappung True). Sie steht deshalb direkt ueber der Statuszeile. */
+    #live-wrap.live-fs #live-tools { bottom: calc(64px + 3.1em + 8px); }
+    #live-wrap.live-fs #rec-hint-fs { bottom: 64px; }
     /* Build 11-06aa: Unten nur noch die DREI wichtigen Knöpfe – groß genug für den Daumen,
        ohne dass die Leiste die Karte zudeckt (vorher fünf Reihen, ≈ 200 px). */
     #live-bar { padding: 5px 8px; }

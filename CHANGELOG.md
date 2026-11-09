@@ -1,4 +1,32 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build bb) – Vollbild: Knöpfe weiter nach unten
+- **Wunsch:** „Könnte man die Symbole und Knöpfe bei der Vollkarte weiter nach unten bringen?"
+- **Ja.** Im Vollbild liegt die Karte über der unteren App-Navigation. Gemessen: `bottom-nav`
+  **nicht sichtbar**, `navUnten = 0`. Trotzdem hielten Knopfleiste, Statuszeile, Pill und 🔒
+  die **58 px** für sie frei — unter der Leiste blieb ein leerer Streifen.
+
+  Gemessen bei 460×900 im Vollbild:
+
+  | | vorher | nachher |
+  |---|---|---|
+  | Knopfleiste (Abstand unten) | 58 px | **0 px** |
+  | Statuszeile | 122 px | **64 px** |
+  | Symbolspalte | 124 px | über der Statuszeile |
+
+- **Was sich bewegt hat:** Im Vollbild rückt alles an den unteren Rand — die Knopfleiste direkt
+  dorthin, die Statuszeile (Pausenmeldung, „Du schaust nur zu …") 64 px darüber, der
+  Aufzeichnungs-Hinweis ebenfalls auf diese Kante. Pill und 🔒 folgen der Statuszeile.
+  Die Symbolspalte steht direkt **über** der Statuszeile.
+- **Beim Messen aufgefallen:** Mit „ganz nach unten" (8 px) stieß die 234 px hohe Symbolspalte
+  an die Knopfleiste — gemessene Überlappung `tools/leiste = True`. Sie sitzt deshalb über der
+  Statuszeile; danach ist keine Überlappung mehr messbar (`{}`).
+- **Außerhalb des Vollbilds bleibt alles, wie es war** — dort liegt die App-Navigation unten,
+  die 58 px sind also berechtigt.
+- 5 neue Tests. **Gegenprobe:** ohne die Vollbild-Regeln schlagen 4 Tests fehl. 455 gesamt.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build ba) – Hinweis fehlte im Vollbild
 - **Meldung:** „Wenn in der Live Karte die große Kartendarstellung aktiv ist und die Fahrt beendet
   sieht man keinen Hinweis auf Track/GPX speichern."
