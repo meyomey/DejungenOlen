@@ -136,9 +136,10 @@ class StromsparNeuTest(unittest.TestCase):
     def test_spar_hinweis_sagt_die_wahrheit(self):
         live = _live()
         # Build af: Der grosse Kasten mitten im Bild ist ersetzt durch einen schmalen Streifen.
-        self.assertIn('Einmal tippen = kurz schauen · zweimal tippen = dauerhaft hell', live)
+        # Build bp: „dauerhaft hell" ist befristet – der Hinweis nennt jetzt die Minute.
+        self.assertIn('Einmal tippen = kurz schauen · zweimal tippen = 1 Minute hell · ✕ = aus', live)
         self.assertIn('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', live)
-        self.assertIn('Einmal tippen = kurz schauen, zweimal = dauerhaft hell.', live)
+        self.assertIn('zweimal = 1 Minute hell (dunkelt dann von selbst ab).', live)
 
 
 if __name__ == '__main__':
@@ -1074,3 +1075,50 @@ class FahrzeitOhnePausenTest(unittest.TestCase):
         live = _live()
         self.assertIn('const SVG_UHR =', live)
         self.assertNotIn("teile.push('⏱", live)
+
+
+class SparmodusDunkeltVonSelbstAbTest(unittest.TestCase):
+    """Build bp: „Im stromsparmodus soll der Screen nach einer gewissen Zeit automatisch wieder
+    abdunkeln wenn er vorher durch zweimal tippen aktiviert wurde, falls man vergisst ihn
+    auszuschalten."
+
+    Gewaehlte Zeit: 60 s. Die System-Standards liegen bei 30 s (iOS Auto-Sperre, Android
+    Timeout); beim Fahren ist das zu kurz, um eine Abfrage zu lesen. 60 s ist lang genug
+    dafuer, kurz genug gegen vergessenes Leuchten – und derselbe Takt wie die bestehende
+    Nachpruefung des Wachhaltens, also keine zweite, konkurrierende Zeit im Code.
+    """
+
+    def test_frist_ist_eine_minute(self):
+        live = _live()
+        self.assertIn('const SAVER_HELL_MS = 60000, SAVER_REST_MS = 10000;', live)
+        # 60 s = 60000 ms; die letzten 10 s sind der sichtbare Streifen
+        self.assertEqual(60000 / 1000, 60)
+        self.assertEqual(10000 / 1000, 10)
+
+    def test_timer_startet_und_wird_abgeraeumt(self):
+        live = _live()
+        # im hellen Zustand wird geplant, sonst abgeraeumt
+        self.assertIn('if (saverOn && saverHell) saverHellPlanen(); else saverHellStoppen();', live)
+        # Beim Ausschalten des Modus und beim Verlassen des hellen Zustands muss der Timer weg
+        self.assertIn('clearTimeout(saverHellTimer); saverHellTimer = null;', live)
+        self.assertIn('saverHellStoppen();                       // Build bp: auch den Abdunkel-Timer abraeumen', live)
+
+    def test_nach_ablauf_zurueck_in_den_sparmodus(self):
+        live = _live()
+        block = live.split('function saverHellPlanen()', 1)[1].split('\nfunction ', 1)[0]
+        self.assertIn('saverStufe(false);', block)          # dunkel werden
+        self.assertIn('Nach 1 Minute wieder abgedunkelt', block)   # ehrliche Meldung
+
+    def test_tipp_verlaengert_statt_nichts_zu_tun(self):
+        live = _live()
+        self.assertIn('else if (saverHell) saverHellPlanen();', live)
+
+    def test_streifen_zeigt_die_letzten_zehn_sekunden(self):
+        live, css = _live(), _css()
+        self.assertIn("bar.classList.toggle('rest-aktiv', rest > 0 && rest <= SAVER_REST_MS);", live)
+        self.assertIn('#saver-dim #saver-rest', css)
+        self.assertIn('#saver-dim #saver-rest.rest-aktiv { opacity: 1; }', css)
+
+    def test_hinweis_nennt_die_frist(self):
+        live = _live()
+        self.assertIn('Hell für 1 Minute · tippen verlängert', live)

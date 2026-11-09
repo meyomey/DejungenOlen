@@ -724,6 +724,19 @@ footer {
    Streifen mehr, der irgendetwas verdecken koennte. Der Mond-Knopf (🌙) bleibt erreichbar
    und schaltet den Sparmodus ab; zweimal auf die freie Flaeche tippen schaltet zurueck. */
 body.saver-hell #saver-dim .saver-chip { display: none; }
+/* Build bp: „dauerhaft hell" ist befristet (60 s). Die letzten 10 s laufen als duenner
+   Streifen unten am Fensterrand ab – sichtbar, aber ohne die Karte zu verdecken.
+   Der Streifen laeuft von rechts nach links weg (scaleX faellt von 1 auf 0), damit die
+   Bewegung ohne Layout-Arbeit laeuft (requestAnimationFrame im Template). */
+#saver-dim #saver-rest {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 4px; z-index: 4010;
+  background: #ffc93c; transform-origin: left center; transform: scaleX(0);
+  opacity: 0; pointer-events: none;
+  transition: opacity .25s;
+}
+/* Sichtbar nur in den letzten 10 s – das Script schaltet die Klasse .rest-aktiv. */
+#saver-dim #saver-rest.rest-aktiv { opacity: 1; }
+body.saver-on:not(.saver-hell) #saver-dim #saver-rest { display: none; }
 /* im aufgehellten Zustand: Hinweis nach 2 s ausblenden, damit nichts im Weg steht */
 #saver-dim.saver-tipp .saver-chip { opacity: 0; }
 #saver-dim.saver-tipp .saver-chip,

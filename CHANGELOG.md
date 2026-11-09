@@ -1,4 +1,40 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bp) – Stromspar: „dauerhaft hell" dunkelt nach 1 Minute selbst ab
+- **Meldung:** „Im stromsparmodus soll der Screen nach einer gewissen Zeit automatisch wieder
+  abdunkeln wenn er vorher durch zweimal tippen aktiviert wurde, falls man vergisst ihn
+  auszuschalten. Was wäre eine gute bewährte Zeit?"
+
+### Die Zeit: 60 Sekunden
+- **Bewährter Standard ist 30 s** – iOS Auto-Sperre und Android Bildschirm-Timeout stehen
+  ab Werk auf 30 Sekunden (iOS-Optionen: 30 s / 1 / 2 / 3 / 4 / 5 min; Android: 15 s bis
+  30 min). 30 s sind beim Fahren aber zu kurz: eine Abfrage zu lesen, auf die Karte zu
+  schauen, den Mitfahrer zu suchen – schon wäre es wieder dunkel.
+- **Deshalb 60 s.** Lang genug für einen Blick, kurz genug, dass ein vergessener Bildschirm
+  nicht minutenlang in der Sonne leuchtet. Und es ist derselbe Takt wie die vorhandene
+  60-Sekunden-Nachprüfung des Wachhaltens – keine zweite, konkurrierende Zeit im Code.
+- **Keine Überraschung:** In den letzten 10 Sekunden läuft unten am Fensterrand ein gelber
+  Streifen ab. Ein Tipp auf die Fläche verlängert um volle 60 Sekunden.
+
+### Jetzt
+- **Nach 1 Minute dunkelt es von selbst ab**, ohne dass die Fahrt oder die Aufzeichnung
+  endet – der Stromspar-Modus bleibt an, der Bildschirm darf wieder ausgehen.
+- **Meldung danach:** „🌙 Nach 1 Minute wieder abgedunkelt."
+- **Tippen verlängert** die Frist (vorher passierte im hellen Zustand nichts).
+- **Sauber abgeräumt:** Timer und Streifen verschwinden beim Ausschalten des Sparmodus
+  (✕), beim Zurückschalten per Doppeltipp und am Fahrtende.
+- **Texte nennen die Frist:** „Hell für 1 Minute · tippen verlängert · zweimal tippen = sparen".
+
+### Gemessen (Playwright, 461×934)
+Sparmodus an → doppeltippen → hell: Timer gesetzt, Streifen vorhanden aber **noch nicht
+sichtbar**. Frist künstlich auf 2,5 s verkürzt: nach 1,5 s **Streifen sichtbar**, nach
+3,1 s **wieder dunkel**, Sparmodus weiter an, Streifen entfernt, Overlay dunkel.
+
+- 488 Tests + **6 neue** für die Frist (Wert, Timer-Aufräumen, Rückfall, Verlängern,
+  Streifen, Text).
+
+Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `app.py`,
+`CHANGELOG.md`, `tests/test_build_ad.py`, `tests/test_build_ag.py`.
+
 ## 1.5.0 – 2026-11-09 (Build bo) – Symbole auch im Vollbild senkrecht rechts
 - **Meldung:** „Auch auf der großen Karte sollen die Symbole wie gehabt rechts untereinander
   dargestellt werden."

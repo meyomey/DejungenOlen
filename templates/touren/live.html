@@ -1706,13 +1706,14 @@ async function setSaver(on) {
     // dafür wird jeder Messpunkt vor dem Senden lokal gesichert (gesichert/sicherNachsenden).
     // Wer das Display anlassen will, nimmt den Sonnen-Knopf (🔆) – die beiden sind getrennt.
     setStatus('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', 'sharing');
-    barHinweis('🌙 Stromspar an – das Display darf jetzt ausgehen. Einmal tippen = kurz schauen, zweimal = dauerhaft hell.', 'gut');
+    barHinweis('🌙 Stromspar an – das Display darf ausgehen. Einmal tippen = kurz schauen, zweimal = 1 Minute hell (dunkelt dann von selbst ab).', 'gut');
     saverStufe(false);                        // Build af: frisch eingeschaltet = dunkel
     saverBlick();                             // Build ag: kurz zeigen, dass es dunkel ist
   } else {
     saverStufe(false);
     if (dim) { dim.classList.add('d-none'); dim.classList.remove('saver-off', 'saver-peek', 'saver-tipp'); }
     clearTimeout(saverTapTimer); saverTapTimer = null;
+    saverHellStoppen();                       // Build bp: auch den Abdunkel-Timer abraeumen
     if (wakeWanted) requestWakeLock();
     setStatus('🌙 Stromspar aus.', 'sharing');
   }
@@ -1724,6 +1725,16 @@ async function setSaver(on) {
 // Der Hinweis erscheint nur beim Aufwachen – und auch dann nur klein unten, damit er
 // die Karte nicht verdeckt.
 let saverHell = false, saverTapTimer = null, saverHintTimer = null;
+// Build bp: „Im stromsparmodus soll der Screen nach einer gewissen Zeit automatisch wieder
+// abdunkeln wenn er vorher durch zweimal tippen aktiviert wurde, falls man vergisst ihn
+// auszuschalten."
+// Bewaehrte Zeit: Die System-Standards sind 30 s (iOS Auto-Sperre, Android Timeout). Beim
+// Fahren ist das zu kurz – man liest eine Abfrage, schaut auf die Karte. 60 s ist lang
+// genug dafuer und kurz genug, dass ein vergessener Bildschirm nicht minutenlang leuchtet.
+// Es ist derselbe Takt wie die 60-s-Nachpruefung des Wachhaltens – keine zweite Zeit.
+// Die letzten 10 s laufen als Streifen sichtbar ab; ein Tipp verlaengert um volle 60 s.
+const SAVER_HELL_MS = 60000, SAVER_REST_MS = 10000;
+let saverHellTimer = null, saverHellEnde = 0, saverBarRaf = null;
 
 function saverStufe(hell) {
   saverHell = !!hell;
@@ -1765,10 +1776,60 @@ function saverStufe(hell) {
   if (b) {
     b.classList.toggle('on', saverOn);
     b.setAttribute('aria-pressed', saverOn ? 'true' : 'false');
-    b.title = saverHell ? 'Stromspar: gerade dauerhaft hell – zweimal tippen schaltet wieder ab'
-                        : 'Stromspar: Display darf ausgehen – einmal tippen = kurz schauen, zweimal = dauerhaft hell';
+    b.title = saverHell ? 'Stromspar: hell für 1 Minute – tippen verlängert, zweimal tippen dunkelt ab'
+                        : 'Stromspar: Display darf ausgehen – einmal tippen = kurz schauen, zweimal = 1 Minute hell';
   }
   refreshSaverChip();
+  // Build bp: „dauerhaft hell" ist jetzt befristet – nach 60 s dunkelt es von selbst ab.
+  // Bei jedem Wechsel neu aufziehen; im dunklen Zustand wird der Timer abgeraeumt.
+  if (saverOn && saverHell) saverHellPlanen(); else saverHellStoppen();
+}
+
+// Build bp: Rueckfall in den Stromsparmodus, wenn „dauerhaft hell" vergessen wurde.
+// Der Streifen zeigt die letzten 10 s; danach dunkelt es ab, und der Hinweis sagt, was
+// passiert ist. Die Aufzeichnung laeuft dabei unveraendert weiter.
+function saverHellStoppen() {
+  clearTimeout(saverHellTimer); saverHellTimer = null;
+  if (saverBarRaf) { cancelAnimationFrame(saverBarRaf); saverBarRaf = null; }
+  const bar = document.getElementById('saver-rest');
+  if (bar) bar.remove();
+}
+function saverHellBarTick() {
+  const bar = document.getElementById('saver-rest');
+  if (!bar) { saverBarRaf = null; return; }
+  const rest = Math.max(0, saverHellEnde - Date.now());
+  // Der Streifen erscheint erst in den letzten 10 s – vorher bleibt er unsichtbar.
+  bar.classList.toggle('rest-aktiv', rest > 0 && rest <= SAVER_REST_MS);
+  bar.style.transform = 'scaleX(' + (rest / SAVER_REST_MS) + ')';
+  saverBarRaf = requestAnimationFrame(saverHellBarTick);
+}
+function saverHellPlanen() {
+  saverHellStoppen();
+  if (!saverOn || !saverHell) return;
+  saverHellEnde = Date.now() + SAVER_HELL_MS;
+  saverHellTimer = setTimeout(() => {
+    saverHellTimer = null;
+    if (!saverOn || !saverHell) return;
+    // Zurueck in den dunklen Sparmodus – saverStufe(false) raeumt Overlay, Streifen und
+    // den Wachhalte-Wunsch mit auf.
+    saverStufe(false);
+    barHinweis('🌙 Nach 1 Minute wieder abgedunkelt. Einmal tippen = kurz schauen · zweimal = dauerhaft hell.', 'gut');
+  }, SAVER_HELL_MS);
+  // Streifen fuer die letzten 10 s anlegen (er steht unten im Overlay).
+  const dim = document.getElementById('saver-dim');
+  if (dim && !document.getElementById('saver-rest')) {
+    const b = document.createElement('div');
+    b.id = 'saver-rest';
+    b.setAttribute('aria-hidden', 'true');
+    dim.appendChild(b);
+  }
+  const bar = document.getElementById('saver-rest');
+  if (bar) {
+    bar.style.transform = 'scaleX(1)';
+    bar.classList.remove('rest-aktiv');           // erst in den letzten 10 s sichtbar
+    if (saverBarRaf) cancelAnimationFrame(saverBarRaf);
+    saverBarRaf = requestAnimationFrame(saverHellBarTick);
+  }
 }
 
 // Der kleine Hinweis unten nennt nur noch, was gerade gilt.
@@ -1776,8 +1837,8 @@ function refreshSaverChip() {
   const weg = document.getElementById('saver-weg');
   if (!weg) return;
   weg.textContent = saverHell
-    ? 'Dauerhaft hell · zweimal tippen = wieder Stromsparen · ✕ = aus'
-    : 'Einmal tippen = kurz schauen · zweimal tippen = dauerhaft hell · ✕ = aus';
+    ? 'Hell für 1 Minute · tippen verlängert · zweimal tippen = sparen · ✕ = aus'
+    : 'Einmal tippen = kurz schauen · zweimal tippen = 1 Minute hell · ✕ = aus';
 }
 
 // Build at: Karte auf die eigene Position holen – mit Ruhe, wenn sie schon dort steht.
@@ -1956,6 +2017,9 @@ document.addEventListener('click', e => {
   _saverStandBeiTipp = _saverMapStand();        // Kartenstand beim ersten Tipp merken
   // Ein einzelner Tipp auf die Flaeche hellt im dunklen Zustand kurz auf.
   if (!istKnopf && !saverHell) saverBlick();
+  // Build bp: Im hellen Zustand verlaengert ein Tipp die Frist um volle 60 s – so muss
+  // niemand mitzaehlen, wenn er laenger liest. Der Streifen beginnt von vorn.
+  else if (saverHell) saverHellPlanen();
 }, true);
 
 // Build 11-06u: Doppeltipp irgendwo auf der Karte/Wrap frischt den Screen-Wake-Lock auf
