@@ -1,4 +1,38 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build bd) – Hinweis nicht mehr doppelt
+- **Meldung:** „Die Abfrage 'Als Track übernehmen' erscheint doppelt in der normalen
+  Kartenansicht in der Live Karte"
+- **Ja, und das war ein Fehler aus Build ba.** `showRecHint()` nahm `d-none` von **beiden**
+  Kopien. Die Kopie für das Vollbild liegt in `#live-wrap` und war außerhalb des Vollbilds
+  ein normaler Block im Fluss — sie erschien unter der Karte ein zweites Mal.
+  Am Bildschirm gemessen stand sie mit `un: -78` sogar **unter dem Fensterrand**.
+- **Jetzt:** Sichtbar ist immer nur die zum Modus passende Kopie — draußen die über der Karte,
+  im Vollbild die in der Karte. Die Kopie in der Karte ist außerhalb des Vollbilds per CSS
+  ganz ausgeblendet (`display: none`).
+
+### Zwei Folgefehler beim Umschalten, ebenfalls behoben
+Beim Nachmessen der Übergänge fielen zwei Lücken auf, die es vorher auch schon gab:
+
+1. Fahrt beenden, dann ins Vollbild: **keine** Kopie mehr sichtbar (der Hinweis war nur
+   einmal gezeigt worden und hing am alten Modus).
+2. Fahrt im Vollbild beenden, dann zurück: **keine** Kopie mehr sichtbar.
+
+`toggleFs()` hängt die offene Rückfrage jetzt mit um (`recHintOffen`). Gemessen:
+
+| Schritt | sichtbare „Als Track übernehmen"-Knöpfe |
+|---|---|
+| Normalbetrieb, Fahrt beendet | 1 (in `#rec-hint`) |
+| ins Vollbild | 1 (in `#rec-hint-fs`) |
+| zurück | 1 (in `#rec-hint`) |
+| nach „Später" + Umschalten | 0, bleibt 0 |
+| Fahrt im Vollbild beendet | 1 (in `#rec-hint-fs`) |
+
+- 4 neue Tests. **Gegenprobe:** mit dem alten Zustand 2 Tests rot, mit der alten JS-Logik
+  1 Fehler + 1 Fehlschlag. 463 gesamt.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build bc) – km/Zeit im Vollbild nach unten
 - **Wunsch:** „dann sollte die Zeit und km Anzeige auch mitwandern nach unten"
 - **Berechtigt.** Der km-/Zeit-Chip hing im Vollbild noch an der Pill-Reihe: Seine Formel zählte

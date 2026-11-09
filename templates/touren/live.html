@@ -187,7 +187,11 @@
        (gemessen: bottom-navSichtbar = false, navUnten = 0), trotzdem hielten Leiste,
        Statuszeile, Pill und 🔒 die 58 px für sie frei. Gemessen waren das 58 px leerer
        Streifen unter der Knopfleiste. Im Vollbild wandert alles an den unteren Rand. */
-    #rec-hint-fs { bottom: 128px; }                          /* Build bc: aus dem Inline-Style geholt */
+    /* Build bd: Die zweite Kopie gehoert dem Vollbild. Sie stand bisher auch im Normalbetrieb
+       im Fluss und erschien unter der Karte ein zweites Mal (Nutzer: „Die Abfrage erscheint
+       doppelt in der normalen Kartenansicht"). Ausserhalb des Vollbilds ist sie ganz weg. */
+    #rec-hint-fs { display: none; bottom: 128px; }            /* Build bc: aus dem Inline-Style geholt */
+    #live-wrap.live-fs #rec-hint-fs { display: block; }
     #live-wrap.live-fs #live-bar { bottom: 0; border-radius: 0; }
     #live-wrap.live-fs #live-status { bottom: 64px; }
     #live-wrap.live-fs #live-guard-pill,
@@ -794,19 +798,30 @@ function startShare() {
   // dort ist ausdrücklich erlaubt, dass das Display ausgeht (die Aufzeichnung läuft weiter).
   if (!wakeWanted && !saverOn) setWakeWanted(true);
 }
+// Build bd: Merkt sich, ob die Rueckfrage gerade offen ist – toggleFs() muss sie beim
+// Wechsel des Modus mit umhaengen, sonst zeigt nach dem Umschalten keine Kopie mehr.
+let recHintOffen = false;
 function showRecHint() {   // Build q: Rückfrage deutlichsichtbar machen
-  // Build ba: zwei Kopien – eine ausserhalb der Karte, eine IM Vollbild. Beide zeigen.
+  // Build bd: Es gibt zwei Kopien, sichtbar ist aber immer nur EINE – die zum Modus passende.
+  // Vorher wurden beide gezeigt; im Normalbetrieb stand die Vollbild-Kopie damit ein
+  // zweites Mal unter der Karte (Nutzer: „Die Abfrage erscheint doppelt").
+  recHintOffen = true;
   const fs = document.getElementById('rec-hint-fs');
-  if (fs) fs.classList.remove('d-none');
   const el = document.getElementById('rec-hint');
+  if (_fsAn()) {
+    // Vollbild: die Kopie IN der Karte (die aeussere liegt unter der deckenden Karte).
+    if (el) el.classList.add('d-none');
+    if (fs) fs.classList.remove('d-none');
+    return;   // scrollIntoView waere sinnlos – die Karte deckt alles ab
+  }
+  // Normalbetrieb: nur die Kopie ausserhalb der Karte.
+  if (fs) fs.classList.add('d-none');
   if (!el) return;
   el.classList.remove('d-none');
-  // Im Vollbild waere scrollIntoView sinnlos (die Karte deckt alles ab) – dort steht die
-  // Kopie fest ueber der Knopfleiste.
-  if (_fsAn()) return;
   try { el.scrollIntoView({behavior: 'smooth', block: 'center'}); } catch (e) { el.scrollIntoView(); }
 }
 function hideRecHint() {
+  recHintOffen = false;                       // Build bd
   const el = document.getElementById('rec-hint');
   if (el) el.classList.add('d-none');
   const fs = document.getElementById('rec-hint-fs');   // Build ba
@@ -1847,6 +1862,10 @@ function toggleFs() {
     fsBtn.title = on ? 'Vollbild aus' : 'Vollbild';
     fsBtn.setAttribute('aria-label', on ? 'Vollbild aus' : 'Vollbild');
   }
+  // Build bd: Die Rueckfrage „Fahrt beendet" haengt am Modus (draussen: Kopie ausserhalb
+  // der Karte, im Vollbild: Kopie IN der Karte). Beim Umschalten muss sie mit – vorher
+  // zeigte nach dem Wechsel keine Kopie mehr, weil showRecHint() nur einmal lief.
+  if (recHintOffen) showRecHint();
   setTimeout(() => map.invalidateSize(), 60);
   setLiveGuard();                                     // Build 11-06w: liest selbst (Vollbild an/aus)
 }

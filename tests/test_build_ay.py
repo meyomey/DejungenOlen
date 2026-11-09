@@ -191,10 +191,17 @@ class HinweisAuchImVollbildTest(unittest.TestCase):
         self.assertIn("getElementById('rec-hint-fs')", hide)
 
     def test_kein_scrollen_im_vollbild(self):
-        """Im Vollbild waere scrollIntoView sinnlos – die Karte deckt alles ab."""
+        """Im Vollbild waere scrollIntoView sinnlos – die Karte deckt alles ab.
+
+        Build bd: Der Vollbild-Zweig endet jetzt frueher (er zeigt nur die Kopie in der
+        Karte und kehrt zurueck), das scrollIntoView steht nur noch im Normal-Zweig.
+        """
         html = _read('templates', 'touren', 'live.html')
         show = html.split('function showRecHint()', 1)[1].split('\nfunction ', 1)[0]
-        self.assertIn('if (_fsAn()) return;', show)
+        vor_return, nach_return = show.split('return;', 1)
+        self.assertIn('if (_fsAn())', vor_return)
+        self.assertNotIn('scrollIntoView', vor_return)     # im Vollbild kein Scrollen
+        self.assertIn('scrollIntoView', nach_return)       # draussen schon
 
     def test_hinweis_weicht_der_symbolspalte_rechts(self):
         """Gemessen: mit right:8px lag die Symbolspalte auf dem dritten Knopf."""
@@ -237,8 +244,10 @@ class VollbildKnoepfeWeiterUntenTest(unittest.TestCase):
     def test_vollbild_hinweis_rueckt_mit(self):
         # Build bc: nicht mehr auf 64 px (dort lag er auf dem km-Chip), sondern ueber ihm
         html = _read('templates', 'touren', 'live.html')
-        block = html.split('#live-wrap.live-fs #rec-hint-fs {', 1)[1].split('}', 1)[0]
-        self.assertIn('bottom: calc(64px + 3.1em + 8px + 31px + 8px)', block)
+        i = html.find('#live-wrap.live-fs #rec-hint-fs { bottom:')
+        self.assertGreater(i, 0)
+        block = html[i:].split('}', 1)[0]
+        self.assertIn('calc(64px + 3.1em + 8px + 31px + 8px)', block)
 
     def test_normalbetrieb_bleibt_unveraendert(self):
         """Ausserhalb des Vollbilds liegt die App-Navigation unten – dort bleiben die 58 px."""
@@ -277,7 +286,9 @@ class KmChipWandertMitTest(unittest.TestCase):
 
     def test_hinweis_ueber_dem_chip(self):
         html = _read('templates', 'touren', 'live.html')
-        block = html.split('#live-wrap.live-fs #rec-hint-fs {', 1)[1].split('}', 1)[0]
+        i = html.find('#live-wrap.live-fs #rec-hint-fs { bottom:')
+        self.assertGreater(i, 0)
+        block = html[i:].split('}', 1)[0]
         self.assertIn('31px', block)       # Chip-Hoehe
 
     def test_kein_inline_bottom_mehr_am_hinweis(self):
@@ -286,7 +297,56 @@ class KmChipWandertMitTest(unittest.TestCase):
         tag = html.split('id="rec-hint-fs"', 1)[1].split('>', 1)[0]
         self.assertNotIn('bottom:', tag)
         # die Basis-Lage kommt aus dem Stylesheet
-        self.assertIn('#rec-hint-fs { bottom: 128px; }', html)
+        self.assertIn('bottom: 128px', html)   # Basis-Lage (seit Build bd mit display:none davor)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+class HinweisNichtDoppeltTest(unittest.TestCase):
+    """Build bd: „Die Abfrage 'Als Track übernehmen' erscheint doppelt in der normalen
+    Kartenansicht in der Live Karte."
+
+    Ursache: showRecHint() nahm `d-none` von BEIDEN Kopien. Die Kopie fuer das Vollbild
+    steht in #live-wrap und war ausserhalb des Vollbilds ein normaler Block im Fluss –
+    sie erschien unter der Karte ein zweites Mal. Am Bildschirm gemessen stand sie mit
+    `un: -78` sogar unter dem Fensterrand.
+
+    Gemessen nach dem Fix (460x972):
+      Normalbetrieb: sichtbare „Als Track übernehmen"-Knoepfe = 1 (in #rec-hint)
+      Vollbild:      = 1 (in #rec-hint-fs)
+      nach „Später": = 0, und das bleibt auch beim Umschalten so
+    """
+
+    def test_kopie_ist_ausserhalb_des_vollbilds_ausgeblendet(self):
+        html = _read('templates', 'touren', 'live.html')
+        self.assertIn('#rec-hint-fs { display: none; bottom: 128px; }', html)
+        self.assertIn('#live-wrap.live-fs #rec-hint-fs { display: block; }', html)
+
+    def test_show_zeigt_nur_die_passende_kopie(self):
+        html = _read('templates', 'touren', 'live.html')
+        show = html.split('function showRecHint()', 1)[1].split('\nfunction ', 1)[0]
+        fs_zweig, rest = show.split("if (_fsAn()) {", 1)
+        fs_inhalt = rest.split('return;', 1)[0]
+        # im Vollbild: aeussere Kopie zu, innere auf
+        self.assertIn("el.classList.add('d-none')", fs_inhalt)
+        self.assertIn("fs.classList.remove('d-none')", fs_inhalt)
+        # draussen: innere Kopie zu, aeussere auf
+        self.assertIn("fs.classList.add('d-none')", rest)
+        self.assertIn("el.classList.remove('d-none')", rest)
+
+    def test_umschalten_haengt_die_rueckfrage_mit_um(self):
+        """Ohne das zeigte nach dem Moduswechsel KEINE Kopie mehr (gemessen)."""
+        html = _read('templates', 'touren', 'live.html')
+        fs_fn = html.split('function toggleFs()', 1)[1].split('\nfunction ', 1)[0]
+        self.assertIn('if (recHintOffen) showRecHint();', fs_fn)
+
+    def test_spaeter_raeumt_beide_und_bleibt_weg(self):
+        html = _read('templates', 'touren', 'live.html')
+        hide = html.split('function hideRecHint()', 1)[1].split('\nfunction ', 1)[0]
+        self.assertIn('recHintOffen = false;', hide)
+        self.assertIn("el.classList.add('d-none')", hide)
+        self.assertIn("fs.classList.add('d-none')", hide)
 
 
 if __name__ == "__main__":
