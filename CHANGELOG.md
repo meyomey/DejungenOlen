@@ -1,5 +1,30 @@
 # Changelog – De jungen Olen
-## 1.5.0 – 2026-11-07 (Build bf) – Erklärung hinter einem ⓘ
+## 1.5.0 – 2026-11-09 (Build bh) – Tour-Titel führt in die Details + Datum korrigiert
+- **Wunsch:** „Wenn man auf den Titel klickt, soll man auch in die Details kommen."
+- **Gemessen vorher** (`/touren`, 460×972): Der Titel war ein `<span class="fw-semibold">`
+  **ohne Link** (`cursor: auto`) — ein Tipp änderte die URL nicht.
+  **Nachher:** `a.tour-titel-link`, `cursor: pointer`, Klick führt auf `/touren/<id>`.
+  Der Titel sieht aus wie vorher (keine Unterstreichung, gleiche Farbe).
+- Verlinkt an **vier** Stellen: Karte mit Foto, Karte ohne Foto, Archiv-Karte, Übersicht der
+  geplanten Touren.
+
+### Datum korrigiert
+Die Build-Kennung stand seit Build ax auf **2026-11-07**, obwohl die Commits vom **08.11.**
+(ax–az) und **09.11.** (ba–bf) sind. Ursache: Ich hatte das Datum aus dem Sitzungs-Kontext
+übernommen, statt die Uhr zu prüfen.
+
+- `APP_BUILD` → **2026-11-09 bh** (Footer zeigt jetzt das richtige Datum).
+- `CHANGELOG.md`: 12 Überschriften auf das echte Commit-Datum gesetzt
+  (ax–az → 08.11., ba–bf → 09.11.). **Build `ao` bleibt auf 07.11.** — es gab im Oktober
+  einen anderen Build mit demselben Kürzel (16.10., „Foto-Zoom ruhiger"), der nicht gemeint ist.
+- Erstellungsdatum in den ZIPs kommt aus `APP_BUILD` und wandert automatisch mit.
+
+- 3 neue Tests. **Gegenprobe:** Titel wieder als `<span>` → 2 Tests rot. 477 gesamt.
+
+Geänderte Dateien: `templates/touren/list.html`, `templates/touren/geplant.html`, `app.py`,
+`CHANGELOG.md`, `tests/test_build_ay.py`, `tests/test_build_ag.py`.
+
+## 1.5.0 – 2026-11-09 (Build bf) – Erklärung hinter einem ⓘ
 - **Wunsch:** Die lange Erklärung im Hinweis „Fahrt beendet" sollte nicht mehr offen dastehen,
   sondern hinter einem ⓘ, das erst auf Tippen aufklappt.
 - **Gemessen vorher:** Der Hinweis war **328–367 px** hoch (460×972 / 390×844 / 360×740) und
@@ -39,7 +64,7 @@ verworfen: im Vollbild hat er die Überlappung erst erzeugt (138 px hoch, aber 9
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build be) – „Später" erklärt
+## 1.5.0 – 2026-11-09 (Build be) – „Später" erklärt
 - **Meldung:** „Man weiß gar nicht genau, was mit ‚Später' gemeint ist. Und wie man das, wie und
   wo aufruft."
 - **Berechtigt.** Der Knopf hieß nur „Später" (gemessen: ohne `title`) und im Hinweis stand kein
@@ -71,7 +96,7 @@ klickbar, keine Überlappung (`ueber = {}`), passt jeweils ins Bild.
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build bd) – Hinweis nicht mehr doppelt
+## 1.5.0 – 2026-11-09 (Build bd) – Hinweis nicht mehr doppelt
 - **Meldung:** „Die Abfrage 'Als Track übernehmen' erscheint doppelt in der normalen
   Kartenansicht in der Live Karte"
 - **Ja, und das war ein Fehler aus Build ba.** `showRecHint()` nahm `d-none` von **beiden**
@@ -105,7 +130,7 @@ Beim Nachmessen der Übergänge fielen zwei Lücken auf, die es vorher auch scho
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build bc) – km/Zeit im Vollbild nach unten
+## 1.5.0 – 2026-11-09 (Build bc) – km/Zeit im Vollbild nach unten
 - **Wunsch:** „dann sollte die Zeit und km Anzeige auch mitwandern nach unten"
 - **Berechtigt.** Der km-/Zeit-Chip hing im Vollbild noch an der Pill-Reihe: Seine Formel zählte
   Pill (34 px) und 🔒 (34 px) mit, obwohl beide im Vollbild gar nicht erscheinen. Gemessen stand
@@ -134,7 +159,7 @@ Nachgemessen auf drei Bildschirmgrößen: keine Überlappung mehr (`ueber = {}`)
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build bb) – Vollbild: Knöpfe weiter nach unten
+## 1.5.0 – 2026-11-09 (Build bb) – Vollbild: Knöpfe weiter nach unten
 - **Wunsch:** „Könnte man die Symbole und Knöpfe bei der Vollkarte weiter nach unten bringen?"
 - **Ja.** Im Vollbild liegt die Karte über der unteren App-Navigation. Gemessen: `bottom-nav`
   **nicht sichtbar**, `navUnten = 0`. Trotzdem hielten Knopfleiste, Statuszeile, Pill und 🔒
@@ -162,7 +187,7 @@ Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ba) – Hinweis fehlte im Vollbild
+## 1.5.0 – 2026-11-09 (Build ba) – Hinweis fehlte im Vollbild
 - **Meldung:** „Wenn in der Live Karte die große Kartendarstellung aktiv ist und die Fahrt beendet
   sieht man keinen Hinweis auf Track/GPX speichern."
 - **Genau so war es.** Der Hinweis („⏹ Fahrt beendet – was passiert jetzt mit der Aufzeichnung?")
@@ -190,7 +215,7 @@ Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build az) – Nachtrag: „Ich hatte das als Admin gemacht"
+## 1.5.0 – 2026-11-08 (Build az) – Nachtrag: „Ich hatte das als Admin gemacht"
 - **Korrektur des Nutzers:** „Ich hatte das vorher als Admin gemacht, nicht als Mitglied."
   Damit war meine Erklärung aus Build ay nur die halbe Wahrheit. Ich habe den Admin-Weg in
   Build ax nachgestellt — und den Fehler dort gefunden:
@@ -224,7 +249,7 @@ Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ay) – „GPX speichern" ließ die Tour ohne Track
+## 1.5.0 – 2026-11-08 (Build ay) – „GPX speichern" ließ die Tour ohne Track
 - **Meldung:** „Checke die Funktion ‚Als GPX speichern'. Irgendwie wird bei mir anschließend
   kein Track angezeigt."
 - **Die Datei war in Ordnung — die Tour bekam sie nur nie.** Nachgefragt: Knopf auf der
@@ -257,7 +282,7 @@ Ursache nennt — zu kurze Fahrt (unter 8 Punkte) oder ungenaues GPS (WLAN-Ortun
 Geänderte Dateien: `app.py`, `templates/touren/live.html`, `templates/touren/detail.html`,
 `tests/test_build_ay.py`, `tests/test_build_af.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ax) – Hellere Hinweise, km + Fahrzeit unten links
+## 1.5.0 – 2026-11-08 (Build ax) – Hellere Hinweise, km + Fahrzeit unten links
 - **Drei Wünsche auf einmal:** „die Meldungen ‚Zum verschieben tippen' sind mir zu dunkel,
   könnten irgendwie halbtransparent sein auf allen Karten. Die zurückgelegten Kilometer sollen
   auch lieber unten links angezeigt werden. Zusätzlich dazu auch noch die reine Fahrzeit ohne
@@ -300,7 +325,7 @@ wurden auf Geräten ohne Emoji-Schrift zu leeren Kästchen.
 Geänderte Dateien: `templates/touren/live.html`, `static/js/map-touch.js`, `app.py`,
 `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build aw) – „Fahrt starten" tat nichts: Skript brach ab
+## 1.5.0 – 2026-11-08 (Build aw) – „Fahrt starten" tat nichts: Skript brach ab
 - **Meldung:** „Der grüne Button ‚Fahrt starten' bleibt weiterhin grün nach Drücken. Es passiert
   nichts. Eine Meldung sehe ich auch nicht."
 - **Es war diesmal kein Anzeigeproblem — das Skript brach ab.** Ursache ist ein Fehler, den
@@ -336,7 +361,7 @@ Geänderte Dateien: `templates/touren/live.html`, `static/js/map-touch.js`, `app
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad.py`,
 `tests/test_live.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build av) – „Fahrt starten" sieht nicht mehr klickbar aus, wenn es gesperrt ist
+## 1.5.0 – 2026-11-08 (Build av) – „Fahrt starten" sieht nicht mehr klickbar aus, wenn es gesperrt ist
 - **Meldung:** „Jetzt kann ich bei Tour auf ‚Fahren' klicken, dann erscheint die Live Karte und
   dort ist der Button ‚Fahrt starten' weiter grün. Ein Draufklicken bringt keine Änderung.
   Irgendwo hakt es."
@@ -369,7 +394,7 @@ Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad.py`,
 `tests/test_build_ag.py`, `tests/test_live.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build au) – Live-Karte zeigt die zurückgelegte Strecke
+2026-11-07 – Live-Karte zeigt die zurückgelegte Strecke
 - **Frage:** „kann man die zurückgelegte Route auch schon in der Live Karte anzeigen lassen?"
 - **Die Route war schon da:** Seit Build af zeichnet die Live-Karte die Spuren aller
   Teilnehmer (eigene Spur blau `#1E88E5`, jede weitere Person in einer eigenen Farbe) und
@@ -394,7 +419,7 @@ Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build at) – Der kurze Blick zeigt, wo man ist
+2026-11-07 – Der kurze Blick zeigt, wo man ist
 - **Frage:** „Wenn man einmal tippt aus dem Stromspar kann man ja nichts bedienen, aber es
   sollte dann gezoomt werden auf einen selber um zu sehen wo man sich befindet, oder?"
   **Ja** – und genau das fehlte.
@@ -424,7 +449,7 @@ Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build as) – Ein Schloss für alle Karten, unten statt oben rechts
+2026-11-07 – Ein Schloss für alle Karten, unten statt oben rechts
 - **Rückmeldung:** „Das Schloss sollte auch jetzt im unteren Bereich erscheinen und nicht weiter
   oben rechts sein. Die Darstellung des Schlosses sind momentan unterschiedlich Live-Karte und
   andere Karten. Das sollte einheitlich sein."
@@ -457,7 +482,7 @@ Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ad
 Geänderte Dateien: `static/js/map-touch.js`, `templates/touren/live.html`, `app.py`,
 `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ar) – Hilfe sagt die richtige Ecke: unten links
+2026-11-07 – Hilfe sagt die richtige Ecke: unten links
 - **Korrektur des Nutzers:** „Auf der Live Karte steht der Verschiebe-Hinweis unten links."
   Ich hatte in der letzten Antwort behauptet, er sitze oben links – **das war falsch.**
 - **Nachgemessen** (404 × 854, Live-Karte): `#live-guard-pill` liegt bei **links 8 px,
@@ -478,7 +503,7 @@ Geänderte Dateien: `static/js/map-touch.js`, `templates/touren/live.html`, `app
 Geänderte Dateien: `templates/hilfe.html`, `templates/touren/live.html`, `app.py`,
 `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build aq) – Kartenhinweis sitzt unten, nicht mehr in der Kartenmitte
+2026-11-07 – Kartenhinweis sitzt unten, nicht mehr in der Kartenmitte
 - **Rückmeldung:** „Bei den anderen Karten stört mich das ‚Karte zum Verschieben antippen' in der Mitte.
   Sollte vielleicht weiter unten liegen oder was meinst du?"
 - **Zustimmung – und gemessen, wie störend es war:** Der Hinweis lag exakt mittig (`align-items: center`)
@@ -503,7 +528,7 @@ Geänderte Dateien: `templates/hilfe.html`, `templates/touren/live.html`, `app.p
 Geänderte Dateien: `static/js/map-touch.js`, `templates/hilfe.html`, `app.py`,
 `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ap) – Vollbild-Knopf zeigt keine ✕ mehr
+2026-11-07 – Vollbild-Knopf zeigt keine ✕ mehr
 - **Rückmeldung:** „Das X irritiert. Man denkt hier beendet man was komplett."
 - **Geändert:** Im Vollbild ersetzte der Knopf sein Symbol durch ein großes **✕**. Jetzt ist es
   das übliche Gegenstück zum Auf-Symbol: **vier Pfeile nach innen** (⤡) – gleicher Platz,
@@ -553,7 +578,7 @@ Geänderte Dateien: `templates/touren/live.html`, `static/sw.js`, `app.py`, `REA
 `.env.example`, `docs/AUDIT_BERICHT.md`, `tests/test_build_ad.py`, `tests/test_build_ag.py`,
 `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build an) – Kein Sperren im Vollbild, Sperrknopf über dem Info-Block
+2026-11-07 – Kein Sperren im Vollbild, Sperrknopf über dem Info-Block
 - **Rückmeldung:** „1. Beim Vollbild muss die Sperre nicht sein. 2. Der Sperrknopf soll lieber unten über dem grünen/orangen InfoBlock erscheinen."
 - **(1) Vollbild:** `guardWanted()` gibt dort jetzt immer `false` zurück, der 🔒-Knopf wird gar nicht erst eingeblendet. Eine vor dem Vollbild gesetzte Sperre wird gemerkt und beim Verlassen wiederhergestellt; nach dem Vollbild startet die Karte frei.
 - **(2) Lage:** Verschiebe-Hinweis und Sperrknopf sitzen nicht mehr oben links unter dem Zoom, sondern **unten direkt über dem Status-Chip**. Gemessen: Info-Block y 702–732, Knopf jetzt y 664–694 – also exakt 8 px darüber, links bündig.
@@ -575,7 +600,7 @@ Geänderte Dateien: `templates/touren/live.html`, `static/sw.js`, `app.py`, `REA
 Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.py`, `tests/test_build_ad.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build am) – Live-Karte lässt sich immer sperren, dann scrollt die Seite
+2026-11-07 – Live-Karte lässt sich immer sperren, dann scrollt die Seite
 - **Rückmeldung:** „Bei der Live Karte kann man nicht so richtig scrollen, da man die Karte nicht sperren kann."
 - **Nachgemessen** (acht Zustände, echter Ein-Finger-Wisch über die Karte):
 
@@ -608,7 +633,7 @@ Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.p
 Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.py`, `tests/test_build_ad.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build al) – Im Stromsparmodus zoomt nur die Karte, nicht der Bildschirm
+2026-11-07 – Im Stromsparmodus zoomt nur die Karte, nicht der Bildschirm
 - **Rückmeldung:** „Im Stromsparmodus zoomt der ganze Screen und nicht nur die Karte."
 - **Nachgemessen** (echte Zwei-Finger-Touch-Events über CDP):
 
@@ -641,7 +666,7 @@ Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.p
 Geänderte Dateien: `static/css/style.css`, `templates/touren/live.html`, `templates/hilfe.html`, `app.py`,
 `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ak) – Zweimal tippen zoomt die Karte nicht mehr
+2026-11-07 – Zweimal tippen zoomt die Karte nicht mehr
 - **Rückmeldung:** „Blöd ist noch, dass die Karte gezoomt wird wenn man zweimal tippt und in Stromsparen geht."
 - **Nachgemessen und reproduziert:** `zoom 15 → 16` beim Zurückschalten von hell auf dunkel. Im hellen Zustand ist die Karte bedienbar, also erreicht der Doppeltipp auch Leaflet – und Leaflet zoomt bei jedem `dblclick` eine Stufe hinein.
 - **Behoben:** Solange der Sparmodus läuft, ist der **Doppeltipp-Zoom der Karte aus** (`map.doubleClickZoom`). Er wird beim Beenden des Sparmodus wieder eingeschaltet. Zoomen per **+ / −**, per **zwei Fingern** und per Mausrad bleibt unberührt.
@@ -665,7 +690,7 @@ Geänderte Dateien: `static/css/style.css`, `templates/touren/live.html`, `templ
 Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.py`, `tests/test_build_ad.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build aj) – Grüne Selbsttest-Boxen entfernt
+2026-11-07 – Grüne Selbsttest-Boxen entfernt
 - **Rückmeldung:** „Deine grünen Boxen mit test hinweisen können entfernt werden?"
 - **Entfernt** (die Erfolgsmeldungen über den Hauptknöpfen):
   - „✅ Bildschirm bleibt an – vom Gerät bestätigt (40 s ohne Unterbrechung)"
@@ -682,7 +707,7 @@ Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.p
 Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.py`, `tests/test_build_ad.py`,
 `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ai) – Zweimal tippen funktioniert jetzt auch bei großgestellter Karte
+2026-11-07 – Zweimal tippen funktioniert jetzt auch bei großgestellter Karte
 - **Rückmeldung:** „Wenn die Karte auf groß gestellt ist, funktioniert zweimal tippen nicht mehr."
 - **Der eigentliche Fehler hatte nichts mit dem Vollbild zu tun** – dort ist er nur aufgefallen, weil man die Karte dann wirklich bedient. Zwei Ursachen, beide von mir:
   1. **Seit Build ah hat das Overlay im hellen Zustand `pointer-events: none`** (damit die Karte bedienbar ist). Damit bekam der Tipp-Erkenner, der am Overlay hing, **keinen einzigen Tipp** mehr – „zweimal tippen" war tot.
@@ -704,7 +729,7 @@ Geänderte Dateien: `templates/touren/live.html`, `templates/hilfe.html`, `app.p
 Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templates/hilfe.html`, `app.py`,
 `templates/base.html`, `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ah) – Im hellen Stromspar-Zustand ist die Karte wieder bedienbar
+2026-11-07 – Im hellen Stromspar-Zustand ist die Karte wieder bedienbar
 - **Rückmeldung:** „man kann nur schauen und nicht bedienen oder zoomen nach einem Doppelklick aus dem Stromsparen?"
 - **Ursache (mein Fehler in Build af):** `background: transparent` machte das Overlay im dauerhaft hellen Zustand nur **unsichtbar**. Es lag weiterhin über der ganzen Seite und fing jeden Tipp ab – man konnte zusehen, aber nichts bedienen. Zwei weitere Sperren kamen dazu:
   - `body.saver-on #live-tools { visibility: hidden; }` blendete die Symbolspalte in **jedem** Sparzustand aus, auch im hellen.
@@ -722,7 +747,7 @@ Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templ
 Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templates/hilfe.html`, `app.py`,
 `templates/base.html`, `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ag) – Einmal tippen dunkelt jetzt jedes Mal wieder ab
+2026-11-07 – Einmal tippen dunkelt jetzt jedes Mal wieder ab
 - **Rückmeldung:** „Einmal tippen funktioniert nur einmal. Wenn man erneut nach einer längeren Zeit auf den abgedunkelten Screen einmal tippt, bleibt er immer an."
 - **Ursache (klarer Fehler in Build af):** `saverTap()` hellte direkt auf (`classList.add('saver-peek')`), setzte aber **keinen Zeitgeber zum Zurückdunkeln**. Der 4-Sekunden-Timer lebte nur in `saverStufe()` und lief einmal beim Einschalten des Sparmodus. Nach der ersten Aufhellung blieb deshalb jeder weitere Einzeltipp für immer hell.
 - **Behoben:** Es gibt jetzt genau **eine** Stelle, die den kurzen Blick steuert – `saverBlick()`. Sie setzt bei **jedem** Tipp beide Timer neu: Abdunkeln nach 4 s, Hinweis weg nach 2 s. `saverStufe()` macht nur noch den Zustandswechsel dunkel ↔ dauerhaft hell.
@@ -738,7 +763,7 @@ Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templ
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `templates/base.html`,
 `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build af) – Stromspar mit zwei Stufen, Hinweis versperrt die Karte nicht mehr
+2026-11-07 – Stromspar mit zwei Stufen, Hinweis versperrt die Karte nicht mehr
 - **Gute Nachricht vom Gerät:** „Der Bildschirm bleibt 40 s an, vom Gerät bestätigt." Der Selbsttest aus Build ae funktioniert also – das Wachhalten hält auf dem S23 und die Meldung ist belegt statt behauptet.
 - **Wunsch:** „Wenn der Stromsparen aktiv ist, soll bei einmal tippen das Display kurz angehen um kurz schauen zu können und bei zweimal tippen soll das Display anbleiben. Wenn man erneut zweimal tippt, wieder in Stromsparen gehen."
   - **Einmal tippen** → 4 Sekunden hell, dann wieder dunkel (wie bisher, aber jetzt sauber getrennt).
@@ -761,7 +786,7 @@ Geänderte Dateien: `templates/touren/live.html`, `app.py`, `templates/base.html
 Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templates/hilfe.html`, `app.py`,
 `templates/base.html`, `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ae) – „Grün, aber wirkungslos" abgeschafft + Abdunklung wirklich ganzflächig
+2026-11-07 – „Grün, aber wirkungslos" abgeschafft + Abdunklung wirklich ganzflächig
 - **Rückmeldung:** „Es geht nicht, obwohl nur grüne Meldungen kommen. Es wird auch nicht der ganze Bildschirm abgedunkelt."
 - **Der eigentliche Konstruktionsfehler (meiner):** Ich habe gemeldet, dass *meine Mittel* laufen (Video spielt, Wake-Lock erteilt), und das als Beweis ausgegeben, dass der Bildschirm anbleibt. Das ist es nicht. Verweigert das Betriebssystem den Bildschirm-Wächter – Samsungs Akkusparmodus tut genau das –, laufen Video und Schnittstelle „fehlerfrei" weiter, nur ohne Wirkung. Das Grün war also ehrlich gemeint und trotzdem falsch.
   - **Neu: ein echter Selbsttest mit Zeitmessung.** Wenn der Bildschirm ausgeht, friert Android die Seite ein. `wachTick()` läuft alle 5 Sekunden und merkt sich die Zeit; bleibt ein Loch von mehr als 20 Sekunden, war es **kein** Wachhalten – dann kommt sofort eine rote, konkrete Meldung: „Der Bildschirm ging trotz ‚an' aus (34 s Stillstand)." Der gemessene Gegenbeweis schlägt jede technische Freigabe (`f.ok = false`).
@@ -781,7 +806,7 @@ Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templ
 Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templates/hilfe.html`, `app.py`,
 `templates/base.html`, `tests/test_build_ad.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ad) – „Bildschirm bleibt an" endlich wirksam + Stromspar neu gedacht
+2026-11-07 – „Bildschirm bleibt an" endlich wirksam + Stromspar neu gedacht
 - **Rückmeldung:** „es geht nicht. Wenn ich länger auf den Button tippe, wird auch nichts angezeigt. Vielleicht sollte man den Stromsparmode nochmal neu denken." Zwei echte Fehler, ein Design-Fehler.
 - **Fehler 1 – das Video war zu klein.** Ich hatte die Regel falsch im Kopf. Im Chromium-Quelltext (`video_wake_lock.cc`) steht sie wörtlich: ein Video hält den Bildschirm nur, wenn es **hörbar** läuft **oder** zu **mindestens 20 % des Fensters** zählt **und** zu **mindestens 75 % sichtbar** ist (`kSizeThreshold = 0.2`, `kStrictVisibilityThreshold = 0.75`). Mein 2×2-Pixel-Video aus Build ac erfüllte beides **nie** – es konnte auf dem S23 gar nicht wirken.
   - **Neu:** Das Ersatz-Video ist **bildschirmfüllend** (`inset: 0`, `object-fit: cover`), liegt **hinter** der Seite und ist mit **1 % Deckkraft** unsichtbar. Es zählt damit als 100 % Fläche und 100 % sichtbar. Echtes Clip 320×180 mit Vorbis-Tonspur, 5,8 KB, eingebettet.
@@ -802,7 +827,7 @@ Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templ
 Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templates/hilfe.html`, `app.py`,
 `templates/base.html`, `tests/test_build_ad.py` (neu), `tests/test_build_aa.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ac) – „Bildschirm bleibt an": der Fehler lag im Video (es war stumm)
+2026-11-07 – „Bildschirm bleibt an": der Fehler lag im Video (es war stumm)
 - **Rückmeldung:** „Leider funktioniert Bildschirm bleibt an nicht." Zu Recht – mein Ersatz-Weg aus Build ab war **wirkungslos**.
 - **Die Regel, die ich übersehen hatte:** Ein Video hält den Bildschirm nur wach, wenn es **nicht stumm** ist. Es braucht eine **Tonspur** und darf nicht `muted` sein. Das Video aus Build ab hatte gar keine Tonspur (nur ein schwarzes Bild) und war zusätzlich stummgeschaltet – der Browser hatte damit keinen Grund, das Display anzulassen.
   - Nachgeprüft am Vorbild **NoSleep.js**: dessen WebM hat eine **Vorbis**-, das MP4 eine **AAC**-Tonspur, und es wird nirgends stummgeschaltet.
@@ -817,7 +842,7 @@ Geänderte Dateien: `templates/touren/live.html`, `static/css/style.css`, `templ
 
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_aa.py`, `tests/test_build_ag.py`, `CHANGELOG.md`.
 
-## 1.5.0 – 2026-11-07 (Build ab) – „Bildschirm bleibt an" hält jetzt wirklich (zweiter Weg) + feinere Leiste
+2026-11-07 – „Bildschirm bleibt an" hält jetzt wirklich (zweiter Weg) + feinere Leiste
 - **Fehler:** „Bildschirm bleibt an funktioniert nicht, zumindest nicht auf meinem Galaxy S23 und auch nicht im Browser bei der Smartphone-Simulation." Ursache: Der Wake-Lock ist eine **Berechtigung** des Browsers. Verweigert er sie (Energiesparmodus, schwacher Akku, Browser-Richtlinie, Seite nicht über https), blieb bisher nur eine ehrliche Fehlermeldung – der Bildschirm ging aus.
 - **Zweiter Weg – stilles Endlos-Video:** Ein 641 Byte kleines, unsichtbares Video (16×16, schwarz, 1 s, Endlosschleife, direkt im HTML eingebettet, kein Netz nötig) hält den Bildschirm genauso wach. Das ist der klassische Ausweg, den auch NoSleep.js geht.
   - Läuft die Wake-Lock-Schnittstelle, wird sie genommen (sauberer, sparsamer) – das Video bleibt aus.
@@ -832,7 +857,7 @@ Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_aa
 Geänderte Dateien: `templates/touren/live.html`, `static/js/map-touch.js`, `app.py`, `tests/test_build_aa.py`,
 `tests/test_build_ag.py`, `tests/test_build_z.py`, `CHANGELOG.md`, `templates/hilfe.html`.
 
-## 1.5.0 – 2026-11-07 (Build aa) – Live-Karte: die Karte bekommt den Bildschirm
+2026-11-07 – Live-Karte: die Karte bekommt den Bildschirm
 - **Wunsch:** „Vom Wichtigsten, der Karte, kann man fast nichts mehr sehen. Die Knöpfe nehmen viel zu viel Platz ein."
 - **Oben: eine Titelzeile statt vier Blöcke.** Zurück-Pfeil · Titel · ℹ️ in einer Zeile (≈ 38 px statt über 300 px). Datum, Startzeit und Treffpunkt sowie der ganze Hinweise-Block stecken im ℹ️-Aufklapper; die Statusmeldung ist ein kleiner Chip **auf** der Karte (zwei Zeilen, antippen klappt die ganze Meldung auf – die Links nach Fahrtende bleiben erreichbar).
 - **Unten: drei große Knöpfe statt fünf Reihen.** Fahrt beenden/starten · Pause · Foto sind jetzt **58 px hoch** (vorher 50) und der Fahrt-Knopf bekommt am meisten Breite – der Rest der Leiste ist weg (≈ 70 px statt ≈ 200 px).
@@ -844,7 +869,7 @@ Geänderte Dateien: `templates/touren/live.html`, `static/js/map-touch.js`, `app
 Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_aa.py`, `tests/test_build_ag.py`,
 `tests/test_live.py`, `CHANGELOG.md`, `templates/hilfe.html`.
 
-## 1.5.0 – 2026-11-06 (Build z) – Radkarte (CyclOSM) auf jeder Karte
+2026-11-06 – Radkarte (CyclOSM) auf jeder Karte
 - **Wunsch:** „CyclOSM soll auch auf jeder Karte auswählbar sein." Bisher gab es den Radkarten-Stil nur auf der Live-Karte (🚵 Wege, Build 11-06u), auf der Tour-Seite nur als einer von mehreren Knöpfen.
 - **Eine Lösung statt 17 Kopien:** Der Umschalter steckt in `static/js/map-touch.js` – die Datei wird über `base.html` auf jeder Seite geladen. Ein kleiner Knopf auf der Karte schaltet zyklisch **Standard → Radkarte (CyclOSM) → Luftbild**; er erkennt „unsere" Karten an den OSM-Kacheln, tauscht nur den Grund-Kachelsatz (Marker, Track, Overlays bleiben oben) und zieht alle anderen Karten der Seite mit.
 - **Gilt für die ganze Sitzung:** Die Wahl liegt in `sessionStorage` (`djo_map_style`) und wird auf jeder Seite sofort angewandt – einmal Radkarte, überall Radkarte. Die alte Merke der Live-Karte (`localStorage djo_live_tiles`) wird übernommen, damit niemand nach dem Update plötzlich wieder die Standardkarte bekommt.
@@ -859,7 +884,7 @@ Geänderte Dateien: `static/js/map-touch.js`, `templates/touren/detail.html`, `t
 `templates/touren/print.html`, `app.py`, `tests/test_build_z.py`, `tests/test_build_ag.py`,
 `CHANGELOG.md`, `templates/hilfe.html`.
 
-## 1.5.0 – 2026-11-06 (Build y) – „Bildschirm bleibt an“ hält jetzt wirklich an
+2026-11-06 – „Bildschirm bleibt an“ hält jetzt wirklich an
 - **Fehler:** Nach dem Doppeltipp stand „🔆 Bildschirm bleibt an“, der Bildschirm ging aber trotzdem aus – auch in der Handy-Simulation des Browsers, also kein Geräteproblem. Ursache: Der Wake-Lock wurde **einmal** angefordert und nie wieder. Lässt der Browser ihn fallen (Tab verlassen, Display gesperrt, App-Wechsel, Akkusparmodus – bei jeder Aufnahme des Handys fällt er weg), blieb die Erfolgsmeldung stehen, aber nichts hielt den Bildschirm mehr. Der 60-s-Wächter griff nur bei laufender Fahrt/Folgen/Stromspar – nicht beim reinen Doppeltipp.
 - **Jetzt:** Die Seite merkt sich den **Wunsch** (`wakeWanted`) und holt den Lock bei jeder Rückkehr neu: bei `visibilitychange` (zurück im Tab, entsperrt), bei jedem normalen Tipp und über einen **20-s-Wächter** (vorher 60 s und nur bei Fahrt). Genau so verlangt es der Browser: eine neue Anforderung ist nur bei sichtbarer Seite erlaubt.
 - **Doppeltipp schaltet um:** einmal an, nochmal aus („🌙 Bildschirm darf wieder aus“) – vorher war ein zweiter Doppeltipp wirkungslos.
@@ -868,65 +893,65 @@ Geänderte Dateien: `static/js/map-touch.js`, `templates/touren/detail.html`, `t
 - **Nebenbei:** Ein bestehender Test (`/fahren`) rechnete mit dem UTC-Datum des Servers statt mit Berliner Zeit und war zwischen 22 und 24 Uhr UTC rot – jetzt `_berlin_today()` wie in der App.
 - 288 Tests, py_compile OK.
 
-## 1.5.0 – 2026-11-06 (Build x) – Live-Karte auf dem Handy lesbar: Guard unter dem Zoom, volle Knopf-Beschriftungen
+2026-11-06 – Live-Karte auf dem Handy lesbar: Guard unter dem Zoom, volle Knopf-Beschriftungen
 - **„Zum Verschieben antippen“ und 🔒 lagen auf dem „−“**: Das Zoom-Bedienfeld von Leaflet beginnt bei 10 px, ist mit zwei Knöpfen ≈ 70 px hoch – die Pill begann bei 56 px und nahm das Herauszoomen weg. Beide sitzen jetzt bei `top: 80px; left: 10px`, also **unter** dem Zoom und bündig mit ihm; der Karten-Toast rutscht mit auf 124 px.
 - **Abgeschnittene Knöpfe („Fol…“, „Voll…“, „Sta…“, „Str…“)**: Die fünf Sekundär-Knöpfe quetschten sich in eine Zeile und wurden mit Ellipse gekürzt. Jetzt ein 3+2-Raster (Folgen · Alle · Vollbild / Standard · Stromspar) mit voller Beschriftung und Umbruch statt Ellipse – die Höhe der Leiste bleibt bei ≈ 155 px.
 - **Beschriftung bleibt beim Umschalten**: Vollbild und Kartenstil tauschen nur noch den Text im Knopf (eigene Spans), das Icon bleibt stehen – vorher wurde der Vollbild-Knopf zum nackten „⛶“.
 - **Nebenbefund, mitbehoben:** Der Laufraum unter der Daumenleiste war wirkungslos – `base.html` setzt sein `body { padding-bottom: 58px }` später im Dokument und gewann bei gleicher Spezifität (58 px statt 174 px), die letzten Inhalte lagen hinter der Leiste. Jetzt `html body { padding-bottom: 222px }` (0,0,2), passend zur neuen Leistenhöhe.
 - 284 Tests, py_compile OK.
 
-## 1.5.0 – 2026-11-06 (Build w) – Live-Karte wieder sperrbar: 🔒-Knopf nach dem Freischalten
+2026-11-06 – Live-Karte wieder sperrbar: 🔒-Knopf nach dem Freischalten
 - Nach dem Freischalten des Ecken-Guards (Pill „Zum Verschieben antippen“ oben links) ließ sich die Karte nicht wieder sperren – die Pill war weg und die Seite scrollte fortan nicht mehr normal. Jetzt erscheint beim Freischalten an derselben Ecke der **🔒-Knopf**: Er sperrt die Karte wieder (Seite scrollt normal, Pill kommt zurück).
 - Der Guard liest seinen Zustand **selbst** (`setLiveGuard()` ohne Argumente, `guardArmed = true` als Startwert): gesperrt = kein Fahrt/Folgen/Vollbild **und** nicht freigetippt. Damit bleibt der Zustand auch nach Fahrtende, Folgen-Aus oder Drehen des Geräts konsistent (Neu-Bewertung zusätzlich bei `resize` und nach dem Ziehen der Karte).
 - Während **Fahrt, Folgen und Vollbild** sind Pill und 🔒 ausgeblendet – dort muss Verschieben sofort gehen (wie seit Build u).
 - Hilfe-Seite erklärt das Sperren auf der Live-Karte.
 - 280 Tests, py_compile OK.
 
-## 1.5.0 – 2026-11-06 (Build v) – Live-Karte-Nachjustieren: Scrollen, Knopf-Zustand, ehrlicher Doppeltipp
+2026-11-06 – Live-Karte-Nachjustieren: Scrollen, Knopf-Zustand, ehrlicher Doppeltipp
 - Scrollen wieder leicht: Der Antipp-Schutz kehrt auf der Live-Karte zurück – aber als dezente Pill OBEN LINKS statt als Overlay mitten auf der Karte. Ohne laufende Fahrt scrollt die Seite normal, die Pill schaltet die Karte zum Verschieben frei; sobald Fahrt/Folgen/Vollbild aktiv sind, schaltet der Schutz automatisch ab (sofortiges Verschieben) und kehrt danach zurück.
 - Der 🚵-Knopf zeigt jetzt sichtbar den aktiven Kartenstil („🚵 Standard“ hell / „🚵 Radkarte“ gelb) – vorher blieb die Hell-Färbung drauf und überdeckte die Gelb-Markierung.
 - Doppeltipp-Rückmeldung erscheint als Toast AUF der Karte (vorher nur Statuszeile darüber); unterstützt das Gerät das Bildschirm-Wachhalten nicht (älteres iOS, Akkusparmodus), kommt ein ehrlicher ⚠️-Hinweis statt der Erfolgsmeldung.
 - 277 Tests, py_compile OK.
-## 1.5.0 – 2026-11-06 (Build u) – Fahrmodus der Live-Karte
+2026-11-06 – Fahrmodus der Live-Karte
 - Kein „Karte zum Verschieben antippen“ mehr auf der Live-Karte: Der Antipp-Schutz bleibt auf allen eingebetteten Karten aktiv, ist auf der Live-Seite aber aus – beim Fahren verschiebt ein Finger SOFORT, nichts überlagert die Kartenmitte.
 - Karte größer auf dem Handy (höhere Mindesthöhe, mehr Bildschirmanteil auf schmalen Displays).
 - 🚵 Wege-Knopf: Kartenstil umschaltbar zwischen Standard-OSM und CyclOSM (Radkarten-Stil, Feldwege/Tracks kräftig) – die Wahl wird gemerkt.
 - 👠 Folgen zoomt jetzt auf Fahrzoom 16 (Straßen/Wege deutlich lesbar).
 - Doppeltipp auf der Karte frischt das Bildschirm-Wachhalten auf („🔱 Bildschirm bleibt an“), dazu ein Wächter, der den Wake-Lock alle 60 s zurückholt – das Display hält so den ganzen Fahrttag durch.
 - 274 Tests, py_compile OK.
-## 1.5.0 – 2026-11-06 (Build t) – Eine rote Anzeige statt zweier
+2026-11-06 – Eine rote Anzeige statt zweier
 - Läuft die EIGENE Fahrt, ist die „Fahrt läuft“-Pill unten rechts DIE eine Anzeige – sie zeigt jetzt auch, wie viele unterwegs sind und ob die Aufzeichnung läuft (vorher standen Navbar-Pille „N unterwegs“ und Pill gleichzeitig herum). Die Navbar bleibt bei eigener Fahrt frei; fährt jemand anderes, zeigt weiterhin die Navbar-Pille die Gruppe an. Tourseiten regelt wie seit Build p die Aktionsleiste.
 - 271 Tests, py_compile OK.
-## 1.5.0 – 2026-11-06 (Build s) – „Ende gilt“-Siegel gegen Zombie-Fahrten
+2026-11-06 – „Ende gilt“-Siegel gegen Zombie-Fahrten
 - Fix für „Fahrt läuft immer noch, obwohl ich sie mehrfach beendet habe“: Ein vergessenes Gerät (Tab oder Handy mit offener Live-Karte bzw. aktivem Fahren-Status) sendete im Hintergrund weiter und riss die soeben gelöschte Anwesenheit alle ~30 Sekunden neu ein – die rote Anzeige kam also immer wieder.
 - Beim Beenden setzt der Server jetzt ein Siegel (live_stops): Weitere Hintergrund-Updates werden abgewiesen (HTTP 409), die Sender räumen sich selbst ab. Eine frisch geladene Live-Karte meldet resume und startet unbeschwert neu; die Aufzeichnung bleibt von der Änderung unberührt (weiter übernehmen/löschen auf der Tourseite).
 - 269 Tests, py_compile OK.
-## 1.5.0 – 2026-11-06 (Build r) – Navbar bei mittlerer Größe gerade gezogen
+2026-11-06 – Navbar bei mittlerer Größe gerade gezogen
 - Bei mittlerer Fenstergroße (992–1199 px) standen die Menü-Einträge versetzt: Icon über, Beschriftung unter – Ursache war Bootstraps .container, der dort nur 960 px breit ist und die Links zum Umbrechen zwang. Die Navbar nutzt jetzt die volle Breite (container-fluid), Beschriftungen sind grundsätzlich einzeilig, und im Mittelbereich sind Abstände/Logo/Brand etwas kompakter.
 - 267 Tests, py_compile OK.
-## 1.5.0 – 2026-11-06 (Build q) – Karten-Overlay eindeutig benannt
+2026-11-06 – Karten-Overlay eindeutig benannt
 - Der Karten-Schutz auf Handys hieß „☝ Tippen zum Aktivieren“ und wurde mehrfach so verstanden, als ließe sich hier die TOUR starten/aktivieren – gemeint war die Karte (erst antippen, dann mit einem Finger verschieben). Neu: „☝ Karte zum Verschieben antippen“; die vier Positions-Picker (Treffpunkt, Orte, Gastro, GPS-Korrektur) bekamen ebenfalls eindeutige Hinweise („Karte antippen – Klick setzt danach …“).
 - 266 Tests, py_compile OK.
-## 1.5.0 – 2026-11-06 (Build p) – Eine Live-Anzeige statt dreier, „Abschließen“ entschärft
+2026-11-06 – Eine Live-Anzeige statt dreier, „Abschließen“ entschärft
 - Konsolidiert: Auf der Tourseite zeigt jetzt die Aktionsleiste den Lauf-Status an – die rote „Fahrt läuft“-Pill unten rechts erscheint dort nicht mehr (Navbar-Punkt bleibt app-weit). Läuft die EIGENE Fahrt, wird der Knopf zum aktiven „⏺ Fahrt beenden“ (stoppt die eigene Aufzeichnung, ohne die Tourseite zu verlassen; danach steht wieder „Fahren“ da). Fremde Fahrten bleiben reiner Status.
 - „Abschließen“ tritt bei laufender Fahrt einen Schritt zurück (weicher Tint statt Vollgrün) und fragt beim Klick nach: „Es läuft noch eine Fahrt – Abschließen stoppt sie NICHT“. Bisher wirkte das grüne „Abschließen“ wie der Knopf zum Fahrt-Beenden.
 - 264 Tests, py_compile OK.
-## 1.5.0 – 2026-11-06 (Build o) – Stromspar-Modus Stufe 2: gröber senden, Kurven-Trigger
+2026-11-06 – Stromspar-Modus Stufe 2: gröber senden, Kurven-Trigger
 - Im Stromspar-Modus sendet die Aufzeichnung gröber: alle 20 s statt 10 s (im Stand alle 45 s statt 30 s) – spürbar weniger Funk-Aktivität auf langen Geraden.
 - Neuer Richtungs-Trigger (über 25° Kursänderung, wie in den Akku-Modi von Strava & Co.): Kurven werden auch im gröberen Takt sofort gesichert – Ecken bleiben rund, nur Geraden werden ausged¼nnt. Außerhalb des Sparmodus ändert sich nichts.
 - 261 Tests, py_compile OK.
-## 1.5.0 – 2026-11-06 (Build n) – Video-Fehler inline, ffmpeg aus Git, Stromspar-Modus
+2026-11-06 – Video-Fehler inline, ffmpeg aus Git, Stromspar-Modus
 - Video-Seite: Schlägt die MP4-Erstellung serverseitig fehl, erscheint die Meldung jetzt direkt im Fortschritts-Kasten (mit Grund, Button bleibt bedienbar für erneuten Versuch) – vorher lud die Seite sich still neu und der Formularstand war weg.
 - ffmpeg-Binärdatei (77 MB) aus der Git-Verwaltung genommen („sanftes Slimming“): Der Verlauf wächst nicht weiter, die Datei bleibt lokal und auf dem Server; Deploy-ZIPs enthielten sie schon immer nicht. Bei Serverumzug aus der Historie holen (git checkout f32448c -- ffmpeg).
 - Stromspar-Modus auf der Live-Karte (Schalter „🌙 Stromspar“): Bildschirm bleibt AN (Wake Lock), wird aber dunkel überzogen – kein Entsperren nötig; Tippen hellt 4 s lang auf, ✕ beendet, mit Fahrtende endet der Modus automatisch. Die Aufzeichnung läuft unverändert weiter.
 - 260 Tests, py_compile OK.
-## 1.5.0 – 2026-11-06 (Build m) – Footer-Link heißt jetzt „Monatsrückblick“
+2026-11-06 – Footer-Link heißt jetzt „Monatsrückblick“
 - Der Footer-Link „Newsletter“ heißt jetzt „Monatsrückblick“ – so nennt sich die Zielseite selbst (Kopf: „Monatsrückblick MM/JJJJ“); auch der Browser-Titel der Seite wurde von „Newsletter MM/JJJJ“ auf „Monatsrückblick MM/JJJJ“ angeglichen. Die Adresse (/newsletter) bleibt unverändert, alte Links/Bookmarks funktionieren weiter.
 - 257 Tests, py_compile OK.
-## 1.5.0 – 2026-11-06 (Build l) – Footer zentriert
+2026-11-06 – Footer zentriert
 - Die Footer-Zeile (Gruppenname · Newsletter · Datenschutz) ist jetzt zentriert statt im Breitband-Layout nach links/rechts verteilt – auf schmalen Screens stand bisher alles links, nur die Versionszeile mittig.
 - 255 Tests, py_compile OK.
-## 1.5.0 – 2026-11-06 (Build k) – Text-Überlauf behoben & Versionssprung 1.4.0 → 1.5.0
+2026-11-06 – Text-Überlauf behoben & Versionssprung 1.4.0 → 1.5.0
 - Aufklapp-Hinweise (z. B. „Noch keine GPX-Datei?“ beim Tour-Anlegen) brechen wieder um: Das globale Einzeilig-Gebot für Buttons aus Build i ließ den langen Hinweistext über den rechten Rand laufen; Aufklapp-Buttons (data-bs-toggle="collapse") sind jetzt ausgenommen, normale Buttons bleiben einzeilig.
 - Versionsnummer erstmals seit Build af wieder angehoben (1.4.0 → 1.5.0) – seitdem kamen u. a.: WhatsApp-Verwaltung, Kopf-/Aktionsleisten, eine Button-Familie app-weit, OSM-Direktsuche mit Circuit-Breaker, Rückblick-Extras. Footer und Deploy-ZIPs führen künftig 1.5.0.
 - 254 Tests, py_compile OK.

@@ -56,7 +56,11 @@
 
         <!-- Titel + Badge -->
         <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
-          <h5 class="fw-bold mb-0 flex-grow-1" style="font-size:1rem">{{ t.title }}</h5>
+          {# Build bh: auch hier führt der Titel in die Details (vorher nur Text) #}
+          <h5 class="fw-bold mb-0 flex-grow-1" style="font-size:1rem">
+            <a class="text-decoration-none tour-titel-link" style="color:inherit"
+               href="{{ url_for('tour_detail', tour_id=t.id) }}">{{ t.title }}</a>
+          </h5>
           <span class="badge badge-{{ t.difficulty }} flex-shrink-0">{{ t.difficulty_label }}</span>
         </div>
 

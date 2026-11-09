@@ -471,3 +471,39 @@ class RecInfoAufklapperTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TourTitelIstLinkTest(unittest.TestCase):
+    """Build bh: „Wenn man auf den Titel klickt, soll man auch in die Details kommen."
+
+    Gemessen vorher (/touren, 460x972): Der Titel war ein `<span class="fw-semibold">`
+    ohne Link, `cursor: auto`, ein Tipp änderte die URL nicht.
+    Gemessen nachher: `a.tour-titel-link`, `cursor: pointer`, Klick führt auf /touren/<id>.
+
+    Betroffen waren drei Stellen in der Liste (Karte mit Foto, Karte ohne Foto,
+    Archiv-Karte) plus die Übersicht der geplanten Touren.
+    """
+
+    def test_liste_titel_ist_ein_link(self):
+        html = _read('templates', 'touren', 'list.html')
+        # drei Titel sind jetzt Links (Foto-Karte, Karte ohne Foto, Archiv-Karte)
+        self.assertEqual(html.count('{{ t.title }}</a>'), 3)
+        # kein alter, nicht klickbarer Titel mehr
+        self.assertNotIn('<span class="fw-semibold" style="font-size:.92rem;color:var(--djo-navy)">{{ t.title }}</span>', html)
+        self.assertNotIn('<span class="text-white fw-bold" style="font-size:.92rem;line-height:1.3">{{ t.title }}</span>', html)
+
+    def test_geplante_titel_ist_ein_link(self):
+        html = _read('templates', 'touren', 'geplant.html')
+        self.assertIn('tour-titel-link', html)
+        self.assertIn("url_for('tour_detail', tour_id=t.id)", html)
+
+    def test_titel_link_sieht_nicht_wie_ein_blauer_link_aus(self):
+        """Der Titel soll aussehen wie vorher – nur klickbar."""
+        html = _read('templates', 'touren', 'list.html')
+        i = html.find('class="fw-semibold text-decoration-none tour-titel-link"')
+        self.assertGreater(i, 0, 'Titel-Link ohne text-decoration-none')
+        block = html[i:i+200]
+        self.assertIn('color:var(--djo-navy)', block)     # dieselbe Farbe wie vorher
+
+
+if __name__ == "__main__":
+    unittest.main()
