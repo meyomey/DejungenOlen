@@ -1,4 +1,33 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-07 (Build bc) – km/Zeit im Vollbild nach unten
+- **Wunsch:** „dann sollte die Zeit und km Anzeige auch mitwandern nach unten"
+- **Berechtigt.** Der km-/Zeit-Chip hing im Vollbild noch an der Pill-Reihe: Seine Formel zählte
+  Pill (34 px) und 🔒 (34 px) mit, obwohl beide im Vollbild gar nicht erscheinen. Gemessen stand
+  er dadurch **155 px über** der Statuszeile (unten 188 statt 64).
+- **Jetzt:** Chip direkt über der Statuszeile, 8 px Abstand. Gemessen bei 460×972:
+  Statuszeile unten 64, Chip unten 113.
+
+### Beim Nachmessen gefunden: der Hinweis lag auf dem Chip
+`bottom: 128px` stand als **Inline-Style** am Hinweis. Ein Inline-Style schlägt jedes Stylesheet —
+die Vollbild-Regel `bottom: 64px` konnte nie greifen. Sobald Fahrt-Ende-Hinweis **und** Chip
+gleichzeitig da waren, lagen sie aufeinander (gemessene Überlappung `km/hint` bei 460×972,
+390×844 und 360×740).
+
+Behoben: Der Inline-Wert ist raus, die Lage kommt aus dem Stylesheet, und der Hinweis steht
+**über** dem Chip. Der Stapel von unten nach oben:
+
+```
+Knopfleiste (0)  ·  Statuszeile (64)  ·  km/Zeit (113)  ·  Hinweis (157)
+```
+
+Nachgemessen auf drei Bildschirmgrößen: keine Überlappung mehr (`ueber = {}`).
+
+- 4 neue Tests. **Gegenprobe:** mit der alten Formel und dem Inline-Style schlagen 3 Tests fehl.
+  459 gesamt.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `tests/test_build_ay.py`,
+`tests/test_build_ag.py`, `CHANGELOG.md`.
+
 ## 1.5.0 – 2026-11-07 (Build bb) – Vollbild: Knöpfe weiter nach unten
 - **Wunsch:** „Könnte man die Symbole und Knöpfe bei der Vollkarte weiter nach unten bringen?"
 - **Ja.** Im Vollbild liegt die Karte über der unteren App-Navigation. Gemessen: `bottom-nav`

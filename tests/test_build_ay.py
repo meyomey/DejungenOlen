@@ -235,14 +235,58 @@ class VollbildKnoepfeWeiterUntenTest(unittest.TestCase):
         self.assertIn('bottom: calc(64px + 3.1em + 8px)', block)
 
     def test_vollbild_hinweis_rueckt_mit(self):
+        # Build bc: nicht mehr auf 64 px (dort lag er auf dem km-Chip), sondern ueber ihm
         html = _read('templates', 'touren', 'live.html')
-        self.assertIn('#live-wrap.live-fs #rec-hint-fs { bottom: 64px; }', html)
+        block = html.split('#live-wrap.live-fs #rec-hint-fs {', 1)[1].split('}', 1)[0]
+        self.assertIn('bottom: calc(64px + 3.1em + 8px + 31px + 8px)', block)
 
     def test_normalbetrieb_bleibt_unveraendert(self):
         """Ausserhalb des Vollbilds liegt die App-Navigation unten – dort bleiben die 58 px."""
         html = _read('templates', 'touren', 'live.html')
         self.assertIn('bottom: calc(58px + env(safe-area-inset-bottom));', html)
         self.assertIn('#live-status { position: fixed; left: 8px; bottom: calc(58px + 64px);', html)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+class KmChipWandertMitTest(unittest.TestCase):
+    """Build bc: „dann sollte die Zeit und km Anzeige auch mitwandern nach unten"
+
+    Der km-/Zeit-Chip hing im Vollbild an der Pill-Reihe: seine Formel zählte Pill (34 px) und
+    🔒 (34 px) mit, obwohl beide im Vollbild gar nicht erscheinen. Gemessen stand er dadurch
+    155 px über der Statuszeile (unten 188 statt 64).
+
+    Beim Nachmessen fiel ein zweiter Fehler auf: `bottom: 128px` stand als INLINE-STYLE am
+    Hinweis. Ein Inline-Style schlägt jedes Stylesheet – der Hinweis blieb im Vollbild auf
+    128 px und lag auf dem Chip (Ueberlappung km/hint bei 460x972, 390x844 und 360x740).
+    """
+
+    def test_chip_rechnet_nicht_mehr_mit_unsichtbaren_elementen(self):
+        html = _read('templates', 'touren', 'live.html')
+        block = html.split('#live-wrap.live-fs #live-km {', 1)[1].split('}', 1)[0]
+        self.assertIn('calc(64px + 3.1em + 8px)', block)
+        # die alten 34-px-Posten (Pill + Schloss) duerfen nicht mehr drin sein
+        self.assertNotIn('34px', block)
+
+    def test_chip_steht_ueber_der_statuszeile(self):
+        """Gemessen 460x972: Status unten 64, Chip unten 113, Abstand 8 px."""
+        html = _read('templates', 'touren', 'live.html')
+        block = html.split('#live-wrap.live-fs #live-km {', 1)[1].split('}', 1)[0]
+        self.assertIn('3.1em', block)      # Statuszeilen-Hoehe
+
+    def test_hinweis_ueber_dem_chip(self):
+        html = _read('templates', 'touren', 'live.html')
+        block = html.split('#live-wrap.live-fs #rec-hint-fs {', 1)[1].split('}', 1)[0]
+        self.assertIn('31px', block)       # Chip-Hoehe
+
+    def test_kein_inline_bottom_mehr_am_hinweis(self):
+        """Genau daran scheiterte die erste Korrektur: Inline-Style gewinnt immer."""
+        html = _read('templates', 'touren', 'live.html')
+        tag = html.split('id="rec-hint-fs"', 1)[1].split('>', 1)[0]
+        self.assertNotIn('bottom:', tag)
+        # die Basis-Lage kommt aus dem Stylesheet
+        self.assertIn('#rec-hint-fs { bottom: 128px; }', html)
 
 
 if __name__ == "__main__":
