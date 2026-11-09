@@ -39,12 +39,13 @@
      werden." Also von oben links (unter dem Zoom) nach UNTEN LINKS – dorthin, wo auch
      Verschiebe-Hinweis und Schloss sitzen. Der Chip steht direkt darueber, in einer Reihe
      mit der Fahrzeit. Beides gehoert zur Karte und dunkelt im Stromsparmodus mit ab. */
-  /* Build bi: Der Chip stand auf einer eigenen, fensterbezogenen Leiter (204 px) – beim
-     Scrollen riss er dadurch von der Pill ab (im Screenshot: „5 min" oben am Kartenrand,
-     der Verschiebe-Hinweis unten am Fenster). Jetzt direkt ueber der Pill, gleiche Bezugsart:
-     164 + 34 (Pill) + 7 = 205. Gemessen ist der Chip 32 px hoch (29 + 1 px Rahmen je Seite),
-     mit 208 lagen 9 px dazwischen – mit 206 sind es die gewollten 8 px. */
-  #live-km { position: absolute; left: 8px; bottom: 206px; z-index: 1050;
+  /* Build bj: „zu weit oben. Zeit/km sollen im unteren Bereich positioniert werden."
+     Gemessen stand der Chip 206 px ueber der Kartenunterkante – bei 676 px Kartenhoehe war das
+     das obere Drittel. Jetzt der unterste freie Platz: knapp ueber der Statuszeile.
+     Gemessen (mobil): Kartenunterkante 24 px ueber dem Fensterrand, Statuszeile beginnt bei
+     163 px -> 139 px ueber der Kartenunterkante. Chip bei 147 = 8 px Luft.
+     Die Pill rueckt dafuer DREHEN: sie steht jetzt ueber dem Chip (147 + 31 + 8 = 186). */
+  #live-km { position: absolute; left: 8px; bottom: 147px; z-index: 1050;
              background: rgba(20, 30, 60, .54); color: #fff; border-radius: 20px;
              border: 1px solid rgba(255,255,255,.22);
              -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
@@ -53,7 +54,7 @@
              display: flex; gap: .5rem; align-items: center; }
   #live-km .km-trenner { opacity: .45; }
   body.saver-on:not(.saver-hell) #live-km { visibility: hidden; }
-  @media (min-width: 992px) { #live-km { bottom: 166px; } }
+  @media (min-width: 992px) { #live-km { bottom: 137px; } }   /* Build bj: 129 (Status oben) + 8 */
   /* Build av: gesperrtes Fahren – bernsteinfarben statt gruen, kein Hand-Cursor, klar blass.
      Bisher blieb der Knopf gruen und sah klickbar aus; ein Tipp tat nichts und niemand
      erfuhr warum (der Hinweis stand woanders). */
@@ -133,7 +134,12 @@
   /* Build 11-06aa: Nebenfunktionen als kleine Symbole AUF der Karte (unten rechts, über der
      großen Leiste). Aktive Funktionen sind eingefärbt; der Name steht als title/aria-label
      und erscheint beim Antippen kurz als Einblendung. */
-  #live-tools { position: absolute; right: 8px; bottom: 66px; z-index: 1040;
+  /* Build bj: Die Spalte lag IN #live-bar (Handy: fixed) und blieb beim Scrollen stehen –
+     jetzt Kind von #live-wrap. Dabei fiel auf: mit bottom:66 ragte sie 8 px in die Leiste.
+     Gemessen ist die Leiste 56 px hoch und endet bei 58 ueber dem Fensterrand, ihre Oberkante
+     liegt also bei 114. Die Spalte (234 px hoch, ausgerichtet an ihrer UNTERKANTE) muss
+     darueber beginnen: 114 + 8 Luft = 122. */
+  #live-tools { position: absolute; right: 8px; bottom: 122px; z-index: 1040;
                 display: flex; flex-direction: column; gap: 6px; }
   #live-tools .lt-btn svg { display: block; }
   #live-tools .lt-btn { width: 42px; height: 42px; border-radius: 12px; border: 0;
@@ -176,17 +182,17 @@
        die Pill blieb bei 774 (position: fixed = am FENSTER). Sie gehoert aber zur Karte.
        Jetzt `absolute` in #live-wrap: sie wandert mit und wird vom overflow:hidden der Karte
        beschnitten, kann also nie ueber die Liste darunter rutschen.
-       164 px = Abstand zur Unterkante der Karte; bei ungescrollter Seite sind das 188 px
-       ueber dem Fensterrand – dieselbe Hoehe wie vorher (164 + 24 px Seitenabstand). */
-    #live-guard-pill, #live-guard-lock { position: absolute; bottom: 164px; }
+       Build bj: Der km/Zeit-Chip sitzt jetzt unten (147) – die Pill steht darueber bei 186
+       (147 + 31 Chiphoehe + 8 Luft). */
+    #live-guard-pill, #live-guard-lock { position: absolute; bottom: 186px; }
     #live-guard-pill { height: 34px; display: inline-flex; align-items: center; }
     #live-guard-lock { height: 34px; width: 38px; display: inline-flex; align-items: center;
                        justify-content: center; padding: 0; }
   }
   @media (min-width: 992px) {
-    /* Desktop: der Status-Chip sitzt in der Karte (bottom: 84px) – gleiche Kante, andere Bezugsart.
-       Build as: 4 px hoeher als vorher, weil Pill und 🔒 von 30 auf 34 px gewachsen sind. */
-    #live-guard-pill, #live-guard-lock { bottom: 126px; }
+    /* Desktop: der Status-Chip sitzt in der Karte (bottom: 84px, 45 px hoch -> Oberkante 129).
+       Build bj: der km-Chip sitzt jetzt unten (137), die Pill darueber (137 + 31 + 8 = 176). */
+    #live-guard-pill, #live-guard-lock { bottom: 176px; }
   }
 
   details.live-info > summary { cursor: pointer; list-style: none; }
@@ -430,9 +436,14 @@
                   title="Foto aufnehmen – wird sofort mit deinem aktuellen Standort zur Tour hochgeladen">📷 Foto</button>
           <input type="file" id="live-cam" accept="image/*" capture="environment" class="d-none" onchange="livePhoto(this)">
         </div>
-        {# Build 11-06aa: Die Nebenfunktionen sind jetzt kleine Symbole auf der Karte (unten rechts).
-           Jedes Symbol nennt seinen Namen beim Antippen (Einblendung) und im title/aria-label. #}
-        <div id="live-tools" role="group" aria-label="Karten-Funktionen">
+      </div>
+      {# Build 11-06aa: Die Nebenfunktionen sind jetzt kleine Symbole auf der Karte (unten rechts).
+         Jedes Symbol nennt seinen Namen beim Antippen (Einblendung) und im title/aria-label.
+
+         Build bj: Die Spalte lag IN #live-bar – und die ist auf dem Handy `fixed`.
+         Gemessen: beim Scrollen verschob sie sich um 0 px und schwebte ueber dem
+         „Unterwegs"-Feld. Jetzt ein eigenes Kind von #live-wrap (absolute), also an der Karte. #}
+      <div id="live-tools" role="group" aria-label="Karten-Funktionen">
           <button type="button" class="lt-btn" id="btn-follow" onclick="toggleFollow()"
                   title="Folgen: Karte bleibt auf meiner Position zentriert" aria-label="Folgen"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/></svg></button>
           <button type="button" class="lt-btn" id="btn-all" onclick="showAll()"
@@ -444,7 +455,6 @@
           <button type="button" class="lt-btn" id="btn-saver" onclick="setSaver(!saverOn)"
                   title="Stromspar: Display darf ausgehen – die Aufzeichnung läuft weiter (Akku sparen)" aria-label="Stromspar"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20.5 15.2A9 9 0 0 1 8.8 3.5a9 9 0 1 0 11.7 11.7z"/></svg></button>
         </div>
-      </div>
     </div>
   </div>
   <div class="col-12 col-lg-4">

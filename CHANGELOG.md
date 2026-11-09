@@ -1,4 +1,31 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bj) – km/Zeit nach unten, Symbole an die Karte
+- **Meldung:** „zu weit oben. Zeit/km sollen im unteren Bereich positioniert werden."
+- **Gemessen vorher:** Der Chip stand **206 px** (Handy) bzw. **166 px** (Desktop) über der
+  Kartenunterkante — bei 676 px Kartenhöhe war das obere Drittel.
+
+### Jetzt
+- **km/Zeit sitzt unten:** 147 px über der Kartenunterkante (Desktop 137), direkt über der
+  Statuszeile. Die Pill rückt dafür **darüber** (186 / Desktop 176) — die Reihenfolge ist
+  jetzt gedreht: unten km/Zeit, darüber der Verschiebe-Hinweis.
+- Nachgemessen auf 460×972, 390×844, 360×740 und 1024×768: keine Überlappung, Chip im
+  unteren Bereich.
+
+### Beim Messen gefunden: die Symbolspalte blieb am Fenster
+`#live-tools` steckte **innerhalb** von `#live-bar` — und die ist auf dem Handy `fixed`.
+Gemessen: beim Scrollen um 200 px verschob sich die Spalte um **0 px** und schwebte über dem
+„Unterwegs"-Feld (im Screenshot über dem Kopfsymbol des Feldes zu sehen).
+
+Jetzt ein eigenes Kind von `#live-wrap` (`absolute`): Verschiebung **200 px** wie die Karte,
+auf allen vier Größen gemessen. Dabei fiel auf, dass sie mit `bottom: 66px` 8 px in die
+Leiste ragte — sie steht jetzt bei 122 px, über der Leistenoberkante (114).
+
+- 4 neue Tests. 8 ältere prüften die Werte aus Build bi und wurden umgestellt.
+  **Gegenprobe:** alte Lage zurück → 5 Tests rot. 485 gesamt.
+
+Geänderte Dateien: `templates/touren/live.html`, `app.py`, `CHANGELOG.md`,
+`tests/test_build_ay.py`, `tests/test_build_ad.py`, `tests/test_build_ag.py`.
+
 ## 1.5.0 – 2026-11-09 (Build bi) – Kartenhinweise bleiben in der Karte
 - **Meldung:** „Wenn ich scrolle, verschiebt sich die Karte, aber ‚Zum Verschieben antippen'
   bleibt unten. Die Zeitanzeige ist auch nicht optimal positioniert."

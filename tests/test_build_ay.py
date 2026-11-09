@@ -524,15 +524,17 @@ class KartenhinweiseBleibenInDerKarteTest(unittest.TestCase):
 
     def test_pill_haengt_an_der_karte_nicht_am_fenster(self):
         html = _read('templates', 'touren', 'live.html')
-        i = html.find('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 164px; }')
+        i = html.find('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 186px; }')
         self.assertGreater(i, 0, 'Pill sitzt nicht mehr an der Karte')
         # die alte, fensterfeste Lage darf nicht zurueckkommen
         self.assertNotIn('position: fixed; bottom: calc(58px + 64px + 34px + 8px)', html)
 
     def test_chip_steht_direkt_ueber_der_pill(self):
-        """164 (Pill) + 34 (Pillhoehe) + 8 (Abstand) = 206."""
+        """Build bj: Die Reihenfolge ist gedreht – der Chip sitzt unten (147), die Pill
+        darueber (147 + 31 Chiphoehe + 8 = 186)."""
         html = _read('templates', 'touren', 'live.html')
-        self.assertIn('#live-km { position: absolute; left: 8px; bottom: 206px;', html)
+        self.assertIn('#live-km { position: absolute; left: 8px; bottom: 147px;', html)
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 186px; }', html)
 
     def test_chip_haengt_nicht_mehr_an_der_fensterleiter(self):
         """Die alte Formel zaehlte Leiste (58), Status (64), Pill (34) und Abstaende mit."""
@@ -543,6 +545,51 @@ class KartenhinweiseBleibenInDerKarteTest(unittest.TestCase):
         """Im Vollbild gilt weiter die eigene Kante (ueber Statuszeile + Chip)."""
         html = _read('templates', 'touren', 'live.html')
         self.assertIn('#live-wrap.live-fs #live-km { bottom: calc(64px + 3.1em + 8px); }', html)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+class ChipUntenUndSymboleAnDerKarteTest(unittest.TestCase):
+    """Build bj: „zu weit oben. Zeit/km sollen im unteren Bereich positioniert werden."
+
+    Gemessen vorher: Der Chip stand 206 px (Handy) bzw. 166 px (Desktop) ueber der
+    Kartenunterkante – bei 676 px Kartenhoehe das obere Drittel.
+
+    Gemessen nachher (460x972, 390x844, 360x740): Chip 147 px, Pill 186 px – der Chip sitzt
+    jetzt unten, die Pill darueber. Desktop: Chip 137, Pill 176.
+
+    Beim Messen gefunden: Die Symbolspalte lag IN #live-bar, und die ist auf dem Handy
+    `fixed`. Beim Scrollen verschob sie sich um 0 px und schwebte ueber dem
+    „Unterwegs"-Feld. Jetzt Kind von #live-wrap – Verschiebung 200 px wie die Karte.
+    """
+
+    def test_chip_sitzt_unten(self):
+        html = _read('templates', 'touren', 'live.html')
+        self.assertIn('#live-km { position: absolute; left: 8px; bottom: 147px;', html)
+        self.assertIn('#live-km { bottom: 137px; }', html)          # Desktop
+        self.assertNotIn('bottom: 206px', html)                     # die alte Lage ist weg
+
+    def test_pill_steht_ueber_dem_chip(self):
+        """147 (Chip) + 31 (Chiphoehe) + 8 = 186; Desktop 137 + 31 + 8 = 176."""
+        html = _read('templates', 'touren', 'live.html')
+        self.assertIn('#live-guard-pill, #live-guard-lock { position: absolute; bottom: 186px; }', html)
+        self.assertIn('#live-guard-pill, #live-guard-lock { bottom: 176px; }', html)
+
+    def test_symbolspalte_ist_eigenes_kind_der_karte(self):
+        """Sie darf NICHT mehr in #live-bar stecken – die ist am Handy `fixed`."""
+        html = _read('templates', 'touren', 'live.html')
+        i_bar = html.find('<div id="live-bar">')
+        i_tools = html.find('<div id="live-tools"')
+        i_wrap_ende = html.find('<div class="col-12 col-lg-4">')
+        self.assertGreater(i_tools, i_bar, 'live-tools steht noch in/bei der Leiste')
+        self.assertLess(i_tools, i_wrap_ende, 'live-tools liegt nicht mehr in #live-wrap')
+
+    def test_symbolspalte_ueber_der_leiste(self):
+        """Gemessen: Leiste 56 px hoch, endet bei 58 -> Oberkante 114. Spalte bei 122."""
+        html = _read('templates', 'touren', 'live.html')
+        self.assertIn('#live-tools { position: absolute; right: 8px; bottom: 122px;', html)
+        self.assertNotIn('bottom: 66px', html)
 
 
 if __name__ == "__main__":
