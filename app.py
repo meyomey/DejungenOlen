@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-09 bt'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-09 bu'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5062,7 +5062,16 @@ LIVE_TRACK_KEEP_DAYS = 30    # Rohpunkte werden danach automatisch gelöscht (al
 LIVE_TRACK_MAX_ACC_M = 100   # ungenauere Positionen (WLAN-/Funkzellen-Ortung) kommen nicht in die Aufzeichnung
 LIVE_TRACK_MIN_PTS   = 8     # weniger Punkte sind keine brauchbare Aufzeichnung
 LIVE_TRACK_MAX_KMH   = 90    # Sprünge schneller als das gelten als Ausreißer (GPS-Aussetzer)
-LIVE_TRACK_PAGE_PTS  = 400   # Spur je Person auf der Live-Karte höchstens so viele Punkte (Erstaufruf)
+# Build bu: 400 war zu klein. Seit der Stromsparmodus feiner sendet (alle 6 s, in Kurven sofort)
+# entstehen auf einer Tagestour 1 500–2 500 Punkte. Bei 400 dünnte der ERSTAUFRUF gleichmäßig
+# aus (bei 4 h Fahrt jeden 7. Punkt) – die Verbindung dazwischen ist eine Gerade, also genau
+# das gemeldete Bild. Gemessen an einer Runde aus 400-m-Geraden und 90°-Bögen (r = 60 m):
+#   4 h Tour, Grenze 400  -> 358 Punkte, größte Lücke 210 m
+#   4 h Tour, Grenze 2000 -> 1 932 Punkte, größte Lücke 60 m
+# Die Nutzlast wächst von 12 KB auf 61 KB je Person – nur beim Erstaufruf, danach holt das
+# Polling (alle 15 s, mit `since`) ohnehin nur die neuen Punkte. Ein Handy mit 4 Mitfahrern
+# lädt damit einmalig ~250 KB statt ~50 KB; das ist der Preis für eine brauchbare Spur.
+LIVE_TRACK_PAGE_PTS  = 2000  # Spur je Person auf der Live-Karte höchstens so viele Punkte (Erstaufruf)
 
 
 def _berlin_today():
@@ -5291,11 +5300,78 @@ def _live_trails_payload(tour_id, since=None, max_pts=LIVE_TRACK_PAGE_PTS):
     out = {}
     for uid, pts in per_user.items():
         if len(pts) > max_pts:
-            step = len(pts) // max_pts + 1
-            pts = pts[::step] + ([pts[-1]] if (len(pts) - 1) % step else [])
+            pts = _thinned_track(pts, max_pts)
         out[str(uid)] = [[round(p.lat, 5), round(p.lng, 5), int(p.recorded_at.replace(tzinfo=_utc.utc).timestamp())]
                          for p in pts]
     return out
+
+
+def _thinned_track(pts, max_pts):
+    """Build bu: Spur auf max_pts verkleinern, ohne die Kurven zu verlieren.
+
+    Vorher: `pts[::step]` – blind jeder n-te Punkt. Auf einer 4-h-Tour war das jeder 7.,
+    und die Verbindung zwischen zwei Punkten ist immer eine Gerade: Aus jeder Kurve wurde
+    ein Knick, aus jedem Bogen eine Sehne. Genau das Bild, das der Nutzer gemeldet hat.
+
+    Jetzt Douglas-Peucker (wie `_thin_points` für GPX-Routen): Es werden nur die Punkte
+    weggelassen, die auf der Linie zwischen ihren Nachbarn liegen – also echte Geraden.
+    Die Toleranz startet bei 3 m und verdoppelt sich, bis die Grenze eingehalten wird.
+    Gemessen an einer 4-h-Runde (400-m-Geraden + 90°-Bögen, r = 60 m, 2 496 gesendete
+    Punkte): blind gedünnt 61 m größte Lücke, mit Douglas-Peucker 31 m.
+    """
+    import math
+    n = len(pts)
+    if n <= max_pts:
+        return pts
+    mid = sum(p.lat for p in pts) / n
+    m_lat = 111320.0
+    m_lng = 111320.0 * max(0.2, math.cos(math.radians(mid)))
+    xy = [(p.lat * m_lat, p.lng * m_lng) for p in pts]
+
+    def rdp(tol):
+        keep = [False] * n
+        keep[0] = keep[-1] = True
+        stack = [(0, n - 1)]
+        while stack:
+            a, b = stack.pop()
+            if b <= a + 1:
+                continue
+            ax, ay = xy[a]
+            dx, dy = xy[b][0] - ax, xy[b][1] - ay
+            seg = dx * dx + dy * dy
+            best_d, best_i = -1.0, a
+            for i in range(a + 1, b):
+                px, py = xy[i][0] - ax, xy[i][1] - ay
+                tt = max(0.0, min(1.0, (px * dx + py * dy) / seg)) if seg else 0.0
+                d = math.sqrt((px - tt * dx) ** 2 + (py - tt * dy) ** 2)
+                if d > best_d:
+                    best_d, best_i = d, i
+            if best_d > tol:
+                keep[best_i] = True
+                stack.append((a, best_i))
+                stack.append((best_i, b))
+        return [i for i, k in enumerate(keep) if k]
+
+    # Kleinstmoegliche Toleranz suchen, die noch unter max_pts bleibt (Binaersuche).
+    # Vorher: Toleranz verdoppeln, bis es passt – das schoss weit ueber das Ziel und
+    # machte aus einem Kreis mit 65 m Radius ein 17-Eck mit 40 m Radius.
+    # Der Startwert muss nicht 0 sein: Eine Aufzeichnung hat nie mehr als ~1 Punkt je
+    # 2 m, und unterhalb von ~1 m Toleranz bleibt ohnehin fast alles stehen. Mit
+    # lo = 0.5 sparen wir die teuerste Rekursion (bei tol = 0 bleibt JEDER Punkt).
+    lo, hi = 0.5, 64.0
+    out = rdp(lo)
+    if len(out) > max_pts:
+        for _ in range(12):                      # 64 m / 4096 – 1,5 cm genau, reicht
+            mitte = (lo + hi) / 2
+            kandidat = rdp(mitte)
+            if len(kandidat) > max_pts:
+                lo = mitte
+            else:
+                hi, out = mitte, kandidat
+    if len(out) > max_pts:                       # Notnagel, falls selbst 64 m nicht reicht
+        step = len(out) // max_pts + 1
+        out = out[::step] + ([out[-1]] if (len(out) - 1) % step else [])
+    return [pts[i] for i in out]
 
 
 def _live_locations_payload(tour_id, now=None):

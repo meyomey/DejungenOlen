@@ -1,4 +1,68 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bu) – Stromsparmodus zeichnete fast nur Geraden
+- **Meldung:** „Das tracken im Stromsparmodus ist nicht brauchbar. Es sind fast nur Geraden
+  sichtbar." (Bild 18: eine 6:36-h-Tour, 19,3 km – die Spur auf der Karte ist ein Dreieck mit
+  schnurgeraden Kanten, kein Wegverlauf.)
+
+### Ursache 1 – der Richtungs-Trigger war invertiert (Client)
+Build 11-06o baute für den Stromsparmodus einen Richtungs-Trigger ein, der laut Kommentar
+„Kurven sofort sichern" sollte (wie die Akku-Modi von Strava & Co.). Der Code tat das Gegenteil:
+
+```js
+if (turn < 25) return;        // bei Kursänderung UNTER 25° verwerfen
+```
+
+Damit flogen genau die Punkte **in den Kurven** raus, übrig blieben die **Geraden**. Dazu kam
+die Reihenfolge: Der 20-s-Takt prüfte **zuerst** und warf den Punkt weg, bevor die Richtung
+überhaupt gefragt wurde – der Trigger konnte nie etwas behalten, nur zusätzlich verwerfen.
+
+### Ursache 2 – die Karten-Nutzlast dünnte blind aus (Server)
+`LIVE_TRACK_PAGE_PTS = 400` und `pts[::step]` – gleichmäßig jeder n-te Punkt. Bei einer
+4-h-Tour war das jeder 7.; die Verbindung zwischen zwei Punkten ist immer eine Gerade.
+
+### Ursache 3 – derselbe Fehler im GPX-Pfad (nur der Form halber geprüft)
+`_thin_points` (GPX-Routen) nutzt bereits Douglas-Peucker und war **nicht** betroffen – geprüft:
+1 500 Punkte rein → 1 500 in der GPX-Datei → 1 500 auf der Tourseite.
+
+### Behoben
+| Stelle | vorher | nachher |
+|---|---|---|
+| `live.html` Richtungsregel | `if (turn < 25) return;` | Kursänderung ≥ 20° ⇒ **sofort senden** |
+| `live.html` Takt (Sparmodus) | 20 s / Stand 45 s | 6 s / Stand 20 s, ab 6 m Bewegung |
+| `live.html` Reihenfolge | Takt vor Richtung | erst Kurve, dann Takt |
+| `LIVE_TRACK_PAGE_PTS` | 400 | 2 000 |
+| Ausdünnen der Live-Spur | `pts[::step]` (blind) | Douglas-Peucker, Toleranz per Bisektion |
+
+### Gemessen (echter Code aus dem Template, in Node gegen eine simulierte Runde)
+Runde aus 400-m-Geraden und 90°-Bögen (r = 60 m), 18 km/h, GPS alle 3 s, 30 min = 601 Fixe:
+
+| | gesendete Punkte | größte Lücke |
+|---|---|---|
+| Build bt (alt) | **36** von 601 | **329 m** |
+| Build bu (neu) | **304** von 601 | **30 m** |
+| ohne Stromsparmodus | 180 von 601 | 60 m |
+
+Der Sparmodus ist damit **feiner** als der Normalmodus (6 s statt 10 s) – der Akku-Vorteil kommt
+jetzt daher, dass das Display ausgehen darf, nicht mehr aus groben Punkten.
+
+### Gemessen (Server, echte DB-Zeilen → was die Karte bekommt)
+Abweichung der gezeichneten Spur von der tatsächlich gefahrenen Strecke:
+
+| Tour | alt (400, blind) | neu (2 000, Douglas-Peucker) |
+|---|---|---|
+| 1 h | 301 Punkte, **7,4 m** daneben | 1 201 Punkte, **0,6 m** |
+| 4 h | 370 Punkte, **541,3 m** daneben | 690 Punkte, **2,7 m** |
+
+Bei 4 h wich die alte Spur also bis zu einem halben Kilometer ab – genau die gemeldeten Geraden.
+Rechenzeit je Kartenaufruf: 48 ms (Bisektion mit Startwert 0,5 m statt 1 034 ms mit Start 0).
+
+### Tests
+`tests/test_build_bu.py` (11 Tests): Der Drossel-Block wird **aus dem Template gelesen** und in
+Node gegen die simulierte Runde laufen gelassen – kein Nachbau. Dazu Formtreue von
+`_thinned_track` (Gerade → 2 Punkte, Kurve bleibt auf der Kurve), die Punktgrenze und die
+Meldung an den Nutzer. Der Test aus Build ag, der den **falschen** Code festhielt
+(`if (turn < 25) return;`), ist umgeschrieben.
+
 ## 1.5.0 – 2026-11-09 (Build bt) – Desktop: Statuszeile verdeckte „Fahren" und „Pause"
 - **Meldung:** „beim Desktop wird Fahren - Pause Knopf vom Hinweis überdeckt" (Bild 17:
   die grüne Zeile „Du teilst deinen Standort seit 22:05 Uhr …" lag über der Knopfleiste).

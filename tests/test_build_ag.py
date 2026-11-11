@@ -2122,7 +2122,9 @@ class SaverModeAndFixesTest(AppTestCase):
         # Build af: saverPeek() ist in saverStufe()/saverTap() aufgegangen (zwei Stufen).
         self.assertIn('function saverStufe(', live)
         # Bildschirm bleibt AN: Sparmodus fordert die Wake-Lock an und meldet es
-        self.assertIn('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', live)
+        # Build bu: Der Takt ist feiner geworden (6 s statt 20 s, Kurven sofort) – die
+        # Meldung muss den Wert nennen, der auch wirklich gesendet wird.
+        self.assertIn('🌙 Stromspar an – Display darf ausgehen, gesendet wird alle 6 s (in Kurven sofort).', live)
         # Sparmodus hält den Bildschirm auch nach App-Wechsel wach; Ende mit der Fahrt
         self.assertIn('sharing || following || saverOn', live)
         self.assertIn('if (saverOn) setSaver(false);', live)
@@ -2132,20 +2134,27 @@ class SaverModeAndFixesTest(AppTestCase):
 
 
 class SaverGpsThrottleTest(AppTestCase):
-    """Build 2026-11-06o: Stromspar-Modus Stufe 2 – im Sparmodus wird alle 20 s
-    gesendet (Stand: 45 s), ein Richtungs-Trigger (> 25° Kursänderung, berechnet
-    aus den letzten beiden Sendepositionen) sichert Kurven sofort. Wie die
-    Akku-Modi von Strava & Co.: Ecken rund, Geraden ausgedünnt."""
+    """Build 2026-11-06o, ueberarbeitet in Build bu (2026-11-09).
+
+    Die urspruengliche Fassung verlangte woertlich `if (turn < 25) return;` – also
+    „bei Kursaenderung UNTER 25 Grad verwerfen". Das ist invertiert: Es warf die Punkte
+    in den Kurven weg und behielt nur die Geraden (genau das Bild, das der Nutzer
+    gemeldet hat: „Es sind fast nur Geraden sichtbar"). Der Test hat den Fehler
+    festgehalten statt ihn zu verhindern. Er prueft jetzt die Richtung der Regel und
+    die Taktwerte – die Rechenprobe steht in tests/test_build_bu.py.
+    """
 
     def test_o_spar_drossel_und_kurven_trigger(self):
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('function _bearing(a, b) {', live)
-        self.assertIn('const sendEvery = saverOn ? 20000 : 10000, stillEvery = saverOn ? 45000 : 30000;', live)
-        self.assertIn('if (turn < 25) return;', live)
+        # Build bu: 6 s Takt (vorher 20 s), Stand 20 s (vorher 45 s)
+        self.assertIn('const sendEvery = saverOn ? 6000 : 10000, stillEvery = saverOn ? 20000 : 30000;', live)
+        # Kurve wird BEHALTEN, nicht verworfen
+        self.assertIn('} else if (dreht >= 20) {', live)
+        self.assertNotIn('if (turn < 25) return;', live)
         self.assertIn('prevSentPos = lastPos;', live)
-        self.assertIn('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', live)
-        # Normalmodus unverändert: 10 s / 30 s bleiben als Basis erhalten
-        self.assertIn('saverOn ? 20000 : 10000', live)
+        # Normalmodus unveraendert: 10 s / 30 s bleiben als Basis erhalten
+        self.assertIn('saverOn ? 6000 : 10000', live)
 
 
 class LiveIndikatorKonsolidiertTest(AppTestCase):

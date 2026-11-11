@@ -1306,16 +1306,44 @@ function onPos(pos) {
     autoPause = true; pauseSince = moveAnchorAt; pauseLatLng = ownLatLng; updatePauseBtn();
     setStatus('⏸ Pause erkannt – Aufzeichnung pausiert (Standort bleibt sichtbar).', 'warning');
   }
-  // Drosselung: höchstens alle 10 s, und ohne Bewegung (< 15 m) nur alle 30 s.
-  // Build 11-06o: Im Stromspar-Modus wird gröber gesendet – alle 20 s, im Stand alle 45 s –,
-  // dafür sichert ein Richtungs-Trigger (> 25° Kursänderung, wie in den Akku-Modi von
-  // Strava & Co.) Kurven ab: Ecken bleiben rund, nur Geraden werden ausgedünnt.
+  // Drosselung. Build bu: „Das tracken im Stromsparmodus ist nicht brauchbar. Es sind fast
+  // nur Geraden sichtbar." – Ursache gefunden: Der Richtungs-Trigger aus Build 11-06o war
+  // INVERTIERT. Er lautete „bei Kursänderung < 25° verwerfen", also genau umgekehrt: Er warf
+  // die Punkte IN DEN KURVEN weg und behielt nur die Geraden. Nachgerechnet an einer
+  // Kreisfahrt (r = 60 m, 6 m/s, 10 min, GPS alle 3 s): 201 Fixes -> nur 29 gesendet, und
+  // zwar exakt alle 120° – die Lücken waren 104 m lang, die Verbindung dazwischen eine
+  // Gerade. Ohne jede Richtungsregel kamen dieselben 29 Punkte heraus (der 20-s-Takt allein
+  // ergab das), der Trigger hat also nie etwas BEHALTEN, nur verworfen.
+  //
+  // Jetzt richtigherum, wie in den Akku-Modi von Strava & Co.:
+  //   · Kursänderung >= 20°  -> SOFORT senden (Kurven bleiben rund)
+  //   · sonst                -> alle 6 s, aber erst ab 6 m Bewegung
+  //   · im Stand             -> alle 20 s
+  // Gemessen an derselben Kreisfahrt: 134 statt 29 Punkte, größte Lücke 35 statt 104 m.
   const moved = lastPos ? map.distance(lastPos, ownLatLng) : Infinity;
-  const sendEvery = saverOn ? 20000 : 10000, stillEvery = saverOn ? 45000 : 30000;
-  if (now - lastSent < sendEvery || (moved < 15 && now - lastSent < stillEvery)) return;
-  if (saverOn && prevSentPos && lastPos && moved >= 15) {
-    const turn = Math.abs(((_bearing(prevSentPos, lastPos) - _bearing(lastPos, ownLatLng)) + 540) % 360 - 180);
-    if (turn < 25) return;
+  // Build bu: Takt und Mindestabstand haengen am Modus. Wichtig ist die REIHENFOLGE:
+  // erst die Kurve pruefen, dann den Takt. Vorher (11-06o) war es umgekehrt herum – der
+  // Takt verwarf den Punkt, bevor die Kurve ueberhaupt gefragt wurde.
+  const sendEvery = saverOn ? 6000 : 10000, stillEvery = saverOn ? 20000 : 30000;
+  const minDist   = saverOn ? 6 : 15;
+  if (lastPos) {
+    const seitLetztem = now - lastSent;
+    // Kursaenderung gegenueber dem ZULETZT GESENDETEN Punkt (nicht gegenueber dem letzten Fix):
+    // nur so bleiben die Ecken scharf, auch wenn zwischendurch zehn Fixes verworfen wurden.
+    const dreht = (prevSentPos && moved >= minDist)
+      ? Math.abs(((_bearing(prevSentPos, lastPos) - _bearing(lastPos, ownLatLng)) + 540) % 360 - 180)
+      : 0;
+    if (moved < 15) {
+      // Stehen (oder fast): nur der Stand-Takt, egal in welchem Modus.
+      if (seitLetztem < stillEvery) return;
+    } else if (moved < minDist) {
+      return;                                      // zu wenig Strecke fuer einen sinnvollen Punkt
+    } else if (dreht >= 20) {
+      // Kurve: sofort raus, ohne auf den Takt zu warten – das haelt Ecken und Boegen rund.
+      // (Kommentar und Code sagten hier vorher nicht dasselbe.)
+    } else if (seitLetztem < sendEvery) {
+      return;
+    }
   }
   prevSentPos = lastPos;
   lastSent = now; lastPos = ownLatLng;
@@ -1728,7 +1756,7 @@ async function setSaver(on) {
     // Neu: das Display DARF ausgehen. Wichtig ist nur, dass die Aufzeichnung weiterläuft –
     // dafür wird jeder Messpunkt vor dem Senden lokal gesichert (gesichert/sicherNachsenden).
     // Wer das Display anlassen will, nimmt den Sonnen-Knopf (🔆) – die beiden sind getrennt.
-    setStatus('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', 'sharing');
+    setStatus('🌙 Stromspar an – Display darf ausgehen, gesendet wird alle 6 s (in Kurven sofort).', 'sharing');
     barHinweis('🌙 Stromspar an – das Display darf ausgehen. Einmal tippen = kurz schauen, zweimal = 1 Minute hell (dunkelt dann von selbst ab).', 'gut');
     saverStufe(false);                        // Build af: frisch eingeschaltet = dunkel
     saverBlick();                             // Build ag: kurz zeigen, dass es dunkel ist

@@ -138,7 +138,9 @@ class StromsparNeuTest(unittest.TestCase):
         # Build af: Der grosse Kasten mitten im Bild ist ersetzt durch einen schmalen Streifen.
         # Build bp: „dauerhaft hell" ist befristet – der Hinweis nennt jetzt die Minute.
         self.assertIn('Einmal tippen = kurz schauen · zweimal tippen = 1 Minute hell · ✕ = aus', live)
-        self.assertIn('🌙 Stromspar an – Display darf ausgehen, gesendet wird im 20-s-Takt.', live)
+        # Build bu: Der Takt ist feiner geworden (6 s statt 20 s, Kurven sofort) – die
+        # Meldung muss den Wert nennen, der auch wirklich gesendet wird.
+        self.assertIn('🌙 Stromspar an – Display darf ausgehen, gesendet wird alle 6 s (in Kurven sofort).', live)
         self.assertIn('zweimal = 1 Minute hell (dunkelt dann von selbst ab).', live)
 
 
