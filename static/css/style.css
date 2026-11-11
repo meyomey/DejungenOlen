@@ -773,6 +773,56 @@ body.saver-on:not(.saver-hell) #saver-dim #saver-rest { display: none; }
   border: 1px solid rgba(255, 255, 255, .28);
   box-shadow: 0 3px 14px rgba(0, 0, 0, .35);
 }
+/* Build bx: „Habe ein Foto gemacht in der Live Karte, aber einen anschließenden Hinweis
+   ‚In Galerie sichern' sehe ich nicht." Der Knopf saß in der Statuszeile, und die ist auf
+   3,1 em gekappt – bei 360 px Breite braucht der Satz plus Knopf vier Zeilen. Der Knopf lag
+   in der abgeschnittenen dritten Zeile. Zusätzlich hat ihn der nächste Positions-Ping nach
+   sechs Sekunden weggeschrieben.
+   Dieser Hinweis sitzt deshalb dort, wo der Finger nach dem Foto ohnehin ist: direkt über
+   der Knopfleiste – dieselbe Stelle wie .bar-hinweis, nur dauerhaft. */
+#foto-hinweis {
+  position: fixed; left: 8px; right: 8px;
+  /* Build bx: Gleiche Lage wie .bar-hinweis – also ÜBER der Knopfleiste, nicht darin.
+     Die Leiste ist mobil 58 px hoch und sitzt auf der App-Navigation (nochmals 58 px).
+     Gemessen mit dem ersten Entwurf (58 + 8): der Kasten lag bei 58..~170 und deckte damit
+     genau „Fahren / Pause / Foto" zu. Jetzt 58 + 58 + 8: er steht frei über der Leiste und
+     beginnt bei 124 px über dem Fensterrand. */
+  bottom: calc(58px + env(safe-area-inset-bottom) + 58px + 8px);
+  /* Build bx: ÜBER der Stromspar-Abdunklung (z-index 4000). Wer mit Stromspar fährt und ein
+     Foto macht, hat die Abdunklung offen – ein Hinweis darunter wäre unsichtbar. */
+  z-index: 4100;
+  padding: .6rem .8rem;
+  border-radius: 12px;
+  font-size: .95rem; line-height: 1.3;
+  color: #fff; background: rgba(20, 28, 52, .97);
+  border: 1px solid rgba(255, 255, 255, .3);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .45);
+  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+}
+#foto-hinweis .fh-text { flex: 1 1 100%; }
+/* Der Knopf soll groß genug zum Treffen sein (Daumen, im Fahren) – 44 px ist die übliche
+   Mindesthöhe für Touch-Ziele. */
+#foto-hinweis .fh-btn {
+  flex: 0 0 auto; min-height: 44px; padding: .5rem 1rem;
+  border: 0; border-radius: 10px; cursor: pointer;
+  background: #1f9d55; color: #fff; font-weight: 700; font-size: .95rem;
+}
+#foto-hinweis .fh-btn:disabled { opacity: .6; cursor: default; }
+#foto-hinweis .fh-zu {
+  flex: 0 0 auto; min-width: 44px; min-height: 44px;
+  background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.35);
+  border-radius: 10px; cursor: pointer; font-size: 1rem;
+}
+@media (max-width: 991.98px) {
+  /* Mobil: rechts Platz lasse, wo die Symbolspalte sitzt (42 px + Rand) – wie .bar-hinweis */
+  #foto-hinweis { right: 58px; }
+}
+@media (min-width: 992px) {
+  /* Desktop: innerhalb der Karte, damit er nicht über die ganze Seite läuft */
+  #foto-hinweis { position: absolute; bottom: 64px; left: 12px; right: auto;
+                  max-width: 520px; }
+}
+
 .bar-hinweis.on { display: block; }
 .bar-hinweis.gut  { background: rgba(21, 87, 56, .97); border-color: rgba(120, 220, 170, .55); }
 .bar-hinweis.warn { background: rgba(122, 44, 20, .97); border-color: rgba(255, 170, 120, .6); }

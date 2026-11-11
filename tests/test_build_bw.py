@@ -174,7 +174,6 @@ class OberflaecheTest(AppTestCase):
         js = _lies(LIVE)
         self.assertIn('📥 In Galerie sichern', js)
         self.assertIn('async function inGalerieSichern(', js)
-        self.assertIn('navigator.canShare', js)
         self.assertIn('navigator.share', js)
 
     def test_galerie_holt_das_original(self):
@@ -183,7 +182,7 @@ class OberflaecheTest(AppTestCase):
 
     def test_fallback_wenn_das_geraet_nicht_kann(self):
         js = _lies(LIVE)
-        self.assertIn('kann das Foto nicht direkt an die Galerie geben', js)
+        self.assertIn('kann es nicht direkt an die Galerie geben', js)
         self.assertIn('#fotos', js)
 
     def test_ehrlicher_kommentar_zur_grenze(self):

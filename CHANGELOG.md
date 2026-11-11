@@ -13,6 +13,58 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-09 (Build bx) – Hinweis „In Galerie sichern" war nicht zu sehen
+- **Meldung:** „Habe ein Foto gemacht in der Live Karte, aber einen anschließenden Hinweis
+  ‚In Galerie sichern' sehe ich nicht." (nach Build bw)
+
+### Ursache – drei Fehler auf einmal, alle nachgemessen
+Der Knopf aus Build bw war eingebaut, aber praktisch nicht erreichbar:
+
+**1. Er war abgeschnitten.** Der Knopf stand mitten in `#live-status`. Diese Zeile ist auf
+`max-height: 3.1em; overflow: hidden` gekappt. Auf 360 px Breite brauchen Satz + Knopf + Link
+vier Zeilen – der Knopf saß in der dritten, und die war abgeschnitten. Ein Knopf, den niemand
+sieht, ist kein Knopf.
+
+**2. Sechs Sekunden später war er weg.** Der nächste Positions-Ping ruft
+`setStatus('Du teilst deinen Standort seit …')` und überschreibt die Meldung. Beim Fahren kommt
+alle 6 Sekunden ein Ping. Nachgemessen mit einer DOM-Nachbildung, die die echten Funktionen
+ausführt: direkt nach dem Foto „Knopf DA", nach einem Ping „Knopf WEG". Auch der Satz „Foto
+gespeichert" war damit fort.
+
+**3. Auf iOS wurde er gar nicht erst gebaut.** Die Bedingung war `fotoId && navigator.canShare`.
+`canShare()` **ohne Argumente** sagt nur, ob Teilen an sich möglich ist – nicht, ob Dateien
+mitgehen. Auf iOS Safari ist `canShare` undefined, der Knopf fehlte dort also komplett.
+
+### Behoben
+**Eigener, dauerhafter Kasten `#foto-hinweis`** direkt über der Knopfleiste – dort, wo der
+Daumen nach dem Foto ohnehin ist, an derselben Stelle wie `barHinweis`. Kein Positions-Ping
+fasst ihn an; er bleibt, bis man ihn wegtippt, ein neues Foto macht oder 30 Minuten um sind.
+
+- **Lage nachgemessen:** Der erste Entwurf saß bei `58 px + 8 px` – das ist *in* der Knopfleiste
+  (58..116) und hätte „Fahren / Pause / Foto" verdeckt. (Rechnung für 360×800: Leiste
+  684..742, Kasten 684..734.) Richtig ist `58 + 58 + 8`: Kasten 564..676, Leiste beginnt bei 684.
+- **Über der Stromspar-Abdunklung** (`z-index 4100` gegen `#saver-dim` mit 4000). Wer mit
+  Stromspar fährt und ein Foto macht, hat die Abdunklung offen – darunter wäre der Hinweis
+  unsichtbar gewesen.
+- **Knopf 44 px hoch** (übliche Mindestgröße für Touch-Ziele, im Fahren mit dem Daumen).
+- **Prüfung mit einer echten Testdatei:** `_kannDateiTeilen()` legt ein `File` an und fragt
+  `navigator.canShare({files: [datei]})`. Kann das Gerät es nicht, steht im Kasten ehrlich der
+  Weg über die Tourseite (⬇) statt eines Knopfs, der nichts tut.
+- **Dateiname aus dem Download** (`Content-Disposition`): Das Foto landet als
+  `Fototour_2026-11-11_1817.jpg` in der Galerie, nicht als `foto_4711.jpg`.
+- **Abbrechen ist kein Fehler:** Wer das Teilen-Menü wegtippt (`AbortError`/`NotAllowedError`),
+  bekommt keine Warnung – der Hinweis bleibt einfach stehen.
+- Die Meldung in der Statuszeile ist wieder kurz (nur „Foto gespeichert" + Link) und passt in
+  die drei Zeilen.
+
+### Getestet
+`tests/test_build_bx.py` – 12 Tests. Darunter ein Test, der die echten Funktionen aus
+`live.html` ausschneidet und in einem DOM ausführt: Hinweis erscheint, überlebt Positions-Ping
+und Auto-Pause, übergibt die Datei mit lesbarem Namen, zeigt auf Geräten ohne Datei-Teilen den
+Ersatzweg, schließt sich nach Erfolg und über ✕. Volle Suite: **577 Tests, alle grün.**
+
+---
+
 ## 1.5.0 – 2026-11-09 (Build bw) – Foto aus der App landet nicht in der Handy-Galerie
 - **Meldung:** „Habe ein Foto innerhalb der App gemacht, das erscheint auch auf der Tourkarte.
   Das Foto ist aber nicht in der Galerie des Handys zu finden. Dort hätte ich es auch gerne."

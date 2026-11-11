@@ -469,6 +469,28 @@
       <span id="live-km" class="d-none" title="Zurückgelegte Strecke auf dieser Fahrt"></span>
       {# Build 11-06aa: Statusanzeige als Karte-Chip – kostet keine Höhe über der Karte #}
       <div id="live-status" title="Antippen für die ganze Meldung">Du schaust nur zu – Standorte werden alle 15 Sekunden aktualisiert.</div>
+      {# Build bx: Der Nutzer: „Habe ein Foto gemacht in der Live Karte, aber einen anschließenden
+         Hinweis ‚In Galerie sichern' sehe ich nicht." – Nachgemessen am echten Code, drei Ursachen:
+
+         1. Der Knopf stand MITTEN in der Statuszeile. Die ist auf 3,1 em gekappt (overflow: hidden)
+            und zeigt oben am Kartenrand. Der Satz plus Knopf plus Link braucht bei 360 px Breite
+            vier Zeilen – der Knopf saß auf Zeile 3 und war abgeschnitten. Ein Knopf, den man
+            nicht sieht, ist kein Knopf.
+         2. Sechs Sekunden später überschreibt der nächste Positions-Ping die Meldung
+            (`setStatus('Du teilst deinen Standort seit …')`). Der Satz „Foto gespeichert" bleibt
+            also stehen, bis die Aufzeichnung den nächsten Punkt sendet – beim Fahren dauerhaft.
+            Auch dann ist der Knopf weg. (Nachgemessen: nach einem Ping ist „In Galerie sichern"
+            nicht mehr im DOM.)
+         3. Der Knopf entstand nur bei `navigator.canShare`. Das ist die FALSCH abgefragte Funktion:
+            `canShare()` OHNE Dateien fragt nicht, ob Dateien geteilt werden können – auf iOS
+            Safari ist das undefined, der Knopf fehlte dort komplett.
+
+         Deshalb jetzt: ein EIGENER, dauerhafter Hinweis (#foto-hinweis) direkt über der
+         Knopfleiste – dort, wo auch `barHinweis` sitzt, also in der Daumenzone. Er wird von
+         keinem Positions-Ping angefasst. Er bleibt, bis man ihn wegtippt oder ein neues Foto
+         macht; nach 30 Minuten räumt er sich selbst ab. Er sitzt über der Stromspar-Abdunklung
+         (die liegt bei 4000) – Z-Index 4100. #}
+      <div id="foto-hinweis" class="d-none" role="status"></div>
       {# Build ba: „Wenn in der Live Karte die große Kartendarstellung aktiv ist und die Fahrt beendet
          sieht man keinen Hinweis auf Track/GPX speichern." – Der Hinweis stand AUSSERHALB von
          #live-wrap. Im Vollbild ist #live-wrap aber `position: fixed; inset: 0` mit z-index 2000 und
@@ -1476,27 +1498,122 @@ function _exifNow() {
 // (navigator.share mit Dateien). Dort steht auf Android „In Galerie speichern", auf iOS
 // „In Fotos sichern". Das ist ein zusätzlicher Tipp, aber es ist das echte Original.
 // Kann das Gerät es nicht (ältere Browser, Desktop), bleibt der ⬇-Knopf auf der Tourseite.
+//
+// Build bx: Kann dieses Gerät überhaupt Dateien teilen? Gefragt wird mit einer ECHTEN
+// Testdatei – `navigator.canShare()` ohne Argument sagt nur, ob das Teilen an sich möglich
+// ist, nicht ob Dateien mitgehen dürfen. Genau daran scheiterte der Knopf: Auf iOS Safari
+// ist `canShare` undefined, und die alte Prüfung `fotoId && navigator.canShare` blendete
+// ihn damit komplett aus – auch dort, wo das Teilen funktioniert hätte.
+function _kannDateiTeilen() {
+  try {
+    if (!navigator.share || !navigator.canShare) return false;
+    const probe = new File([new Blob(['x'], {type: 'image/jpeg'})], 'p.jpg', {type: 'image/jpeg'});
+    return navigator.canShare({files: [probe]});
+  } catch (e) {
+    return false;
+  }
+}
+
+// Build bx: Der dauerhafte Hinweis nach dem Foto.
+// Warum nicht in der Statuszeile? Die ist auf 3,1 em gekappt (overflow: hidden) und saß voll,
+// sobald der Satz plus Knopf plus Link hinein sollte – gemessen auf 360 px: der Knopf lag in
+// der dritten, abgeschnittenen Zeile. Und der nächste Positions-Ping (alle 6 s) hat die
+// Meldung überschrieben. Deshalb ein eigener Kasten über der Knopfleiste, den nichts anfasst.
+let _fotoHinweisTimer = null;
+function fotoHinweisZeigen(photoId) {
+  const box = document.getElementById('foto-hinweis');
+  if (!box) return;
+  box.innerHTML = '';
+  const txt = document.createElement('span');
+  txt.className = 'fh-text';
+  txt.textContent = _kannDateiTeilen()
+    ? '📷 Foto gespeichert. Auf diesem Gerät liegt es nur in der App – hier geht es in die Galerie:'
+    : '📷 Foto gespeichert. Dieses Gerät kann es nicht direkt an die Galerie geben – es liegt '
+      + 'im Download-Ordner, sobald du es auf der Tourseite antippst.';
+  box.appendChild(txt);
+
+  if (_kannDateiTeilen()) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'fh-btn';
+    btn.textContent = '📥 In Galerie sichern';
+    // Wichtig: onclick als Property, nicht als Attribut im HTML-String – so bleibt der
+    // Foto-Handler aus dem umgebenden Scope erreichbar (mit Attributen ginge das auch,
+    // aber dann müsste der Knopf als String gebaut werden, und dabei sind Anführungs-
+    // zeichen im Dateinamen ein Risiko).
+    btn.addEventListener('click', () => inGalerieSichern(photoId, btn));
+    box.appendChild(btn);
+  } else {
+    const a = document.createElement('a');
+    a.className = 'fh-btn';
+    a.style.textAlign = 'center';
+    a.style.textDecoration = 'none';
+    a.href = '/touren/' + TOUR_ID + '#fotos';
+    a.textContent = '⬇ Zur Tourseite';
+    box.appendChild(a);
+  }
+
+  const zu = document.createElement('button');
+  zu.type = 'button';
+  zu.className = 'fh-zu';
+  zu.setAttribute('aria-label', 'Hinweis schließen');
+  zu.textContent = '✕';
+  zu.addEventListener('click', fotoHinweisWeg);
+  box.appendChild(zu);
+
+  box.classList.remove('d-none');
+  // Nach 30 Minuten von allein weg – dann ist das Foto längst auf der Tourseite zu finden,
+  // und ein Kasten, der stundenlang über der Karte steht, waere nur im Weg.
+  clearTimeout(_fotoHinweisTimer);
+  _fotoHinweisTimer = setTimeout(fotoHinweisWeg, 30 * 60 * 1000);
+}
+function fotoHinweisWeg() {
+  clearTimeout(_fotoHinweisTimer);
+  const box = document.getElementById('foto-hinweis');
+  if (box) { box.classList.add('d-none'); box.innerHTML = ''; }
+}
+
 async function inGalerieSichern(photoId, btn) {
   const alt = btn ? btn.textContent : '';
   try {
-    if (!navigator.canShare || !navigator.share) throw new Error('kein Teilen');
+    if (!navigator.share) throw new Error('kein Teilen');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ lädt …'; }
     // Das ORIGINAL holen (voller Auflösung) – der Download-Endpunkt liefert es, wenn vorhanden.
+    // Build bx: Die Datei bekommt den Namen, den der Download-Endpunkt vorschlägt – sonst
+    // landet jedes Foto als „foto_4711.jpg" in der Galerie und man findet nichts wieder.
     const r = await fetch('/fotos/' + photoId + '/download', {credentials: 'same-origin'});
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const blob = await r.blob();
-    const name = 'foto_' + photoId + '.' + ((blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg'));
-    const datei = new File([blob], name, {type: blob.type || 'image/jpeg'});
-    if (!navigator.canShare({files: [datei]})) throw new Error('kein Datei-Teilen');
-    await navigator.share({files: [datei], title: 'Foto'});
+    // Dateiname aus Content-Disposition, sonst ein sprechender Ersatz
+    let name = 'Foto.jpg';
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
+    if (m) { try { name = decodeURIComponent(m[1] || m[2]); } catch (e) { name = m[1] || m[2]; } }
+    const typ = blob.type || 'image/jpeg';
+    if (!/\.(jpe?g|png|webp|heic)$/i.test(name)) {
+      const endung = (typ.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+      name = name.replace(/\.[^.]*$/, '') + '.' + endung;
+    }
+    const datei = new File([blob], name, {type: typ});
+    // Build bx: Die Prüfung mit der ECHTEN Datei – canShare muss die konkreten Bytes sehen.
+    if (navigator.canShare && !navigator.canShare({files: [datei]})) throw new Error('kein Datei-Teilen');
+    await navigator.share({files: [datei], title: name});
+    // Erfolgreich übergeben -> der Hinweis hat seinen Zweck erfüllt.
+    fotoHinweisWeg();
     setStatus('📥 Foto an das Handy übergeben – im Menü „In Galerie speichern" wählen.', 'sharing');
   } catch (e) {
+    // Build bx: „Abbrechen" im Teilen-Menü ist KEIN Fehler. Der Nutzer hat sich anders
+    // entschieden – dann darf keine Warnung kommen, der Hinweis bleibt einfach stehen.
+    if (e && (e.name === 'AbortError' || e.name === 'NotAllowedError')) {
+      if (btn) { btn.disabled = false; btn.textContent = alt; }
+      return;
+    }
     // Kein Teilen möglich -> ehrlicher Hinweis mit dem Weg, der immer funktioniert.
     setStatus('Dieses Gerät kann das Foto nicht direkt an die Galerie geben. Nimm den '
               + '⬇-Knopf am Foto auf der <a href="/touren/' + TOUR_ID + '#fotos">Tourseite</a> – '
               + 'die Datei liegt dann im Download-Ordner.', 'warning', true);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = alt; }
+    if (btn && document.body.contains(btn)) { btn.disabled = false; btn.textContent = alt; }
   }
 }
 function livePhoto(input) {
@@ -1521,17 +1638,20 @@ function livePhoto(input) {
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.ok || !d.count) { setStatus('Foto konnte nicht gespeichert werden' + (r.ok ? ' (Dateityp? Duplikat?)' : ' – HTTP ' + r.status) + '.', 'warning'); return; }
         // Build k: „Zur Tour → Fotos“ direkt klickbar – springt zum Fotos-Bereich der Tourseite
-        // Build bw: Dazu ein Knopf „In Galerie sichern". Der Browser gibt die Kamera-Aufnahme
-        // NICHT selbst an die Galerie weiter – das kann eine Webseite nicht. Der Weg führt über
-        // das Teilen-Menü des Handys (navigator.share), dort steht „In Fotos sichern" bzw.
+        // Build bw: Dazu „In Galerie sichern". Der Browser gibt die Kamera-Aufnahme NICHT selbst
+        // an die Galerie weiter – das kann eine Webseite nicht. Der Weg führt über das
+        // Teilen-Menü des Handys (navigator.share), dort steht „In Fotos sichern" bzw.
         // „In Galerie speichern". Übergeben wird das ORIGINAL vom Server (volle Auflösung),
         // nicht die auf 1600 px verkleinerte Fassung – dafür legt der Upload sie mit ab.
+        //
+        // Build bx: Der Knopf steht NICHT mehr in dieser Zeile. Gemessen: Die Statuszeile ist auf
+        // 3,1 em gekappt (overflow: hidden); Satz + Knopf + Link brauchen auf 360 px vier Zeilen,
+        // der Knopf lag in der abgeschnittenen dritten. Und der nächste Positions-Ping (6 s)
+        // schreibt die Meldung ohnehin neu. Jetzt gibt es dafür #foto-hinweis über der
+        // Knopfleiste – dauerhaft, unabhängig von dieser Zeile.
         const fotoId = (d.photo_ids && d.photo_ids[0]) || d.photo_id || null;
-        const galerie = (fotoId && navigator.canShare)
-          ? ' <button type="button" class="btn btn-sm btn-success py-0 px-2" style="font-size:.8rem" '
-            + 'onclick="inGalerieSichern(' + fotoId + ', this)">📥 In Galerie sichern</button>'
-          : '';
-        setStatus('📷 Foto gespeichert' + (lat != null ? ' – mit deinem Standort' + (acc ? ' (±' + Math.round(acc) + ' m)' : '') : ' – ohne Standort (per ✏️ auf der Tourseite setzbar)') + '.' + galerie + ' <a href="/touren/' + TOUR_ID + '#fotos">Zur Tour → Fotos</a>', 'sharing', true);
+        if (fotoId) fotoHinweisZeigen(fotoId);
+        setStatus('📷 Foto gespeichert' + (lat != null ? ' – mit deinem Standort' + (acc ? ' (±' + Math.round(acc) + ' m)' : '') : ' – ohne Standort (per ✏️ auf der Tourseite setzbar)') + '. <a href="/touren/' + TOUR_ID + '#fotos">Zur Tour → Fotos</a>', 'sharing', true);
       })
       .catch(() => setStatus('Keine Verbindung – Foto bitte später über die Tourseite hochladen.', 'warning'))
       .finally(() => { photoBusy = false; btn.disabled = false; btn.textContent = '📷 Foto'; });
