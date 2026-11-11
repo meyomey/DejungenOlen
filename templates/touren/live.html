@@ -592,6 +592,8 @@ const INITIAL   = {{ locations_json|safe }};
 const TRAILS    = {{ trails_json|safe }};        // Build af: {user_id: [[lat, lng, ts], …]} – Aufzeichnung der letzten 12 h
 const UPLOAD_URL = "{{ url_for('tour_upload_photos', tour_id=tour.id) }}";
 // Zustand (vor allen Funktionen deklariert – onclick-Handler sind global)
+let lastOwnAtVorher = 0;   // Build bv: Zeit des vorherigen Fix (für die Aussetzer-Prüfung)
+let _achtStdGewarnt = false;   // Build bv: Vorwarnung vor der 8-Stunden-Grenze nur einmal
 let sharing = false, following = false, watchId = null, lastSent = 0, lastPos = null, shareStart = 0,
     prevSentPos = null;   // Build 11-06o: Position der letzten beiden Sendungen (für den Richtungs-Trigger)
 // Build b: Pause – manuell (Knopf) oder automatisch (≈3 Min. kein Standortwechsel > 25 m).
@@ -623,7 +625,12 @@ let lastOwnAt = 0, ownAcc = null;                 // Build af: für „📷 Foto
 // Build ad: Punkte, die der Server noch nicht bestätigt hat. Sie überleben ein Einfrieren
 // der Seite (Bildschirm aus) und auch einen Neustart, weil sie in localStorage liegen.
 let gesichert = [];
-const GESICHERT_MAX = 200;                        // ~3 Std. Fahrt, danach zählt der älteste
+// Build bv: 200 Punkte waren nur 20 Minuten im Stromsparmodus (6 s) – bei 6:36 h Fahrt sind
+// das 3 960 Punkte, und in einem Funkloch oder bei ausgeschaltetem Display lief der Puffer
+// ständig über: alles über 20 Minuten wurde beim Ältesten rausgeworfen. 1 200 Punkte decken
+// 2 Stunden Sparmodus (bzw. 3,3 h im Normalmodus). Bei ~60 Byte je Punkt sind das etwa 72 KB
+// im localStorage – unkritisch (Grenze liegt bei 5 MB).
+const GESICHERT_MAX = 1200;                       // ~2 Std. Fahrt im Sparmodus
 const SICHER_KEY = 'djo_nachsend_' + TOUR_ID + '_' + ME.id;
 function sicherSpeichern() {
   try { localStorage.setItem(SICHER_KEY, JSON.stringify(gesichert)); } catch (e) {}
@@ -636,17 +643,33 @@ function sicherLaden() {
 }
 sicherLaden();
 // Nachsenden: schickt die gesicherten Punkte in Reihenfolge, sobald die Seite wieder wach ist.
+// Build bv: Nachsenden entkoppeln.
+// Vorher lief es alle 20 s aus dem Wächter UND beim Sichtbarwerden UND zusätzlich zum normalen
+// Senden – ohne Schutz gegen Mehrfachstart. Zwei Läufe schickten denselben Punkt doppelt, und
+// der Server verwarf den zweiten (dt < 3 s). Jetzt: ein Lauf zur Zeit (`nachsendenLaeuft`),
+// größere Blöcke (60 statt 20) und eine Pause zwischen den Punkten, damit die Aufnahmezeiten
+// sich nicht überholen. Der Puffer wird NICHT geleert, sondern nur, was der Server bestätigt.
+let nachsendenLaeuft = false;
 function sicherNachsenden() {
-  if (!gesichert.length || !sharing) return;
-  const offen = gesichert.slice(0, 20);
+  if (nachsendenLaeuft || !gesichert.length || !sharing) return;
+  // Punkte nach Aufnahmezeit sortieren – der Puffer kann durch einen Neustart durcheinander sein.
+  gesichert.sort((a, b) => (a.at || 0) - (b.at || 0));
+  const offen = gesichert.slice(0, 60);
+  nachsendenLaeuft = true;
   (async () => {
+    try {
     for (const g of offen) {
       try {
         const r = await fetch('/api/location/update', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
+          // Build bv: `at` ist der Zeitpunkt der AUFNAHME, nicht des Sendens. Vorher fehlte er,
+          // und der Server setzte die Ankunftszeit ein: 200 nachgesendete Punkte landeten
+          // innerhalb von 2 s, der 3-s-Filter verwarf alle bis auf einen, die Geschwindigkeits-
+          // prüfung rechnete mit Minuten. Ergebnis: 1 von 200 Punkten überlebte – die Lücken
+          // wurden auf der Karte mit Geraden überbrückt (das Dreieck im Screenshot).
           body: JSON.stringify({tour_id: TOUR_ID, lat: g.lat, lng: g.lng, accuracy: g.accuracy,
                                 speed: g.speed, heading: g.heading, paused: !!g.paused,
-                                resume: false, since: trailSince || 0})
+                                at: g.at, resume: false, since: trailSince || 0})
         });
         if (!r.ok) break;
         const d = await r.json().catch(() => ({}));
@@ -657,6 +680,7 @@ function sicherNachsenden() {
       } catch (e) { break; }        // kein Netz – beim nächsten Aufwachen weiter
     }
     if (!gesichert.length) localStorage.removeItem(SICHER_KEY);
+    } finally { nachsendenLaeuft = false; }
   })();
 }
 
@@ -1282,11 +1306,33 @@ function _bearing(a, b) {
 function onPos(pos) {
   const c = pos.coords;
   ownLatLng = [c.latitude, c.longitude];
-  lastOwnAt = Date.now(); ownAcc = c.accuracy || null;
+  const _jetztFix = Date.now();
+  const dtFixS = lastOwnAtVorher ? Math.max(0.5, (_jetztFix - lastOwnAtVorher) / 1000) : 0;
+  lastOwnAtVorher = _jetztFix;              // Build bv: für den Aussetzer-Filter weiter unten
+  lastOwnAt = _jetztFix; ownAcc = c.accuracy || null;
   drawOwn(c);
   if (following) map.panTo(ownLatLng, {animate: true});
   if (!sharing) return;
-  if (Date.now() - shareStart > 8 * 3600 * 1000) { stopShare(false); setStatus('Fahrt nach 8 Stunden automatisch beendet.'); return; }
+  // Build bv: 8-Stunden-Grenze – mit Vorwarnung statt stiller Abschaltung.
+  // Vorher: nach 8 h stoppte die Aufzeichnung hart, es blieb nur eine kurze Meldung in der
+  // Statuszeile. Bei einer langen Tagestour (6:36 h gemessen) ist das keine Randerscheinung.
+  // Jetzt: 30 Minuten vorher ein deutlicher, bleibender Hinweis; danach eine Erklärung, was
+  // passiert ist und wie man weitermacht.
+  const fahrtMs = Date.now() - shareStart;
+  if (fahrtMs > 8 * 3600 * 1000) {
+    stopShare(false);
+    setStatus('⏱ Aufzeichnung nach 8 Stunden automatisch beendet – die Spur bis hierher ist '
+              + 'gespeichert. Zum Weiterschienen: „Fahren" erneut starten (die neue Aufzeichnung '
+              + 'ist eine eigene Spur derselben Person).', 'warning');
+    barHinweis('⏱ 8 Stunden erreicht – Aufzeichnung gestoppt. Bis hierher ist alles gespeichert.', 'warn');
+    return;
+  }
+  if (fahrtMs > 7.5 * 3600 * 1000 && !_achtStdGewarnt) {
+    _achtStdGewarnt = true;
+    barHinweis('⏱ Noch 30 Minuten bis zur 8-Stunden-Grenze. Danach stoppt die Aufzeichnung – '
+               + 'zum Weiterschienen „Fahren" neu starten.', 'warn');
+    setStatus('⏱ Noch 30 Minuten bis zur 8-Stunden-Grenze der Aufzeichnung.', 'warning');
+  }
   // Build b: Auto-Pause – Anker bleibt stehen, solange man sich kaum bewegt; nach PAUSE_AFTER_S
   // ohne ≥ PAUSE_DIST_M Bewegung gilt die Fahrt als unterbrochen (Pause/Einkehr) → Aufzeichnung aus.
   const now = Date.now();
@@ -1321,7 +1367,19 @@ function onPos(pos) {
   //   · im Stand             -> alle 20 s
   // Gemessen an derselben Kreisfahrt: 134 statt 29 Punkte, größte Lücke 35 statt 104 m.
   const moved = lastPos ? map.distance(lastPos, ownLatLng) : Infinity;
-  // Build bu: Takt und Mindestabstand haengen am Modus. Wichtig ist die REIHENFOLGE:
+  // Build bv: Aussetzer erkennen und ÜBERSPRINGEN.
+  // Ein einzelner Fix 200 m quer (Wald, Häuser, Tunnel) ist keine Fahrt. Bisher wurde er
+  // gespeichert (der Server verwirft erst ab 90 km/h, 200 m in 10 s sind nur 72 km/h) – und
+  // weil die App ihn als „letzte Position" merkte, blockierte er danach auch noch die
+  // nächste Sendung. Aus einem Aussetzer wurden so zwei Löcher, und die Karte überbrückte
+  // sie mit einer Geraden. Jetzt: unplausibel schnell ⇒ Fix verwerfen, letzte Position
+  // BEHALTEN (der nächste gute Fix schließt sauber an), und den Kurs nach dem Aussetzer
+  // nicht als „Kurve" werten (sonst entsteht ein Zickzack im Bild).
+  const kmhFix = (lastPos && dtFixS) ? moved / dtFixS * 3.6 : 0;
+  if (kmhFix > 120 && moved > 60) {
+    // Kein Punkt, keine Zustandsänderung – aber auch keine Blockade für den nächsten Fix.
+    return;
+  }
   // erst die Kurve pruefen, dann den Takt. Vorher (11-06o) war es umgekehrt herum – der
   // Takt verwarf den Punkt, bevor die Kurve ueberhaupt gefragt wurde.
   const sendEvery = saverOn ? 6000 : 10000, stillEvery = saverOn ? 20000 : 30000;
@@ -1364,7 +1422,7 @@ function onPos(pos) {
     body: JSON.stringify({tour_id: TOUR_ID, lat: c.latitude, lng: c.longitude, accuracy: c.accuracy,
                           speed: (c.speed != null && !isNaN(c.speed)) ? c.speed : null,
                           heading: (c.heading != null && !isNaN(c.heading)) ? c.heading : null,
-                          paused: isPaused(),
+                          paused: isPaused(), at: punkt.at,   // Build bv: Aufnahmezeit (ms)
                           resume: sentCount === 0,          // Build 11-06s: frisch geladene Seite nimmt das Ende-Siegel
                           since: trailSince || 0})
   }).then(async r => {

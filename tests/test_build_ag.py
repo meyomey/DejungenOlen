@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bt')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bv')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -851,7 +851,8 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('Fahren{% endif %}</button>', live)
         self.assertNotIn('Standort teilen', live)                  # alter Begriff auf der Live-Seite komplett weg
         self.assertIn('Wer die Fahrt startet („▶ Fahrt starten“)', live)   # Hinweise-Block gleicher Begriff
-        self.assertIn('Fahrt nach 8 Stunden automatisch beendet', live)
+        # Build bv: Die Meldung erklärt jetzt zusätzlich, was zu tun ist – der Begriff bleibt.
+        self.assertIn('Aufzeichnung nach 8 Stunden automatisch beendet', live)
         self.assertIn('Fahrt starten – dein Standort wird für alle geteilt', live)   # Tooltip erklärt das Teilen
         app_src = open(os.path.join(ROOT, 'app.py'), encoding='utf-8').read()
         self.assertIn('Fahren ist ab dem Vortag der Tour möglich', app_src)
@@ -2044,7 +2045,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bt')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-09 bv')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()

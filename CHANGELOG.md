@@ -1,4 +1,60 @@
 # Changelog – De jungen Olen
+## 1.5.0 – 2026-11-09 (Build bv) – Nachgesendete Punkte gingen verloren (19,3 statt ~40 km)
+- **Meldung:** nach Build bu: „Eigentlich war die Strecke heute ungefähr 40 km lang" – aufgezeichnet
+  waren **19,3 km** bei 6:36 h. Dazu: „Größtenteils war der Stromsparmodus an und auch öfter
+  Display aus."
+
+### Ursache – der Zeitstempel fehlte beim Nachsenden
+Der Client sichert jeden Punkt lokal (`gesichert`), damit das Display ausgehen darf. Beim
+Nachsenden schickte er aber **keinen Zeitstempel** mit:
+
+```js
+body: {tour_id, lat, lng, accuracy, speed, heading, paused, resume, since}
+```
+
+Der Server setzte daraufhin die **Ankunftszeit** ein. Damit passierten drei Dinge gleichzeitig:
+
+1. **Der 3-s-Filter warf fast alles weg.** Nachgesendete Punkte kommen im Rudel an – 200 Punkte
+   innerhalb von 2 s. Nur der erste überlebte: gemessen **1 von 5**, bei 200 Punkten **1 von 200**.
+2. **Die 90-km/h-Prüfung rechnete mit der falschen Zeit.** Ein Punkt von vor 3 Minuten wurde gegen
+   „jetzt" geprüft: 5,5 km in 180 s = 110 km/h statt 5,5 km in 6 s = 3 300 km/h.
+3. **Die Aufnahmezeiten waren verfälscht** – Zeitfenster, Fahrzeit und GPX-Zeitstempel.
+
+Die fehlenden Punkte wurden auf der Karte mit **Geraden überbrückt**. Das Dreieck in Screenshot 18
+waren also keine Kurven, sondern **fehlende Abschnitte**.
+
+### Nachgestellt (echte HTTP-Route, 1500 Punkte, 40 km, zwei lange Aus-Fenster)
+| | Punkte in der DB | Anteil |
+|---|---|---|
+| Build bu (Puffer 200, ohne `at`) | 800 von 1500 | **53,3 %** |
+| Build bv (Puffer 1200, mit `at`) | **1500 von 1500** | **100 %** |
+
+53,3 % entspricht fast genau den gemeldeten 19,3 von ~40 km (48 %).
+
+### Behoben
+1. **Aufnahmezeit wird mitgeschickt** (`at`, ms) – im Normalversand und beim Nachsenden. Der
+   Server übernimmt sie, wenn sie plausibel ist (nicht aus der Zukunft, max. 2 min Vorlauf; nicht
+   älter als 6 h). Alte Clients ohne `at` funktionieren unverändert.
+2. **Nachsenden entkoppelt:** nur ein Lauf zur Zeit (`nachsendenLaeuft`), 60er-Blöcke, nach
+   Aufnahmezeit sortiert. Vorher konnte es doppelt starten (Wächter + Sichtbarwerden) und
+   schickte denselben Punkt zweimal.
+3. **Puffer 200 → 1 200 Punkte** (2 h Sparmodus statt 20 min; ~72 KB localStorage).
+4. **GPS-Aussetzer werden übersprungen** statt gespeichert: Fix mit > 120 km/h wird verworfen, die
+   letzte Position bleibt erhalten (vorher blockierte der Aussetzer auch die nächste Sendung).
+5. **8-Stunden-Grenze mit Vorwarnung:** 30 Minuten vorher ein deutlicher Hinweis, danach eine
+   Erklärung mit Anleitung („Fahren" neu starten). Vorher stoppte die Aufzeichnung still.
+
+### Gemessen
+- Nachsenden von 200 Punkten (1 h Fahrt): vorher **1** gespeichert, jetzt **200** – Zeitfenster
+  exakt 1 194 s (= 6 × 199), km-Anzeige 6,0 statt verfälscht.
+- Aussetzer 200 m quer: wird in beiden Modi nicht mehr Teil der Spur und blockiert nicht mehr.
+- JavaScript des Templates mit `node --check` geprüft.
+
+### Tests
+`tests/test_build_bv.py` (18 Tests): Aufnahmezeit in beiden Sendewegen, Plausibilitätsgrenzen,
+Nachsende-Sperre und Sortierung, Puffergröße, Aussetzer-Filter (darf den Zustand **nicht**
+verändern), 8-Stunden-Vorwarnung, und ein Syntax-Test des ganzen Template-JavaScripts.
+
 ## 1.5.0 – 2026-11-09 (Build bu) – Stromsparmodus zeichnete fast nur Geraden
 - **Meldung:** „Das tracken im Stromsparmodus ist nicht brauchbar. Es sind fast nur Geraden
   sichtbar." (Bild 18: eine 6:36-h-Tour, 19,3 km – die Spur auf der Karte ist ein Dreieck mit

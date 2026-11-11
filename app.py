@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-09 bu'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-09 bv'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5473,6 +5473,24 @@ def location_update():
     speed   = _opt_float(data.get('speed'), 0, 60)        # m/s
     heading = _opt_float(data.get('heading'), 0, 360)     # Grad
     paused  = bool(data.get('paused'))                    # Build b: Pause (Aufzeichnung aus, Karte an)
+    # Build bv: Aufnahmezeit. Nachgesendete Punkte kommen im Rudel an, wenn das Display wieder
+    # angeht oder das Netz zurück ist. Der Client schickt deshalb mit, WANN der Punkt entstand.
+    # Ohne diese Zeit setzte der Server die Ankunftszeit ein – dann lagen 200 Punkte innerhalb
+    # von 2 Sekunden, der 3-s-Filter warf alle bis auf einen weg, und die Geschwindigkeits-
+    # prüfung rechnete mit Minuten statt Sekunden (gemessen: 1 von 5 Punkten überlebte).
+    now = datetime.utcnow()
+    at = data.get('at')
+    if at is not None:
+        try:
+            at_s = float(at)
+        except (TypeError, ValueError):
+            at_s = None
+        if at_s is not None:
+            # Nur übernehmen, wenn die Zeit plausibel ist: nicht aus der Zukunft (max. 2 min
+            # Vorlauf für ungenaue Handy-Uhren) und nicht älter als der Puffer reicht.
+            t_client = datetime.utcfromtimestamp(at_s / 1000.0 if at_s > 1e11 else at_s)
+            if t_client <= now + timedelta(minutes=2) and t_client >= now - timedelta(hours=6):
+                now = t_client
     tour = _tour_or_404(tour_id)
     ok, hint = _live_share_window(tour)
     if not ok:
@@ -5489,7 +5507,7 @@ def location_update():
         else:
             return jsonify({'error': 'Fahrt wurde bereits beendet – zum erneuten Start die Live-Karte neu laden.',
                             'ended': True}), 409
-    now = datetime.utcnow()
+    # (now steht seit Build bv weiter oben – es kann die Aufnahmezeit aus dem Client sein)
     existing = LiveLocation.query.filter_by(tour_id=tour_id, user_id=current_user.id).first()
     if existing:
         existing.lat, existing.lng, existing.accuracy = lat, lng, accuracy
