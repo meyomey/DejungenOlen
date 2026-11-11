@@ -1,4 +1,18 @@
 # Changelog – De jungen Olen
+
+> **Offen nach Build bv – bewusst nicht geändert (Nutzer: „erst fahren und schauen"):**
+> Die Auto-Pause ist in besserem Zustand als zunächst vermutet. Gemessen mit dem echten
+> Pausen-Block aus `live.html`:
+> - **Anfahren:** Die Aufzeichnung setzt erst ~27–30 m nach dem Losfahren wieder ein
+>   (18 km/h: 3 s · 11 km/h: 6 s · 7 km/h: 12 s · Schieben 4 km/h: 21 s). Kein Datenverlust,
+>   sondern ein kleiner Schönheitsfehler – **nicht** die Ursache der fehlenden Kilometer.
+> - **Stand-Punkte:** Die Pause wird bei jedem Rauschpegel (0 bis ±20 m) korrekt erkannt. Im
+>   Stand werden aber trotzdem Punkte im 20-s-Takt gesendet, sodass die Spur mit starkem
+>   GPS-Rauschen bis zu ±20 m um den Pausenort „knäuelt". Kosmetik.
+>
+> Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
+> bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
+
 ## 1.5.0 – 2026-11-09 (Build bv) – Nachgesendete Punkte gingen verloren (19,3 statt ~40 km)
 - **Meldung:** nach Build bu: „Eigentlich war die Strecke heute ungefähr 40 km lang" – aufgezeichnet
   waren **19,3 km** bei 6:36 h. Dazu: „Größtenteils war der Stromsparmodus an und auch öfter
