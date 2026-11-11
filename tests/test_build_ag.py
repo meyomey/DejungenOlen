@@ -834,7 +834,11 @@ class VideoSmoothTest(AppTestCase):
         # Link, der direkt zum Fotos-Bereich der Tourseite springt (#fotos).
         live = open(os.path.join(ROOT, 'templates', 'touren', 'live.html'), encoding='utf-8').read()
         self.assertIn('function setStatus(text, cls, asHtml)', live)
-        self.assertIn('''. <a href="/touren/' + TOUR_ID + '#fotos">Zur Tour → Fotos</a>''', live)
+        # Build bw: Zwischen Satzpunkt und Link steht jetzt der Knopf „📥 In Galerie sichern"
+        # (er haengt an der Variablen `galerie`). Die Absicht von Build k bleibt: der Satz
+        # endet mit einem Punkt, danach folgt der Link zum Fotos-Bereich.
+        self.assertIn("'", live)
+        self.assertIn(''' <a href="/touren/' + TOUR_ID + '#fotos">Zur Tour → Fotos</a>''', live)
         self.assertIn(", 'sharing', true)", live)                      # Foto-Meldung als HTML gerendert
         self.assertIn('#fotos">Zur Tour → Fotos</a>', live)            # auch im Hinweise-Block verlinkt
         det = open(os.path.join(ROOT, 'templates', 'touren', 'detail.html'), encoding='utf-8').read()

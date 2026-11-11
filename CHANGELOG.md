@@ -13,6 +13,66 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-09 (Build bw) – Foto aus der App landet nicht in der Handy-Galerie
+- **Meldung:** „Habe ein Foto innerhalb der App gemacht, das erscheint auch auf der Tourkarte.
+  Das Foto ist aber nicht in der Galerie des Handys zu finden. Dort hätte ich es auch gerne."
+
+### Ursache – der Browser gibt die Aufnahme nie an die Galerie weiter
+Das Foto entsteht über `<input type="file" accept="image/*" capture="environment">`:
+
+```html
+<input type="file" id="live-cam" accept="image/*" capture="environment">
+```
+
+Damit öffnet das Handy die Kamera und gibt die Aufnahme **an die Webseite** – der Weg endet dort.
+Ein Browser kann nicht in die Galerie schreiben, dafür gibt es keine Schnittstelle. Im Download-
+Ordner des Handys landete die Datei ebenfalls nicht, weil sie per `fetch` hochgeladen und nirgends
+lokal abgelegt wird.
+
+Zweiter Punkt: Der Server **verkleinerte jedes Foto und verwarf das Original**
+(`_resize_photo_if_needed(max_px=1600, quality=85)`). Selbst wenn man an die Datei käme, wäre es
+nicht das Foto, das das Handy gemacht hat. Gemessen: 3000×2000 (92 KB) → 1600×1066 (10 KB).
+Und nicht einmal kleine Bilder blieben unangetastet – Pillow speichert **immer** neu:
+ein 800×600-JPEG mit 8230 Bytes kam mit **3379 Bytes** zurück.
+
+### Umgesetzt
+**1. Das Original wird aufbewahrt.** Neue Spalte `TourPhoto.orig_filename` (Migration läuft beim
+Start automatisch nach, bestehende Zeilen bleiben unverändert). Beim Upload wird das unveränderte
+Handyfoto als `…_orig.<ext>` daneben gelegt, bevor verkleinert wird. Speicher: das Doppelte der
+Web-Fassung – für eine Fahrrad-Gruppe unkritisch, und der einzige Weg zu einem echten Original.
+
+**2. Download mit lesbarem Namen.** `/fotos/<id>/download` liefert das Original, sonst die
+Web-Fassung (alte Fotos vor diesem Build). Der Dateiname ist sprechend, nicht der Hash:
+`Fototour_2026-11-11_1817.jpg`.
+
+**3. ⬇-Knopf an jedem Foto** auf der Tourseite – die Datei landet im Download-Ordner des Handys.
+
+**4. „📥 In Galerie sichern“** direkt nach dem Foto in der Live-Karte. Der Knopf übergibt das
+**Original vom Server** an das Teilen-Menü des Handys (`navigator.share({files})`), dort steht
+„In Fotos sichern“ bzw. „In Galerie speichern“. Kein automatisches Aufpoppen – nur auf Tippen.
+Kann das Gerät es nicht (z. B. Desktop-Firefox), sagt die App das ehrlich und verweist auf den
+⬇-Knopf auf der Tourseite.
+
+**5. Aufräumen.** Wird ein Foto gelöscht, geht das Original mit weg – sonst wären es Karteileichen
+von mehreren MB pro Foto. Alle vier Löschstellen laufen jetzt über `_delete_photo_files()`.
+
+### Gemessen (echter Upload über die Route, echte Dateien)
+| | Quelle | Web-Fassung | Original / Download |
+|---|---|---|---|
+| großes Handyfoto 3000×2000 | 92 KB | 1600×1066, 10 KB | 92 KB, **byte-gleich** |
+| kleines Bild 800×600 | 8230 B | 3379 B (Pillow, q85) | 8230 B, **byte-gleich** |
+
+Download: HTTP 200, richtige Größe, Name `Fototour_2026-11-11_1817.jpg`.
+Migration an einer DB ohne die Spalte geprüft: Spalte ergänzt, alte Zeilen unverändert.
+
+### Tests
+`tests/test_build_bw.py` – 15 Tests: Modell/Migration, Bildgrößen-Erkennung, die ganze Kette
+Upload → DB → Download, Byte-Gleichheit des Originals, Rückfall auf die Web-Fassung bei alten
+Fotos, Aufräumen beider Dateien, Vorhandensein der Knöpfe und des ehrlichen Hinweises.
+Volle Suite: **565 Tests, alle grün.**
+
+---
+
 ## 1.5.0 – 2026-11-09 (Build bv) – Nachgesendete Punkte gingen verloren (19,3 statt ~40 km)
 - **Meldung:** nach Build bu: „Eigentlich war die Strecke heute ungefähr 40 km lang" – aufgezeichnet
   waren **19,3 km** bei 6:36 h. Dazu: „Größtenteils war der Stromsparmodus an und auch öfter

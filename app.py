@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-09 bv'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-09 bw'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2509,6 +2509,65 @@ def _pillow_ok():
         return False
 
 
+def _delete_photo_files(photo):
+    """Build bw: Beide Dateien eines Fotos löschen – die Web-Fassung UND das Original.
+
+    Beim Aufräumen darf das Original nicht liegen bleiben: Es ist die größte Datei und wäre
+    sonst eine Karteileiche im Upload-Ordner (bei 4-MB-Handyfotos schnell mehrere GB).
+    Fehlt eine der Dateien, ist das kein Fehler – gelöscht wird, was da ist.
+    """
+    for _name in (getattr(photo, 'filename', None), getattr(photo, 'orig_filename', None)):
+        if not _name:
+            continue
+        try:
+            _pfad = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], _name)
+            if os.path.exists(_pfad):
+                os.remove(_pfad)
+        except Exception as _e:
+            app.logger.warning(f'Could not delete photo file {_name}: {_e}')
+
+
+def _image_size(path):
+    """Build bw: (Breite, Höhe) eines Bildes – oder (0, 0), wenn nicht lesbar.
+
+    Wird gebraucht, um zu entscheiden, ob ein Original aufbewahrt werden muss: Nur wenn das
+    Bild größer als die Web-Fassung ist, hat das Original einen Nutzen. Bewusst ohne harte
+    Abhängigkeit – fehlt Pillow, gilt das Bild als „nicht zu groß" (dann wird eben kein
+    Original gespeichert, der Upload läuft weiter).
+    """
+    try:
+        from PIL import Image as _PILImage
+        with _PILImage.open(path) as _img:
+            return _img.size
+    except Exception:
+        pass
+    try:                                       # Notnagel: Bildgröße aus den JPEG-Headern
+        import struct
+        with open(path, 'rb') as _fh:
+            if _fh.read(2) != b'\xff\xd8':
+                return (0, 0)
+            while True:
+                _byte = _fh.read(1)
+                if not _byte:
+                    return (0, 0)
+                if _byte != b'\xff':
+                    continue
+                _marker = _fh.read(1)
+                while _marker == b'\xff':
+                    _marker = _fh.read(1)
+                if _marker in (b'\xd8', b'\xd9'):
+                    continue
+                _len = struct.unpack('>H', _fh.read(2))[0]
+                if _marker and _marker[0] in range(0xC0, 0xCF) and _marker not in (b'\xc4', b'\xc8', b'\xcc'):
+                    _fh.read(1)                          # Precision
+                    _h, _w = struct.unpack('>HH', _fh.read(4))
+                    return (_w, _h)
+                _fh.seek(_len - 2, 1)
+    except Exception:
+        pass
+    return (0, 0)
+
+
 def _resize_photo_if_needed(path, max_px=1600, quality=85):
     """Bild verkleinern wenn nötig. Pillow > ImageMagick. Korrigiert EXIF-Rotation."""
     import subprocess
@@ -2645,6 +2704,8 @@ def tour_upload_photos(tour_id):
         if h[4:8] in (b'ftyp', b'mif1', b'msf1', b'heic'): return True  # HEIC
         return False
 
+    neu_ids = []          # Build bw: IDs der eben angelegten Fotos (für „In Galerie sichern")
+
     def _process_image_bytes(data, original_name, form_idx=None):
         """Save image bytes, run resize + GPS, return TourPhoto or None.
         form_idx: index used by client-side JS for gps_lat_N/gps_lng_N lookup
@@ -2667,6 +2728,28 @@ def tour_upload_photos(tour_id):
         with open(save_path, 'wb') as fh:
             fh.write(data)
         size_before = os.path.getsize(save_path)
+
+        # Build bw: Original aufbewahren, BEVOR verkleinert wird.
+        # „In Galerie sichern" soll das echte Handyfoto liefern, nicht die Web-Fassung.
+        #
+        # Achtung: `_resize_photo_if_needed` speichert das Bild IMMER neu (Pillow, Qualität 85,
+        # progressiv) – auch wenn die Auflösung schon passt. Gemessen: ein 800x600-JPEG mit
+        # 8 230 Bytes kam als 3 379 Bytes zurück. Deshalb wird das Original grundsätzlich
+        # aufbewahrt, sobald das Bild überhaupt umgeschrieben wird. Nur bei Formaten, die
+        # Pillow nicht anfasst, wäre es eine sinnlose Doppelung – das ist aber ein Sonderfall,
+        # der die 15 % Aufschlag wert ist.
+        orig_filename = None
+        try:
+            _w, _h = _image_size(save_path)
+            if _w or _h:
+                _orig = f'{tour_id}_{secrets.token_hex(8)}_orig.{ext}'
+                _orig_path = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], _orig)
+                with open(_orig_path, 'wb') as _fh:
+                    _fh.write(data)
+                orig_filename = _orig
+        except Exception as _e:
+            app.logger.warning(f'Original konnte nicht gesichert werden: {_e}')
+            orig_filename = None
 
         # GPS VOR dem Resize auslesen – ImageMagick -strip entfernt EXIF!
         lat, lng = extract_gps_from_exif(save_path)
@@ -2714,14 +2797,19 @@ def tour_upload_photos(tour_id):
         if gps_source == 'device':
             device_n += 1
         count += 1
-        return TourPhoto(
+        _neu = TourPhoto(
             tour_id  = tour_id,
             user_id  = current_user.id,
             filename = filename,
             caption  = request.form.get('caption', '').strip() or None,
             lat=lat, lng=lng, taken_at=taken_at, orig_hash=h,
-            gps_source=gps_source,
+            gps_source=gps_source, orig_filename=orig_filename,   # Build bw
         )
+        # Build bw: fertig gefüllt zurückgeben, damit der Aufrufer die ID kennt
+        db.session.add(_neu)
+        db.session.flush()
+        neu_ids.append(_neu.id)
+        return _neu
 
     for file_idx, f in enumerate(files):
         if not f or not f.filename:
@@ -2746,8 +2834,7 @@ def tour_upload_photos(tour_id):
                             continue
                         img_data = zf.read(img_name)
                         photo = _process_image_bytes(img_data, img_name)
-                        if photo:
-                            db.session.add(photo)
+                        if photo:                       # Build bw: wird IN der Funktion hinzugefügt
                             zip_count += 1
             except Exception as e:
                 app.logger.warning(f'ZIP extract failed: {e}')
@@ -2771,9 +2858,7 @@ def tour_upload_photos(tour_id):
             skipped += 1
             app.logger.info(f'Upload zu groß übersprungen ({f_size} Bytes): {f.filename}')
             continue
-        photo = _process_image_bytes(f.read(), f.filename, form_idx=file_idx)
-        if photo:
-            db.session.add(photo)
+        _process_image_bytes(f.read(), f.filename, form_idx=file_idx)   # Build bw: fügt selbst hinzu
 
     db.session.commit()
     parts = [f'{count} Foto(s) hochgeladen']
@@ -2813,7 +2898,8 @@ def tour_upload_photos(tour_id):
     target = url_for('tour_detail', tour_id=tour_id) + '#fotos'
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return jsonify({'ok': True, 'redirect': target, 'count': count, 'dupes': dupes,
-                        'placed': placed, 'no_gps': max(no_gps, 0)})
+                        'placed': placed, 'no_gps': max(no_gps, 0),
+                        'photo_ids': neu_ids})      # Build bw: für „In Galerie sichern" 
     return redirect(target)
 
 
@@ -3081,7 +3167,7 @@ def tour_delete(tour_id):
     # Fotos vom Dateisystem löschen
     for p in TourPhoto.query.filter_by(tour_id=tour_id).all():
         try:
-            os.remove(os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], p.filename))
+            _delete_photo_files(p)           # Build bw: mit Original
         except Exception:
             pass
     if tour.gpx_file:
@@ -3254,7 +3340,7 @@ def photos_bulk_delete(tour_id):
         if photo and photo.tour_id == tour_id:
             if photo.user_id == current_user.id or current_user.is_admin:
                 try:
-                    os.remove(os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], photo.filename))
+                    _delete_photo_files(photo)           # Build bw: mit Original
                 except Exception:
                     pass
                 db.session.delete(photo)
@@ -4987,7 +5073,7 @@ def challenge_bulk_delete():
         photo = TourPhoto.query.get(int(pid))
         if photo and (photo.user_id == current_user.id or current_user.is_admin):
             try:
-                os.remove(os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], photo.filename))
+                _delete_photo_files(photo)           # Build bw: mit Original
             except Exception:
                 pass
             db.session.delete(photo)
@@ -7500,6 +7586,37 @@ def serve_video(filename):
 def serve_photo(filename):
     """Fotos nur fuer eingeloggte Nutzer servieren."""
     return send_from_directory(app.config['UPLOAD_FOLDER_PHOTOS'], filename)
+
+
+@app.route('/fotos/<int:photo_id>/download')
+@login_required
+def photo_download(photo_id):
+    """Build bw: Ein Foto herunterladen – für „in den Download-Ordner".
+
+    Liefert das ORIGINAL, wenn es eines gibt (Build bw bewahrt es beim Upload auf), sonst die
+    vorhandene Fassung. Der Dateiname wird lesbar gebaut (Tour + Datum), damit im
+    Download-Ordner nicht `123_a1b2c3d4.jpg` steht.
+
+    Berechtigung: wie beim Ansehen – nur Nutzer der eigenen Gruppe. (Die Fotos hängen an keiner
+    personenbezogenen Freigabe; `_tour_or_404` prüft die Gruppenzugehörigkeit.)
+    """
+    photo = TourPhoto.query.get_or_404(photo_id)
+    _tour_or_404(photo.tour_id)                    # Gruppenzugehörigkeit prüfen
+    name = photo.orig_filename or photo.filename
+    pfad = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], name)
+    if not os.path.isfile(pfad):
+        # Datei fehlt (z. B. Original manuell gelöscht) -> auf die Web-Fassung zurückfallen
+        name = photo.filename
+        pfad = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], name)
+        if not os.path.isfile(pfad):
+            abort(404)
+    tour = db.session.get(Tour, photo.tour_id)
+    datum = (photo.taken_at or photo.created_at)
+    stamm = secure_filename(tour.title if tour else 'Tour')[:40] or 'Tour'
+    stempel = datum.strftime('%Y-%m-%d_%H%M') if datum else 'foto'
+    endung = name.rsplit('.', 1)[-1].lower() if '.' in name else 'jpg'
+    return send_from_directory(app.config['UPLOAD_FOLDER_PHOTOS'], name, as_attachment=True,
+                               download_name=f'{stamm}_{stempel}.{endung}')
 
 
 # ─── Phase 2: POIs (Pausenorte & Lieblingsorte) ───────────────────────────────
@@ -10230,12 +10347,7 @@ def photo_delete(photo_id):
     if not _can_edit_photo(photo, tour):
         abort(403)
     tour_id = photo.tour_id
-    try:
-        path = os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], photo.filename)
-        if os.path.exists(path):
-            os.remove(path)
-    except Exception as e:
-        app.logger.warning(f'Could not delete photo file: {e}')
+    _delete_photo_files(photo)          # Build bw: Web-Fassung UND Original
     db.session.delete(photo)
     db.session.commit()
     flash('Foto gelöscht.', 'success')
@@ -10979,7 +11091,7 @@ def group_delete(group_id):
             for tour in group.tours.all():
                 for p in TourPhoto.query.filter_by(tour_id=tour.id).all():
                     try:
-                        os.remove(os.path.join(app.config['UPLOAD_FOLDER_PHOTOS'], p.filename))
+                        _delete_photo_files(p)           # Build bw: mit Original
                     except Exception:
                         pass
                 video_dir = app.config.get('UPLOAD_FOLDER_VIDEOS',
@@ -11168,6 +11280,7 @@ def migrate_db():
     add_column('tour_photos', 'sort_order', 'INTEGER')
     add_column('tour_photos', 'orig_hash',  'VARCHAR(64)')
     add_column('tour_photos', 'gps_source', 'VARCHAR(10)')   # Build ac
+    add_column('tour_photos', 'orig_filename', 'VARCHAR(200)')   # Build bw: Original fuer die Galerie
     add_column('users', 'morning_opener_until', 'VARCHAR(5)')
     add_column('groups', 'whatsapp_url', 'VARCHAR(500)')   # Build 11-06b: WhatsApp-Gruppe der Gruppe
     add_column('tours', 'approx_km',      'FLOAT')

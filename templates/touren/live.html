@@ -1470,6 +1470,35 @@ function _exifNow() {
   const d = new Date(), p = n => String(n).padStart(2, '0');
   return d.getFullYear() + ':' + p(d.getMonth() + 1) + ':' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 }
+// Build bw: „In Galerie sichern".
+// Eine Webseite kann ein Foto NICHT selbst in die Galerie schreiben – dafür gibt es keine
+// Schnittstelle. Der einzige Weg: das Bild an das Teilen-Menü des Handys übergeben
+// (navigator.share mit Dateien). Dort steht auf Android „In Galerie speichern", auf iOS
+// „In Fotos sichern". Das ist ein zusätzlicher Tipp, aber es ist das echte Original.
+// Kann das Gerät es nicht (ältere Browser, Desktop), bleibt der ⬇-Knopf auf der Tourseite.
+async function inGalerieSichern(photoId, btn) {
+  const alt = btn ? btn.textContent : '';
+  try {
+    if (!navigator.canShare || !navigator.share) throw new Error('kein Teilen');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ lädt …'; }
+    // Das ORIGINAL holen (voller Auflösung) – der Download-Endpunkt liefert es, wenn vorhanden.
+    const r = await fetch('/fotos/' + photoId + '/download', {credentials: 'same-origin'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    const name = 'foto_' + photoId + '.' + ((blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg'));
+    const datei = new File([blob], name, {type: blob.type || 'image/jpeg'});
+    if (!navigator.canShare({files: [datei]})) throw new Error('kein Datei-Teilen');
+    await navigator.share({files: [datei], title: 'Foto'});
+    setStatus('📥 Foto an das Handy übergeben – im Menü „In Galerie speichern" wählen.', 'sharing');
+  } catch (e) {
+    // Kein Teilen möglich -> ehrlicher Hinweis mit dem Weg, der immer funktioniert.
+    setStatus('Dieses Gerät kann das Foto nicht direkt an die Galerie geben. Nimm den '
+              + '⬇-Knopf am Foto auf der <a href="/touren/' + TOUR_ID + '#fotos">Tourseite</a> – '
+              + 'die Datei liegt dann im Download-Ordner.', 'warning', true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = alt; }
+  }
+}
 function livePhoto(input) {
   const file = input.files && input.files[0];
   input.value = '';
@@ -1492,7 +1521,17 @@ function livePhoto(input) {
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.ok || !d.count) { setStatus('Foto konnte nicht gespeichert werden' + (r.ok ? ' (Dateityp? Duplikat?)' : ' – HTTP ' + r.status) + '.', 'warning'); return; }
         // Build k: „Zur Tour → Fotos“ direkt klickbar – springt zum Fotos-Bereich der Tourseite
-        setStatus('📷 Foto gespeichert' + (lat != null ? ' – mit deinem Standort' + (acc ? ' (±' + Math.round(acc) + ' m)' : '') : ' – ohne Standort (per ✏️ auf der Tourseite setzbar)') + '. <a href="/touren/' + TOUR_ID + '#fotos">Zur Tour → Fotos</a>', 'sharing', true);
+        // Build bw: Dazu ein Knopf „In Galerie sichern". Der Browser gibt die Kamera-Aufnahme
+        // NICHT selbst an die Galerie weiter – das kann eine Webseite nicht. Der Weg führt über
+        // das Teilen-Menü des Handys (navigator.share), dort steht „In Fotos sichern" bzw.
+        // „In Galerie speichern". Übergeben wird das ORIGINAL vom Server (volle Auflösung),
+        // nicht die auf 1600 px verkleinerte Fassung – dafür legt der Upload sie mit ab.
+        const fotoId = (d.photo_ids && d.photo_ids[0]) || d.photo_id || null;
+        const galerie = (fotoId && navigator.canShare)
+          ? ' <button type="button" class="btn btn-sm btn-success py-0 px-2" style="font-size:.8rem" '
+            + 'onclick="inGalerieSichern(' + fotoId + ', this)">📥 In Galerie sichern</button>'
+          : '';
+        setStatus('📷 Foto gespeichert' + (lat != null ? ' – mit deinem Standort' + (acc ? ' (±' + Math.round(acc) + ' m)' : '') : ' – ohne Standort (per ✏️ auf der Tourseite setzbar)') + '.' + galerie + ' <a href="/touren/' + TOUR_ID + '#fotos">Zur Tour → Fotos</a>', 'sharing', true);
       })
       .catch(() => setStatus('Keine Verbindung – Foto bitte später über die Tourseite hochladen.', 'warning'))
       .finally(() => { photoBusy = false; btn.disabled = false; btn.textContent = '📷 Foto'; });

@@ -1212,6 +1212,14 @@
                 </div>
                 {% endif %}
                 <div class="d-flex gap-1 flex-wrap">
+                  {# Build bw: Foto herunterladen – liegt danach im Download-Ordner des Handys.
+                     Gibt es ein Original (volle Handyauflösung), wird DAS geliefert. #}
+                  <a class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size:.68rem"
+                     href="{{ url_for('photo_download', photo_id=p.id) }}"
+                     download
+                     title="Herunterladen{% if p.orig_filename %} – Original in voller Auflösung{% else %} (Web-Fassung){% endif %}">
+                    <i class="bi bi-download"></i>
+                  </a>
                   {% if can_edit_photo %}
                   <button class="btn btn-sm py-0 px-1 {% if p.has_gps %}btn-outline-warning{% else %}btn-outline-primary{% endif %}"
                           style="font-size:.68rem"

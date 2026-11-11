@@ -333,6 +333,11 @@ class TourPhoto(db.Model):
     # Build ac: Herkunft der Position – 'exif' (aus dem Foto), 'manual' (Kartenklick),
     # 'device' (Handy-Standort beim Hochladen), 'track' (per Aufnahmezeit auf dem GPX geschätzt)
     gps_source = db.Column(db.String(10), nullable=True)
+    # Build bw: Das ORIGINAL (volle Handyauflösung), damit „In Galerie sichern" das echte Foto
+    # liefert und nicht die auf 1600 px verkleinerte Web-Fassung. `filename` bleibt die
+    # verkleinerte Fassung für die Seite (schnell, klein); `orig_filename` ist optional –
+    # Fotos von vor Build bw haben keine, dort wird die vorhandene Fassung ausgegeben.
+    orig_filename = db.Column(db.String(200), nullable=True)
 
     tour = db.relationship('Tour', back_populates='photos')
     user = db.relationship('User', back_populates='photos')
