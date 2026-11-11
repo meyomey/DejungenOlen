@@ -158,7 +158,22 @@
        Jetzt wird sie mit der Karte beschnitten und kann nie darueber rutschen. */
     #live-status { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 74px); z-index: 1090; }
   }
+  /* Build by: „Man klickt auf den Hinweis Bereich und nichts passiert, es bewegt sich nur ein
+     bisschen nach oben."
+
+     Genau das war es: Die Statuszeile ist auf 3,1 em gekappt (`overflow: hidden`). Ein Tipp
+     darauf klappt sie auf 12 em auf – die Seite „bewegt sich ein bisschen nach oben", und
+     sonst passiert nichts. Im Screenshot sieht man es: Der Satz endet mitten im Wort
+     („…Die Aufzeichnung kannst du") – dahinter steckt der abgeschnittene Rest.
+     Ein Nutzer, der auf diesen Kasten tippt, erwartet eine Aktion, nicht ein Aufklappen.
+
+     Deshalb: Solange die Fahrt beendet ist und die Aufzeichnung noch gesichert werden kann
+     (Klasse .rec-hint-an am body), zeigt die Statuszeile ihren Text VOLLSTÄNDIG – sie ist
+     dann die wichtigste Meldung auf dem Schirm. Kein Aufklapp-Tipp mehr nötig. */
+  body.rec-hint-an #live-status { max-height: none; overflow: visible; }
   #live-status.open { max-height: 12em; overflow-y: auto; }
+  /* Build by: Die ganze Statuszeile ist antippbar und führt zur Tourseite – aber nur, wenn
+     sie selbst einen Link enthält, bleibt der Link zuständig (siehe Handler unten). */
   /* Build bl: Desktop – ebenfalls unten links ueber Chip und Pill, ohne reservierten Platz. */
   /* Build bn: Auch auf dem Desktop sitzt der Hinweis unten links am Kartenrand. */
   /* Build bt: Hier stand `bottom: 8px` – damit lag die Zeile auf dem Desktop GENAU in der
@@ -347,8 +362,30 @@
        kommt daher, dass er im Vollbild bis unter die Karte reichen darf; die drei Knoepfe
        sind das Wichtigste auf dem Schirm (Aufzeichnung sichern), sie duerfen nicht fehlen.
        Gemessen 412x915: Kasten 403..648 (245 px), Knopfreihe ab 469, alles sichtbar. */
+    /* Build by: „Man klickt auf den Hinweis Bereich und nichts passiert, es bewegt sich nur
+       ein bisschen nach oben."
+
+       Nachgemessen am Screenshot (1080x2340, Dichte 3 = 360x780 CSS): Der gelbe Kasten ist
+       sichtbar 479..564, also 85 px hoch. Sein Inhalt braucht ~170 px (Titel 2 Zeilen +
+       Knopfreihe 2 Reihen + Fußzeile). Bei genau 564 hören Gelb UND der grüne Knopf
+       gleichzeitig auf – das ist keine Überdeckung, sondern eine harte Kante.
+
+       Ursache: Der Kasten steht mit `bottom: 152px` und wächst nach oben. Er wird von
+       #live-wrap beschnitten (`overflow: hidden`, im Vollbild `inset: 0`). Steht die
+       Leiste höher (große Schrift, Adressleiste, kleiner Bildschirm), ragt der Kasten
+       über die Unterkante der Karte und wird abgeschnitten: oben sieht man den Titel,
+       unten fehlt die Knopfreihe. Ein Tipp auf den Kasten trifft dann keinen Knopf –
+       also passiert nichts, und nur die Statuszeile klappt ein Stück auf
+       („bewegt sich ein bisschen nach oben").
+
+       Fix 1: Der Kasten darf nie höher werden als der Platz, der da ist. `max-height`
+       mit `bottom` als Bezug, und der Inhalt scrollt im Notfall INNERHALB.
+       Fix 2: Der ganze Kasten ist antippbar und führt zur Tourseite – dann kann ein
+       Tipp nie mehr „nichts" tun. */
     #live-wrap.live-fs #rec-hint-fs { bottom: 152px; max-width: calc(100% - 51px);
-        overflow: visible; }
+        overflow: visible;
+        max-height: calc(100vh - 152px - 118px);   /* oben 118 px Luft für Titel + Symbole */
+        overflow-y: auto; }
     /* Build 11-06aa: Unten nur noch die DREI wichtigen Knöpfe – groß genug für den Daumen,
        ohne dass die Leiste die Karte zudeckt (vorher fünf Reihen, ≈ 200 px). */
     #live-bar { padding: 5px 8px; }
@@ -500,9 +537,19 @@
       {# Build bc: bottom steht bewusst NICHT mehr inline – ein Inline-Style schlaegt jedes
          Stylesheet, deshalb blieb „bottom: 128px" auch im Vollbild stehen und der Hinweis lag
          auf dem km-Chip. Die Lage kommt jetzt aus den #live-wrap.live-fs-Regeln. #}
+      {# Build by: Der Kasten war im Vollbild nur 85 px hoch, obwohl sein Inhalt ~170 px
+         braucht – der grüne Knopf war durchgeschnitten, der Titel endete mit „…". Ein Tipp
+         auf den Kasten traf keinen Knopf, also passierte nichts.
+         Deshalb steht die Höhe jetzt INLINE (schlägt jedes Stylesheet) und der Inhalt darf
+         scrollen, statt abgeschnitten zu werden. So kann keine geerbte Klemmung mehr
+         durchschlagen – egal aus welchem Build sie stammt. #}
       <div id="rec-hint-fs" class="alert alert-warning d-none" role="alert"
            style="position: absolute; left: 8px; right: 56px; z-index: 1120; margin: 0;
-                  box-shadow: 0 2px 10px rgba(0,0,0,.28);">
+                  box-shadow: 0 2px 10px rgba(0,0,0,.28);
+                  max-height: calc(100% - 240px); overflow-y: auto;
+                  -webkit-line-clamp: unset !important;
+                  -webkit-box-orient: initial !important;
+                  text-overflow: clip !important;">
         {# Build bg: Im Vollbild ist der Platz knapp (gemessen 360x740: Titel 45 + Zeile 39 +
            Knopfreihe 109 + Fusszeile 48 = 295 px). Die Zeile „nur 30 Tage" steht schon in der
            Fusszeile, der Titel kommt ohne „⏹" aus – zusammen spart das ~40 px. #}
@@ -1061,12 +1108,14 @@ function showRecHint() {   // Build q: Rückfrage deutlichsichtbar machen
     // Vollbild: die Kopie IN der Karte (die aeussere liegt unter der deckenden Karte).
     if (el) el.classList.add('d-none');
     if (fs) fs.classList.remove('d-none');
+    recHintKlickFangen();          // Build by: auch im Vollbild antippbar
     return;   // scrollIntoView waere sinnlos – die Karte deckt alles ab
   }
   // Normalbetrieb: nur die Kopie ausserhalb der Karte.
   if (fs) fs.classList.add('d-none');
   if (!el) return;
   el.classList.remove('d-none');
+  recHintKlickFangen();          // Build by: ein Tipp auf die Fläche kann nicht mehr wirkungslos sein
   try { el.scrollIntoView({behavior: 'smooth', block: 'center'}); } catch (e) { el.scrollIntoView(); }
 }
 function hideRecHint() {
@@ -1305,6 +1354,16 @@ if (_infoBtn && _infoBox) {
 // vollständige Meldung auf (z. B. die Links nach dem Beenden der Fahrt).
 document.getElementById('live-status').addEventListener('click', e => {
   if (e.target.closest('a')) return;            // Links bleiben normal klickbar
+  // Build by: „Man klickt auf den Hinweis Bereich und nichts passiert, es bewegt sich nur ein
+  // bisschen nach oben." – Das Aufklappen war der einzige Effekt. Jetzt gilt:
+  //   · Ist die Fahrt beendet (rec-hint-an), führt ein Tipp zur Tourseite in den
+  //     Abschnitt „Live-Aufzeichnung" – dort stehen Übernehmen, GPX-Download und Löschen.
+  //   · Sonst klappt sie wie bisher auf (dort ist der Text nur eine Statusmeldung).
+  if (document.body.classList.contains('rec-hint-an')) {
+    e.preventDefault();
+    window.location.href = '/touren/' + TOUR_ID + '#live-aufzeichnung';
+    return;
+  }
   e.currentTarget.classList.toggle('open');
 });
 
@@ -1571,6 +1630,35 @@ function fotoHinweisWeg() {
   clearTimeout(_fotoHinweisTimer);
   const box = document.getElementById('foto-hinweis');
   if (box) { box.classList.add('d-none'); box.innerHTML = ''; }
+}
+// Build by: „Man klickt auf den Hinweis Bereich und nichts passiert, es bewegt sich nur ein
+// bisschen nach oben."
+//
+// Nachgemessen: Der gelbe Kasten (#rec-hint-fs) war im Vollbild nur 85 px hoch, obwohl sein
+// Inhalt ~170 px braucht. Der grüne Knopf war durchgeschnitten – ein Tipp auf die sichtbare
+// Fläche traf damit KEINEN Knopf, sondern nur den Kasten. Der Kasten hatte keinen eigenen
+// Handler, also passierte nichts. Das „bisschen nach oben" war die Statuszeile darunter, die
+// ihren Klick-Handler hat und ein Stück aufklappte.
+//
+// Deshalb: Der Kasten reagiert jetzt selbst. Ein Tipp irgendwo auf die gelbe Fläche, der
+// keinen Knopf trifft, führt zur Tourseite – dort steht die Aufzeichnung mit allen Optionen.
+// So kann ein Tipp nie mehr wirkungslos sein.
+function recHintKlickFangen() {
+  ['rec-hint-fs', 'rec-hint'].forEach(id => {
+    const box = document.getElementById(id);
+    if (!box || box.dataset.klickGefangen) return;
+    box.dataset.klickGefangen = '1';
+    box.addEventListener('click', e => {
+      // Knöpfe, Links und Formulare machen ihre eigene Sache.
+      if (e.target.closest('button, a, input, form, .rec-info-btn, .rec-info')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      window.location.href = '/touren/' + TOUR_ID + '#live-aufzeichnung';
+    });
+    // Damit man sieht, dass die Fläche antippbar ist.
+    box.style.cursor = 'pointer';
+    box.title = 'Tippen führt zur Tourseite – dort findest du die Aufzeichnung';
+  });
 }
 
 async function inGalerieSichern(photoId, btn) {

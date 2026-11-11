@@ -13,6 +13,57 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-09 (Build by) – Tipp auf den Hinweis tat nichts
+- **Meldung:** „Man klickt auf den Hinweis Bereich und nichts passiert, es bewegt sich nur ein
+  bisschen nach oben." (Screenshot: Fahrt beendet, gelber Kasten mit „✓ Als Track übernehmen")
+
+### Im Screenshot nachgemessen (1080×2340 = 360×780 CSS)
+| Element | gemessen |
+|---|---|
+| Gelber Kasten | y 479..564 – **85 px** hoch |
+| Grüner Knopf „✓ Als Track übernehmen" | bei y 564 **hart abgeschnitten** |
+| Titel | endet mit **„sichern…"** – im Code steht „sichern" ohne Punkte |
+
+Die drei Punkte sind die Signatur einer Textklemmung. In Build bo stand hier
+`display: -webkit-box; -webkit-line-clamp: 2; overflow: hidden` – der Kasten durfte nur zwei
+Zeilen hoch sein. Der Titel braucht bei 360 px schon zwei Zeilen, also war der Kasten voll und
+die Knopfreihe fiel weg. Build bq hatte die Regel entfernt – die drei Punkte im Bild zeigen
+aber, dass auf dem Server noch ein Stand davor lief.
+
+### Und das „bewegt sich ein bisschen nach oben"
+Der gelbe Kasten hatte **gar keinen Klick-Handler**. Getroffen wurde die Statuszeile darunter –
+die ist auf `max-height: 3.1em` gekappt und klappt bei einem Tipp auf `12em` auf. Genau das
+ist das kurze Nach-oben-Rucken. Der Satz darin war ebenfalls abgeschnitten („…Die Aufzeichnung
+kannst du"), das Aufklappen hatte also einen Sinn – aber es sieht aus wie eine Schaltfläche,
+die nicht funktioniert. Nachgemessen: Ein Tipp auf den Kasten löste **keine** Reaktion aus.
+
+### Behoben
+**1. Keine Klemmung mehr – mit Notaus.** Der Kasten trägt jetzt inline
+`-webkit-line-clamp: unset !important` und `overflow-y: auto` mit `max-height`. Inline schlägt
+jedes Stylesheet: Selbst wenn irgendwo noch ein altes Build mit der Klemmregel läuft, kann sie
+nicht mehr durchschlagen. Wird der Platz knapp, scrollt der Inhalt – statt abgeschnitten zu
+werden. (`display` bleibt bewusst außen vor: Ein `display: block !important` inline würde
+`d-none` aushebeln und den Kasten dauerhaft zeigen.)
+
+**2. Ein Tipp kann nie mehr wirkungslos sein.** Die ganze gelbe Fläche führt jetzt zur
+Tourseite in den Abschnitt „Live-Aufzeichnung" – dort stehen Übernehmen, GPX-Download und
+Löschen. Knöpfe, Links und das ⓘ machen weiter ihre eigene Sache. Die Fläche zeigt das auch
+(cursor + Titel).
+
+**3. Die Statuszeile zeigt bei Fahrtende den ganzen Satz** (`body.rec-hint-an` hebt die
+Kappung auf) und führt bei einem Tipp ebenfalls zur Tourseite, statt nur aufzuklappen.
+Während der Fahrt bleibt das Aufklappen wie gehabt.
+
+### Getestet
+`tests/test_build_by.py` – 13 Tests: keine echte Klemmregel mehr im Stylesheet, Notaus inline
+vorhanden, `d-none` bleibt wirksam, Handler in beiden Zweigen (Vollbild/normal), Knöpfe nicht
+geschluckt, kein doppelter Handler, Statuszeile bei Fahrtende offen und klickbar.
+Nachgestellt im DOM: Tipp auf die Fläche → Tourseite, Tipp auf den grünen Knopf → eigene
+Aktion, Tipp auf die Statuszeile bei Fahrtende → Tourseite, während der Fahrt → klappt auf.
+Volle Suite: **590 Tests, alle grün.**
+
+---
+
 ## 1.5.0 – 2026-11-09 (Build bx) – Hinweis „In Galerie sichern" war nicht zu sehen
 - **Meldung:** „Habe ein Foto gemacht in der Live Karte, aber einen anschließenden Hinweis
   ‚In Galerie sichern' sehe ich nicht." (nach Build bw)
