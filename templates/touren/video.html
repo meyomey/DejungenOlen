@@ -168,7 +168,7 @@
           {% endif %}
           <div class="mb-2">
             <label class="form-label small fw-semibold mb-1">Format für</label>
-            <div class="row g-2">
+            <div class="row g-2 format-wahl">
               <div class="col-4">
                 <label class="d-block">
                   <input type="radio" name="video_format" value="reels" checked class="d-none">
@@ -1370,5 +1370,45 @@ document.querySelectorAll('.format-btn').forEach(btn => {
 .active-format { background: var(--djo-navy) !important; color: #fff !important; }
 .active-format small.text-muted,
 .active-format .text-muted { color: rgba(255,255,255,.8) !important; }
+
+/* Build bz: „Der Text läuft über die Begrenzungen."
+   Gemessen (Screenshot 500 px breit): Die Format-Kacheln sind 119 px breit, innen bleiben
+   nach dem Padding ~103 px. Die Beschriftungen brauchen aber:
+       „Insta · TikTok · WhatsApp"  ~175 px
+       „Facebook · Insta 1:1"       ~140 px
+       „Insta · Facebook 4:5"       ~140 px
+       „YouTube · Desktop"          ~119 px
+   Ursache: `static/css/style.css` setzt global `.btn { white-space: nowrap; }` (Build 11-06i,
+   damit „Anwenden" nicht mitten im Wort bricht). Diese Kacheln tragen die Klasse `btn` als
+   reine Optik – der Text kann deshalb nirgends umbrechen und läuft in die Nachbarkachel
+   („Quadratisch" ragte in „Feed-Post", „Insta · Facebook 4:5" in „Facebook · Insta 1:1").
+
+   Fix: Nur hier darf umbrochen werden. Die Regel greift bewusst NUR auf .format-btn und
+   lässt das globale Einzeilig-Gebot für echte Knöpfe unangetastet. */
+.format-btn,
+.format-btn * { white-space: normal !important; }
+
+/* Lange Wörter (z. B. ein zusammenhaengendes „WhatsApp") duerfen zusaetzlich getrennt
+   werden, statt aus der Kachel zu laufen. */
+.format-btn { overflow-wrap: anywhere; }
+
+/* Die Zeile mit den Plattformen ist die zweite Zeile der Kachel – sie bekommt etwas
+   weniger Zeilenabstand, damit die Kachel bei drei Zeilen nicht unnötig hoch wird. */
+.format-btn small { line-height: 1.25; display: block; }
+
+/* Damit die Kacheln in einer Reihe trotz unterschiedlich langer Beschriftung gleich hoch
+   bleiben (sonst stehen sie „auf Lücke"), wird die Höhe gestreckt. Das Label muss dafür
+   die volle Spaltenhöhe bekommen – sonst kann das Kind nicht mitwachsen.
+   Bewusst OHNE eigenes display: Bootstrap-.btn ist bereits inline-block mit zentriertem
+   Text; ein flex-Container würden die Zeilen anders verteilen als vorher. */
+.format-wahl > [class*="col-"] > label { height: 100%; }
+.format-btn { height: 100%; }
+
+/* Auf sehr schmalen Fenstern (unter ~420 px) sind drei Spalten zu eng: Aus 103 px
+   Innenbreite werden dann ~80 px, und selbst umbrochene Wörter wie „Quadratisch"
+   passen kaum. Dort zwei Spalten – die Kacheln werden breiter statt höher. */
+@media (max-width: 430px) {
+  .format-wahl > [class*="col-"] { flex: 0 0 auto; width: 50%; }
+}
 </style>
 {% endblock %}

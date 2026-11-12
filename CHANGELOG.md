@@ -13,6 +13,59 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-09 (Build bz) – Text in der Format-Auswahl läuft über die Begrenzungen
+- **Meldung:** „Der Text läuft über die Begrenzungen." (Screenshot: Format-Auswahl beim
+  Tour-Video, alle fünf Kacheln)
+
+### Im Screenshot nachgemessen (500 px breit)
+| | gemessen |
+|---|---|
+| Kachelbreite | **118 px**, innen nach Padding ~102 px |
+| „Insta · TikTok · WhatsApp" | braucht **~143 px** |
+| „Insta · Facebook 4:5" | braucht **~112 px** |
+| „Facebook · Insta 1:1" | braucht **~112 px** |
+| Container | 377 px (x 65..442), Kachelabstand 11 px |
+
+### Ursache
+`static/css/style.css` setzt global:
+
+```css
+.btn { white-space: nowrap; }
+```
+
+Die Regel stammt aus Build 11-06i und ist dort richtig – sie verhindert, dass „Anwenden"
+mitten im Wort umbricht. Die Format-Kacheln tragen `btn` aber nur als **Optik**: Sie sind
+`<div class="btn btn-outline-djo …">` mit zwei Textzeilen. Mit `nowrap` kann der Text
+nirgends umbrechen und läuft in die Nachbarkachel. Im Bild deutlich zu sehen:
+„Quadratisch" ragt in „Feed-Post", und „Insta · Facebook 4:5" überlappt mit
+„Facebook · Insta 1:1".
+
+### Behoben
+**1. Umbruch nur hier.** `.format-btn` und alles darin darf umbrechen – das globale
+Einzeilig-Gebot für echte Knöpfe bleibt unangetastet. Zusätzlich `overflow-wrap: anywhere`,
+damit auch ein langes Wort wie „WhatsApp" getrennt wird statt herauszulaufen.
+
+**2. Kacheln bleiben gleich hoch.** `height: 100%` auf Label und Kachel, damit eine Reihe
+nicht „auf Lücke" steht, wenn eine Beschriftung zwei Zeilen braucht. Bewusst **ohne** eigenes
+`display: flex`: Bootstrap-`.btn` ist bereits `inline-block` mit zentriertem Text, ein
+Flex-Container würde die Zeilen anders verteilen als vorher.
+
+**3. Unter 430 px zwei Spalten.** Nachgerechnet: Bei drei Spalten bleiben auf einem
+360-px-Handy nur ~80 px Innenbreite – selbst umbrochene Wörter passen dort kaum. Mit zwei
+Spalten sind die Kacheln 195 px breit und **alle** Beschriftungen einzeilig.
+
+**4. Regeln sauber begrenzt.** Das `<style>` steht global im Dokument; ein `.row .col-4`
+hätte auch andere Seiten getroffen. Alles hängt jetzt an `.format-wahl`.
+
+### Getestet
+`tests/test_build_bz.py` – 15 Tests: Umbruch erlaubt (auch für `small`), globales
+Einzeilig-Gebot unverändert, kein veraltetes `word-break: break-word`, Regeln an
+`.format-wahl` gebunden, gleiche Kachelhöhe, Media-Query für 2 Spalten, alle fünf Formate
+und Beschriftungen unverändert. Nachgerechnet für 500/430/390/360 px: keine Überlappung mehr.
+Volle Suite: **605 Tests, alle grün.**
+
+---
+
 ## 1.5.0 – 2026-11-09 (Build by) – Tipp auf den Hinweis tat nichts
 - **Meldung:** „Man klickt auf den Hinweis Bereich und nichts passiert, es bewegt sich nur ein
   bisschen nach oben." (Screenshot: Fahrt beendet, gelber Kasten mit „✓ Als Track übernehmen")
