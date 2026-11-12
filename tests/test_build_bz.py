@@ -29,7 +29,7 @@ import os
 import re
 import unittest
 
-from tests.base import AppTestCase, ROOT
+from tests.base import AppTestCase, ROOT, appmod
 
 VIDEO = os.path.join(ROOT, 'templates', 'touren', 'video.html')
 CSS = os.path.join(ROOT, 'static', 'css', 'style.css')
@@ -126,6 +126,36 @@ class SchmaleFensterTest(AppTestCase):
         Nachbarkacheln überlappen nicht mehr (weil umbrochen wird)."""
         innen_zwei = 195 - 16
         self.assertGreater(innen_zwei, 143, 'längster Text (143 px) muss einzeilig passen')
+
+
+class DatumTest(AppTestCase):
+    """Build bz: Der Stempel trug noch das Datum vom 09.11., obwohl am 12.11. gebaut wurde.
+
+    Das ist im Alltag leicht zu übersehen: Der Footer ist die einzige Stelle, an der man
+    auf dem Server ablesen kann, welcher Stand läuft. Steht dort ein altes Datum, sucht
+    man den Fehler im Code statt im Upload – genau das ist bei Build bx passiert.
+    `make_deploy_zip.py` warnt beim ZIP-Bau schon davor; dieser Test prüft es zusätzlich
+    bei jedem Testlauf.
+    """
+
+    def test_build_datum_ist_heute_oder_spaeter(self):
+        import datetime as _dt
+        build = appmod.APP_BUILD                       # z. B. '2026-11-12 bz'
+        datum = build.split(' ')[0]
+        gebaut = _dt.date.fromisoformat(datum)
+        heute = _dt.date.today()
+        self.assertLessEqual(
+            gebaut, heute,
+            f'APP_BUILD ({build}) liegt in der Zukunft – Tippfehler im Datum?')
+        # Grosszuegig: das Datum darf hoechstens 2 Tage alt sein. Aelter heisst fast
+        # immer, dass beim Ausliefern vergessen wurde, den Stempel zu setzen.
+        self.assertGreaterEqual(
+            gebaut, heute - _dt.timedelta(days=2),
+            f'APP_BUILD traegt das Datum {datum}, heute ist {heute}. Bitte in app.py '
+            f'auf das Auslieferungsdatum setzen (z. B. \'{heute} bz\').')
+
+    def test_build_hat_die_form_datum_buchstabe(self):
+        self.assertRegex(appmod.APP_BUILD, r'^\d{4}-\d{2}-\d{2} [a-z]{2}$')
 
 
 class MarkupTest(AppTestCase):

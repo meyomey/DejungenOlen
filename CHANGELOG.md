@@ -13,7 +13,7 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
-## 1.5.0 – 2026-11-09 (Build bz) – Text in der Format-Auswahl läuft über die Begrenzungen
+## 1.5.0 – 2026-11-12 (Build bz) – Text in der Format-Auswahl läuft über die Begrenzungen
 - **Meldung:** „Der Text läuft über die Begrenzungen." (Screenshot: Format-Auswahl beim
   Tour-Video, alle fünf Kacheln)
 
@@ -66,7 +66,7 @@ Volle Suite: **605 Tests, alle grün.**
 
 ---
 
-## 1.5.0 – 2026-11-09 (Build by) – Tipp auf den Hinweis tat nichts
+## 1.5.0 – 2026-11-11 (Build by) – Tipp auf den Hinweis tat nichts
 - **Meldung:** „Man klickt auf den Hinweis Bereich und nichts passiert, es bewegt sich nur ein
   bisschen nach oben." (Screenshot: Fahrt beendet, gelber Kasten mit „✓ Als Track übernehmen")
 
@@ -117,7 +117,7 @@ Volle Suite: **590 Tests, alle grün.**
 
 ---
 
-## 1.5.0 – 2026-11-09 (Build bx) – Hinweis „In Galerie sichern" war nicht zu sehen
+## 1.5.0 – 2026-11-11 (Build bx) – Hinweis „In Galerie sichern" war nicht zu sehen
 - **Meldung:** „Habe ein Foto gemacht in der Live Karte, aber einen anschließenden Hinweis
   ‚In Galerie sichern' sehe ich nicht." (nach Build bw)
 
@@ -169,7 +169,7 @@ Ersatzweg, schließt sich nach Erfolg und über ✕. Volle Suite: **577 Tests, a
 
 ---
 
-## 1.5.0 – 2026-11-09 (Build bw) – Foto aus der App landet nicht in der Handy-Galerie
+## 1.5.0 – 2026-11-11 (Build bw) – Foto aus der App landet nicht in der Handy-Galerie
 - **Meldung:** „Habe ein Foto innerhalb der App gemacht, das erscheint auch auf der Tourkarte.
   Das Foto ist aber nicht in der Galerie des Handys zu finden. Dort hätte ich es auch gerne."
 
@@ -229,7 +229,7 @@ Volle Suite: **565 Tests, alle grün.**
 
 ---
 
-## 1.5.0 – 2026-11-09 (Build bv) – Nachgesendete Punkte gingen verloren (19,3 statt ~40 km)
+## 1.5.0 – 2026-11-11 (Build bv) – Nachgesendete Punkte gingen verloren (19,3 statt ~40 km)
 - **Meldung:** nach Build bu: „Eigentlich war die Strecke heute ungefähr 40 km lang" – aufgezeichnet
   waren **19,3 km** bei 6:36 h. Dazu: „Größtenteils war der Stromsparmodus an und auch öfter
   Display aus."
@@ -285,7 +285,7 @@ waren also keine Kurven, sondern **fehlende Abschnitte**.
 Nachsende-Sperre und Sortierung, Puffergröße, Aussetzer-Filter (darf den Zustand **nicht**
 verändern), 8-Stunden-Vorwarnung, und ein Syntax-Test des ganzen Template-JavaScripts.
 
-## 1.5.0 – 2026-11-09 (Build bu) – Stromsparmodus zeichnete fast nur Geraden
+## 1.5.0 – 2026-11-11 (Build bu) – Stromsparmodus zeichnete fast nur Geraden
 - **Meldung:** „Das tracken im Stromsparmodus ist nicht brauchbar. Es sind fast nur Geraden
   sichtbar." (Bild 18: eine 6:36-h-Tour, 19,3 km – die Spur auf der Karte ist ein Dreieck mit
   schnurgeraden Kanten, kein Wegverlauf.)
