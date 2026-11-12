@@ -1,10 +1,10 @@
-# Übergabe – Stand Build `ch`
+# Übergabe – Stand Build `ci`
 
 > **Zweck:** Diese Datei ist der Einstieg für einen frischen Chat. Sie beschreibt, wie in
 > diesem Projekt gearbeitet wird, was zuletzt passiert ist und was als Nächstes ansteht.
 > **Bei jedem neuen Build aktuell halten** (Abschnitt 3 und 6).
 >
-> Stand: 2026-11-12, Build `2026-11-12 ch`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
+> Stand: 2026-11-12, Build `2026-11-12 ci`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
 > HEAD siehe `git log -1`, Arbeitsbaum sauber.
 
 ---
@@ -50,7 +50,7 @@ dann, dass hinter dem Symptom zwei Ursachen stecken (so war es bei Build `ca`).
 ```bash
 cd /home/user/DejungenOlen
 .venv/bin/python -m unittest discover -s tests -q      # volle Suite, ~115 s
-.venv/bin/python -m unittest tests.test_build_cg -q    # nur ein Build
+.venv/bin/python -m unittest tests.test_build_ci -q    # nur ein Build
 .venv/bin/python -m pyflakes app.py tests/             # Lint
 ```
 
@@ -81,9 +81,18 @@ schnellste Weg, Bilder zu prüfen** – siehe Rezept in Abschnitt 5.
 
 ---
 
-## 3. Stand jetzt: Build `2026-11-12 ch` (fertig, ausgeliefert)
+## 3. Stand jetzt: Build `2026-11-12 ci` (fertig, ausgeliefert)
 
-### 3.0 Build `cg` – Hintergrund-Tracking über Traccar Client ✅
+### 3.0 Build `ci` – „Tracker hat Vorfahrt" ✅
+
+> „Wenn Traccar Client aktiv ist kann man trotzdem die Knöpfe drücken. Das muss entwirrt werden?"
+
+Aktiv = `LiveLocation.tracker_at` < 15 min (`TRACKER_ACTIVE_S`, `_tracker_ago/_tracker_active`).
+Dann: Server verwirft Browser-Punkte (`tracker: true`), „Beenden" setzt kein Siegel; Live-Karte
+zeigt „📡 Tracker-App läuft" (`trackerAktiv/refreshTrackerUi` in live.html), Tourseite „Tracker
+läuft". Rückfall nach 15 min Stille. Feldtest mit echtem Traccar steht weiter aus.
+
+### 3.0a Build `cg` – Hintergrund-Tracking über Traccar Client ✅
 
 > „Wird noch getrackt wenn Display aus ist oder eine andere App genutzt wird?" → nein (Browser-
 > Grenze). „Hintergrund Tracking wäre schon gut zu haben" · „traccar client habe ich eh schon installiert"
@@ -147,9 +156,9 @@ Einkehr)“. Streckenfunde nur noch auf der Tour-Seite (Build u).
 | | |
 |---|---|
 | `APP_VERSION` | `1.5.0` |
-| `APP_BUILD` | `2026-11-12 ch` (app.py Z. 93) |
-| Tests | `tests/test_build_cg.py` **17**, volle Suite **692 grün** (~130 s) |
-| Pakete | `deploy/deploy_v1.5.0_2026-11-12ch_aenderungen.zip` · `…_komplett.zip` |
+| `APP_BUILD` | `2026-11-12 ci` (app.py Z. 93) |
+| Tests | `tests/test_build_ci.py` **13**, volle Suite **705 grün** (~140 s) |
+| Pakete | `deploy/deploy_v1.5.0_2026-11-12ci_aenderungen.zip` · `…_komplett.zip` |
 | Geprüft | Simulation vorher/nachher (Node, echter Template-Code), ZIP entpackt + Tests darin |
 
 **Hinweis zur Paket-Probe:** Zwei Tests (`test_az_deploy_date_freshness`,
@@ -240,7 +249,7 @@ Wenn eine neue Meldung kommt:
 1. Wörtlich zitieren, Akzeptanz im Code prüfen.
 2. Nachstellen (Skript, das den Fehler zeigt).
 3. Beheben, Gegenprobe, Tests, CHANGELOG.
-4. Buchstabe hochzählen: nach `ch` kommt `ci`, `cj`, … (immer Kleinbuchstaben, `z` → `aa`).
+4. Buchstabe hochzählen: nach `ci` kommt `cj`, `ck`, … (immer Kleinbuchstaben, `z` → `aa`).
 5. `APP_BUILD` auf das **heutige** Datum + neuen Buchstaben setzen.
 6. Deploy-Pakete, Probe, Commit, Push.
 7. **Diese Datei aktualisieren** (Abschnitt 3, 4 und 6).
@@ -279,6 +288,7 @@ Wenn eine neue Meldung kommt:
 
 | Build | Datum | Thema |
 |---|---|---|
+| `ci` | 2026-11-12 | „Tracker hat Vorfahrt": Browser-Punkte/Beenden bei aktivem Tracker, Knöpfe wechseln |
 | `ch` | 2026-11-12 | Traccar-Anleitung an neue App-Version angepasst (Entfernung 10 m statt Frequenz) |
 | `cg` | 2026-11-12 | Hintergrund-Tracking: `/api/traccar` für Traccar Client, Profilkarte mit Token |
 | `cf` | 2026-11-12 | Audit 9: sechs Tracking-Lücken (Aussetzer-Filter, Nachsenden, Beenden, 409-Blockade, 3-s-Filter, at-500) |
@@ -299,8 +309,8 @@ Wenn eine neue Meldung kommt:
 ## 8. Text zum Einfügen in den neuen Chat
 
 > Wir machen mit der App „DejungenOlen" weiter. Lies bitte zuerst `UEBERGABE.md` im
-> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 ch` ist
-> fertig und ausgeliefert (Hintergrund-Tracking über Traccar Client, `/api/traccar`), Arbeitsbaum
-> sauber, alle 692 Tests grün; Feldtest mit Traccar steht aus. Arbeite weiter wie dort beschrieben: Meldung wörtlich
+> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 ci` ist
+> fertig und ausgeliefert (Traccar-Hintergrund-Tracking mit Vorfahrtsregel), Arbeitsbaum
+> sauber, alle 705 Tests grün; Feldtest mit Traccar steht aus. Arbeite weiter wie dort beschrieben: Meldung wörtlich
 > nehmen, am echten Code nachmessen, mit echten Daten nachstellen, beheben, Gegenprobe,
 > Tests, CHANGELOG, neuer Build-Buchstabe (`cf`), Deploy-Pakete, Push.

@@ -13,6 +13,34 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build ci) – „Tracker hat Vorfahrt": Traccar- und Browser-Nutzer nebeneinander
+- **Meldung:** „Wie geht man am besten damit um wenn jemand Traccar Client nutzt und ein anderer
+  nicht? ‚Fahrt starten' Button ist ja auch noch da in der Live Karte und Fahren auf der Tourseite.
+  Wenn Traccar Client aktiv ist kann man trotzdem die Knöpfe drücken. Das muss entwirrt werden?"
+
+### Vorher (am Code)
+- Beide Wege schrieben in dieselbe Aufzeichnung → doppelte Punkte, zittrige Spur, doppelter Akku.
+- „Beenden" im Browser setzte das Ende-Siegel → Traccar-Punkte 10 min ignoriert, dann „neue
+  Fahrt", obwohl Traccar nie aufgehört hatte.
+- Kein Hinweis in der App, dass der Tracker ankommt → man drückt „Fahren" aus Unsicherheit.
+
+### Regel jetzt – Tracker hat Vorfahrt (aktiv = letzter Tracker-Punkt < 15 min)
+- **Server:** `LiveLocation.tracker_at` (Migration automatisch). Bei aktivem Tracker schreibt
+  `location_update` keinen Browser-Punkt (Antwort `tracker: true, tracker_ago`), und
+  `location_stop` setzt kein Siegel und löscht den Standort nicht. Payload je Standort: `tracker_ago`.
+- **Live-Karte:** Knopf **„📡 Tracker-App läuft"** (blau, nur Hinweis) statt „Fahrt starten"; kein
+  eigenes GPS, kein Wake-Lock nötig. Läuft schon eine Browser-Fahrt und der Tracker setzt ein →
+  Browser hört auf zu senden (Meldung). Tracker 15 min still → „Fahrt starten" kommt zurück mit
+  Hinweis „Tracker seit HH:MM still". Tooltip am Pin: „· 📡 Tracker".
+- **Tourseite:** „Tracker läuft" (blau, führt zur Live-Karte) statt „Fahren".
+- Wer kein Traccar nutzt: unverändert.
+
+### Tests
+`tests/test_build_ci.py` (13): Server (tracker_at, Browser-Punkt verworfen/wieder angenommen,
+Beenden ohne/mit Tracker, Payload, Live-Karte/Tourseite, Migration) + Client-Logik aus dem
+Template in Node (Umschalten, Knopf stumm, fremder Tracker zählt nicht, Rückfall nach 15 min).
+Angepasst: `test_build_ad`, `test_build_ag`, `test_build_cg`. Suite **705 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build ch) – Traccar-Anleitung an die neue App-Version angepasst
 - **Anlass:** Screenshot der Traccar-Client-Einstellungen (2025er-Oberfläche): kein Feld „Frequenz"
   mehr, stattdessen **Entfernung (Meter)** und **Meldeintervall bei Stillstand**. Die Anleitung
