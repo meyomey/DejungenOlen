@@ -1,3 +1,112 @@
+# Audit-Bericht – De jungen Olen, Audit 9 (Version 1.5.0, Build ce → cf, 12.11.2026)
+
+Neuntes Komplett-Audit, Stand Build **ce**. Auftrag: „Mache ein komplettes Audit, gibt es
+irgendwo Lücken in den Funktionen? Check auch ob das Tracken mit und ohne Stromsparmodus optimal
+funktioniert." Scope: der Zuwachs seit Audit 8 (Build bs, 09.11.) – **Builds bt–ce** (Tracking bu/bv,
+Foto-Galerie bw–by, Video-Vorschau/Wetter cb–ce) – und als Schwerpunkt der **komplette Sendepfad
+der Live-Aufzeichnung** (`templates/touren/live.html` + `location_update`/`_live_track_add` in
+`app.py`), beide Modi, mit simulierten Fahrten gegen den **echten Template-Code**.
+
+Ergebnis im Satz: **keine Sicherheitslücke, aber sechs Lücken im Tracking** – davon eine, die im
+Normalmodus bei 1-s-GPS ab ~22 km/h die Aufzeichnung praktisch stilllegte (1 Punkt auf 4,2 km),
+und drei, durch die gepufferte Punkte nach „Display aus" / „Beenden" verloren gingen. Alle in
+Build **cf** behoben.
+
+## Vorgehen
+
+- **Statisch:** `py_compile` + **pyflakes** → nur die 3 bekannten `# noqa`-Verfügbarkeitstests;
+  gefährliche Muster (`eval`, `os.system`, `shell=True`, `pickle`, rohe SQL-Strings) **0**;
+  **36 Inline-`<script>`-Blöcke** + `sw.js`/`map-touch.js`/`osm_gastro.js` syntaktisch geprüft →
+  **0 Fehler**; **17 `|safe`-Stellen** – alle JSON-Konstanten aus `json.dumps`, kein Nutzertext
+- **Routen-Sweep:** **87 GET-Routen × 3 Rollen** (Admin/Orga/Mitglied) → **kein 500, keine
+  Ausnahme**; Nicht-200 nur erwartbar (Token-Routen 404, `/api/wetter*` 400 ohne Parameter,
+  Overpass 502 wegen Netzsperre, VAPID 503 ohne Schlüssel); Mitglied 24×403, Orga 18×403 =
+  Rollenschutz greift
+- **Mandanten-/Eingabeproben am Tracking-API:** Update an Tour der fremden Gruppe → **404**;
+  `lat="abc"` → 400; `lat=95` → 400; kein JSON → 400; `accuracy="x"` → 200 (ignoriert);
+  `at=1e30` / `NaN` → **500 (→ B6)**
+- **Tracking-Simulation (Kern des Audits):** Der Block aus `onPos` (Auto-Pause + Aussetzer-Filter
+  + Drossel) wird **unverändert aus dem Template geschnitten** und in Node gegen generierte
+  Fahrten laufen gelassen: Geraden mit 90°-Bögen, Rauschen ±3–4 m, Fix-Takt 1 s und 3 s, Tempo
+  4–60 km/h, Ampel, Einkehr, 60 s ohne Fix, einzelner Aussetzer 200 m quer – **je Szenario mit und
+  ohne Sparmodus**, gemessen: gesendete Punkte, Spurlänge gegen wahre Länge, größte Lücke.
+  Dazu `sicherNachsenden()` als echte Funktion mit simuliertem `fetch` (300 Punkte, 409 für
+  einen Punkt, Netzabbruch, Server-500, zu alte Punkte) und `_live_track_add` direkt.
+- **Tests:** **676** (vorher 654), 22 neue in `tests/test_build_cf.py`
+
+## Befunde
+
+### B1 (hoch) – Aussetzer-Filter sperrte die Aufzeichnung dauerhaft (Normalmodus ab ~22 km/h)
+`kmhFix = moved / dtFixS` (Build bv): `moved` = Strecke seit dem zuletzt **gesendeten** Punkt,
+`dtFixS` = Zeit seit dem letzten **Fix**. Nach dem dritten per Takt übersprungenen Fix lag der
+Quotient über 120 km/h → Fix verworfen → `lastPos` rückt nicht nach → der nächste Fix ist noch
+weiter weg → **Dauersperre**. Im Sparmodus (6-s-Takt) trat es erst ab ~36 km/h (1-s-GPS) bzw.
+~60 km/h (3-s-GPS) auf – deshalb fiel es bei den Sparmodus-Tests aus bu/bv nicht auf.
+
+| Szenario | Modus | vorher Punkte / Spur | nachher |
+|---|---|---|---|
+| 25 km/h, GPS jede 1 s, 10 min | Normal | **1 / 0,00 km** (echt 4,16) | 98 / 4,18 km |
+| 30 km/h, GPS 1 s | Spar | 89 / 2,97 km (echt 4,99) | 151 / 5,09 km |
+| 40 km/h, GPS 3 s | Normal | **1 / 0,00 km** (echt 6,63) | 52 / 6,61 km |
+| Abfahrt 45 km/h kurvig | Normal | 9 / 0,35 km (echt 8,06, **−95,6 %**) | 70 / 7,99 km |
+| Radtour 18 km/h kurvig, 3-s-GPS | beide | unauffällig (240 / 355 Punkte) | unverändert |
+| Aussetzer 200 m quer | beide | übersprungen | weiter übersprungen (+1,0 % / +1,7 %) |
+
+Fix: `lastFixPos` – der Filter misst **Fix gegen Fix**.
+
+### B2 (hoch) – Nachsenden leerte den Puffer nur zu 60 Punkten je Aufwachen
+`sicherNachsenden()` nahm `gesichert.slice(0, 60)` und startete danach nichts mehr. Gemessen mit
+der echten Funktion: **300 im Puffer → 60 gesendet, 240 bleiben liegen.** Eine Stunde Display
+aus im Sparmodus sind ~600 Punkte. Fix: Blöcke laufen, bis der Puffer leer ist (max. 2 400 je
+Lauf); zusätzliche Auslöser: 5-s-Wächter, `online`-Event, nach jeder erfolgreichen
+Normalsendung, beim Laden der Seite, beim Beenden. Nachher: **300 → 300 gesendet, 0 offen**.
+
+### B3 (hoch) – Nach „Beenden" waren gepufferte Punkte verloren
+`stopShare()` setzte `sharing=false` (→ `sicherNachsenden` brach mit `!sharing` ab) und das
+Ende-Siegel (`LiveStop`) ließ jeden weiteren Punkt mit **409** abprallen. Fix: Der Server nimmt
+Punkte, deren **Aufnahmezeit vor dem Ende** liegt, in die Aufzeichnung (`late: true`, **kein**
+Standort-Update – also kein Zombie auf der Karte); Zombie-Sender (`at` ≈ jetzt oder ohne `at`)
+bekommen weiter 409. Der Client sendet auch ohne `sharing` nach und stößt das vor dem Siegel an.
+
+### B4 (mittel) – Ein endgültig abgelehnter Punkt blockierte den Lauf für immer
+`if (!r.ok) break;` – ein 403/409 für einen Punkt beendete den Lauf, der Punkt blieb an Position 1
+im Puffer, beim nächsten Aufwachen dasselbe. Fix: 400/403/409 → Punkt fliegt raus, weiter; 5xx
+und Netzfehler → Abbruch, später erneut. Punkte älter als 6 h (nimmt der Server ohnehin nicht
+mit Aufnahmezeit) werden vorab verworfen. Gemessen: 1×409 unter 300 → **299 gesendet, 0 offen**.
+
+### B5 (mittel) – Server-Dublettenfilter 3 s traf Kurvenpunkte und Nachzügler
+`_live_track_add`: `dt_s < 3 → verwerfen`. Die Kurven-Sofortsendung (Build bu) schickt bei
+1-s-GPS Punkte 1–2 s auseinander – auf der 30-min-Runde verwarf der Server **66 von 365**
+(Normal) bzw. **76 von 434** (Spar) – genau die Kurvenpunkte, die bu retten wollte. Und ein
+Nachzügler, der nach einem frischeren Punkt ankommt (Funkloch bei Display an), hatte **negatives
+dt** → ebenfalls „Doppelsendung". Fix: Schwelle **1 s**; ältere Punkte werden zeitrichtig
+einsortiert, nur eine gleiche Sekunde gilt als Dublette.
+
+### B6 (niedrig) – `at=1e30` oder `NaN` → HTTP 500
+`datetime.utcfromtimestamp()` warf OverflowError/ValueError. Fix: abgefangen, Zeit ignoriert → 200.
+
+## Bestätigt (kein Befund)
+- Sparmodus-Drossel (6 s / 20 s Stand / 6 m, Kurve ≥ 20° sofort) und Normalmodus (10 s / 30 s /
+  15 m) liefern bei 18 km/h beide Spuren mit < 3 % Längenfehler; der Sparmodus hat in **jedem**
+  Szenario mehr Punkte als der Normalmodus (Test `sparmodus_liefert_mehr_punkte_als_normal`)
+- 60 s ohne Fix (Wald) → eine Lücke von ~310 m, kein Aussetzer-Fehlalarm, Spur +0,5 %/+1,9 %
+- Ampel 90 s: keine Fehl-Pause, Spur +0,2 %/+3,1 %
+- `at`-Plausibilität (−6 h / +2 min), 8-h-Grenze mit Vorwarnung, Puffer 1 200, Sortierung nach
+  Aufnahmezeit, `nachsendenLaeuft`-Sperre – alles wie in bv beschrieben vorhanden
+- Mandantentrennung am Tracking-API (fremde Gruppe 404 für Update/Get/Live/Stop)
+
+## Anmerkungen (nicht geändert)
+- **Auto-Pause bei stark rauschendem Stand:** Mit normalverteiltem Rauschen σ = 12 m je Achse
+  (Einkehr im Gebäude) wird die Pause in der Simulation **nicht** erkannt – einzelne Fixe
+  springen > 25 m und setzen den Anker zurück. Mit gleichverteiltem ±20 m (Messung aus bv)
+  klappt es. Bleibt nach Nutzerwunsch („erst fahren und schauen") offen; das kostet keine
+  Kilometer, nur ein Knäuel am Pausenort.
+- Schieben mit 4 km/h: Spur +19–23 % (Rauschen 4 m bei 26-m-Punktabstand) – physikalisch, kein
+  Codefehler; Glättung wäre ein eigenes Thema.
+- Browser-Vorschau Video weiterhin 1280×720 statt gewähltem Format (bekannt seit cd).
+
+---
+
 # Audit-Bericht – De jungen Olen, Audit 8 (Version 1.5.0, Build br → bs, 09.11.2026)
 
 Achtes Komplett-Audit, Stand Build **br**. Scope: der Zuwachs seit Audit 7 (Build an,

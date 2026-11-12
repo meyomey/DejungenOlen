@@ -125,7 +125,7 @@ class NachsendenEntkoppeltTest(AppTestCase):
     def test_sperre_gegen_mehrfachstart(self):
         js = _live()
         self.assertIn('let nachsendenLaeuft = false;', js)
-        self.assertIn('if (nachsendenLaeuft || !gesichert.length || !sharing) return;', js)
+        self.assertIn('if (nachsendenLaeuft || !gesichert.length) return;', js)   # Build cf: auch nach dem Beenden
         self.assertIn('finally { nachsendenLaeuft = false; }', js)
 
     def test_sortiert_nach_aufnahmezeit(self):
@@ -156,13 +156,13 @@ class AussetzerTest(AppTestCase):
 
     def test_filter_vorhanden(self):
         js = _live()
-        self.assertIn('if (kmhFix > 120 && moved > 60) {', js)
+        self.assertIn('if (kmhFix > 120 && seitFixM > 60) {', js)   # Build cf: Fix gegen Fix
         self.assertIn('let lastOwnAtVorher = 0;', js)
 
     def test_filter_veraendert_den_zustand_nicht(self):
         """Wichtig: Ein Aussetzer darf lastPos NICHT überschreiben, sonst blockiert er danach."""
         js = _live()
-        stelle = js.index('if (kmhFix > 120 && moved > 60) {')
+        stelle = js.index('if (kmhFix > 120 && seitFixM > 60) {')
         snippet = js[stelle:stelle + 320]
         self.assertIn('return;', snippet)
         self.assertNotIn('lastPos =', snippet)

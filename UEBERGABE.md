@@ -1,10 +1,10 @@
-# Übergabe – Stand Build `ce`
+# Übergabe – Stand Build `cf`
 
 > **Zweck:** Diese Datei ist der Einstieg für einen frischen Chat. Sie beschreibt, wie in
 > diesem Projekt gearbeitet wird, was zuletzt passiert ist und was als Nächstes ansteht.
 > **Bei jedem neuen Build aktuell halten** (Abschnitt 3 und 6).
 >
-> Stand: 2026-11-12, Build `2026-11-12 ce`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
+> Stand: 2026-11-12, Build `2026-11-12 cf`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
 > HEAD siehe `git log -1`, Arbeitsbaum sauber.
 
 ---
@@ -50,7 +50,7 @@ dann, dass hinter dem Symptom zwei Ursachen stecken (so war es bei Build `ca`).
 ```bash
 cd /home/user/DejungenOlen
 .venv/bin/python -m unittest discover -s tests -q      # volle Suite, ~115 s
-.venv/bin/python -m unittest tests.test_build_ce -q    # nur ein Build
+.venv/bin/python -m unittest tests.test_build_cf -q    # nur ein Build
 .venv/bin/python -m pyflakes app.py tests/             # Lint
 ```
 
@@ -81,9 +81,23 @@ schnellste Weg, Bilder zu prüfen** – siehe Rezept in Abschnitt 5.
 
 ---
 
-## 3. Stand jetzt: Build `2026-11-12 ce` (fertig, ausgeliefert)
+## 3. Stand jetzt: Build `2026-11-12 cf` (fertig, ausgeliefert)
 
-### 3.1 Wetter am Tourtag in Vorschau + MP4 ✅
+### 3.0 Audit 9 – sechs Lücken im Tracking ✅
+
+> „Mache ein komplettes Audit, gibt es irgendwo Lücken in den Funktionen? Check auch ob das
+> Tracken mit und ohne Stromsparmodus optimal funktioniert"
+
+Bericht: `docs/AUDIT_BERICHT.md` (Audit 9, oben). Kern: Der Sendepfad aus `live.html` wurde
+**unverändert** in Node gegen simulierte Fahrten laufen gelassen (beide Modi). Gefunden und
+behoben: (1) Aussetzer-Filter maß Fix gegen *Sendung* → Normalmodus bei 1-s-GPS ab ~22 km/h
+**1 Punkt auf 4 km** (jetzt `lastFixPos`); (2) Nachsenden nur 60 Punkte je Aufwachen (jetzt bis
+leer, mehr Auslöser); (3) nach „Beenden" Puffer verloren (Server nimmt Punkte mit `at` vor dem
+Ende als `late` ohne Standort); (4) 403/409 blockierte den Lauf (Punkt fliegt raus);
+(5) Server-Dublettenfilter 3 s → 1 s, Nachzügler werden einsortiert; (6) `at=1e30` → 500.
+Simulationsharness steht in `tests/test_build_cf.py` (HARNESS / NACHSEND) – wiederverwendbar.
+
+### 3.1 Build `ce` – Wetter am Tourtag in Vorschau + MP4
 
 > „Die Wetterinfo am Tourtag vermisse ich bei beiden, Vorschau und Video.“
 
@@ -122,10 +136,10 @@ Einkehr)“. Streckenfunde nur noch auf der Tour-Seite (Build u).
 | | |
 |---|---|
 | `APP_VERSION` | `1.5.0` |
-| `APP_BUILD` | `2026-11-12 ce` (app.py Z. 92) |
-| Tests | `tests/test_build_ce.py` **8**, volle Suite **654 grün** (~120 s) |
-| Pakete | `deploy/deploy_v1.5.0_2026-11-12ce_aenderungen.zip` · `…_komplett.zip` |
-| Geprüft | Attrappen-Nachstellung vorher/nachher, ZIP entpackt + Tests darin |
+| `APP_BUILD` | `2026-11-12 cf` (app.py Z. 92) |
+| Tests | `tests/test_build_cf.py` **22**, volle Suite **676 grün** (~125 s) |
+| Pakete | `deploy/deploy_v1.5.0_2026-11-12cf_aenderungen.zip` · `…_komplett.zip` |
+| Geprüft | Simulation vorher/nachher (Node, echter Template-Code), ZIP entpackt + Tests darin |
 
 **Hinweis zur Paket-Probe:** Zwei Tests (`test_az_deploy_date_freshness`,
 `test_n_ffmpeg_aus_git_aber_lokal_da`) schlagen im entpackten Paket an, weil sie
@@ -145,6 +159,9 @@ Diese stehen im Kopf von `CHANGELOG.md` und wurden vom Nutzer **absichtlich** ve
 
 Beides in `templates/…/live.html` (Pausen-Block), klein und unabhängig voneinander.
 **Nur auf Zuruf machen** – der Nutzer wollte erst echte Fahrten abwarten.
+- **Neu aus Audit 9 (Anmerkung, nicht geändert):** Bei normalverteiltem Stand-Rauschen σ = 12 m
+  (Einkehr im Gebäude) erkennt die Simulation **keine** Pause – einzelne Fixe springen > 25 m
+  und setzen den Anker zurück. Kostet keine Kilometer, gehört zum selben Pausen-Thema.
 
 ---
 
@@ -202,7 +219,8 @@ sonst. Probe: ZIP nach `/tmp` entpacken, App starten, Footer prüfen.
 
 ## 6. Als Nächstes
 
-Nichts Offenes aus Build `ce`. Der nächste Chat wartet auf die nächste Meldung des Nutzers.
+Nichts Offenes aus Build `cf`. Der nächste Chat wartet auf die nächste Meldung des Nutzers –
+spannend wäre eine echte Fahrt mit Normal- **und** Sparmodus, um B1–B3 aus Audit 9 im Feld zu bestätigen.
 Hinweis: `origin/main` auf GitHub steht noch auf Build `af` (15.10.) – alle neueren Builds
 liegen nur auf den Arena-Branches; `main` nur auf Zuruf nachziehen.
 
@@ -210,7 +228,7 @@ Wenn eine neue Meldung kommt:
 1. Wörtlich zitieren, Akzeptanz im Code prüfen.
 2. Nachstellen (Skript, das den Fehler zeigt).
 3. Beheben, Gegenprobe, Tests, CHANGELOG.
-4. Buchstabe hochzählen: nach `ce` kommt `cf`, `cg`, … (immer Kleinbuchstaben, `z` → `aa`).
+4. Buchstabe hochzählen: nach `cf` kommt `cg`, `ch`, … (immer Kleinbuchstaben, `z` → `aa`).
 5. `APP_BUILD` auf das **heutige** Datum + neuen Buchstaben setzen.
 6. Deploy-Pakete, Probe, Commit, Push.
 7. **Diese Datei aktualisieren** (Abschnitt 3, 4 und 6).
@@ -249,6 +267,7 @@ Wenn eine neue Meldung kommt:
 
 | Build | Datum | Thema |
 |---|---|---|
+| `cf` | 2026-11-12 | Audit 9: sechs Tracking-Lücken (Aussetzer-Filter, Nachsenden, Beenden, 409-Blockade, 3-s-Filter, at-500) |
 | `ce` | 2026-11-12 | Wetter am Tourtag in Vorschau + MP4 (Ersatz-Ort: GPX-Start/Foto/Gruppe) |
 | `cd` | 2026-11-12 | Browser-Vorschau = MP4 (Avatare, Logo, Einkehr-Folie/-Marker) |
 | `cc` | 2026-11-12 | WhatsApp-Einladung: Karte wechselt mit Mitglied, PC → WhatsApp Web |
@@ -266,8 +285,8 @@ Wenn eine neue Meldung kommt:
 ## 8. Text zum Einfügen in den neuen Chat
 
 > Wir machen mit der App „DejungenOlen" weiter. Lies bitte zuerst `UEBERGABE.md` im
-> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 ce` ist
-> fertig und ausgeliefert (Wetter am Tourtag auch ohne Treffpunkt in Vorschau + MP4), Arbeitsbaum
-> sauber, alle 654 Tests grün. Arbeite weiter wie dort beschrieben: Meldung wörtlich
+> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 cf` ist
+> fertig und ausgeliefert (Audit 9: sechs Tracking-Lücken geschlossen), Arbeitsbaum
+> sauber, alle 676 Tests grün. Arbeite weiter wie dort beschrieben: Meldung wörtlich
 > nehmen, am echten Code nachmessen, mit echten Daten nachstellen, beheben, Gegenprobe,
 > Tests, CHANGELOG, neuer Build-Buchstabe (`cf`), Deploy-Pakete, Push.

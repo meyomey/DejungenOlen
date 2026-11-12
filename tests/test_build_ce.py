@@ -116,4 +116,4 @@ class VideoSeiteTest(AppTestCase):
         self.assertLess(src.index("_ride = {k: _parsed.get(k)"), src.index('_weather = _video_weather(tour, _gpx_points, photos)'))
 
     def test_build_stempel(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-12 ce')
+        self.assertGreaterEqual(appmod.APP_BUILD, '2026-11-12 ce')

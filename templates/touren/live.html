@@ -662,6 +662,7 @@ const TRAILS    = {{ trails_json|safe }};        // Build af: {user_id: [[lat, l
 const UPLOAD_URL = "{{ url_for('tour_upload_photos', tour_id=tour.id) }}";
 // Zustand (vor allen Funktionen deklariert – onclick-Handler sind global)
 let lastOwnAtVorher = 0;   // Build bv: Zeit des vorherigen Fix (für die Aussetzer-Prüfung)
+let lastFixPos = null;     // Build cf: Ort des vorherigen Fix – die Aussetzer-Prüfung misst Fix gegen Fix
 let _achtStdGewarnt = false;   // Build bv: Vorwarnung vor der 8-Stunden-Grenze nur einmal
 let sharing = false, following = false, watchId = null, lastSent = 0, lastPos = null, shareStart = 0,
     prevSentPos = null;   // Build 11-06o: Position der letzten beiden Sendungen (für den Richtungs-Trigger)
@@ -718,15 +719,31 @@ sicherLaden();
 // der Server verwarf den zweiten (dt < 3 s). Jetzt: ein Lauf zur Zeit (`nachsendenLaeuft`),
 // größere Blöcke (60 statt 20) und eine Pause zwischen den Punkten, damit die Aufnahmezeiten
 // sich nicht überholen. Der Puffer wird NICHT geleert, sondern nur, was der Server bestätigt.
+// Build cf (Audit 9): Der Puffer wird jetzt GANZ geleert, nicht nur 60 Punkte je Aufwachen.
+// Vorher lief ein Block von 60 und niemand startete den nächsten – nach einer Stunde Display
+// aus (≈ 600 Punkte) blieben 540 im Speicher, bis zum nächsten Sichtbarwerden; wer dann
+// „Beenden" drückte, verlor sie (gemessen: 300 im Puffer → 60 gesendet, 240 liegen geblieben).
+// Außerdem: Nachsenden auch nach dem Beenden (der Server nimmt Punkte mit Aufnahmezeit VOR dem
+// Ende an), beim Zurückkommen des Netzes (`online`), aus dem 5-s-Wächter und nach jeder
+// erfolgreichen Normalsendung, wenn noch etwas liegt. Punkte, die der Server endgültig ablehnt
+// (403/409/400), fliegen aus dem Puffer – vorher blieb der Lauf an so einem Punkt für immer hängen.
 let nachsendenLaeuft = false;
+const NACHSEND_MAX_ALTER_MS = 6 * 3600 * 1000;    // älter nimmt der Server ohnehin nicht mit Aufnahmezeit
 function sicherNachsenden() {
-  if (nachsendenLaeuft || !gesichert.length || !sharing) return;
+  if (nachsendenLaeuft || !gesichert.length) return;
   // Punkte nach Aufnahmezeit sortieren – der Puffer kann durch einen Neustart durcheinander sein.
   gesichert.sort((a, b) => (a.at || 0) - (b.at || 0));
-  const offen = gesichert.slice(0, 60);
+  const zuAlt = Date.now() - NACHSEND_MAX_ALTER_MS;
+  if (gesichert.some(g => g.at && g.at < zuAlt)) {
+    gesichert = gesichert.filter(g => !g.at || g.at >= zuAlt); sicherSpeichern();
+    if (!gesichert.length) { localStorage.removeItem(SICHER_KEY); return; }
+  }
   nachsendenLaeuft = true;
   (async () => {
     try {
+    for (let runde = 0; runde < 40 && gesichert.length; runde++) {     // max. 2400 Punkte je Lauf
+    const offen = gesichert.slice(0, 60);
+    let abbruch = false;
     for (const g of offen) {
       try {
         const r = await fetch('/api/location/update', {
@@ -740,13 +757,16 @@ function sicherNachsenden() {
                                 speed: g.speed, heading: g.heading, paused: !!g.paused,
                                 at: g.at, resume: false, since: trailSince || 0})
         });
-        if (!r.ok) break;
-        const d = await r.json().catch(() => ({}));
+        const endgueltig = (r.status === 400 || r.status === 403 || r.status === 409);
+        if (!r.ok && !endgueltig) { abbruch = true; break; }      // Serverfehler: später noch einmal
+        const d = r.ok ? await r.json().catch(() => ({})) : {};
         if (d.locations) render(d.locations);
         if (d.trails) addTrails(d.trails);
         const ix = gesichert.findIndex(x => x.id === g.id);
         if (ix >= 0) { gesichert.splice(ix, 1); sicherSpeichern(); }
-      } catch (e) { break; }        // kein Netz – beim nächsten Aufwachen weiter
+      } catch (e) { abbruch = true; break; }        // kein Netz – beim nächsten Aufwachen weiter
+    }
+    if (abbruch) break;
     }
     if (!gesichert.length) localStorage.removeItem(SICHER_KEY);
     } finally { nachsendenLaeuft = false; }
@@ -1135,6 +1155,7 @@ function stopShare(viaBeacon, withHint) {
   updateShareBtn();
   maybeStopWatch();
   if (!following) releaseWakeLock();
+  if (gesichert.length) sicherNachsenden();   // Build cf: liegen gebliebene Punkte gehören noch zur Fahrt
   if (was) {
     const url = '/api/location/stop?tour_id=' + TOUR_ID;
     fetch(url, {method: 'POST', keepalive: true}).catch(() => {});
@@ -1456,11 +1477,19 @@ function onPos(pos) {
   // sie mit einer Geraden. Jetzt: unplausibel schnell ⇒ Fix verwerfen, letzte Position
   // BEHALTEN (der nächste gute Fix schließt sauber an), und den Kurs nach dem Aussetzer
   // nicht als „Kurve" werten (sonst entsteht ein Zickzack im Bild).
-  const kmhFix = (lastPos && dtFixS) ? moved / dtFixS * 3.6 : 0;
-  if (kmhFix > 120 && moved > 60) {
+  // Build cf (Audit 9): Fix gegen FIX messen, nicht gegen den zuletzt GESENDETEN Punkt.
+  // Vorher stand hier moved durch dtFixS: Strecke seit der letzten Sendung (wächst mit jedem
+  // verworfenen Fix), geteilt durch die Zeit seit dem letzten Fix (bleibt 1–3 s). Nach dem
+  // dritten übersprungenen Fix lag der Bruch über 120 km/h – und weil die letzte Position
+  // dann nicht mehr nachrückte, blieb die Sperre bestehen. Gemessen: GPS jede Sekunde,
+  // 25 km/h, Normalmodus → 1 Punkt auf 4,2 km; 40 km/h bei 3-s-Fixen → 1 Punkt auf 6,6 km.
+  const seitFixM = lastFixPos ? map.distance(lastFixPos, ownLatLng) : 0;
+  const kmhFix = (lastFixPos && dtFixS) ? seitFixM / dtFixS * 3.6 : 0;
+  if (kmhFix > 120 && seitFixM > 60) {
     // Kein Punkt, keine Zustandsänderung – aber auch keine Blockade für den nächsten Fix.
     return;
   }
+  lastFixPos = ownLatLng;
   // erst die Kurve pruefen, dann den Takt. Vorher (11-06o) war es umgekehrt herum – der
   // Takt verwarf den Punkt, bevor die Kurve ueberhaupt gefragt wurde.
   const sendEvery = saverOn ? 6000 : 10000, stillEvery = saverOn ? 20000 : 30000;
@@ -1514,6 +1543,7 @@ function onPos(pos) {
     sentCount++;
     const ix = gesichert.findIndex(g => g.id === punkt.id);
     if (ix >= 0) { gesichert.splice(ix, 1); sicherSpeichern(); }
+    if (gesichert.length) sicherNachsenden();      // Build cf: Rest aus einem Funkloch gleich hinterher
     if (d.locations) render(d.locations);
     if (d.trails) addTrails(d.trails);
     if (isPaused()) {
@@ -1930,6 +1960,7 @@ function releaseWakeLock() {
 let letzteWachZeit = Date.now(), wachBeweis = null, wachSeit = 0;   // null = noch nicht geprüft
 function wachTick() {
   if (document.hidden) return;                 // im Hintergrund läuft die Uhr ohnehin nicht
+  if (gesichert.length && navigator.onLine !== false) sicherNachsenden();   // Build cf: Puffer leeren, sobald es geht
   const jetzt = Date.now();
   const luecke = Math.round((jetzt - letzteWachZeit) / 1000);
   letzteWachZeit = jetzt;
@@ -2423,6 +2454,8 @@ setInterval(() => {
 // Build ae: Der Selbsttest braucht einen feineren Takt als der 20-s-Wächter – sonst
 // verschwimmen kurze Freezes (Bildschirm aus, wieder an) mit normaler Timer-Trägheit.
 setInterval(wachTick, 5000);
+window.addEventListener('online', () => sicherNachsenden());   // Build cf: Netz zurück → Puffer leeren
+if (gesichert.length) sicherNachsenden();                        // Build cf: Rest einer früheren Sitzung
 // Nach dem Aufwachen sofort messen: die Lücke ist der Beweis.
 document.addEventListener('visibilitychange', () => { if (!document.hidden) wachTick(); });
 

@@ -38,7 +38,7 @@ class TrackHelpersTest(AppTestCase):
             self.assertFalse(appmod._live_track_add(self.t_plan_id, self.mem_id, 53.4, 9.8, 250.0, now))   # zu ungenau
             self.assertTrue(appmod._live_track_add(self.t_plan_id, self.mem_id, 53.4, 9.8, 10.0, now))
             self.assertFalse(appmod._live_track_add(self.t_plan_id, self.mem_id, 53.4001, 9.8, 10.0,
-                                                    now + dt.timedelta(seconds=1)))                       # Doppelsendung
+                                                    now + dt.timedelta(milliseconds=500)))            # Doppelsendung (Build cf: < 1 s)
             self.assertFalse(appmod._live_track_add(self.t_plan_id, self.mem_id, 53.5, 9.8, 10.0,
                                                     now + dt.timedelta(seconds=20)))                      # 11 km in 20 s
             self.assertTrue(appmod._live_track_add(self.t_plan_id, self.mem_id, 53.4005, 9.8, None,

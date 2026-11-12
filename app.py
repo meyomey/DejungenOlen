@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 ce'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 cf'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5408,10 +5408,21 @@ def _live_track_add(tour_id, user_id, lat, lng, accuracy, now):
             .order_by(LiveTrackPoint.recorded_at.desc()).first())
     if last:
         dt_s = (now - last.recorded_at).total_seconds()
-        if dt_s < 3:                                     # Doppelsendung
-            return False
-        if dt_s < 6 * 3600 and _haversine_m(last.lat, last.lng, lat, lng) / dt_s * 3.6 > LIVE_TRACK_MAX_KMH:
-            return False
+        if dt_s < -1:
+            # Build cf (Audit 9): Nachzügler aus dem Puffer, der NACH einem frischen Punkt ankommt
+            # (Funkloch bei Display an: neue Sendung klappt wieder, der Rest kommt hinterher).
+            # Vorher: dt negativ → „Doppelsendung" → verworfen. Jetzt: nur echte Dubletten
+            # (gleiche Sekunde) auslassen, sonst zeitrichtig einsortieren.
+            dup = (LiveTrackPoint.query.filter_by(tour_id=tour_id, user_id=user_id)
+                   .filter(LiveTrackPoint.recorded_at >= now - timedelta(seconds=1),
+                           LiveTrackPoint.recorded_at <= now + timedelta(seconds=1)).first())
+            if dup:
+                return False
+        else:
+            if dt_s < 1:                                 # Doppelsendung (Build cf: vorher 3 s – das traf
+                return False                             # die Kurven-Sofortsendung bei 1-s-GPS, s. Audit 9)
+            if dt_s < 6 * 3600 and _haversine_m(last.lat, last.lng, lat, lng) / dt_s * 3.6 > LIVE_TRACK_MAX_KMH:
+                return False
     db.session.add(LiveTrackPoint(tour_id=tour_id, user_id=user_id, lat=lat, lng=lng,
                                   accuracy=accuracy, recorded_at=now))
     return True
@@ -5682,6 +5693,7 @@ def location_update():
     # prüfung rechnete mit Minuten statt Sekunden (gemessen: 1 von 5 Punkten überlebte).
     now = datetime.utcnow()
     at = data.get('at')
+    t_client = None
     if at is not None:
         try:
             at_s = float(at)
@@ -5690,8 +5702,11 @@ def location_update():
         if at_s is not None:
             # Nur übernehmen, wenn die Zeit plausibel ist: nicht aus der Zukunft (max. 2 min
             # Vorlauf für ungenaue Handy-Uhren) und nicht älter als der Puffer reicht.
-            t_client = datetime.utcfromtimestamp(at_s / 1000.0 if at_s > 1e11 else at_s)
-            if t_client <= now + timedelta(minutes=2) and t_client >= now - timedelta(hours=6):
+            try:    # Build cf (Audit 9): at=1e30 oder NaN warf OverflowError/ValueError → HTTP 500
+                t_client = datetime.utcfromtimestamp(at_s / 1000.0 if at_s > 1e11 else at_s)
+            except (OverflowError, ValueError, OSError):
+                t_client = None
+            if t_client is not None and t_client <= now + timedelta(minutes=2) and t_client >= now - timedelta(hours=6):
                 now = t_client
     tour = _tour_or_404(tour_id)
     ok, hint = _live_share_window(tour)
@@ -5706,6 +5721,14 @@ def location_update():
         if data.get('resume'):
             db.session.delete(stop_mark)
             db.session.commit()
+        elif t_client is not None and now == t_client and now < stop_mark.stopped_at:
+            # Build cf (Audit 9): Nachzügler aus dem Puffer (Display war aus) tragen eine
+            # Aufnahmezeit VOR dem Ende – die gehören noch zur Fahrt und werden nur in die
+            # Aufzeichnung geschrieben. Kein Standort-Update, also kein Zombie auf der Karte.
+            # Zombie-Sender schicken `at` ≈ jetzt (> Ende) und bekommen weiter 409.
+            recorded = False if paused else _live_track_add(tour_id, current_user.id, lat, lng, accuracy, now)
+            db.session.commit()
+            return jsonify({'ok': True, 'recorded': recorded, 'late': True})
         else:
             return jsonify({'error': 'Fahrt wurde bereits beendet – zum erneuten Start die Live-Karte neu laden.',
                             'ended': True}), 409

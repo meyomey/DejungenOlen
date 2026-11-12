@@ -13,6 +13,45 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build cf) – Audit 9: sechs Lücken im Tracking geschlossen
+- **Auftrag:** „Mache ein komplettes Audit, gibt es irgendwo Lücken in den Funktionen? Check auch
+  ob das Tracken mit und ohne Stromsparmodus optimal funktioniert" → vollständiger Bericht in
+  `docs/AUDIT_BERICHT.md` (Audit 9). Sicherheit/Routen: 87 Routen × 3 Rollen ohne 500,
+  Mandantentrennung am Tracking-API in Ordnung. Tracking: **sechs Befunde**, alle behoben.
+
+### Ursachen (am echten Code aus `live.html` nachgestellt, mit und ohne Sparmodus)
+1. **Aussetzer-Filter sperrte dauerhaft** (`moved / dtFixS` – Strecke seit der letzten *Sendung*
+   durch Zeit seit dem letzten *Fix*). Normalmodus, GPS jede Sekunde, 25 km/h → **1 Punkt auf
+   4,2 km**; 40 km/h bei 3-s-GPS → 1 Punkt auf 6,6 km. Jetzt Fix gegen Fix (`lastFixPos`).
+2. **Nachsenden nur 60 Punkte je Aufwachen** – 300 im Puffer → 60 gesendet, 240 blieben liegen.
+   Jetzt bis der Puffer leer ist; Auslöser auch Wächter, `online`, Normalsendung, Laden, Beenden.
+3. **Nach „Beenden" verloren:** `!sharing` + Siegel 409. Jetzt nimmt der Server Punkte mit
+   Aufnahmezeit **vor** dem Ende in die Spur (`late`, ohne Standort → kein Zombie).
+4. **Ein 403/409 blockierte den Lauf für immer** (`if (!r.ok) break`). Jetzt: endgültig
+   abgelehnte Punkte fliegen raus, 5xx/Netz → später erneut; Punkte > 6 h alt werden verworfen.
+5. **Server-Dublettenfilter 3 s** traf die Kurven-Sofortsendung bei 1-s-GPS (66 von 365 Punkten)
+   und jeden Nachzügler mit negativem dt. Jetzt 1 s; Nachzügler werden zeitrichtig einsortiert.
+6. `at = 1e30` / `NaN` → **HTTP 500** (OverflowError). Jetzt 200, Zeit ignoriert.
+
+### Vorher / Nachher
+| Messung | vorher | nachher |
+|---|---|---|
+| 25 km/h, 1-s-GPS, Normalmodus, 10 min | 1 Punkt, 0,00 km (echt 4,16) | 98 Punkte, 4,18 km |
+| Abfahrt 45 km/h kurvig, Normalmodus | 9 Punkte, −95,6 % | 70 Punkte, −0,9 % |
+| 30 km/h, 1-s-GPS, Sparmodus | 89 Punkte, 2,97 km (echt 4,99) | 151 Punkte, 5,09 km |
+| Puffer 300 Punkte, ein Aufwachen | 60 gesendet / 240 offen | 300 / 0 |
+| Puffer 300, ein Punkt 409 | 0 gesendet (hängt) | 299 / 0 |
+| Nachzügler nach „Beenden" | 409, weg | 200 `late`, in der Spur |
+| Kurvenpunkte 1,5 s auseinander | zweiter verworfen | beide gespeichert |
+| `at=1e30` | 500 | 200 |
+
+### Tests
+`tests/test_build_cf.py` (22): Sendepfad-Simulation in Node (5 Szenarien × 2 Modi), echte
+`sicherNachsenden()` mit simuliertem `fetch` (6 Fälle), Server (Nachzügler nach dem Ende,
+Zombie weiter 409, 1-s-Filter, Einsortieren, 300 Punkte über HTTP, unsinnige `at`).
+Angepasst: `test_build_af` (Dublette jetzt < 1 s), `test_build_bu`/`bv` (Harness kennt
+`lastFixPos`, `!sharing`-Bedingung entfällt). Volle Suite **676 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build ce) – Wetter am Tourtag fehlte in Vorschau und MP4
 
 > „Die Wetterinfo am Tourtag vermisse ich bei beiden, Vorschau und Video.“

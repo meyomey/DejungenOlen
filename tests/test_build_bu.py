@@ -77,22 +77,23 @@ function lauf(pts, saver) {
   // Build bv: der Block braucht jetzt `dtFixS` (Abstand zum vorherigen Fix) fuer die
   // Aussetzer-Pruefung. Im echten Code wird sie in onPos aus den Fix-Zeiten berechnet –
   // hier genauso, aus den Zeitstempeln der Punktfolge.
+  // Build cf: der Aussetzer-Filter misst jetzt Fix gegen Fix (`lastFixPos`).
   const f = new Function('saverOn','lastPos','prevSentPos','lastSent','now','ownLatLng',
-                         '_bearing','DIST','dtFixS', `
+                         '_bearing','DIST','dtFixS','lastFixPos', `
      const map = {distance:(a,b)=>DIST(a,b)};
      (function(){
        ${block}
      })();
-     return {lastPos, prevSentPos, lastSent};`);
-  let lastPos = null, prevSentPos = null, lastSent = 0, out = [], letzterFix = 0;
+     return {lastPos, prevSentPos, lastSent, lastFixPos};`);
+  let lastPos = null, prevSentPos = null, lastSent = 0, out = [], letzterFix = 0, lastFixPos = null;
   for (const p of pts) {
     const vor = lastSent;
     const dtFixS = letzterFix ? Math.max(0.5, (p.t - letzterFix) / 1000) : 0;
     letzterFix = p.t;
     const r = f(saver, lastPos, prevSentPos, lastSent, p.t, [p.lat, p.lng], _bearing,
-                map.distance, dtFixS);
+                map.distance, dtFixS, lastFixPos);
     if (r.lastSent !== vor) out.push(p);          // der Block lief durch -> gesendet
-    lastPos = r.lastPos; prevSentPos = r.prevSentPos; lastSent = r.lastSent;
+    lastPos = r.lastPos; prevSentPos = r.prevSentPos; lastSent = r.lastSent; lastFixPos = r.lastFixPos;
   }
   return out;
 }
