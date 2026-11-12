@@ -90,7 +90,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 ch'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 ci'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2365,6 +2365,7 @@ def tour_detail(tour_id):
                            live_rec_mine=any(d['user_id'] == current_user.id for d in live_recs),
                            live_can_share=_live_share_window(tour)[0],      # Build b: Fahren-Knopf
                            live_share_hint=_live_share_window(tour)[1],
+                           tracker_active=_tracker_active(tour.id, current_user.id),   # Build ci
                            keep_days=LIVE_TRACK_KEEP_DAYS,
                            today=date.today())
 
@@ -5602,8 +5603,31 @@ def _live_locations_payload(tour_id, now=None):
         out.append({'user_id': loc.user_id, 'name': name, 'initials': _initials(name),
                     'lat': loc.lat, 'lng': loc.lng, 'accuracy': loc.accuracy,
                     'speed': loc.speed, 'heading': loc.heading,
-                    'ago': max(0, int((now - loc.updated_at).total_seconds()))})
+                    'ago': max(0, int((now - loc.updated_at).total_seconds())),
+                    # Build ci: Sekunden seit dem letzten Tracker-Punkt (None = kein Tracker)
+                    'tracker_ago': (max(0, int((now - loc.tracker_at).total_seconds()))
+                                    if loc.tracker_at else None)})
     return out
+
+
+# Build ci: „Tracker hat Vorfahrt". Wer per Traccar sendet, braucht im Browser kein eigenes GPS –
+# und sein „Beenden" im Browser darf den Tracker nicht aussperren. Aktiv = letzter Tracker-Punkt
+# jünger als TRACKER_ACTIVE_S.
+TRACKER_ACTIVE_S = 15 * 60
+
+
+def _tracker_ago(tour_id, user_id, now=None):
+    """Sekunden seit dem letzten Tracker-Punkt des Nutzers auf dieser Tour, None = keiner."""
+    now = now or datetime.utcnow()
+    loc = LiveLocation.query.filter_by(tour_id=tour_id, user_id=user_id).first()
+    if loc is None or loc.tracker_at is None:
+        return None
+    return max(0, int((now - loc.tracker_at).total_seconds()))
+
+
+def _tracker_active(tour_id, user_id, now=None):
+    ago = _tracker_ago(tour_id, user_id, now)
+    return ago is not None and ago < TRACKER_ACTIVE_S
 
 
 def _live_cleanup(now=None):
@@ -5654,6 +5678,8 @@ def tour_live(tour_id):
                            locations_json=_json_for_script(_live_locations_payload(tour.id)),
                            trails_json=_json_for_script(_live_trails_payload(tour.id)),   # Build af
                            can_share=can_share, share_hint=share_hint, can_takeover=_can_manage_tour(tour),
+                           tracker_ago=_tracker_ago(tour.id, current_user.id),        # Build ci
+                           tracker_active_s=TRACKER_ACTIVE_S,
                            stale_s=LIVE_STALE_S, fresh_s=LIVE_FRESH_S, keep_days=LIVE_TRACK_KEEP_DAYS)
 
 
@@ -5735,6 +5761,13 @@ def location_update():
                             'ended': True}), 409
     # (now steht seit Build bv weiter oben – es kann die Aufnahmezeit aus dem Client sein)
     existing = LiveLocation.query.filter_by(tour_id=tour_id, user_id=current_user.id).first()
+    if existing and existing.tracker_at and (datetime.utcnow() - existing.tracker_at).total_seconds() < TRACKER_ACTIVE_S:
+        # Build ci: Tracker hat Vorfahrt – der Browser-Punkt wird NICHT geschrieben (sonst doppelte
+        # Punkte, zittrige Spur). Der Client schaltet mit `tracker_ago` in den Tracker-Modus um.
+        db.session.commit()
+        return jsonify({'ok': True, 'recorded': False, 'tracker': True,
+                        'tracker_ago': int((datetime.utcnow() - existing.tracker_at).total_seconds()),
+                        'locations': _live_locations_payload(tour_id)})
     if existing:
         existing.lat, existing.lng, existing.accuracy = lat, lng, accuracy
         existing.speed, existing.heading = speed, heading
@@ -5779,6 +5812,10 @@ def location_stop():
     tour_id = _parse_int(str(raw))
     if not tour_id:
         return jsonify({'error': 'tour_id fehlt'}), 400
+    if _tracker_active(tour_id, current_user.id):
+        # Build ci: Die Fahrt läuft über die Tracker-App – „Beenden" im Browser setzt kein Siegel
+        # und löscht den Standort nicht; beendet wird in Traccar (Dienst aus).
+        return jsonify({'ok': True, 'tracker': True})
     LiveLocation.query.filter_by(tour_id=tour_id, user_id=current_user.id).delete()
     # Build 11-06s: Siegel setzen – damit halten Zombie-Sender (vergessene Tabs/Hände mit
     # noch laufender Sendeschleife) die Fahrt nicht mehr „unten“; resume startet neu.
@@ -5903,10 +5940,13 @@ def traccar_push(token=None):
     existing = LiveLocation.query.filter_by(tour_id=tour.id, user_id=user.id).first()
     if existing is None:
         db.session.add(LiveLocation(tour_id=tour.id, user_id=user.id, lat=lat, lng=lng, accuracy=accuracy,
-                                    speed=speed, heading=heading, updated_at=now))
-    elif existing.updated_at is None or now >= existing.updated_at:   # Nachzügler überschreiben nichts Neueres
-        existing.lat, existing.lng, existing.accuracy = lat, lng, accuracy
-        existing.speed, existing.heading, existing.updated_at = speed, heading, now
+                                    speed=speed, heading=heading, updated_at=now, tracker_at=now))
+    else:
+        if existing.updated_at is None or now >= existing.updated_at:   # Nachzügler überschreiben nichts Neueres
+            existing.lat, existing.lng, existing.accuracy = lat, lng, accuracy
+            existing.speed, existing.heading, existing.updated_at = speed, heading, now
+        if existing.tracker_at is None or now > existing.tracker_at:     # Build ci: Tracker hat Vorfahrt
+            existing.tracker_at = now
     recorded = _live_track_add(tour.id, user.id, lat, lng, accuracy, now)
     db.session.commit()
     return jsonify({'ok': True, 'tour_id': tour.id, 'recorded': recorded})
@@ -11509,6 +11549,7 @@ def migrate_db():
     # users table – new columns added over time
     add_column('users', 'last_login', 'DATETIME')
     add_column('users', 'tracker_token', 'VARCHAR(40)')   # Build cg: Tracker-App (Traccar Client)
+    add_column('live_locations', 'tracker_at', 'DATETIME')  # Build ci: Tracker hat Vorfahrt
     add_column('gastro_spots', 'hours_text', 'VARCHAR(300)')   # Build t: Öffnungszeiten-Text / Ruhetage
     add_column('gastro_spots', 'lunch',      'VARCHAR(10)')    # Build z: Mittagstisch yes/no/NULL
     add_column('gastro_spots', 'lunch_text', 'VARCHAR(200)')   # Build z: Mittagstisch-Details

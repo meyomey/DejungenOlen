@@ -649,6 +649,11 @@ const MEETING   = {{ meeting_json|safe }};
 const EINKEHR   = {{ einkehr_json|safe }};
 const ME        = {{ me_json|safe }};
 const CAN_SHARE = {{ 'true' if can_share else 'false' }};
+// Build ci: „Tracker hat Vorfahrt" – wer per Traccar sendet, braucht hier kein eigenes GPS.
+const TRACKER_ACTIVE_MS = {{ tracker_active_s }} * 1000;
+let trackerSeen = {{ tracker_ago if tracker_ago is not none else 'null' }};   // Sekunden (Server) → gleich Zeitpunkt (ms)
+trackerSeen = (trackerSeen == null) ? 0 : Date.now() - trackerSeen * 1000;
+let trackerModus = false;          // Knopf/Status stehen gerade im Tracker-Zustand
 // Build av: Ist Fahren gerade nicht erlaubt, steht der Grund in der Statuszeile – dort, wo
 // alle Meldungen der Live-Karte stehen (der Versuch, ihn unter die Karte zu setzen, kollidierte
 // mit Knopfleiste, unterer Navigation und der Karte selbst). Der Knopf selbst ist bernstein
@@ -856,6 +861,7 @@ const markers = {};
 let lastLocs = [];
 function render(locs) {
   lastLocs = locs || [];
+  noteTrackerLocs(lastLocs);                         // Build ci: eigener Tracker-Punkt dabei?
   const seen = new Set();
   const rows = [];
   lastLocs.forEach(loc => {
@@ -863,7 +869,8 @@ function render(locs) {
     const isMe = loc.user_id === ME.id;
     const proj = projectKm(loc.lat, loc.lng);
     const kmh = loc.speed != null ? Math.round(loc.speed * 3.6) : null;
-    const tip = escHtml(loc.name) + (isMe ? ' (du)' : '') + ' · ' + fmtAgo(loc.ago);
+    const tip = escHtml(loc.name) + (isMe ? ' (du)' : '') + ' · ' + fmtAgo(loc.ago)
+              + ((loc.tracker_ago != null && loc.tracker_ago * 1000 < TRACKER_ACTIVE_MS) ? ' · 📡 Tracker' : '');   // Build ci
     if (markers[loc.user_id]) {
       markers[loc.user_id].setLatLng([loc.lat, loc.lng]).setIcon(pinIcon(loc, isMe)).setTooltipContent(tip);
     } else {
@@ -1068,6 +1075,7 @@ function poll() {
     .catch(() => {});
 }
 render(INITIAL);
+refreshTrackerUi();                                   // Build ci: Tracker-Zustand sofort anzeigen
 setInterval(poll, 15000);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
@@ -1082,9 +1090,57 @@ document.addEventListener('visibilitychange', () => {
 
 // ── Eigener Standort: Teilen / Folgen ─────────────────────────────────────────────────────────
 
-function toggleShare() { if (sharing) stopShare(false); else startShare(); }
+// ── Build ci: Tracker hat Vorfahrt ───────────────────────────────────────────────────────────
+// Der Nutzer: „Wie geht man am besten damit um wenn jemand Traccar Client nutzt und ein anderer
+// nicht? … Wenn Traccar Client aktiv ist kann man trotzdem die Knöpfe drücken. Das muss entwirrt
+// werden?" – Regel: Kommt die eigene Position aus der Tracker-App (letzter Punkt < 15 min), dann
+//   · startet der Browser KEIN eigenes GPS (kein Doppelsenden, kein Akku, kein Wake-Lock nötig),
+//   · zeigt der Knopf „📡 Tracker-App läuft" statt „Fahrt starten",
+//   · setzt „Beenden" kein Siegel (der Server ignoriert es, beendet wird in Traccar).
+// Fällt der Tracker 15 min aus, kommt „Fahrt starten" zurück – mit Hinweis.
+function trackerAktiv() { return trackerSeen > 0 && (Date.now() - trackerSeen) < TRACKER_ACTIVE_MS; }
+function noteTrackerAgo(ago) {
+  if (ago == null) return;
+  const t = Date.now() - ago * 1000;
+  if (t > trackerSeen) trackerSeen = t;
+  refreshTrackerUi();
+}
+function noteTrackerLocs(locs) {
+  const me = (locs || []).find(l => l.user_id === ME.id);
+  if (me && me.tracker_ago != null) noteTrackerAgo(me.tracker_ago);
+  else refreshTrackerUi();
+}
+function fmtUhr(ms) { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function refreshTrackerUi() {
+  const aktiv = trackerAktiv();
+  if (aktiv && !trackerModus) {
+    trackerModus = true;
+    if (sharing) {
+      // Browser-Fahrt lief schon und der Tracker setzt ein: Browser hört auf zu senden.
+      stopShare(false, false);
+    }
+    updateShareBtn();
+    setStatus('📡 Tracker-App läuft (zuletzt ' + fmtUhr(trackerSeen) + ' Uhr) – deine Position kommt aus Traccar. '
+              + 'Hier musst du nichts drücken; beendet wird in der Traccar-App (Dienst aus).', 'sharing');
+  } else if (!aktiv && trackerModus) {
+    trackerModus = false;
+    updateShareBtn();
+    setStatus('📡 Tracker seit ' + fmtUhr(trackerSeen) + ' Uhr still – „Fahrt starten" geht hier wieder.', 'warning');
+  } else if (aktiv) {
+    updateShareBtn();
+  }
+}
+function toggleShare() {
+  if (trackerAktiv()) {
+    setStatus('📡 Tracker-App läuft (zuletzt ' + fmtUhr(trackerSeen) + ' Uhr) – hier gibt es nichts zu starten. '
+              + 'Beenden: in der Traccar-App den Dienst ausschalten.', 'sharing');
+    return;
+  }
+  if (sharing) stopShare(false); else startShare();
+}
 function startShare() {
   if (!CAN_SHARE) return;
+  if (trackerAktiv()) { refreshTrackerUi(); return; }           // Build ci: Tracker hat Vorfahrt
   if (!navigator.geolocation) { setStatus('Dieses Gerät oder dieser Browser kann keinen Standort ermitteln.', 'danger'); return; }
   sharing = true; lastSent = 0; sentCount = 0;
   setLiveGuard();                          // Build 11-06w: liest selbst – Fahrt läuft → Karte sofort verschiebbar
@@ -1173,9 +1229,12 @@ function stopShare(viaBeacon, withHint) {
 function updateShareBtn() {
   const b = document.getElementById('btn-share');
   if (!b) return;
-  b.textContent = sharing ? '⏹ Fahrt beenden' : '▶ Fahrt starten';
-  b.classList.toggle('btn-success', !sharing);
-  b.classList.toggle('btn-danger', sharing);
+  const trk = trackerAktiv();                                   // Build ci
+  b.textContent = trk ? '📡 Tracker-App läuft' : (sharing ? '⏹ Fahrt beenden' : '▶ Fahrt starten');
+  b.classList.toggle('btn-success', !sharing && !trk);
+  b.classList.toggle('btn-danger', sharing && !trk);
+  b.classList.toggle('btn-info', trk);
+  b.setAttribute('aria-disabled', trk ? 'true' : 'false');
   updatePauseBtn();
 }
 function toggleFollow() {
@@ -1540,6 +1599,13 @@ function onPos(pos) {
     if (r.status === 403) { stopShare(false, false); setStatus(d.error || 'Fahren ist für diese Tour gerade nicht möglich.', 'warning'); return; }
     if (r.status === 409) { stopShare(false, false); setStatus(d.error || 'Fahrt wurde beendet – zum Neustart neu laden.', 'warning'); return; }
     if (!r.ok) { setStatus('Server meldet HTTP ' + r.status + ' – wird weiter versucht.', 'warning'); return; }
+    if (d.tracker) {                                            // Build ci: Server sagt „Tracker hat Vorfahrt"
+      const ix0 = gesichert.findIndex(g => g.id === punkt.id);
+      if (ix0 >= 0) { gesichert.splice(ix0, 1); sicherSpeichern(); }
+      if (d.locations) render(d.locations);
+      noteTrackerAgo(d.tracker_ago != null ? d.tracker_ago : 0);
+      return;
+    }
     sentCount++;
     const ix = gesichert.findIndex(g => g.id === punkt.id);
     if (ix >= 0) { gesichert.splice(ix, 1); sicherSpeichern(); }

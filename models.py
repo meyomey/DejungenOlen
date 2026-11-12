@@ -252,6 +252,7 @@ class LiveLocation(db.Model):
     accuracy   = db.Column(db.Float, nullable=True)
     speed      = db.Column(db.Float, nullable=True)   # Build aa: m/s
     heading    = db.Column(db.Float, nullable=True)   # Build aa: Grad
+    tracker_at = db.Column(db.DateTime, nullable=True)   # Build ci: letzter Punkt aus der Tracker-App (Traccar)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     tour       = db.relationship('Tour')
     user       = db.relationship('User')

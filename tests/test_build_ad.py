@@ -910,7 +910,8 @@ class FahrtStartFunktioniertTest(unittest.TestCase):
     def test_klick_startet_die_fahrt(self):
         live = _live()
         self.assertIn('id="btn-share" onclick="toggleShare()"', live)
-        self.assertIn('function toggleShare() { if (sharing) stopShare(false); else startShare(); }', live)
+        # Build ci: toggleShare prüft zuerst den Tracker-Modus, dann wie bisher
+        self.assertIn('if (sharing) stopShare(false); else startShare();', live)
         # startShare setzt den Zustand und tauscht die Beschriftung
         block = live.split('function startShare()', 1)[1].split('function ensureWatch', 1)[0]
         self.assertIn('sharing = true;', block)
@@ -919,9 +920,10 @@ class FahrtStartFunktioniertTest(unittest.TestCase):
 
     def test_knopf_wird_rot_und_beschriftet_um(self):
         live = _live()
-        self.assertIn("b.textContent = sharing ? '⏹ Fahrt beenden' : '▶ Fahrt starten';", live)
-        self.assertIn("b.classList.toggle('btn-success', !sharing);", live)
-        self.assertIn("b.classList.toggle('btn-danger', sharing);", live)
+        # Build ci: zusätzlich der Tracker-Zustand (trk) – ohne Tracker wie bisher
+        self.assertIn("(sharing ? '⏹ Fahrt beenden' : '▶ Fahrt starten')", live)
+        self.assertIn("b.classList.toggle('btn-success', !sharing && !trk);", live)
+        self.assertIn("b.classList.toggle('btn-danger', sharing && !trk);", live)
 
     def test_gesperrter_knopf_bleibt_wirklich_stumm(self):
         live = _live()

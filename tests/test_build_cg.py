@@ -145,6 +145,10 @@ class TraccarTest(AppTestCase):
     def test_nach_beenden_nachzuegler_spur_dann_sperre_dann_neue_fahrt(self):
         self.login_member()
         self._push(timestamp=_ts(dt.datetime.utcnow() - dt.timedelta(minutes=5)))
+        # Build ci: solange der Tracker aktiv ist, setzt „Beenden" im Browser kein Siegel –
+        # hier den Tracker als 20 min still markieren, damit das Siegel entsteht.
+        M.LiveLocation.query.filter_by(tour_id=self.tid).one().tracker_at = dt.datetime.utcnow() - dt.timedelta(minutes=20)
+        db.session.commit()
         self.assertEqual(self.client.post(f'/api/location/stop?tour_id={self.tid}').status_code, 200)
         stop = M.LiveStop.query.filter_by(tour_id=self.tid, user_id=self.mem.id).one()
         # 1) Nachzügler von vor dem Ende → nur Spur, kein Standort

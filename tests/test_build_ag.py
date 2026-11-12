@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-12 ch')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-12 ci')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -740,7 +740,7 @@ class VideoSmoothTest(AppTestCase):
         # Build ay: „✓ Als Track übernehmen" (Formular, uebernimmt direkt) statt nur eines Links
         # auf die Tourseite – Mitglieder landeten sonst ohne Track da.
         self.assertIn('✓ Als Track übernehmen', live)
-        self.assertEqual(live.count('stopShare(false, false)'), 3)   # 403 + 409-Siegel (11-06s) + GPS verweigert
+        self.assertEqual(live.count('stopShare(false, false)'), 4)   # 403 + 409-Siegel (11-06s) + GPS verweigert + Tracker-Vorfahrt (ci)
         self.assertIn('hideRecHint();', live)                        # Start räumt alte Rückfrage weg
         self.assertIn('const CAN_TAKEOVER = ', live)
         # dynamisch: Tourleitung sieht Übernahme, Mitglied den Download
@@ -2055,7 +2055,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-12 ch')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-12 ci')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()

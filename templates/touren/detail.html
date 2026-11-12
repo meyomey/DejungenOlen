@@ -114,11 +114,19 @@
         </button>
       </span>
       <span id="fahren-normal" {% if live_now and live_now.tour_id == tour.id %}class="d-none"{% endif %}>
+        {% if tracker_active %}
+        {# Build ci: Tracker hat Vorfahrt – die Fahrt läuft schon über die Tracker-App #}
+        <a href="{{ url_for('tour_live', tour_id=tour.id) }}" class="btn btn-sm btn-info"
+           title="Deine Position kommt gerade aus der Tracker-App (Traccar) – hier musst du nichts starten">
+          <i class="bi bi-broadcast me-1"></i><span class="lbl">Tracker läuft</span>
+        </a>
+        {% else %}
         <a href="{{ url_for('tour_live', tour_id=tour.id) }}?share=1"
            class="btn btn-sm {% if live_can_share %}btn-success{% else %}btn-outline-secondary{% endif %}"
            {% if not live_can_share %}title="{{ live_share_hint }}"{% endif %}>
           <i class="bi bi-record-circle me-1"></i><span class="lbl">Fahren</span>
         </a>
+        {% endif %}
       </span>
     </span>
     {% endif %}
