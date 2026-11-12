@@ -13,6 +13,45 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build cc) – WhatsApp-Einladung: Karte wechselt mit dem Mitglied, am PC WhatsApp Web
+
+> „Es bleibt immer das gleiche WhatsApp Fenster offen, auch wenn ich ein anderes Mitglied
+> auswähle. Ich benutze auch Web WhatsApp. Der Link lässt sich nicht direkt darin öffnen
+> sondern es kommt eine Meldung.“ (Windows-Dialog: „Der Datei ist keine App zum Ausführen
+> dieser Aktion zugeordnet“, URL `whatsapp://send/?text=…`)
+
+**Zwei Ursachen, beide in `templates/admin/dashboard.html`:**
+
+1. **Karte wechselte nicht.** Die grüne Karte „Einladungstext für WhatsApp“ zeigte nur den
+   Link aus dem URL-Parameter `?invite=<id>`, den die Weiterleitung nach „Link erstellen“
+   setzt. Die „WhatsApp“-Links in der Liste „Einladungslinks“ sprangen direkt zu `wa.me`
+   und änderten die Karte nie – oben blieb also immer das zuletzt erstellte Mitglied.
+2. **Falscher Link am PC.** Alle Links zeigten auf `https://wa.me/?text=…`. Am PC leitet
+   `wa.me` auf `whatsapp://send?…` weiter – das Protokoll der Desktop-App. Ohne installierte
+   App zeigt Windows genau den gemeldeten Dialog. WhatsApp Web erwartet stattdessen
+   `https://web.whatsapp.com/send?text=…`.
+
+**Fix.**
+- Klick auf „WhatsApp“ in der Liste lädt den Text **dieses** Mitglieds in die Karte (Name
+  steht jetzt im Kartenkopf), Karte scrollt ins Bild. Ohne JavaScript führt der Link auf
+  `/admin/?invite=<id>#einladung` – gleiches Ergebnis per Seitenaufruf. Die Karte ist
+  vorhanden, sobald es offene Einladungen gibt (ohne Auswahl `d-none`, kein Inline-`display`).
+- Der Senden-Button wählt per User-Agent: Handy (Android/iPhone/iPad) → `wa.me` (öffnet
+  die App), PC → `web.whatsapp.com/send`. Gilt auch nach Textänderungen im Feld.
+- Die Listen-Links stehen im DOM unterhalb des Skripts – deshalb Event-Delegation auf
+  `document` statt direktem Binden (beim ersten Versuch griff der Klick darum nicht).
+
+**Nachgestellt (jsdom, echte Seite aus dem Testclient mit zwei Einladungen):**
+
+| | vorher | nachher |
+|---|---|---|
+| Karte nach Klick auf „Jörg Krüger“ in der Liste | Axel Hübner | **Jörg Krüger** (Text, Kopf, Link) |
+| Senden-Link am PC (Windows-UA) | `wa.me` → `whatsapp://` → Fehlerdialog | `https://web.whatsapp.com/send?text=…` |
+| Senden-Link am iPhone | `wa.me` | `wa.me` (unverändert) |
+| Listen-Links direkt zu `wa.me` | 3 | 0 |
+
+**Tests.** `tests/test_build_cc.py` (7), volle Suite **639 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build cb) – Einkehr-Folie im Video zeigt nur noch die eingetragene Einkehr
 
 > „Im Video erscheinen zwei Einkehrpunkte, wir waren aber nur im Asia Bistro. Bei der

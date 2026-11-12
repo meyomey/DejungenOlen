@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 cb'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 cc'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -6478,9 +6478,11 @@ def admin_dashboard():
             pass
 
     invite_texts = {i.id: _invite_text(i) for i in invites if not i.used}
+    # Build cc: Name je Einladung für den Kopf der WhatsApp-Karte (wechselt per Klick in der Liste)
+    invite_labels = {i.id: (i.label or i.email or '–') for i in invites if not i.used}
     highlight_invite = request.args.get('invite', type=int)
     return render_template('admin/dashboard.html',
-                           invite_texts=invite_texts,
+                           invite_texts=invite_texts, invite_labels=invite_labels,
                            highlight_invite=highlight_invite,
                            users=users, invites=invites,
                            active_users=active_users,

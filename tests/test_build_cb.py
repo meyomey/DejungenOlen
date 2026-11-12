@@ -185,6 +185,6 @@ class FormularTest(AppTestCase):
         self.assertRegex(html, r'for="show-gastro">🍴 Einkehr')
 
     def test_build_stempel(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-12 cb')
+        self.assertGreaterEqual(appmod.APP_BUILD, '2026-11-12 cb')   # cb oder neuer
         self.assertRegex(appmod.APP_BUILD, r'^\d{4}-\d{2}-\d{2} [a-z]{2}$')
         self.assertTrue(re.match(r'^1\.5\.', appmod.APP_VERSION))

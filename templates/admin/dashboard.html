@@ -304,36 +304,62 @@
       </div>
     </div>
 
-    <!-- WhatsApp-Einladungstext direkt nach dem Erstellen -->
-    {% if highlight_invite and invite_texts.get(highlight_invite) %}
-    <div class="card shadow-sm border-success mb-3" id="einladung">
+    <!-- WhatsApp-Einladungstext: direkt nach dem Erstellen ODER per Klick auf „WhatsApp“ in der Liste.
+         Build cc: Die Karte wechselt mit dem angeklickten Mitglied (vorher blieb immer der zuletzt
+         erstellte Link stehen) und der Senden-Button nutzt am PC WhatsApp Web statt wa.me
+         (wa.me leitet auf whatsapp:// um – ohne Desktop-App kommt eine Windows-Fehlermeldung). -->
+    {% if invite_texts %}
+    {% set _start = highlight_invite if (highlight_invite and invite_texts.get(highlight_invite)) else none %}
+    <div class="card shadow-sm border-success mb-3 {% if not _start %}d-none{% endif %}" id="einladung">
       <div class="card-header bg-success text-white">
         <i class="bi bi-whatsapp me-2"></i>Einladungstext für WhatsApp
+        <span id="invite-who" class="fw-normal">{% if _start %}– {{ invite_labels[_start] }}{% endif %}</span>
       </div>
       <div class="card-body">
-        <textarea id="invite-text" class="form-control form-control-sm mb-2" rows="9">{{ invite_texts[highlight_invite] }}</textarea>
+        <textarea id="invite-text" class="form-control form-control-sm mb-2" rows="9">{% if _start %}{{ invite_texts[_start] }}{% endif %}</textarea>
         <div class="d-grid gap-2">
           <a id="invite-wa" class="btn btn-success btn-sm" target="_blank" rel="noopener"
-             href="https://wa.me/?text={{ invite_texts[highlight_invite]|urlencode }}">
+             href="{% if _start %}https://wa.me/?text={{ invite_texts[_start]|urlencode }}{% else %}#{% endif %}">
             <i class="bi bi-whatsapp me-1"></i>In WhatsApp senden
           </a>
           <button type="button" class="btn btn-outline-secondary btn-sm" id="invite-copy">
             <i class="bi bi-clipboard me-1"></i>Text kopieren
           </button>
         </div>
-        <div class="form-text">Text darf vor dem Senden angepasst werden. WhatsApp öffnet die Kontaktauswahl.</div>
+        <div class="form-text">Text darf vor dem Senden angepasst werden. Am Handy öffnet sich die WhatsApp-App,
+          am PC WhatsApp Web – dort dann den Kontakt auswählen.</div>
       </div>
     </div>
     <script>
     (function(){
       var ta=document.getElementById('invite-text'), wa=document.getElementById('invite-wa'),
-          cp=document.getElementById('invite-copy');
+          cp=document.getElementById('invite-copy'), card=document.getElementById('einladung'),
+          who=document.getElementById('invite-who');
       if(!ta) return;
-      ta.addEventListener('input',function(){ wa.href='https://wa.me/?text='+encodeURIComponent(ta.value); });
+      var texts={{ invite_texts|tojson }}, labels={{ invite_labels|tojson }};
+      // Build cc: Am PC (keine Touch-Oberfläche) WhatsApp Web, sonst wa.me → App.
+      var mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      function waUrl(t){ return (mobile?'https://wa.me/?text=':'https://web.whatsapp.com/send?text=')+encodeURIComponent(t); }
+      function show(id){
+        if(!texts[id]) return;
+        ta.value=texts[id]; wa.href=waUrl(ta.value);
+        who.textContent='– '+(labels[id]||'');
+        cp.innerHTML='<i class="bi bi-clipboard me-1"></i>Text kopieren';
+        card.classList.remove('d-none');
+        card.scrollIntoView({behavior:'smooth',block:'start'});
+      }
+      if(ta.value) wa.href=waUrl(ta.value);
+      ta.addEventListener('input',function(){ wa.href=waUrl(ta.value); });
       cp.addEventListener('click',function(){
         var done=function(){ cp.innerHTML='<i class="bi bi-check2 me-1"></i>Kopiert'; };
         if(navigator.clipboard){ navigator.clipboard.writeText(ta.value).then(done,function(){ta.select();document.execCommand('copy');done();}); }
         else { ta.select(); document.execCommand('copy'); done(); }
+      });
+      // Die Listen-Links stehen weiter unten im DOM – darum per Delegation, nicht direkt binden.
+      document.addEventListener('click',function(ev){
+        var a=ev.target.closest&&ev.target.closest('.js-invite-pick');
+        if(!a) return;
+        ev.preventDefault(); show(a.getAttribute('data-invite'));
       });
     })();
     </script>
@@ -362,8 +388,8 @@
               <a href="#" onclick="copyLink(this,'{{ url_for('register', token=inv.token, _external=True) }}')"
                  class="small text-primary me-2"><i class="bi bi-clipboard me-1"></i>Kopieren</a>
               {% if invite_texts is defined and invite_texts.get(inv.id) %}
-              <a href="https://wa.me/?text={{ invite_texts[inv.id]|urlencode }}" target="_blank" rel="noopener"
-                 class="small text-success" title="Einladungstext in WhatsApp senden"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
+              <a href="{{ url_for('admin_dashboard', invite=inv.id) }}#einladung" data-invite="{{ inv.id }}"
+                 class="small text-success js-invite-pick" title="Einladungstext für {{ inv.label or inv.email }} anzeigen"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
               {% endif %}
               {% endif %}
             </div>
