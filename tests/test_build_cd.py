@@ -181,4 +181,4 @@ console.log(JSON.stringify(out));
 
 class BuildTest(AppTestCase):
     def test_build_stempel(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-12 cd')
+        self.assertGreaterEqual(appmod.APP_BUILD, '2026-11-12 cd')   # cd oder neuer

@@ -1,10 +1,10 @@
-# Übergabe – Stand Build `cd`
+# Übergabe – Stand Build `ce`
 
 > **Zweck:** Diese Datei ist der Einstieg für einen frischen Chat. Sie beschreibt, wie in
 > diesem Projekt gearbeitet wird, was zuletzt passiert ist und was als Nächstes ansteht.
 > **Bei jedem neuen Build aktuell halten** (Abschnitt 3 und 6).
 >
-> Stand: 2026-11-12, Build `2026-11-12 cd`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
+> Stand: 2026-11-12, Build `2026-11-12 ce`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
 > HEAD siehe `git log -1`, Arbeitsbaum sauber.
 
 ---
@@ -50,7 +50,7 @@ dann, dass hinter dem Symptom zwei Ursachen stecken (so war es bei Build `ca`).
 ```bash
 cd /home/user/DejungenOlen
 .venv/bin/python -m unittest discover -s tests -q      # volle Suite, ~115 s
-.venv/bin/python -m unittest tests.test_build_cd -q    # nur ein Build
+.venv/bin/python -m unittest tests.test_build_ce -q    # nur ein Build
 .venv/bin/python -m pyflakes app.py tests/             # Lint
 ```
 
@@ -81,23 +81,23 @@ schnellste Weg, Bilder zu prüfen** – siehe Rezept in Abschnitt 5.
 
 ---
 
-## 3. Stand jetzt: Build `2026-11-12 cd` (fertig, ausgeliefert)
+## 3. Stand jetzt: Build `2026-11-12 ce` (fertig, ausgeliefert)
 
-### 3.1 Browser-Vorschau = MP4 ✅
+### 3.1 Wetter am Tourtag in Vorschau + MP4 ✅
 
-> „Die Vorschau sollte auch so aussehen wie das erzeugte Video.“
+> „Die Wetterinfo am Tourtag vermisse ich bei beiden, Vorschau und Video.“
 
-**Befund:** Zwei Zeichenwege (Canvas-JS in `video.html` vs. Pillow in `tour_video_render`);
-die Vorschau hatte Logo, Avatar-Zeile (inkl. Gäste), Einkehr-Folie und Einkehr-Marker nicht.
+**Befund:** Seite und Renderer riefen `_tour_day_weather(tour)` ohne Ersatz-Ort auf → ohne
+Treffpunkt nie Wetter (Detailseite nimmt GPX-Start). **Fix:** `_video_weather(tour, gpx_points,
+photos)` – Treffpunkt → GPX-Start → Foto-GPS → Gruppen-Standard; im Renderer nach dem
+GPX-Parsen. Tests mit Open-Meteo-Attrappe (`mock.patch.object(appmod.http_requests, 'get')`).
 
-**Fix:** Seite bekommt dieselben Daten (`_video_attending_users` – jetzt **ein** Helfer für
-Seite und Renderer, `_video_page_einkehr`, `logo_url`). JS: `drawAvatarRow`,
-`drawLogoCentered`/`drawWatermark`, `drawGastroFrame` + `gastroSlideSecs` (Dauer wie
-`build_gastro_frames`), Einkehr-Marker in `drawTrackFrame`. Häkchen-Zusatz „(nur MP4)“ weg.
+### 3.1b Build `cd` – Browser-Vorschau = MP4
 
-**Regel für die Zukunft:** Wer eine Folie im MP4 ändert, ändert sie in `video.html` mit –
-`tests/test_build_cd.py::VorschauSkriptTest` zeichnet die Folien mit Stub-Canvas in Node und
-prüft die Texte (Muster für weitere Paritäts-Tests).
+Seite bekommt dieselben Daten wie der Renderer (`_video_attending_users`, `_video_page_einkehr`,
+`logo_url`); JS: `drawAvatarRow`, `drawLogoCentered`/`drawWatermark`, `drawGastroFrame`,
+Einkehr-Marker. **Regel:** Wer eine MP4-Folie ändert, zieht `video.html` mit –
+`tests/test_build_cd.py::VorschauSkriptTest` zeichnet die Folien mit Stub-Canvas in Node.
 
 ### 3.1a Build `cc` (davor) – WhatsApp-Einladung
 
@@ -122,10 +122,10 @@ Einkehr)“. Streckenfunde nur noch auf der Tour-Seite (Build u).
 | | |
 |---|---|
 | `APP_VERSION` | `1.5.0` |
-| `APP_BUILD` | `2026-11-12 cd` (app.py Z. 92) |
-| Tests | `tests/test_build_cd.py` **7**, volle Suite **646 grün** (~120 s) |
-| Pakete | `deploy/deploy_v1.5.0_2026-11-12cd_aenderungen.zip` · `…_komplett.zip` |
-| Geprüft | Node-Stub-Canvas-Probe der Folien, ZIP entpackt + Suite darin |
+| `APP_BUILD` | `2026-11-12 ce` (app.py Z. 92) |
+| Tests | `tests/test_build_ce.py` **8**, volle Suite **654 grün** (~120 s) |
+| Pakete | `deploy/deploy_v1.5.0_2026-11-12ce_aenderungen.zip` · `…_komplett.zip` |
+| Geprüft | Attrappen-Nachstellung vorher/nachher, ZIP entpackt + Tests darin |
 
 **Hinweis zur Paket-Probe:** Zwei Tests (`test_az_deploy_date_freshness`,
 `test_n_ffmpeg_aus_git_aber_lokal_da`) schlagen im entpackten Paket an, weil sie
@@ -202,7 +202,7 @@ sonst. Probe: ZIP nach `/tmp` entpacken, App starten, Footer prüfen.
 
 ## 6. Als Nächstes
 
-Nichts Offenes aus Build `cd`. Der nächste Chat wartet auf die nächste Meldung des Nutzers.
+Nichts Offenes aus Build `ce`. Der nächste Chat wartet auf die nächste Meldung des Nutzers.
 Hinweis: `origin/main` auf GitHub steht noch auf Build `af` (15.10.) – alle neueren Builds
 liegen nur auf den Arena-Branches; `main` nur auf Zuruf nachziehen.
 
@@ -210,7 +210,7 @@ Wenn eine neue Meldung kommt:
 1. Wörtlich zitieren, Akzeptanz im Code prüfen.
 2. Nachstellen (Skript, das den Fehler zeigt).
 3. Beheben, Gegenprobe, Tests, CHANGELOG.
-4. Buchstabe hochzählen: nach `cd` kommt `ce`, `cf`, … (immer Kleinbuchstaben, `z` → `aa`).
+4. Buchstabe hochzählen: nach `ce` kommt `cf`, `cg`, … (immer Kleinbuchstaben, `z` → `aa`).
 5. `APP_BUILD` auf das **heutige** Datum + neuen Buchstaben setzen.
 6. Deploy-Pakete, Probe, Commit, Push.
 7. **Diese Datei aktualisieren** (Abschnitt 3, 4 und 6).
@@ -236,7 +236,8 @@ Wenn eine neue Meldung kommt:
 | `models.py` | `Tour` (inkl. `gastro_spot_id`, `einkehr2/3_*`), `TourGuest`, `TourParticipant`, `GastroSpot` |
 | `templates/admin/dashboard.html` | Admin-Dashboard; WhatsApp-Einladungskarte + Liste (Build cc) |
 | `templates/touren/video.html` | Video-Seite: Format-Auswahl (`.format-wahl`, Build bz) + JS-Vorschau (seit `cd` paritätisch zum MP4: `drawAvatarRow`, `drawGastroFrame`, Logo) |
-| ↳ `_video_attending_users` / `_video_page_einkehr` | gemeinsame Daten für Seite und Renderer (Build cd) |
+| ↳ `_video_attending_users` / `_video_page_einkehr` / `_video_weather` | gemeinsame Daten für Seite und Renderer (Build cd/ce) |
+| ↳ `_tour_day_weather` ~2081 | Open-Meteo (Prognose/Archiv), braucht lat/lng; Cache `tours.weather_json` |
 | `static/css/style.css` | globales CSS – `.btn { white-space: nowrap; }` Z. 650 **nicht** anfassen |
 | `tests/base.py` | `AppTestCase`, Seed-Daten, Attrappen für Netz-Zugriffe |
 | `tests/test_build_*.py` | ein Testpaket pro Build; `test_build_ag.py` ist das große Sammelpaket |
@@ -248,6 +249,7 @@ Wenn eine neue Meldung kommt:
 
 | Build | Datum | Thema |
 |---|---|---|
+| `ce` | 2026-11-12 | Wetter am Tourtag in Vorschau + MP4 (Ersatz-Ort: GPX-Start/Foto/Gruppe) |
 | `cd` | 2026-11-12 | Browser-Vorschau = MP4 (Avatare, Logo, Einkehr-Folie/-Marker) |
 | `cc` | 2026-11-12 | WhatsApp-Einladung: Karte wechselt mit Mitglied, PC → WhatsApp Web |
 | `cb` | 2026-11-12 | Einkehr-Folie nur noch eingetragene Einkehr (keine Streckenfunde im Video) |
@@ -264,8 +266,8 @@ Wenn eine neue Meldung kommt:
 ## 8. Text zum Einfügen in den neuen Chat
 
 > Wir machen mit der App „DejungenOlen" weiter. Lies bitte zuerst `UEBERGABE.md` im
-> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 cd` ist
-> fertig und ausgeliefert (Browser-Vorschau sieht aus wie das MP4), Arbeitsbaum
-> sauber, alle 646 Tests grün. Arbeite weiter wie dort beschrieben: Meldung wörtlich
+> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 ce` ist
+> fertig und ausgeliefert (Wetter am Tourtag auch ohne Treffpunkt in Vorschau + MP4), Arbeitsbaum
+> sauber, alle 654 Tests grün. Arbeite weiter wie dort beschrieben: Meldung wörtlich
 > nehmen, am echten Code nachmessen, mit echten Daten nachstellen, beheben, Gegenprobe,
-> Tests, CHANGELOG, neuer Build-Buchstabe (`ce`), Deploy-Pakete, Push.
+> Tests, CHANGELOG, neuer Build-Buchstabe (`cf`), Deploy-Pakete, Push.

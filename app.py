@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 cd'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 ce'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3410,6 +3410,33 @@ def _video_attending_users(tour_id):
     return users
 
 
+def _video_weather(tour, gpx_points=None, photos=None):
+    """Build ce: Wetter am Tourtag für Vorschau UND MP4 – mit Ersatz-Ort wie auf der Detailseite.
+
+    Meldung: „Die Wetterinfo am Tourtag vermisse ich bei beiden, Vorschau und Video.“
+    Ursache: Seite und Renderer riefen `_tour_day_weather(tour)` ohne Ersatz-Koordinaten auf.
+    Ohne Treffpunkt (meeting_lat/lng) gab es dort also nie Wetter – die Detailseite (Build q)
+    nimmt in dem Fall den GPX-Start. Reihenfolge jetzt überall gleich:
+    Treffpunkt → GPX-Startpunkt → erstes Foto mit GPS → Standard-Treffpunkt der Gruppe."""
+    lat = lng = None
+    for pt in (gpx_points or []):
+        if pt.get('lat') is not None and pt.get('lng') is not None:
+            lat, lng = pt['lat'], pt['lng']
+            break
+    if not (lat and lng):
+        for ph in (photos or []):
+            if getattr(ph, 'lat', None) and getattr(ph, 'lng', None):
+                lat, lng = ph.lat, ph.lng
+                break
+    if not (lat and lng):
+        try:
+            lat = float(cfg('default_meeting_lat') or 0) or None
+            lng = float(cfg('default_meeting_lng') or 0) or None
+        except (TypeError, ValueError):
+            lat = lng = None
+    return _tour_day_weather(tour, lat, lng)     # Treffpunkt hat darin weiterhin Vorrang
+
+
 def _video_page_einkehr(tour, gpx_data):
     """Build cd: Einkehr-Einträge für die Browser-Vorschau – dieselbe Quelle wie die
     Einkehr-Folie im MP4 (_planned_einkehr_entries, Build cb: nur eingetragene Einkehr)."""
@@ -3444,7 +3471,8 @@ def tour_video(tour_id):
                        for n, a in _att]
     einkehr = _video_page_einkehr(tour, gpx_data)      # Build cd: Einkehr-Folie + Marker in der Vorschau
 
-    weather = _tour_day_weather(tour)   # Build j: gemeinsamer Helfer (Prognose + Archiv)
+    # Build ce: mit Ersatz-Ort (GPX-Start/Foto/Gruppe) – vorher ohne Treffpunkt kein Wetter
+    weather = _video_weather(tour, (gpx_data or {}).get('points'), photos)
 
     from flask import g as _g
     default_music_url = None
@@ -4849,7 +4877,7 @@ def tour_video_render(tour_id):
         # Build cd: gemeinsamer Helfer mit der Video-Seite, damit Vorschau und MP4 dieselben
         # Gesichter zeigen (deutsche Sortierung, Gäste nicht pauschal hinten).
         _attending_users = _video_attending_users(tour_id)
-        _weather = _tour_day_weather(tour)   # Build j: gemeinsamer Helfer (Prognose + Archiv)
+        _weather = None   # Build ce: wird unten nach dem GPX-Parsen mit Ersatz-Ort geholt
 
         from flask import g as _g_render
         _grp = getattr(_g_render, 'group', None)
@@ -4880,6 +4908,9 @@ def tour_video_render(tour_id):
                 if _parsed:
                     _gpx_points = _parsed.get('points', [])
                     _ride = {k: _parsed.get(k) for k in ('moving_s', 'total_s', 'avg_kmh', 'max_kmh')}
+        # Build ce: Wetter mit Ersatz-Ort (Treffpunkt → GPX-Start → Foto-GPS → Gruppe), wie auf
+        # der Detailseite und der Video-Seite – vorher fehlte es ohne Treffpunkt immer.
+        _weather = _video_weather(tour, _gpx_points, photos)
         if show_gastro:
             # Build cb: NUR die in der Tour eingetragenen Einkehren (bis 3, Build bh). Die
             # Streckenfunde aus gastro_near_track() (alle Gastro-Einträge ≤ 150 m neben dem

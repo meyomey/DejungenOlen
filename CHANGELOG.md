@@ -13,6 +13,32 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build ce) – Wetter am Tourtag fehlte in Vorschau und MP4
+
+> „Die Wetterinfo am Tourtag vermisse ich bei beiden, Vorschau und Video.“
+
+**Ursache.** `_tour_day_weather(tour, lat, lng)` braucht einen Ort. Die Tour-Detailseite
+(Build q) gibt ohne Treffpunkt den **GPX-Start** als Ersatz mit – die Video-Seite und der
+Renderer riefen die Funktion aber **ohne** Ersatz-Koordinaten auf (`_tour_day_weather(tour)`).
+Ohne `meeting_lat/lng` an der Tour bricht sie sofort mit `None` ab. Deshalb: Detailseite zeigt
+Wetter, Vorschau und Video nicht – bei jeder Tour ohne eingetragenen Treffpunkt.
+
+Nachgestellt (Open-Meteo-Attrappe: 9 °C, bewölkt; Tour ohne Treffpunkt, mit GPX):
+
+| | vorher | nachher |
+|---|---|---|
+| Detailseite (Wetter-Kachel) | 9 °C ☁️ | 9 °C ☁️ |
+| Video-Seite `const WEATHER` | `null` | `{temp_max: 9, kind: 'cloud', …}` |
+| MP4-Titel / Statistik-Kachel „Wetter“ | – | 9 °C mit Symbol |
+
+**Fix.** `_video_weather(tour, gpx_points, photos)` – ein Helfer für Seite und Renderer,
+Ersatz-Reihenfolge: Treffpunkt → GPX-Startpunkt → erstes Foto mit GPS → Standard-Treffpunkt
+der Gruppe (`default_meeting_lat/lng`). Im Renderer wird das Wetter jetzt **nach** dem
+GPX-Parsen geholt (vorher davor, da gab es noch keine Punkte). Touren mit offenem Datum
+bekommen weiterhin kein Wetter; der Cache in `tours.weather_json` greift wie bisher.
+
+**Tests.** `tests/test_build_ce.py` (8), volle Suite **654 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build cd) – Browser-Vorschau sieht aus wie das MP4
 
 > „Die Vorschau sollte auch so aussehen wie das erzeugte Video.“
