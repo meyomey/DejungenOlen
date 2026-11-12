@@ -13,6 +13,56 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build cd) – Browser-Vorschau sieht aus wie das MP4
+
+> „Die Vorschau sollte auch so aussehen wie das erzeugte Video.“
+
+**Befund.** Vorschau (`templates/touren/video.html`, Canvas im Browser) und MP4
+(`tour_video_render`, Pillow + ffmpeg) sind zwei getrennte Zeichenwege. Die Server-Seite hat
+seit Build i/j/ca einiges dazubekommen, die Vorschau nicht – gemessen an den Folien:
+
+| Folie | MP4 (Server) | Vorschau (vorher) |
+|---|---|---|
+| Titel | Gruppenlogo, Datum, „km · Hm“, Wetter, **Avatar-Zeile mit Namen (Mitglieder + Gäste)** | 🚴-Emoji, „👥 3 dabei“ – keine Avatare, kein Logo |
+| Track | lila Einkehr-Marker mit Namensschild | keine Marker |
+| Einkehr-Folie | nach dem Track, 2,5 s + 0,5 s je Zeile | **fehlte** („nur MP4“) |
+| Statistik | Avatar-Zeile mit Profilbildern, Logo-Wasserzeichen | Namen nur als Textzeile, nur Mitglieder (`attending_names` ohne Gäste) |
+| Outro | Logo über dem Dank | kein Logo |
+
+**Fix.**
+- **Eine Datenquelle:** `_video_attending_users(tour_id)` (Mitglieder + Gäste, deutsch
+  sortiert) liefert jetzt die Liste für Seite **und** Renderer; `_video_page_einkehr()` gibt
+  der Seite dieselben Einkehr-Einträge wie der Folie im MP4 (`_planned_einkehr_entries`,
+  Build cb). Die Seite bekommt außerdem `logo_url`.
+- **Titel:** Logo über dem Titel (ohne Logo weiterhin 🚴), „42.3 km · 120 Hm“, Wetterzeile,
+  darunter die Avatar-Zeile (`drawAvatarRow`, bis 12 Gesichter, Umbruch ab 9, Initialen-Kreis
+  ohne Profilbild – gleiche Palette/Größen wie `_avatar_row_layer`).
+- **Einkehr-Folie** (`drawGastroFrame`): 1:1 nach `build_gastro_frames` – Überschrift,
+  Unterzeile, Kacheln mit gestaffeltem Einblenden, „Geplante Einkehr · Imbiss“ ohne GPX, gleiche
+  Dauer (`min(6, 2.5 + 0.5·n)`), Position nach dem Track. Häkchen gilt nun für beides; der
+  Zusatz „(nur MP4)“ ist weg.
+- **Track:** Einkehr-Marker (lila, Namensschild bis 6 Einträge) erscheinen, sobald der Track
+  die Stelle erreicht hat.
+- **Statistik:** Avatar-Zeile ab 55 % statt Textzeile; Logo-Wasserzeichen oben rechts;
+  „42.3 km“ / „120 m“ mit Leerzeichen wie im MP4; Überschrift ohne Emoji.
+- **Outro:** Logo über „Danke fürs Mitfahren!“.
+- Standbild beim Öffnen wird nach dem Laden von Logo/Profilbildern noch einmal gezeichnet.
+
+**Nachgestellt** (echte Seite aus dem Testclient, Skript in Node mit Stub-Canvas, Tour mit
+1 Mitglied + 2 Gästen + 1 Einkehr):
+
+| | vorher | nachher |
+|---|---|---|
+| Titel-Texte | `🚴, Titel, Datum, 📏 42.3 km ⛰️ 120 m, 👥 3 dabei` | `Titel, Datum, 42.3 km · 120 Hm, AH Axel, JK Jörg, O Orga` |
+| Einkehr-Folie | – | `Einkehr unterwegs / Unsere Einkehr auf dieser Tour / Badener Asia Bistro / Geplante Einkehr · Imbiss` |
+| Statistik-Teilnehmer | „Orga“ (Textzeile, ohne Gäste) | AH Axel · JK Jörg · O Orga |
+| Gesamtdauer ohne GPX | 13 s | 16 s (+3 s Einkehr, wie MP4) |
+
+Bleibende, bewusste Unterschiede: Die Vorschau rendert in 1280×720, das MP4 im gewählten
+Format; Wettersymbol ist im Browser ein Emoji, im MP4 gezeichnet (kein Emoji-Font auf dem Server).
+
+**Tests.** `tests/test_build_cd.py` (7, davon eine Node-Probe), volle Suite **646 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build cc) – WhatsApp-Einladung: Karte wechselt mit dem Mitglied, am PC WhatsApp Web
 
 > „Es bleibt immer das gleiche WhatsApp Fenster offen, auch wenn ich ein anderes Mitglied

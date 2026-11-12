@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 cc'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 cd'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -3398,6 +3398,31 @@ def ken_burns_exprs(effect, n_frames):
     }[effect]
 
 
+def _video_attending_users(tour_id):
+    """Build cd: EINE Teilnehmerliste für Vorschau (video.html) und MP4 (tour_video_render):
+    Mitglieder (mit Profilbild-Dateiname) + Gäste (ohne), deutsch sortiert. Vorher holte
+    die Seite nur Mitglieder-Namen, das Video aber Mitglieder + Gäste mit Avataren – und
+    die Vorschau sah deshalb anders aus als das fertige Video."""
+    users = [(p.user.display_name, p.user.avatar) for p in
+             TourParticipant.query.filter_by(tour_id=tour_id, status='attending').join(User).all()]
+    users += [(g.name, None) for g in TourGuest.query.filter_by(tour_id=tour_id).all()]
+    users.sort(key=lambda nv: _de_name_key(nv[0]))
+    return users
+
+
+def _video_page_einkehr(tour, gpx_data):
+    """Build cd: Einkehr-Einträge für die Browser-Vorschau – dieselbe Quelle wie die
+    Einkehr-Folie im MP4 (_planned_einkehr_entries, Build cb: nur eingetragene Einkehr)."""
+    pts = (gpx_data or {}).get('points') or []
+    out = []
+    for e in _planned_einkehr_entries(tour, pts):
+        out.append({'name': e.get('name') or '', 'type_label': e.get('type_label') or '',
+                    'km': e.get('km') or 0.0, 'dist_m': e.get('dist_m') or 0,
+                    'km_known': bool(e.get('km_known')), 'frac': e.get('frac') or 0.0,
+                    'lat': e.get('lat'), 'lng': e.get('lng')})
+    return out
+
+
 @app.route('/touren/<int:tour_id>/video')
 @login_required
 def tour_video(tour_id):
@@ -3412,17 +3437,23 @@ def tour_video(tour_id):
             gpx_data = gpx_for_page(gpx_path)          # Build ab: ≤ 2000 Punkte im Seiten-JSON
 
     attending_count = tour_headcount(tour_id)          # Build 11-05g: Gäste zählen mit
-    attending_names = [p.user.display_name for p in
-                       TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
-                       .join(User).order_by(User.name).limit(12).all()]
+    # Build cd: dieselbe Liste wie im MP4 – Mitglieder + Gäste, mit Profilbild-URL
+    _att = _video_attending_users(tour_id)
+    attending_names = [n for n, _a in _att]
+    attending_users = [{'name': n, 'avatar': (url_for('static', filename='uploads/avatars/' + a) if a else None)}
+                       for n, a in _att]
+    einkehr = _video_page_einkehr(tour, gpx_data)      # Build cd: Einkehr-Folie + Marker in der Vorschau
 
     weather = _tour_day_weather(tour)   # Build j: gemeinsamer Helfer (Prognose + Archiv)
 
     from flask import g as _g
     default_music_url = None
+    logo_url = None                                    # Build cd: Gruppenlogo wie im MP4
     grp = getattr(_g, 'group', None)
     if grp and grp.default_music:
         default_music_url = url_for('static', filename='uploads/group_music/' + grp.default_music)
+    if grp and grp.logo:
+        logo_url = url_for('static', filename='uploads/group_logos/' + grp.logo)
 
     _base_url = app.config.get('BASE_URL', '') or ''
     base_domain = _base_url.replace('https://', '').replace('http://', '').rstrip('/')
@@ -3433,6 +3464,7 @@ def tour_video(tour_id):
                            tour=tour, photos=photos,
                            attending_count=attending_count,
                            attending_names=attending_names,
+                           attending_users=attending_users, einkehr=einkehr, logo_url=logo_url,
                            weather=weather,
                            default_music_url=default_music_url,
                            base_domain=base_domain,
@@ -4814,13 +4846,9 @@ def tour_video_render(tour_id):
         # Jetzt: Mitglieder und Gäste in EINER Liste, nach Namen sortiert. Gäste haben kein
         # Konto und damit kein Profilbild – `avatar=None` lässt `_avatar_row_layer` den
         # farbigen Initialen-Kreis zeichnen, genau wie bei Mitgliedern ohne Bild.
-        _attending_users = [(p.user.display_name, p.user.avatar) for p in
-                            TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
-                            .join(User).all()]
-        _attending_users += [(g.name, None) for g in
-                             TourGuest.query.filter_by(tour_id=tour_id).all()]
-        # Deutsche Sortierung (Ä/Ö/Ü richtig) – und Gäste stehen nicht pauschal hinten.
-        _attending_users.sort(key=lambda nv: _de_name_key(nv[0]))
+        # Build cd: gemeinsamer Helfer mit der Video-Seite, damit Vorschau und MP4 dieselben
+        # Gesichter zeigen (deutsche Sortierung, Gäste nicht pauschal hinten).
+        _attending_users = _video_attending_users(tour_id)
         _weather = _tour_day_weather(tour)   # Build j: gemeinsamer Helfer (Prognose + Archiv)
 
         from flask import g as _g_render

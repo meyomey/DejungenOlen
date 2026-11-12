@@ -1,10 +1,10 @@
-# Übergabe – Stand Build `cc`
+# Übergabe – Stand Build `cd`
 
 > **Zweck:** Diese Datei ist der Einstieg für einen frischen Chat. Sie beschreibt, wie in
 > diesem Projekt gearbeitet wird, was zuletzt passiert ist und was als Nächstes ansteht.
 > **Bei jedem neuen Build aktuell halten** (Abschnitt 3 und 6).
 >
-> Stand: 2026-11-12, Build `2026-11-12 cc`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
+> Stand: 2026-11-12, Build `2026-11-12 cd`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
 > HEAD siehe `git log -1`, Arbeitsbaum sauber.
 
 ---
@@ -50,7 +50,7 @@ dann, dass hinter dem Symptom zwei Ursachen stecken (so war es bei Build `ca`).
 ```bash
 cd /home/user/DejungenOlen
 .venv/bin/python -m unittest discover -s tests -q      # volle Suite, ~115 s
-.venv/bin/python -m unittest tests.test_build_cc -q    # nur ein Build
+.venv/bin/python -m unittest tests.test_build_cd -q    # nur ein Build
 .venv/bin/python -m pyflakes app.py tests/             # Lint
 ```
 
@@ -81,23 +81,28 @@ schnellste Weg, Bilder zu prüfen** – siehe Rezept in Abschnitt 5.
 
 ---
 
-## 3. Stand jetzt: Build `2026-11-12 cc` (fertig, ausgeliefert)
+## 3. Stand jetzt: Build `2026-11-12 cd` (fertig, ausgeliefert)
 
-### 3.1 WhatsApp-Einladung im Admin-Dashboard ✅
+### 3.1 Browser-Vorschau = MP4 ✅
 
-> „Es bleibt immer das gleiche WhatsApp Fenster offen, auch wenn ich ein anderes Mitglied
-> auswähle. Ich benutze auch Web WhatsApp. Der Link lässt sich nicht direkt darin öffnen.“
+> „Die Vorschau sollte auch so aussehen wie das erzeugte Video.“
 
-**Befund:** (1) Karte zeigte nur `?invite=<id>` aus der Weiterleitung nach „Link erstellen“;
-Listen-Links gingen direkt zu `wa.me`. (2) `wa.me` leitet am PC auf `whatsapp://` → ohne
-Desktop-App Windows-Fehler; WhatsApp Web braucht `web.whatsapp.com/send?text=`.
+**Befund:** Zwei Zeichenwege (Canvas-JS in `video.html` vs. Pillow in `tour_video_render`);
+die Vorschau hatte Logo, Avatar-Zeile (inkl. Gäste), Einkehr-Folie und Einkehr-Marker nicht.
 
-**Fix (`templates/admin/dashboard.html`, `admin_dashboard` liefert zusätzlich
-`invite_labels`):** Listen-Link `.js-invite-pick` lädt Text + Name in die Karte (Delegation
-auf `document`, weil die Liste unter dem Skript steht; Fallback-href
-`/admin/?invite=<id>#einladung`). Senden-Link per UA: mobil `wa.me`, PC `web.whatsapp.com`.
-jsdom-Probe: `/tmp/probe_cc.js`-Muster – Seite aus Testclient, `ResourceLoader({userAgent})`
-für den UA, Klick dispatchen, Textarea/Href prüfen.
+**Fix:** Seite bekommt dieselben Daten (`_video_attending_users` – jetzt **ein** Helfer für
+Seite und Renderer, `_video_page_einkehr`, `logo_url`). JS: `drawAvatarRow`,
+`drawLogoCentered`/`drawWatermark`, `drawGastroFrame` + `gastroSlideSecs` (Dauer wie
+`build_gastro_frames`), Einkehr-Marker in `drawTrackFrame`. Häkchen-Zusatz „(nur MP4)“ weg.
+
+**Regel für die Zukunft:** Wer eine Folie im MP4 ändert, ändert sie in `video.html` mit –
+`tests/test_build_cd.py::VorschauSkriptTest` zeichnet die Folien mit Stub-Canvas in Node und
+prüft die Texte (Muster für weitere Paritäts-Tests).
+
+### 3.1a Build `cc` (davor) – WhatsApp-Einladung
+
+Karte wechselt per Klick mit dem Mitglied (`.js-invite-pick`, Delegation), Senden-Link per
+UA: mobil `wa.me`, PC `web.whatsapp.com/send`.
 
 ### 3.1b Build `cb` (davor, ausgeliefert) – Einkehr-Folie nur eingetragene Einkehr
 
@@ -117,10 +122,10 @@ Einkehr)“. Streckenfunde nur noch auf der Tour-Seite (Build u).
 | | |
 |---|---|
 | `APP_VERSION` | `1.5.0` |
-| `APP_BUILD` | `2026-11-12 cc` (app.py Z. 92) |
-| Tests | `tests/test_build_cc.py` **7**, volle Suite **639 grün** (~120 s) |
-| Pakete | `deploy/deploy_v1.5.0_2026-11-12cc_aenderungen.zip` · `…_komplett.zip` |
-| Geprüft | jsdom-Klickprobe (Windows/iPhone-UA), ZIP entpackt + Suite darin |
+| `APP_BUILD` | `2026-11-12 cd` (app.py Z. 92) |
+| Tests | `tests/test_build_cd.py` **7**, volle Suite **646 grün** (~120 s) |
+| Pakete | `deploy/deploy_v1.5.0_2026-11-12cd_aenderungen.zip` · `…_komplett.zip` |
+| Geprüft | Node-Stub-Canvas-Probe der Folien, ZIP entpackt + Suite darin |
 
 **Hinweis zur Paket-Probe:** Zwei Tests (`test_az_deploy_date_freshness`,
 `test_n_ffmpeg_aus_git_aber_lokal_da`) schlagen im entpackten Paket an, weil sie
@@ -197,7 +202,7 @@ sonst. Probe: ZIP nach `/tmp` entpacken, App starten, Footer prüfen.
 
 ## 6. Als Nächstes
 
-Nichts Offenes aus Build `cc`. Der nächste Chat wartet auf die nächste Meldung des Nutzers.
+Nichts Offenes aus Build `cd`. Der nächste Chat wartet auf die nächste Meldung des Nutzers.
 Hinweis: `origin/main` auf GitHub steht noch auf Build `af` (15.10.) – alle neueren Builds
 liegen nur auf den Arena-Branches; `main` nur auf Zuruf nachziehen.
 
@@ -205,7 +210,7 @@ Wenn eine neue Meldung kommt:
 1. Wörtlich zitieren, Akzeptanz im Code prüfen.
 2. Nachstellen (Skript, das den Fehler zeigt).
 3. Beheben, Gegenprobe, Tests, CHANGELOG.
-4. Buchstabe hochzählen: nach `cc` kommt `cd`, `ce`, … (immer Kleinbuchstaben, `z` → `aa`).
+4. Buchstabe hochzählen: nach `cd` kommt `ce`, `cf`, … (immer Kleinbuchstaben, `z` → `aa`).
 5. `APP_BUILD` auf das **heutige** Datum + neuen Buchstaben setzen.
 6. Deploy-Pakete, Probe, Commit, Push.
 7. **Diese Datei aktualisieren** (Abschnitt 3, 4 und 6).
@@ -230,7 +235,8 @@ Wenn eine neue Meldung kommt:
 | ↳ `_de_name_key` 7260 | Telefonbuch-Sortierung (Ä→A, Ö→O, Ü→U, ß→ss) |
 | `models.py` | `Tour` (inkl. `gastro_spot_id`, `einkehr2/3_*`), `TourGuest`, `TourParticipant`, `GastroSpot` |
 | `templates/admin/dashboard.html` | Admin-Dashboard; WhatsApp-Einladungskarte + Liste (Build cc) |
-| `templates/touren/video.html` | Video-Seite: Format-Auswahl (`.format-wahl`, Build bz) + JS-Vorschau |
+| `templates/touren/video.html` | Video-Seite: Format-Auswahl (`.format-wahl`, Build bz) + JS-Vorschau (seit `cd` paritätisch zum MP4: `drawAvatarRow`, `drawGastroFrame`, Logo) |
+| ↳ `_video_attending_users` / `_video_page_einkehr` | gemeinsame Daten für Seite und Renderer (Build cd) |
 | `static/css/style.css` | globales CSS – `.btn { white-space: nowrap; }` Z. 650 **nicht** anfassen |
 | `tests/base.py` | `AppTestCase`, Seed-Daten, Attrappen für Netz-Zugriffe |
 | `tests/test_build_*.py` | ein Testpaket pro Build; `test_build_ag.py` ist das große Sammelpaket |
@@ -242,6 +248,7 @@ Wenn eine neue Meldung kommt:
 
 | Build | Datum | Thema |
 |---|---|---|
+| `cd` | 2026-11-12 | Browser-Vorschau = MP4 (Avatare, Logo, Einkehr-Folie/-Marker) |
 | `cc` | 2026-11-12 | WhatsApp-Einladung: Karte wechselt mit Mitglied, PC → WhatsApp Web |
 | `cb` | 2026-11-12 | Einkehr-Folie nur noch eingetragene Einkehr (keine Streckenfunde im Video) |
 | `ca` | 2026-11-12 | Einkehr doppelt im Video · Gäste fehlen im Einstiegsbild |
@@ -257,8 +264,8 @@ Wenn eine neue Meldung kommt:
 ## 8. Text zum Einfügen in den neuen Chat
 
 > Wir machen mit der App „DejungenOlen" weiter. Lies bitte zuerst `UEBERGABE.md` im
-> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 cc` ist
-> fertig und ausgeliefert (WhatsApp-Einladung: Karte wechselt, PC → WhatsApp Web), Arbeitsbaum
-> sauber, alle 639 Tests grün. Arbeite weiter wie dort beschrieben: Meldung wörtlich
+> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 cd` ist
+> fertig und ausgeliefert (Browser-Vorschau sieht aus wie das MP4), Arbeitsbaum
+> sauber, alle 646 Tests grün. Arbeite weiter wie dort beschrieben: Meldung wörtlich
 > nehmen, am echten Code nachmessen, mit echten Daten nachstellen, beheben, Gegenprobe,
-> Tests, CHANGELOG, neuer Build-Buchstabe (`cd`), Deploy-Pakete, Push.
+> Tests, CHANGELOG, neuer Build-Buchstabe (`ce`), Deploy-Pakete, Push.

@@ -99,4 +99,4 @@ class WhatsAppWebTest(AppTestCase):
         self.assertIn('am PC WhatsApp Web', tpl)
 
     def test_build_stempel(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-12 cc')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-12 cd')
