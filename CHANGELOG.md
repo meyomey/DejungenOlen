@@ -13,6 +13,90 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build ca) – Einkehr doppelt im Video, Gäste fehlen im Einstiegsbild
+
+Zwei Meldungen zum Tour-Video, beide am echten Code nachgestellt.
+
+### 1. „Im letzten Video sind wir nur einmal eingekehrt, im erzeugten Video stehen bei Einkehr zwei Positionen obwohl nur eine eingetragen ist."
+
+**Ursache.** Die Folie bekommt ihre Zeilen aus zwei Quellen: den **geplanten** Stopps
+(`_planned_einkehr_entries`) und den Gastro-Einträgen **neben der Strecke**
+(`gastro_near_track`). Zusammengeführt wurden beide über genau eine Zeile:
+
+```python
+_planned_ids = {e['id'] for e in _planned_list}
+_near_spots = _planned_list + [sp for sp in _near_spots if sp.get('id') not in _planned_ids]
+```
+
+Der Filter verglich **ausschließlich `id`-Werte**. Derselbe Ort kann aber zweimal in
+`gastro_spots` stehen – einmal über den OpenStreetMap-Import, einmal von Hand angelegt.
+Dann hat der geplante Stopp eine andere id als der Streckenfund, und der zweite Datensatz
+rutschte durch. Nachgestellt mit zwei Datensätzen „Gasthof Adler" 15 m auseinander:
+
+| | vorher | nachher |
+|---|---|---|
+| geplante Einkehr | 1 (`id` 1) | 1 (`id` 1) |
+| Streckenfunde | 2 (`id` 1, `id` 2) | 2 |
+| **Zeilen auf der Folie** | **2 Positionen** | **1 Position** |
+
+**Behoben.** Neuer Helfer `_einkehr_merge_dedup(planned_list, near_spots)` neben
+`_planned_einkehr_entries`. Er nutzt dieselbe Regel wie die Duplikat-Prüfung im
+Gastro-Formular (`_gastro_match_known`): gleiche `id`, gleicher OpenStreetMap-Eintrag,
+näher als **25 m** oder gleicher Name im Umkreis von **100 m** → dieselbe Einkehr. Beide
+Quellen liefern dafür jetzt auch `osm_id` mit.
+
+Bewusst *nicht* zusammengelegt werden geplante Stopps **untereinander** – zwei absichtlich
+eingetragene Stopps (Build bh erlaubt drei) bleiben beide stehen.
+
+**Zusatz.** Eine Einkehr, die nur als **Freitext** eingetragen ist (ohne Gastro-Eintrag),
+fehlte auf der Folie bisher ganz. Sie erscheint jetzt als „Geplante Einkehr" ohne
+Kilometerangabe. Auf der Karte bekommt sie keinen Marker (sie hat keine Position), und
+die Marker-Schleife überspringt Einträge ohne Koordinaten, statt abzustürzen.
+
+### 2. „Ich war dabei und zwei Leute waren als Gast dabei. Im Einstiegsbild des Videos sollen die Avatare mit Namen erscheinen auch für Gäste und nicht nur ‚3 dabei' stehen."
+
+**Ursache.** Zwei Dinge kamen zusammen:
+- `tour_headcount` zählt Mitglieder **und** Gäste (hier **3**), die Avatar-Liste enthielt
+  aber nur die Mitglieder (hier **1**):
+  ```python
+  _attending_users = [(p.user.display_name, p.user.avatar) for p in
+                      TourParticipant.query.filter_by(tour_id=tour_id, status='attending')…]
+  ```
+  `TourGuest` wurde nie abgefragt.
+- Das Einstiegsbild (`make_title_frame`) malte **überhaupt keine** Avatare, sondern nur
+  `f'{_attending_count} dabei'`. Selbst mit vollständiger Liste wäre dort ein Zähler
+  gestanden.
+
+**Behoben.**
+- `_attending_users` enthält jetzt Mitglieder **und** Gäste, deutsch sortiert
+  (`_de_name_key`, also Ä/Ö/Ü wie A/O/U). Gäste haben kein Konto und damit kein Bild –
+  `avatar=None` lässt `_avatar_row_layer` den farbigen Initialen-Kreis zeichnen.
+  Geprüft: Avatar-Anzahl == `tour_headcount`.
+- Das Einstiegsbild zeichnet jetzt dieselbe Avatar-Zeile wie die Statistik-Folie
+  (`_avatar_row_layer`), mit Namen darunter. Der Zähler „N dabei" ist nur noch der
+  Notausgang, falls sich gar keine Zeile bauen lässt.
+- `_avatar_row_layer` hat einen Parameter `max_shown` (Standard 8, wie bisher). Das
+  Einstiegsbild nutzt 12. Bei mehr als 8 Gesichtern wird **umgebrochen**, statt sie zu
+  verkleinern – sonst wären die Namen nicht mehr lesbar. Die Gesichtsgröße richtet sich
+  nach höchstens 8 Kreisen pro Zeile, deshalb sieht die **Statistik-Folie unverändert
+  aus** (nachgerechnet: 8 Leute → Gesicht 95 px, Zeilenhöhe 140 px, eine Zeile).
+
+### Nachgestellt und geprüft
+| Fall | Ergebnis |
+|---|---|
+| 1 Ort, 2 Datensätze (OSM + Handanlage) | vorher 2 Positionen → nachher **1** |
+| 3 bewusst eingetragene Stopps | bleiben **3** |
+| 2 echte Orte an der Strecke | bleiben **2** |
+| gleicher Name, 300 m entfernt | bleibt **2** (eigener Ort) |
+| Freitext-Einkehr ohne Gastro-Eintrag | erscheint (**1**), ohne km |
+| keine Einkehr eingetragen | **0** (nichts erfunden) |
+| 1 Mitglied + 2 Gäste | **3** Avatare mit Namen, kein „3 dabei" |
+| 12 Anwesende | 12 Gesichter, **zwei Zeilen**, Namen lesbar |
+
+Tests: `tests/test_build_ca.py` (14). Volle Suite **621 Tests grün** (vorher 607 + 14 neue).
+
+---
+
 ## 1.5.0 – 2026-11-12 (Build bz) – Text in der Format-Auswahl läuft über die Begrenzungen
 - **Meldung:** „Der Text läuft über die Begrenzungen." (Screenshot: Format-Auswahl beim
   Tour-Video, alle fünf Kacheln)

@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-12 bz')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-12 ca')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -1141,10 +1141,16 @@ class VideoSmoothTest(AppTestCase):
         self.assertIn('Picknick am Deich', txt)
         self.assertIn(' → ', txt)
         self.assertLess(txt.find('Picknick'), txt.rfind('Café Windbruch'))
-        # Video: Gastro-Stopps in Reihenfolge (Freitext ohne Position fehlt), ohne Track ohne km
+        # Video: alle Stopps in Reihenfolge, ohne Track ohne km.
+        # Build ca: Freitext-Stopps (ohne Gastro-Eintrag) erscheinen jetzt auch – vorher
+        # fehlten sie in der Video-Folie ganz (siehe tests/test_build_ca.py).
         entries = appmod._planned_einkehr_entries(M.Tour.query.get(self.t_plan_id), [])
-        self.assertEqual([e['name'] for e in entries], ['Café Windbruch', 'Café Windbruch'])
+        self.assertEqual([e['name'] for e in entries],
+                         ['Café Windbruch', 'Picknick am Deich', 'Café Windbruch'])
         self.assertFalse(entries[0]['km_known'])
+        self.assertFalse(entries[1]['km_known'], 'Freitext hat keine Position')
+        self.assertIsNone(entries[1]['lat'], 'Freitext hat keine Koordinaten')
+        self.assertEqual(entries[1]['type_label'], '', 'Freitext hat keine Gastro-Art')
         # Vorlesen: Haupt-Einkehr + weitere Stopps
         ra = appmod._tour_read_aloud_text(M.Tour.query.get(self.t_plan_id), 2)
         self.assertIn('Einkehr bei Café Windbruch', ra)
@@ -2049,7 +2055,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-12 bz')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-12 ca')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()

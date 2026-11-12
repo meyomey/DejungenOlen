@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 bz'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 ca'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -2025,7 +2025,8 @@ def gastro_near_track(points, max_m=GASTRO_NEAR_M, limit=12):
                     best_d, best_i = d, i
             if best_d <= max_m:
                 li = lunch_info(sp)                                                   # Build z
-                found.append({'id': sp.id, 'name': sp.name, 'spot_type': sp.spot_type,
+                found.append({'id': sp.id, 'osm_id': getattr(sp, 'osm_id', None),   # Build ca: für Entdopplung
+                              'name': sp.name, 'spot_type': sp.spot_type,
                               'type_label': labels.get(sp.spot_type, 'Einkehr'),
                               'lat': sp.lat, 'lng': sp.lng, 'dist_m': int(round(best_d)),
                               'km': round(cum[best_i] / 1000, 1),
@@ -3972,21 +3973,31 @@ def tour_video_render(tour_id):
                 app.logger.warning(f'make_photo_overlay error: {e}', exc_info=True)
                 return False
 
-        def _avatar_row_layer(users_info):
+        def _avatar_row_layer(users_info, max_shown=8):
             """RGBA-Streifen (Breite W) mit runden Profilbildern – ohne Bild Initialen auf
-            farbigem Kreis – und Namen darunter; max. 8, Rest als „+N“."""
+            farbigem Kreis – und Namen darunter; max. `max_shown`, Rest als „+N“.
+            Build ca: `max_shown` ist einstellbar – das Einstiegsbild zeigt mehr Gesichter."""
             if not users_info:
                 return None
             try:
                 from PIL import ImageOps as _IOPS
-                shown = list(users_info[:8])
+                shown = list(users_info[:max_shown])
                 extra = len(users_info) - len(shown)
-                n = len(shown) + (1 if extra > 0 else 0)
+                n_circ = len(shown) + (1 if extra > 0 else 0)
                 gap_f = 0.3
-                size = min(int(H * 0.06), int((W - 2 * SAFE - 40) / (n + (n - 1) * gap_f)))
+                avail_w = W - 2 * SAFE - 40
+                # Build ca: Bei vielen Gesichtern wird umbrochen, statt sie zu verkleinern.
+                # Die Gesichtsgröße richtet sich nach höchstens 8 Kreisen pro Zeile – so sieht
+                # die Statistik-Folie unverändert aus, und das Einstiegsbild bleibt lesbar.
+                per_row = min(n_circ, 8) if n_circ > 8 else n_circ
+                size = min(int(H * 0.06), int(avail_w / (per_row + (per_row - 1) * gap_f)))
                 gap = int(size * gap_f)
                 name_font = _pil_font(max(15, int(size * 0.2)), bold=False)
-                layer_h = size + 14 + int(size * 0.2) + 12
+                row_h = size + 14 + int(size * 0.2) + 12
+                # Zeilen aufteilen (letzte Zeile darf kürzer sein)
+                rows_of = [list(range(i, min(i + per_row, n_circ))) for i in range(0, n_circ, per_row)] \
+                    if n_circ > 8 else [list(range(n_circ))]
+                layer_h = row_h * len(rows_of)
                 layer = _PIL.new('RGBA', (W, layer_h), (0, 0, 0, 0))
                 draw = _ID_MOD.Draw(layer)
                 SS = 4   # Supersampling für glatte Kreisränder
@@ -3998,9 +4009,6 @@ def tour_video_render(tour_id):
                 _ID_MOD.Draw(mask).ellipse((0, 0, big[0] - 1, big[1] - 1), fill=255)
                 palette = [(198, 40, 40), (46, 125, 50), (21, 101, 192), (240, 133, 30),
                            (106, 27, 154), (0, 131, 143), (173, 20, 87), (84, 110, 122)]
-                total_w = n * size + (n - 1) * gap
-                x = (W - total_w) // 2
-
                 def circle_with_text(text, color):
                     c = _PIL.new('RGBA', big, (0, 0, 0, 0))
                     _ID_MOD.Draw(c).ellipse((0, 0, big[0] - 1, big[1] - 1), fill=color + (255,))
@@ -4011,6 +4019,17 @@ def tour_video_render(tour_id):
                     d2.text(((size - (bb[2] - bb[0])) / 2 - bb[0], (size - (bb[3] - bb[1])) / 2 - bb[1]),
                             text, font=f, fill=(255, 255, 255, 255))
                     return c
+
+                def draw_circle(idx, circ):
+                    """Einen Kreis samt Ring an seine Stelle setzen (Zeile + Spalte aus idx)."""
+                    r_i, c_i = divmod(idx, per_row)
+                    row_len = len(rows_of[r_i])
+                    total_w = row_len * size + (row_len - 1) * gap
+                    cx_ = (W - total_w) // 2 + c_i * (size + gap)
+                    cy_ = r_i * row_h
+                    layer.alpha_composite(circ, (cx_, cy_))
+                    layer.alpha_composite(ring, (cx_, cy_))
+                    return cx_, cy_
 
                 for idx, (name, avatar_fn) in enumerate(shown):
                     circ = None
@@ -4026,17 +4045,14 @@ def tour_video_render(tour_id):
                     if circ is None:
                         initials = ''.join(part[0] for part in name.split()[:2]).upper() or '?'
                         circ = circle_with_text(initials, palette[sum(map(ord, name)) % len(palette)])
-                    layer.alpha_composite(circ, (x, 0))
-                    layer.alpha_composite(ring, (x, 0))
+                    x_, y_ = draw_circle(idx, circ)
                     label = name.split()[0] if name else ''
                     while draw.textlength(label, font=name_font) > size + gap - 6 and len(label) > 2:
                         label = label[:-2] + '…'
                     tw = draw.textlength(label, font=name_font)
-                    draw.text((x + size / 2 - tw / 2, size + 12), label, font=name_font, fill=(230, 230, 230, 255))
-                    x += size + gap
+                    draw.text((x_ + size / 2 - tw / 2, y_ + size + 12), label, font=name_font, fill=(230, 230, 230, 255))
                 if extra > 0:
-                    layer.alpha_composite(circle_with_text(f'+{extra}', (58, 74, 108)), (x, 0))
-                    layer.alpha_composite(ring, (x, 0))
+                    draw_circle(len(shown), circle_with_text(f'+{extra}', (58, 74, 108)))
                 return layer
             except Exception as e:
                 app.logger.warning(f'_avatar_row_layer error: {e}', exc_info=True)
@@ -4104,16 +4120,14 @@ def tour_video_render(tour_id):
                 if tour.gpx_km:
                     extra = f'{tour.gpx_km} km' + (f'  ·  {int(tour.gpx_ascent)} Hm' if tour.gpx_ascent else '')
                     _centered_text(draw, cx, cy+below+55, extra, _pil_font(24, bold=False), (210,210,210))
-                # Build m: Wetter (gezeichnetes Symbol + Temperatur) und Teilnehmerzahl wie in der Vorschau
+                # Build m: Wetter (gezeichnetes Symbol + Temperatur) wie in der Vorschau
                 bits_font = _pil_font(22, bold=False)
                 bits = []
                 if _weather:
                     bits.append(f"{_weather['temp_max']}°C")
-                if _attending_count:
-                    bits.append(f'{_attending_count} dabei')
+                ty = cy + below + (95 if tour.gpx_km else 55)
                 if bits:
                     txt = '   ·   '.join(bits)
-                    ty = cy + below + (95 if tour.gpx_km else 55)
                     tw = draw.textlength(txt, font=bits_font)
                     icon_s = 30 if _weather else 0
                     gx = cx - (tw + (icon_s + 10 if icon_s else 0)) / 2
@@ -4121,6 +4135,24 @@ def tour_video_render(tour_id):
                         _draw_weather_icon(draw, gx + icon_s / 2, ty + 12, icon_s, _weather.get('kind') or 'thermo', (0, 0, 0), 1.0)
                         gx += icon_s + 10
                     draw.text((gx, ty), txt, font=bits_font, fill=(210, 210, 210), stroke_width=1, stroke_fill=(0, 0, 0))
+
+                # Build ca: „Im Einstiegsbild des Videos sollen die Avatare mit Namen erscheinen
+                # auch für Gäste und nicht nur ‚3 dabei‘ stehen."
+                # Statt der nackten Zahl jetzt eine Avatar-Zeile mit Namen – dieselbe Darstellung
+                # wie auf der Statistik-Folie (`_avatar_row_layer`, bis 8 Gesichter, danach „+N").
+                # Die Liste enthält Mitglieder UND Gäste; Gäste bekommen den Initialen-Kreis.
+                _title_avatars = _avatar_row_layer(_attending_users, max_shown=12) if _attending_users else None
+                if _title_avatars is not None:
+                    _av_y = ty + (56 if bits else 8)
+                    # Nicht über den unteren sicheren Rand hinausrutschen.
+                    _av_y = min(_av_y, H - SAFE - _title_avatars.height)
+                    canvas.paste(_title_avatars, (0, _av_y), _title_avatars)
+                elif _attending_count:
+                    # Ersatz nur, wenn sich gar keine Zeile bauen lässt (z. B. keine Namen).
+                    txt = f'{_attending_count} dabei'
+                    tw = draw.textlength(txt, font=bits_font)
+                    draw.text((cx - tw / 2, ty), txt, font=bits_font, fill=(210, 210, 210),
+                              stroke_width=1, stroke_fill=(0, 0, 0))
                 canvas.save(dst_path, 'JPEG', quality=92)
                 return True
             except Exception as e:
@@ -4352,7 +4384,9 @@ def tour_video_render(tour_id):
                         draw.text((x0 + 76, y + row_h//2 - name_font.size - 2), name, font=name_font,
                                   fill=lerp(tile_col, (255, 255, 255), a))
                         if sp.get('planned') and not sp.get('km_known'):     # Build x
-                            sub = f"Geplante Einkehr · {sp['type_label']}"
+                            # Build ca: Freitext ohne Gastro-Eintrag hat keine Art – dann ohne „·“.
+                            sub = ('Geplante Einkehr · ' + sp['type_label']) if sp.get('type_label') \
+                                else 'Geplante Einkehr'
                         else:
                             sub = (f"{sp['type_label']} · km {sp['km']:.1f}".replace('.', ',') +
                                    f" · {sp['dist_m']} m neben der Route" +
@@ -4724,6 +4758,9 @@ def tour_video_render(tour_id):
                     # Build j: Einkehr an der Route – Marker (+ Namensschild bei bis zu 6 Treffern)
                     spot_font = _pil_font(18)
                     for sp in (near_spots or [])[:12]:
+                        # Build ca: Freitext-Einkehren haben keine Position – kein Kartenmarker.
+                        if sp.get('lat') is None or sp.get('lng') is None:
+                            continue
                         if sp['frac'] > reached:
                             continue
                         x, y = proj(sp['lat'], sp['lng'])
@@ -4762,9 +4799,25 @@ def tour_video_render(tour_id):
 
         # Zusatzdaten für Stats-Folie (gleiche Werte wie in der Vorschau)
         _attending_count = tour_headcount(tour_id)     # Build 11-05g: Gäste zählen mit
+
+        # Build ca: „Ich war dabei und zwei Leute waren als Gast dabei. Im Einstiegsbild des
+        # Videos sollen die Avatare mit Namen erscheinen – auch für Gäste, und nicht nur
+        # ‚3 dabei‘ stehen."
+        #
+        # Ursache: `tour_headcount` zählt Mitglieder UND Gäste (3), die Avatar-Liste enthielt
+        # aber nur die Mitglieder (1). Bei 3 Anwesenden hätte sie also einen Kreis gezeigt –
+        # und weil das Einstiegsbild gar keine Avatare malte, blieb nur der Text „3 dabei".
+        #
+        # Jetzt: Mitglieder und Gäste in EINER Liste, nach Namen sortiert. Gäste haben kein
+        # Konto und damit kein Profilbild – `avatar=None` lässt `_avatar_row_layer` den
+        # farbigen Initialen-Kreis zeichnen, genau wie bei Mitgliedern ohne Bild.
         _attending_users = [(p.user.display_name, p.user.avatar) for p in
                             TourParticipant.query.filter_by(tour_id=tour_id, status='attending')
-                            .join(User).order_by(User.name).limit(12).all()]
+                            .join(User).all()]
+        _attending_users += [(g.name, None) for g in
+                             TourGuest.query.filter_by(tour_id=tour_id).all()]
+        # Deutsche Sortierung (Ä/Ö/Ü richtig) – und Gäste stehen nicht pauschal hinten.
+        _attending_users.sort(key=lambda nv: _de_name_key(nv[0]))
         _weather = _tour_day_weather(tour)   # Build j: gemeinsamer Helfer (Prognose + Archiv)
 
         from flask import g as _g_render
@@ -4800,9 +4853,9 @@ def tour_video_render(tour_id):
             _near_spots = gastro_near_track(_gpx_points)
         if show_gastro:                                   # Build x: geplante Einkehr immer zuerst
             _planned_list = _planned_einkehr_entries(tour, _gpx_points)   # Build bh: bis zu 3 Stopps
-            if _planned_list:
-                _planned_ids = {e['id'] for e in _planned_list}
-                _near_spots = _planned_list + [sp for sp in _near_spots if sp.get('id') not in _planned_ids]
+            # Build ca: nicht nur über die id entdoppeln – derselbe Ort kann zweimal in
+            # gastro_spots stehen (z. B. OSM-Import + Handanlage). Siehe _einkehr_merge_dedup.
+            _near_spots = _einkehr_merge_dedup(_planned_list, _near_spots)
         if len(_gpx_points) >= 2:   # Build o: Track-Umriss + km-Stände für die Mini-Karte auf den Fotos
             try:
                 import math as _m
@@ -8856,7 +8909,9 @@ def _apply_einkehr_form(tour):
 
 def _planned_einkehr_entries(tour, points):
     """Video (Build j-Folie): geplante Einkehr-Stopps als Einträge – mit km/Abstand, wenn ein Track da ist.
-    Build bh: bis zu drei Stopps in Reihenfolge; reine Freitext-Stopps (ohne Position) fehlen hier."""
+    Build bh: bis zu drei Stopps in Reihenfolge.
+    Build ca: reine Freitext-Stopps (ohne Gastro-Eintrag) erscheinen jetzt auch – ohne Position,
+    also ohne km/Abstand. Vorher fehlten sie hier, und der Freitext wurde damit nie gezeigt."""
     import math as _m
     pts = [pt for pt in points if pt.get('lat') is not None and pt.get('lng') is not None]
 
@@ -8877,10 +8932,20 @@ def _planned_einkehr_entries(tour, points):
 
     entries = []
     for info in _einkehr_infos(tour):
-        if not info or not info['spot']:
+        if not info:
+            continue
+        if not info['spot']:
+            # Build ca: Freitext-Einkehr ohne Gastro-Eintrag – Name aus dem Freitext, keine Position.
+            entries.append({'id': None, 'osm_id': None, 'name': info.get('name') or info.get('text') or '',
+                            'spot_type': '', 'type_label': '',
+                            'lat': None, 'lng': None, 'opens_at': '', 'hours': '',
+                            'closed_days': [], 'lunch_status': None, 'lunch_label': '',
+                            'planned': True, 'text': info.get('text') or '',
+                            'dist_m': 0, 'km': 0.0, 'frac': 0.0, 'km_known': False})
             continue
         sp = info['spot']
-        entry = {'id': sp.id, 'name': sp.name, 'spot_type': sp.spot_type, 'type_label': info['type_label'],
+        entry = {'id': sp.id, 'osm_id': getattr(sp, 'osm_id', None),   # Build ca: für Entdopplung
+                 'name': sp.name, 'spot_type': sp.spot_type, 'type_label': info['type_label'],
                  'lat': sp.lat, 'lng': sp.lng,
                  'opens_at': sp.opens_at or '', 'hours': info['hours'], 'closed_days': info['closed_days'],
                  'lunch_status': info.get('lunch'), 'lunch_label': info.get('lunch_label', ''),
@@ -8888,6 +8953,56 @@ def _planned_einkehr_entries(tour, points):
         entry.update(_km(sp))
         entries.append(entry)
     return entries
+
+
+def _einkehr_merge_dedup(planned_list, near_spots):
+    """Build ca: Einkehr-Einträge für die Video-Folie zusammenführen – ohne Dubletten.
+
+    Meldung: „Im letzten Video sind wir nur einmal eingekehrt, im erzeugten Video stehen bei
+    Einkehr zwei Positionen, obwohl nur eine eingetragen ist."
+
+    Ursache: Die Folie bekommt die geplanten Stopps (`_planned_einkehr_entries`) plus die
+    Gastro-Einträge neben der Strecke (`gastro_near_track`). Der bisherige Filter verglich
+    AUSSCHLIESSLICH `id`-Werte. Derselbe Ort kann aber zweimal in `gastro_spots` stehen –
+    z. B. einmal aus OpenStreetMap importiert und einmal von Hand angelegt – und dann hat der
+    geplante Eintrag eine andere id als der Streckenfund. Der zweite Datensatz rutschte durch
+    und erschien als zweite Position.
+
+    Deshalb dieselbe Regel wie bei der Duplikat-Prüfung im Gastro-Formular
+    (`_gastro_match_known`): gleiche id, gleicher OpenStreetMap-Eintrag, näher als 25 m oder
+    gleicher Name im Umkreis von 100 m → dieselbe Einkehr. Geplante Stopps bleiben zuerst.
+    """
+    def _same(a, b):
+        if a.get('id') is not None and a.get('id') == b.get('id'):
+            return True
+        if a.get('osm_id') and a.get('osm_id') == b.get('osm_id'):
+            return True
+        na = re.sub(r'\W+', '', (a.get('name') or '').lower())
+        nb = re.sub(r'\W+', '', (b.get('name') or '').lower())
+        alat, alng = a.get('lat'), a.get('lng')
+        blat, blng = b.get('lat'), b.get('lng')
+        if alat is None or alng is None or blat is None or blng is None:
+            # Ohne Position bleibt der Name: eine Freitext-Einkehr „Café Müller“ und der
+            # Gastro-Eintrag „Café Müller“ an der Strecke sind dieselbe Einkehr.
+            return bool(na and na == nb)
+        dist = _geo_dist_m(alat, alng, blat, blng)
+        if dist <= 25:
+            return True
+        return bool(na and na == nb and dist <= 100)
+
+    # Geplante Stopps bleiben in ihrer Reihenfolge. Untereinander wird nur zusammengelegt,
+    # wenn es nachweislich derselbe Datensatz ist (gleiche id oder gleiche OSM-Verknüpfung) –
+    # zwei bewusst eingetragene Stopps 20 m nebeneinander bleiben also beide stehen.
+    merged = []
+    for e in planned_list:
+        if not any(e.get('id') is not None and e.get('id') == m.get('id') for m in merged) and \
+           not any(e.get('osm_id') and e.get('osm_id') == m.get('osm_id') for m in merged):
+            merged.append(e)
+
+    for sp in near_spots:
+        if not any(_same(sp, e) for e in merged):
+            merged.append(sp)
+    return merged
 
 
 def _can_manage_tour(tour):
