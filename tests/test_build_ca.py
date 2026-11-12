@@ -22,10 +22,8 @@ aber nur die Mitglieder (1). Das Einstiegsbild malte überhaupt keine Avatare, n
 Text „3 dabei". Ohne Gäste hätte die Zeile selbst dann nur ein Gesicht gezeigt.
 """
 import os
-import re
-import unittest
 
-from tests.base import AppTestCase, appmod, db, M, make_gpx
+from tests.base import AppTestCase, appmod, db, M
 
 EINKEHR_MERGE = '''def _einkehr_merge_dedup(planned_list, near_spots):'''
 
