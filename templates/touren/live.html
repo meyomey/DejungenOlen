@@ -796,9 +796,15 @@ try {
   }
 } catch (e) {}
 let trackLine = null;
+const TRACK_COLOR = '#C2185B';                     // Build ck: Tourstrecke (vorher Dunkelblau #2B3F6B)
 const CUM = [];                                    // Streckenkilometer je Stützpunkt
 if (TRACK && TRACK.length > 1) {
-  trackLine = L.polyline(TRACK, {color: '#2B3F6B', weight: 5, opacity: .8}).addTo(map);
+  // Build ck: „in der live Karte ist er immer noch blau" – gemeint war die TOURSTRECKE (GPX), nicht
+  // die Live-Spur: Dunkelblau #2B3F6B ging auf der Radkarte zwischen den blauen Radrouten unter.
+  // Jetzt Magenta mit weißem Saum – kommt auf keinem Kartenstil als Linienfarbe vor und ist klar
+  // von der eigenen Live-Spur (Orangerot) und den Mitfahrer-Spuren unterscheidbar.
+  L.polyline(TRACK, {color: '#fff', weight: 9, opacity: .9, interactive: false}).addTo(map);
+  trackLine = L.polyline(TRACK, {color: TRACK_COLOR, weight: 5, opacity: .95}).addTo(map);
   let acc = 0; CUM.push(0);
   for (let i = 1; i < TRACK.length; i++) { acc += map.distance(TRACK[i - 1], TRACK[i]); CUM.push(acc); }
   L.circleMarker(TRACK[0], {radius: 7, color: '#fff', weight: 2, fillColor: '#2E7D4F', fillOpacity: 1}).addTo(map).bindTooltip('Start');

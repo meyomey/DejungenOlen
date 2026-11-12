@@ -13,6 +13,17 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build ck) – Tourstrecke auf der Live-Karte war die „blaue" Linie
+- **Meldung:** „in der live Karte ist er immer noch blau" (nach Build cj).
+- **Ursache:** Build cj hatte die **Live-Spur** umgefärbt – gemeint war aber die **Tourstrecke**
+  (GPX): dunkelblau `#2B3F6B`, 5 px, 80 %. Im Screenshot gab es noch keine Live-Spur (Chip „2 min"
+  ohne km = unter 50 m bewegt); die sichtbare dicke Linie war die Planstrecke, und die ging auf der
+  Radkarte zwischen den blauen Radrouten unter.
+- **Behoben:** Tourstrecke **Magenta `#C2185B`**, 5 px / 95 %, mit **weißem Saum** (9 px).
+  Farbschema Live-Karte jetzt: Magenta = Tourstrecke · Orangerot = eigene Live-Spur · Palette =
+  Mitfahrer. Nur `live.html`; die Karten auf Tourseite/Gruppenkarte bleiben wie sie sind.
+- Tests `tests/test_build_ck.py` (4). Suite **713 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build cj) – Eigene Spur auf der Live-Karte war kaum zu sehen
 - **Meldung:** „man kann den gefahrenen Track in blauer Farbe kaum erkennen" (Screenshot: Radkarte
   CyclOSM, Tracker-Fahrt).
