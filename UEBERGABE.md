@@ -1,10 +1,10 @@
-# Übergabe – Stand Build `cf`
+# Übergabe – Stand Build `cg`
 
 > **Zweck:** Diese Datei ist der Einstieg für einen frischen Chat. Sie beschreibt, wie in
 > diesem Projekt gearbeitet wird, was zuletzt passiert ist und was als Nächstes ansteht.
 > **Bei jedem neuen Build aktuell halten** (Abschnitt 3 und 6).
 >
-> Stand: 2026-11-12, Build `2026-11-12 cf`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
+> Stand: 2026-11-12, Build `2026-11-12 cg`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
 > HEAD siehe `git log -1`, Arbeitsbaum sauber.
 
 ---
@@ -50,7 +50,7 @@ dann, dass hinter dem Symptom zwei Ursachen stecken (so war es bei Build `ca`).
 ```bash
 cd /home/user/DejungenOlen
 .venv/bin/python -m unittest discover -s tests -q      # volle Suite, ~115 s
-.venv/bin/python -m unittest tests.test_build_cf -q    # nur ein Build
+.venv/bin/python -m unittest tests.test_build_cg -q    # nur ein Build
 .venv/bin/python -m pyflakes app.py tests/             # Lint
 ```
 
@@ -81,9 +81,20 @@ schnellste Weg, Bilder zu prüfen** – siehe Rezept in Abschnitt 5.
 
 ---
 
-## 3. Stand jetzt: Build `2026-11-12 cf` (fertig, ausgeliefert)
+## 3. Stand jetzt: Build `2026-11-12 cg` (fertig, ausgeliefert)
 
-### 3.0 Audit 9 – sechs Lücken im Tracking ✅
+### 3.0 Build `cg` – Hintergrund-Tracking über Traccar Client ✅
+
+> „Wird noch getrackt wenn Display aus ist oder eine andere App genutzt wird?" → nein (Browser-
+> Grenze). „Hintergrund Tracking wäre schon gut zu haben" · „traccar client habe ich eh schon installiert"
+
+`/api/traccar` (OsmAnd-Protokoll, `id` = `users.tracker_token`), Tour automatisch aus dem Datum
+des Punktes (`_tracker_tour_for`), gleiche Aufzeichnung/Live-Karte, Beenden-Siegel: vor Ende
+`late`, bis 10 min danach ignoriert, später neue Fahrt. Profil → Karte „Tracker-App" mit URL,
+Token, Anleitung. **Speed kommt in Knoten** (×0,514444). Antwort bei bekanntem Token immer 200.
+Feldtest steht aus – der Nutzer hat Traccar Client installiert.
+
+### 3.0a Build `cf` – Audit 9, sechs Lücken im Tracking ✅
 
 > „Mache ein komplettes Audit, gibt es irgendwo Lücken in den Funktionen? Check auch ob das
 > Tracken mit und ohne Stromsparmodus optimal funktioniert"
@@ -136,9 +147,9 @@ Einkehr)“. Streckenfunde nur noch auf der Tour-Seite (Build u).
 | | |
 |---|---|
 | `APP_VERSION` | `1.5.0` |
-| `APP_BUILD` | `2026-11-12 cf` (app.py Z. 92) |
-| Tests | `tests/test_build_cf.py` **22**, volle Suite **676 grün** (~125 s) |
-| Pakete | `deploy/deploy_v1.5.0_2026-11-12cf_aenderungen.zip` · `…_komplett.zip` |
+| `APP_BUILD` | `2026-11-12 cg` (app.py Z. 93) |
+| Tests | `tests/test_build_cg.py` **17**, volle Suite **692 grün** (~130 s) |
+| Pakete | `deploy/deploy_v1.5.0_2026-11-12cg_aenderungen.zip` · `…_komplett.zip` |
 | Geprüft | Simulation vorher/nachher (Node, echter Template-Code), ZIP entpackt + Tests darin |
 
 **Hinweis zur Paket-Probe:** Zwei Tests (`test_az_deploy_date_freshness`,
@@ -219,7 +230,8 @@ sonst. Probe: ZIP nach `/tmp` entpacken, App starten, Footer prüfen.
 
 ## 6. Als Nächstes
 
-Nichts Offenes aus Build `cf`. Der nächste Chat wartet auf die nächste Meldung des Nutzers –
+Offen aus Build `cg`: **Feldtest Traccar Client** (Server-URL/Token aus dem Profil; prüfen, ob Punkte
+auf der Live-Karte und in der Aufzeichnung erscheinen; Frequenz 10 s). Danach wartet der Chat auf die nächste Meldung –
 spannend wäre eine echte Fahrt mit Normal- **und** Sparmodus, um B1–B3 aus Audit 9 im Feld zu bestätigen.
 Hinweis: `origin/main` auf GitHub steht noch auf Build `af` (15.10.) – alle neueren Builds
 liegen nur auf den Arena-Branches; `main` nur auf Zuruf nachziehen.
@@ -228,7 +240,7 @@ Wenn eine neue Meldung kommt:
 1. Wörtlich zitieren, Akzeptanz im Code prüfen.
 2. Nachstellen (Skript, das den Fehler zeigt).
 3. Beheben, Gegenprobe, Tests, CHANGELOG.
-4. Buchstabe hochzählen: nach `cf` kommt `cg`, `ch`, … (immer Kleinbuchstaben, `z` → `aa`).
+4. Buchstabe hochzählen: nach `cg` kommt `ch`, `ci`, … (immer Kleinbuchstaben, `z` → `aa`).
 5. `APP_BUILD` auf das **heutige** Datum + neuen Buchstaben setzen.
 6. Deploy-Pakete, Probe, Commit, Push.
 7. **Diese Datei aktualisieren** (Abschnitt 3, 4 und 6).
@@ -267,6 +279,7 @@ Wenn eine neue Meldung kommt:
 
 | Build | Datum | Thema |
 |---|---|---|
+| `cg` | 2026-11-12 | Hintergrund-Tracking: `/api/traccar` für Traccar Client, Profilkarte mit Token |
 | `cf` | 2026-11-12 | Audit 9: sechs Tracking-Lücken (Aussetzer-Filter, Nachsenden, Beenden, 409-Blockade, 3-s-Filter, at-500) |
 | `ce` | 2026-11-12 | Wetter am Tourtag in Vorschau + MP4 (Ersatz-Ort: GPX-Start/Foto/Gruppe) |
 | `cd` | 2026-11-12 | Browser-Vorschau = MP4 (Avatare, Logo, Einkehr-Folie/-Marker) |
@@ -285,8 +298,8 @@ Wenn eine neue Meldung kommt:
 ## 8. Text zum Einfügen in den neuen Chat
 
 > Wir machen mit der App „DejungenOlen" weiter. Lies bitte zuerst `UEBERGABE.md` im
-> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 cf` ist
-> fertig und ausgeliefert (Audit 9: sechs Tracking-Lücken geschlossen), Arbeitsbaum
-> sauber, alle 676 Tests grün. Arbeite weiter wie dort beschrieben: Meldung wörtlich
+> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 cg` ist
+> fertig und ausgeliefert (Hintergrund-Tracking über Traccar Client, `/api/traccar`), Arbeitsbaum
+> sauber, alle 692 Tests grün; Feldtest mit Traccar steht aus. Arbeite weiter wie dort beschrieben: Meldung wörtlich
 > nehmen, am echten Code nachmessen, mit echten Daten nachstellen, beheben, Gegenprobe,
 > Tests, CHANGELOG, neuer Build-Buchstabe (`cf`), Deploy-Pakete, Push.

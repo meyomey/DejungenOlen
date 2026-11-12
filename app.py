@@ -2,6 +2,7 @@ import os
 import re
 import io
 import secrets
+import math
 import json
 import subprocess
 from datetime import datetime, date, timedelta, timezone
@@ -89,7 +90,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 cf'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 cg'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5791,6 +5792,144 @@ def location_stop():
     return jsonify({'ok': True})
 
 
+# ─── Build cg: Hintergrund-Tracking über eine Tracker-App (Traccar Client, OsmAnd-Protokoll) ────
+# Der Nutzer: „Wird noch getrackt wenn Display aus ist oder eine andere App genutzt wird?" – Nein,
+# eine Webseite darf im Hintergrund nicht orten. „Hintergrund Tracking wäre schon gut zu haben" /
+# „traccar client habe ich eh schon installiert". Traccar Client (Android + iOS, Open Source) ortet
+# als echte App im Hintergrund und schickt jede Position per HTTP an eine frei wählbare URL:
+#   GET/POST <Server-URL>?id=<Geräte-ID>&lat=…&lon=…&timestamp=<unix s>&speed=<Knoten>
+#                        &bearing=<Grad>&accuracy=<m>&altitude=…&batt=…
+# Hier: Server-URL = https://<host>/api/traccar, Geräte-ID = persönlicher Token aus dem Profil
+# (alternativ Token im Pfad /api/traccar/<token>). Die Punkte landen in derselben Aufzeichnung und
+# auf derselben Live-Karte wie die aus dem Browser – ohne dass jemand in der App „Fahren" drückt:
+# Die Tour ergibt sich aus dem Datum des Punktes (Tourtag ±1 der eigenen Gruppe, heute bevorzugt).
+TRACKER_MAX_ALTER_H = 12          # Traccar puffert offline und sendet nach – älter nehmen wir nicht
+TRACKER_NEUSTART_MIN = 10         # Punkte > 10 min nach „Beenden" in der App = neue Fahrt (Siegel weg)
+
+
+def _tracker_tour_for(user, local_day):
+    """Tour der Gruppe des Nutzers, zu der ein Punkt vom Tag `local_day` gehört: Tourtag ±1,
+    nicht abgesagt; bei mehreren die mit dem kleinsten Abstand zum Tag (heute vor morgen vor gestern).
+    None, wenn es an dem Tag nichts zu fahren gibt."""
+    if not user.group_id:
+        return None
+    lo, hi = local_day - timedelta(days=1), local_day + timedelta(days=1)
+    rows = (Tour.query.filter(Tour.group_id == user.group_id, Tour.status != 'cancelled',
+                              Tour.tour_date >= lo, Tour.tour_date <= hi).all())
+    if not rows:
+        return None
+    rows.sort(key=lambda t: (abs((t.tour_date - local_day).days), (t.tour_date - local_day).days < 0, t.id))
+    return rows[0]
+
+
+def _tracker_parse_time(raw, now):
+    """Traccar schickt `timestamp` als Unix-Sekunden (manche Versionen ms oder ISO-8601).
+    Liefert UTC-datetime oder None (fehlt/unplausibel → Ankunftszeit nehmen)."""
+    if raw in (None, ''):
+        return None
+    t = None
+    try:
+        v = float(raw)
+        if v > 1e11:
+            v /= 1000.0
+        t = datetime.utcfromtimestamp(v)
+    except (TypeError, ValueError, OverflowError, OSError):
+        try:
+            t = datetime.fromisoformat(str(raw).replace('Z', '+00:00'))
+            if t.tzinfo is not None:
+                t = t.astimezone(timezone.utc).replace(tzinfo=None)
+        except ValueError:
+            return None
+    if t > now + timedelta(minutes=2) or t < now - timedelta(hours=TRACKER_MAX_ALTER_H):
+        return None
+    return t
+
+
+@app.route('/api/traccar', methods=['GET', 'POST'])
+@app.route('/api/traccar/<token>', methods=['GET', 'POST'])
+def traccar_push(token=None):
+    """Eine Position aus der Tracker-App annehmen. Antwortet bei bekanntem Token IMMER mit 200
+    (auch wenn der Punkt ignoriert wird) – sonst behält Traccar ihn im Puffer und schickt ihn
+    endlos neu. 404 nur bei unbekanntem Token, 400 bei kaputten Koordinaten."""
+    src = request.values                      # Query + Formular (Traccar: Query, auch bei POST)
+    if src.get('lat') is None and request.is_json:
+        src = request.get_json(silent=True) or {}
+    tok = (token or src.get('id') or src.get('deviceid') or '').strip()
+    if not tok or len(tok) > 40:
+        return jsonify({'error': 'id (Token) fehlt'}), 404
+    user = User.query.filter_by(tracker_token=tok).first()
+    if user is None or not user.is_active:
+        return jsonify({'error': 'unbekannter Token'}), 404
+    try:
+        lat = float(src.get('lat', src.get('latitude')))
+        lng = float(src.get('lon', src.get('lng', src.get('longitude'))))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'invalid data'}), 400
+    if not (math.isfinite(lat) and math.isfinite(lng)) or not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return jsonify({'error': 'invalid coordinates'}), 400
+
+    def _f(key, scale=1.0, lo=None, hi=None):
+        try:
+            v = float(src.get(key))
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(v):
+            return None
+        v *= scale
+        if (lo is not None and v < lo) or (hi is not None and v > hi):
+            return None
+        return v
+    accuracy = _f('accuracy', hi=100000) or _f('hdop', scale=5.0, hi=100000)   # hdop ≈ 5 m je Einheit (grob)
+    speed = _f('speed', scale=0.514444, lo=0, hi=150)        # Traccar: Knoten → m/s
+    heading = _f('bearing', lo=0, hi=360)
+    arrived = datetime.utcnow()
+    now = _tracker_parse_time(src.get('timestamp'), arrived) or arrived
+
+    from zoneinfo import ZoneInfo
+    local_day = now.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Berlin')).date()
+    tour = _tracker_tour_for(user, local_day)
+    if tour is None:
+        return jsonify({'ok': True, 'ignored': 'kein Tourtag'})
+    stop_mark = LiveStop.query.filter_by(tour_id=tour.id, user_id=user.id).first()
+    if stop_mark is not None:
+        if now <= stop_mark.stopped_at:
+            # Punkt gehört zur beendeten Fahrt (Nachzügler aus dem Traccar-Puffer): nur Spur, kein Standort
+            recorded = _live_track_add(tour.id, user.id, lat, lng, accuracy, now)
+            db.session.commit()
+            return jsonify({'ok': True, 'tour_id': tour.id, 'recorded': recorded, 'late': True})
+        if now < stop_mark.stopped_at + timedelta(minutes=TRACKER_NEUSTART_MIN):
+            return jsonify({'ok': True, 'tour_id': tour.id, 'ignored': 'Fahrt beendet'})
+        db.session.delete(stop_mark)                     # deutlich später → neue Fahrt
+    existing = LiveLocation.query.filter_by(tour_id=tour.id, user_id=user.id).first()
+    if existing is None:
+        db.session.add(LiveLocation(tour_id=tour.id, user_id=user.id, lat=lat, lng=lng, accuracy=accuracy,
+                                    speed=speed, heading=heading, updated_at=now))
+    elif existing.updated_at is None or now >= existing.updated_at:   # Nachzügler überschreiben nichts Neueres
+        existing.lat, existing.lng, existing.accuracy = lat, lng, accuracy
+        existing.speed, existing.heading, existing.updated_at = speed, heading, now
+    recorded = _live_track_add(tour.id, user.id, lat, lng, accuracy, now)
+    db.session.commit()
+    return jsonify({'ok': True, 'tour_id': tour.id, 'recorded': recorded})
+
+
+def _tracker_token_for(user):
+    """Persönlicher Tracker-Token; wird beim ersten Aufruf erzeugt (wie der Kalender-Token)."""
+    if not user.tracker_token:
+        user.tracker_token = secrets.token_urlsafe(12)
+        db.session.commit()
+    return user.tracker_token
+
+
+@app.route('/profil/tracker/erneuern', methods=['POST'])
+@login_required
+def profil_tracker_renew():
+    """Neuen Tracker-Token erzeugen – der alte funktioniert danach nicht mehr."""
+    current_user.tracker_token = secrets.token_urlsafe(12)
+    db.session.commit()
+    flash('Neuer Tracker-Token erzeugt. Bitte die Geräte-ID in der Traccar-Client-App anpassen.', 'success')
+    return redirect(url_for('profil_edit') + '#tracker')
+
+
 # ─── Build af: Live-Aufzeichnung → GPX der Tour / Download / Löschen ─────────────────────────
 def _live_summary_or_none(tour, user_id):
     return next((d for d in _live_track_summaries(tour.id) if d['user_id'] == user_id), None)
@@ -10255,6 +10394,8 @@ def api_docs():
          'params':'tour_id, lat, lng, accuracy'},
         {'method':'POST', 'path':'/api/location/stop',       'desc':'Standort-Sharing beenden',
          'params':'tour_id'},
+        {'method':'GET/POST', 'path':'/api/traccar',         'desc':'Hintergrund-Tracking aus der Traccar-Client-App (OsmAnd-Protokoll)',
+         'params':'id (persönlicher Token), lat, lon, timestamp, speed (Knoten), bearing, accuracy'},
         {'method':'GET',  'path':'/touren/gpx-export',       'desc':'GPX-Tracks als ZIP',
          'params':'year (optional)'},
         {'method':'GET',  'path':'/api/suche',               'desc':'Volltextsuche',
@@ -10526,7 +10667,9 @@ def profil_edit():
         flash('Profil gespeichert!', 'success')
         return redirect(url_for('my_profil'))
     cal_https, cal_webcal = _calendar_urls(current_user)              # Build w: Kalender-Abo
-    return render_template('profil_edit.html', cal_https=cal_https, cal_webcal=cal_webcal)
+    return render_template('profil_edit.html', cal_https=cal_https, cal_webcal=cal_webcal,
+                           tracker_token=_tracker_token_for(current_user),          # Build cg
+                           tracker_url=url_for('traccar_push', _external=True))
 
 
 # ─── Photo management: delete, edit GPS, manual GPS set ─────────────────────
@@ -11365,6 +11508,7 @@ def migrate_db():
 
     # users table – new columns added over time
     add_column('users', 'last_login', 'DATETIME')
+    add_column('users', 'tracker_token', 'VARCHAR(40)')   # Build cg: Tracker-App (Traccar Client)
     add_column('gastro_spots', 'hours_text', 'VARCHAR(300)')   # Build t: Öffnungszeiten-Text / Ruhetage
     add_column('gastro_spots', 'lunch',      'VARCHAR(10)')    # Build z: Mittagstisch yes/no/NULL
     add_column('gastro_spots', 'lunch_text', 'VARCHAR(200)')   # Build z: Mittagstisch-Details

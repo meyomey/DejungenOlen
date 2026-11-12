@@ -185,6 +185,59 @@
         </div>
       </div>
 
+      {# Build cg: Hintergrund-Tracking über die Traccar-Client-App #}
+      <div class="card mb-3" id="tracker">
+        <div class="card-header card-header-djo">
+          <i class="bi bi-broadcast me-1"></i>Tracker-App (Hintergrund-Tracking)
+        </div>
+        <div class="card-body">
+          <p class="small text-muted mb-2">
+            Die Live-Karte im Browser kann nur orten, solange das Display an ist. Mit der kostenlosen App
+            <strong>Traccar Client</strong> (Android/iPhone) läuft die Aufzeichnung auch mit Display aus oder
+            anderer App im Vordergrund. Die Punkte landen automatisch bei der Tour des Tages – ohne
+            „Fahren“ drücken. Token ist persönlich, bitte nicht weitergeben.
+          </p>
+          <div class="row g-2 mb-2">
+            <div class="col-12 col-md-7">
+              <label class="form-label small mb-0">Server-URL</label>
+              <div class="input-group input-group-sm">
+                <input type="text" class="form-control" readonly value="{{ tracker_url }}" onclick="this.select()" style="font-size:.8rem">
+                <button type="button" class="btn btn-outline-djo"
+                        onclick="navigator.clipboard.writeText({{ tracker_url|tojson|forceescape }}).then(()=>{this.textContent='✓';setTimeout(()=>this.innerHTML='<i class=\'bi bi-clipboard\'></i>',2000)})">
+                  <i class="bi bi-clipboard"></i>
+                </button>
+              </div>
+            </div>
+            <div class="col-12 col-md-5">
+              <label class="form-label small mb-0">Geräte-ID (dein Token)</label>
+              <div class="input-group input-group-sm">
+                <input type="text" class="form-control" readonly value="{{ tracker_token }}" onclick="this.select()" style="font-size:.8rem">
+                <button type="button" class="btn btn-outline-djo"
+                        onclick="navigator.clipboard.writeText({{ tracker_token|tojson|forceescape }}).then(()=>{this.textContent='✓';setTimeout(()=>this.innerHTML='<i class=\'bi bi-clipboard\'></i>',2000)})">
+                  <i class="bi bi-clipboard"></i>
+                </button>
+                <button type="submit" class="btn btn-outline-danger" formaction="{{ url_for('profil_tracker_renew') }}"
+                        formmethod="post" formnovalidate title="Neuen Token erzeugen – der alte wird ungültig"
+                        onclick="return confirm('Neuen Tracker-Token erzeugen? Der bisherige funktioniert danach nicht mehr und muss in der Traccar-App neu eingetragen werden.')">
+                  <i class="bi bi-arrow-clockwise"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          <details class="small text-muted">
+            <summary class="cursor-pointer">So richtest du Traccar Client ein (einmalig, 2 Minuten)</summary>
+            <ol class="mt-2 mb-1 ps-3">
+              <li><strong>Traccar Client</strong> aus dem Play Store / App Store laden (kostenlos, Open Source).</li>
+              <li>In der App: <strong>Geräte-ID</strong> = Token von oben einfügen · <strong>Server-URL</strong> = Adresse von oben.</li>
+              <li><strong>Standortgenauigkeit:</strong> Hoch · <strong>Frequenz:</strong> 10 Sekunden · <strong>Distanz:</strong> 0 · <strong>Winkel:</strong> 0 · Offline-Puffer an.</li>
+              <li>Android: Standort für die App auf <strong>„Immer zulassen“</strong> und Akku-Optimierung für Traccar Client <strong>aus</strong>. iPhone: Standort <strong>„Immer“</strong>.</li>
+              <li>Vor der Fahrt den Schalter <strong>„Dienststatus“</strong> einschalten, danach wieder aus. Solange es läuft, zeigt Traccar eine dauerhafte Benachrichtigung.</li>
+            </ol>
+            <p class="mb-0">Die Punkte zählen für die Tour, die am Tag des Punktes stattfindet (±1 Tag, heute bevorzugt). An Tagen ohne Tour wird nichts gespeichert. Hast du in der App „Beenden“ gedrückt, bleiben spätere Tracker-Punkte 10 Minuten lang außen vor – danach gilt es als neue Fahrt.</p>
+          </details>
+        </div>
+      </div>
+
       <div class="card mb-4">
         <div class="card-header card-header-djo">
           <i class="bi bi-key me-1"></i>Passwort ändern

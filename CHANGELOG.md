@@ -13,6 +13,36 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build cg) – Hintergrund-Tracking mit der Traccar-Client-App
+- **Meldung:** „Wird noch getrackt wenn Display aus ist oder eine andere App genutzt wird?" –
+  nein: `watchPosition` friert mit der Seite ein, eine Webseite darf im Hintergrund nicht orten.
+  „Hintergrund Tracking wäre schon gut zu haben" · „traccar client habe ich eh schon installiert".
+
+### Lösung – Empfangs-Endpunkt für Traccar Client (OsmAnd-Protokoll)
+Traccar Client (Android/iPhone, kostenlos, Open Source) ortet als echte App im Hintergrund und
+schickt jede Position per HTTP an eine frei wählbare URL. Neu:
+- **`GET/POST /api/traccar`** (ohne Login): `id` = persönlicher Token, `lat`, `lon`, `timestamp`
+  (Unix-s, ms oder ISO), `speed` (**Knoten** → m/s), `bearing`, `accuracy`. Alternativ Token im
+  Pfad `/api/traccar/<token>`.
+- **Tour automatisch:** Der Punkt gehört zur Tour der eigenen Gruppe am Tag des Punktes (Tourtag
+  ±1, heute bevorzugt, Abgesagte nie) – niemand muss in der App „Fahren" drücken. Kein Tourtag
+  → `ignored`, aber **200** (sonst behält Traccar den Punkt im Puffer und schickt ihn endlos neu).
+- **Gleiche Aufzeichnung, gleiche Live-Karte:** `LiveLocation` + `_live_track_add` wie beim
+  Browser (Filter 100 m / 90 km/h / 1 s; Nachzügler aus dem Traccar-Offline-Puffer werden
+  zeitrichtig einsortiert und überschreiben keinen neueren Standort).
+- **Zusammenspiel mit „Beenden":** Punkte mit Zeit vor dem Ende → nur Spur (`late`); bis
+  10 min nach dem Ende → ignoriert (kein Zombie); später → Siegel weg, neue Fahrt.
+- **Profil → „Tracker-App":** Server-URL und Token zum Kopieren, Token erneuern, Schritt-für-
+  Schritt-Anleitung (Genauigkeit hoch, Frequenz 10 s, Distanz 0, „Immer zulassen", Akku-
+  Optimierung aus). Spalte `users.tracker_token` (Migration automatisch).
+- Zeit: unplausibel (> 2 min Zukunft, > 12 h alt, `1e30`, Text) → Ankunftszeit; `NaN`/`lat=95` → 400;
+  unbekannter/inaktiver Token → 404; fremde Gruppe bleibt getrennt (eigene Tour der Gruppe).
+
+### Tests
+`tests/test_build_cg.py` (17): Zugang, Koordinaten, Tour-Zuordnung (±1 Tag, heute zuerst,
+abgesagt nie, fremde Gruppe), Zeitformate, Nachzügler, Beenden-Siegel (late/ignoriert/neu),
+120 Punkte → Live-Karte + Zusammenfassung 5,3 km, Profilkarte, Token erneuern. Suite **692 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build cf) – Audit 9: sechs Lücken im Tracking geschlossen
 - **Auftrag:** „Mache ein komplettes Audit, gibt es irgendwo Lücken in den Funktionen? Check auch
   ob das Tracken mit und ohne Stromsparmodus optimal funktioniert" → vollständiger Bericht in
