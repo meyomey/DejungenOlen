@@ -654,6 +654,7 @@ const TRACKER_ACTIVE_MS = {{ tracker_active_s }} * 1000;
 let trackerSeen = {{ tracker_ago if tracker_ago is not none else 'null' }};   // Sekunden (Server) → gleich Zeitpunkt (ms)
 trackerSeen = (trackerSeen == null) ? 0 : Date.now() - trackerSeen * 1000;
 const TRACKER_SEEN_TXT = {{ tracker_seen_txt|tojson }};   // Build cm: '' = Traccar nie benutzt
+const TRACKER_NOTE = {{ tracker_note|tojson }};           // Build cn: „17:44 · ignoriert: …" – was der Server mit dem letzten Punkt tat
 let trackerModus = false;          // Knopf/Status stehen gerade im Tracker-Zustand
 // Build av: Ist Fahren gerade nicht erlaubt, steht der Grund in der Statuszeile – dort, wo
 // alle Meldungen der Live-Karte stehen (der Versuch, ihn unter die Karte zu setzen, kollidierte
@@ -1157,7 +1158,11 @@ function forceStopTracker() {
 // eingerichtet" – Zuschauer-Hinweis nennt die Tracker-App, wenn von diesem Nutzer je ein
 // Traccar-Punkt angekommen ist.
 function trackerIdleHtml() {
-  return '📡 Traccar ist eingerichtet (zuletzt gesendet ' + TRACKER_SEEN_TXT + ' Uhr): Dienst in der Traccar-App '
+  // Build cn: Letzter Punkt und sein Schicksal – „zuletzt gesendet 17:44 · ignoriert: Fahrt gerade
+  // beendet – neue Fahrt ab 17:46 Uhr" statt nur „zuletzt gesendet 17:44".
+  const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const letzter = TRACKER_NOTE ? esc(TRACKER_NOTE) : esc(TRACKER_SEEN_TXT) + ' Uhr';
+  return '📡 Traccar ist eingerichtet (letzter Punkt ' + letzter + '). Dienst in der Traccar-App '
        + 'einschalten, dann geht es hier von allein los – der Knopf springt auf „Tracker-App". '
        + 'Oder „▶ Fahrt starten" für GPS aus dem Browser.';
 }

@@ -155,12 +155,12 @@ class TraccarTest(AppTestCase):
         r = self._push(timestamp=_ts(stop.stopped_at - dt.timedelta(minutes=2)), lat=53.401)
         self.assertTrue(r.get_json().get('late'))
         self.assertIsNone(M.LiveLocation.query.filter_by(tour_id=self.tid).first())
-        # 2) kurz nach dem Ende → ignoriert (kein Zombie)
-        r = self._push(timestamp=_ts(stop.stopped_at + dt.timedelta(minutes=3)), lat=53.402)
+        # 2) kurz nach dem Ende → ignoriert (kein Zombie); Build cn: Luft nur noch 2 min
+        r = self._push(timestamp=_ts(stop.stopped_at + dt.timedelta(minutes=1)), lat=53.402)
         self.assertEqual(r.get_json().get('ignored'), 'Fahrt beendet')
         self.assertIsNone(M.LiveLocation.query.filter_by(tour_id=self.tid).first())
-        # 3) 10 min danach → neue Fahrt, Siegel weg (Zeit rückdatieren, damit „jetzt" dahinter liegt)
-        stop.stopped_at = dt.datetime.utcnow() - dt.timedelta(minutes=11)
+        # 3) > 2 min danach (Build cn, vorher 10) → neue Fahrt, Siegel weg
+        stop.stopped_at = dt.datetime.utcnow() - dt.timedelta(minutes=3)
         db.session.commit()
         r = self._push(lat=53.403)
         self.assertTrue(r.get_json().get('recorded'))

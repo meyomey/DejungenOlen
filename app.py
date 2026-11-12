@@ -90,7 +90,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 cm'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 cn'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5694,6 +5694,7 @@ def tour_live(tour_id):
                            can_share=can_share, share_hint=share_hint, can_takeover=_can_manage_tour(tour),
                            tracker_ago=_tracker_ago(tour.id, current_user.id),        # Build ci
                            tracker_seen_txt=_tracker_seen_txt(current_user),          # Build cm
+                           tracker_note=getattr(current_user, 'tracker_note', None) or '',   # Build cn
                            tracker_active_s=TRACKER_ACTIVE_S,
                            stale_s=LIVE_STALE_S, fresh_s=LIVE_FRESH_S, keep_days=LIVE_TRACK_KEEP_DAYS)
 
@@ -5860,7 +5861,11 @@ def location_stop():
 # auf derselben Live-Karte wie die aus dem Browser – ohne dass jemand in der App „Fahren" drückt:
 # Die Tour ergibt sich aus dem Datum des Punktes (Tourtag ±1 der eigenen Gruppe, heute bevorzugt).
 TRACKER_MAX_ALTER_H = 12          # Traccar puffert offline und sendet nach – älter nehmen wir nicht
-TRACKER_NEUSTART_MIN = 10         # Punkte > 10 min nach „Beenden" in der App = neue Fahrt (Siegel weg)
+# Build cn: war 10 min – der Nutzer schaltete Traccar wieder ein und „es springt nicht um und keiner ist
+# unterwegs": sein Siegel (Build cl „Fahrt jetzt abschließen") war keine 10 min alt. Ein Siegel heißt
+# seit ci/cl immer „Tracker war aus" – jeder Punkt, der NACH dem Siegel liegt (plus 2 min Luft für
+# Uhren/Puffer), ist darum eine bewusst neu gestartete Fahrt. Ältere Punkte bleiben Nachzügler (nur Spur).
+TRACKER_NEUSTART_MIN = 2
 
 
 def _tracker_tour_for(user, local_day):
@@ -5918,6 +5923,11 @@ def traccar_push(token=None):
         return jsonify({'error': 'unbekannter Token'}), 404
     user.tracker_seen_at = datetime.utcnow()      # Build cm: „Traccar eingerichtet" – auch wenn der Punkt gleich verworfen wird
     db.session.commit()
+
+    def _note(txt):
+        # Build cn: Der Nutzer sieht auf der Live-Karte, was aus seinem letzten Punkt wurde.
+        user.tracker_note = (_tracker_seen_txt(user) + ' · ' + txt)[:160]
+        db.session.commit()
     try:
         lat = float(src.get('lat', src.get('latitude')))
         lng = float(src.get('lon', src.get('lng', src.get('longitude'))))
@@ -5947,6 +5957,7 @@ def traccar_push(token=None):
     local_day = now.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Berlin')).date()
     tour = _tracker_tour_for(user, local_day)
     if tour is None:
+        _note('verworfen: kein Tourtag (Punkt vom ' + local_day.strftime('%d.%m.') + ')')
         return jsonify({'ok': True, 'ignored': 'kein Tourtag'})
     stop_mark = LiveStop.query.filter_by(tour_id=tour.id, user_id=user.id).first()
     if stop_mark is not None:
@@ -5954,8 +5965,11 @@ def traccar_push(token=None):
             # Punkt gehört zur beendeten Fahrt (Nachzügler aus dem Traccar-Puffer): nur Spur, kein Standort
             recorded = _live_track_add(tour.id, user.id, lat, lng, accuracy, now)
             db.session.commit()
+            _note('Nachzügler (Punktzeit vor dem Fahrtende) – nur Spur')
             return jsonify({'ok': True, 'tour_id': tour.id, 'recorded': recorded, 'late': True})
         if now < stop_mark.stopped_at + timedelta(minutes=TRACKER_NEUSTART_MIN):
+            _note('ignoriert: Fahrt gerade beendet – neue Fahrt ab '
+                  + _fmt_local_hm(stop_mark.stopped_at + timedelta(minutes=TRACKER_NEUSTART_MIN)) + ' Uhr')
             return jsonify({'ok': True, 'tour_id': tour.id, 'ignored': 'Fahrt beendet'})
         db.session.delete(stop_mark)                     # deutlich später → neue Fahrt
     existing = LiveLocation.query.filter_by(tour_id=tour.id, user_id=user.id).first()
@@ -5970,7 +5984,13 @@ def traccar_push(token=None):
             existing.tracker_at = now
     recorded = _live_track_add(tour.id, user.id, lat, lng, accuracy, now)
     db.session.commit()
+    _note('übernommen – Tour „' + (tour.title or '')[:40] + '"')
     return jsonify({'ok': True, 'tour_id': tour.id, 'recorded': recorded})
+
+
+def _fmt_local_hm(t):
+    from zoneinfo import ZoneInfo
+    return t.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Berlin')).strftime('%H:%M')
 
 
 def _tracker_token_for(user):
@@ -11572,6 +11592,7 @@ def migrate_db():
     add_column('users', 'tracker_token', 'VARCHAR(40)')   # Build cg: Tracker-App (Traccar Client)
     add_column('live_locations', 'tracker_at', 'DATETIME')  # Build ci: Tracker hat Vorfahrt
     add_column('users', 'tracker_seen_at', 'DATETIME')     # Build cm: Traccar je benutzt → Hinweis auf der Live-Karte
+    add_column('users', 'tracker_note', 'VARCHAR(160)')    # Build cn: Ergebnis des letzten Traccar-Punkts (sichtbar auf der Live-Karte)
     add_column('gastro_spots', 'hours_text', 'VARCHAR(300)')   # Build t: Öffnungszeiten-Text / Ruhetage
     add_column('gastro_spots', 'lunch',      'VARCHAR(10)')    # Build z: Mittagstisch yes/no/NULL
     add_column('gastro_spots', 'lunch_text', 'VARCHAR(200)')   # Build z: Mittagstisch-Details

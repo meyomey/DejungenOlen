@@ -49,6 +49,7 @@ class User(UserMixin, db.Model):
     calendar_token = db.Column(db.String(40), nullable=True, index=True)  # Build w: Kalender-Abo (webcal)
     tracker_token  = db.Column(db.String(40), nullable=True, index=True)  # Build cg: Tracker-App (Traccar Client)
     tracker_seen_at = db.Column(db.DateTime, nullable=True)   # Build cm: letzter Traccar-Punkt überhaupt („eingerichtet")
+    tracker_note    = db.Column(db.String(160), nullable=True)  # Build cn: was der Server mit dem letzten Punkt gemacht hat
     large_text     = db.Column(db.Boolean, default=False)                  # Build x: Großschrift-Modus
     phone           = db.Column(db.String(40), nullable=True)   # Build ab: Telefon (nur für Tourleitung sichtbar)
     emergency_name  = db.Column(db.String(80), nullable=True)   # Build ab: Notfallkontakt Name

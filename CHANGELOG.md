@@ -13,6 +13,22 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build cn) – Traccar wieder an, „es springt nicht um und keiner ist unterwegs"
+- **Meldung:** Traccar Client aktiv, Hinweis zeigt „zuletzt gesendet 17:44", Karte zeigt nur einen
+  kleinen roten Punkt, niemand „unterwegs".
+- **Diagnose (ohne Serverlog):** Die Punkte kommen an (17:44), werden aber nicht als Standort
+  übernommen. Wahrscheinlichste Ursache: Das Siegel aus „Tracker beendet? Fahrt jetzt abschließen"
+  (Build cl) war keine 10 min alt → `ignored: Fahrt beendet` (Regel aus cg).
+- **1 · `TRACKER_NEUSTART_MIN` 10 → 2:** Ein Siegel heißt seit ci/cl „Tracker war aus". Jeder Punkt,
+  der mehr als 2 min nach dem Siegel liegt, startet eine neue Fahrt; Punkte **vor** dem Siegel
+  bleiben Nachzügler (nur Spur). Die 2 min sind Luft für Uhren/Traccar-Puffer.
+- **2 · `users.tracker_note`:** Der Server merkt sich, was er mit dem letzten Traccar-Punkt getan hat
+  („übernommen – Tour …", „ignoriert: Fahrt gerade beendet – neue Fahrt ab 17:46 Uhr", „Nachzügler …",
+  „verworfen: kein Tourtag"). Die Live-Karte zeigt das im Zuschauer-Hinweis: „letzter Punkt
+  Do 12.11., 17:44 · ignoriert: …". Damit ist so ein Zustand nie wieder ein Rätsel.
+- Tests `tests/test_build_cn.py` (6), `test_build_cg` (Frist) und `test_build_cm` (Wortlaut) angepasst.
+  Suite **731 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build cm) – Live-Karte erwähnt Traccar, falls eingerichtet
 - **Meldung:** „Hier steht nur Fahrt starten. Hier sollte auch Traccar erwähnt werden, falls eingerichtet."
 - **Eingerichtet** = von diesem Nutzer ist je ein Traccar-Punkt angekommen: neue Spalte

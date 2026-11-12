@@ -65,7 +65,7 @@ class ClientTest(unittest.TestCase):
         with open(LIVE, encoding='utf-8') as f:
             js = f.read()
         self.assertIn("if (TRACKER_SEEN_TXT && !trackerAktiv() && CAN_SHARE) setStatus(trackerIdleHtml(), '', true);", js)
-        self.assertIn('Traccar ist eingerichtet (zuletzt gesendet', js)
+        self.assertIn('Traccar ist eingerichtet (letzter Punkt', js)   # Build cn: Wortlaut
         self.assertIn('Dienst in der Traccar-App', js)
 
     def test_build_stempel(self):

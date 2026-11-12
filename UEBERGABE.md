@@ -1,10 +1,10 @@
-# Übergabe – Stand Build `cm`
+# Übergabe – Stand Build `cn`
 
 > **Zweck:** Diese Datei ist der Einstieg für einen frischen Chat. Sie beschreibt, wie in
 > diesem Projekt gearbeitet wird, was zuletzt passiert ist und was als Nächstes ansteht.
 > **Bei jedem neuen Build aktuell halten** (Abschnitt 3 und 6).
 >
-> Stand: 2026-11-12, Build `2026-11-12 cm`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
+> Stand: 2026-11-12, Build `2026-11-12 cn`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
 > HEAD siehe `git log -1`, Arbeitsbaum sauber.
 
 ---
@@ -50,7 +50,7 @@ dann, dass hinter dem Symptom zwei Ursachen stecken (so war es bei Build `ca`).
 ```bash
 cd /home/user/DejungenOlen
 .venv/bin/python -m unittest discover -s tests -q      # volle Suite, ~115 s
-.venv/bin/python -m unittest tests.test_build_cm -q    # nur ein Build
+.venv/bin/python -m unittest tests.test_build_cn -q    # nur ein Build
 .venv/bin/python -m pyflakes app.py tests/             # Lint
 ```
 
@@ -81,9 +81,14 @@ schnellste Weg, Bilder zu prüfen** – siehe Rezept in Abschnitt 5.
 
 ---
 
-## 3. Stand jetzt: Build `2026-11-12 cm` (fertig, ausgeliefert)
+## 3. Stand jetzt: Build `2026-11-12 cn` (fertig, ausgeliefert)
 
-### 3.0 Build `cm` – Traccar-Hinweis im Zuschauer-Zustand ✅
+### 3.0 Build `cn` – Traccar-Neustart nach Siegel + Diagnose-Notiz ✅
+> `TRACKER_NEUSTART_MIN` 10 → 2 (Siegel = Tracker war aus; jeder spätere Punkt = neue Fahrt).
+`users.tracker_note` = Schicksal des letzten Punkts, sichtbar im Zuschauer-Hinweis der Live-Karte.
+**Erster Blick bei „Traccar sendet, aber nichts passiert":** diese Notiz lesen.
+
+### 3.0f Build `cm` – Traccar-Hinweis im Zuschauer-Zustand ✅
 > `users.tracker_seen_at` (je ein Traccar-Punkt angekommen) → Live-Karte: „📡 Traccar ist eingerichtet
 (zuletzt gesendet …): Dienst in der Traccar-App einschalten … Oder Fahrt starten". `_tracker_seen_txt()`.
 
@@ -175,9 +180,9 @@ Einkehr)“. Streckenfunde nur noch auf der Tour-Seite (Build u).
 | | |
 |---|---|
 | `APP_VERSION` | `1.5.0` |
-| `APP_BUILD` | `2026-11-12 cm` (app.py Z. 93) |
-| Tests | `tests/test_build_cm.py` **6**, volle Suite **725 grün** (~140 s) |
-| Pakete | `deploy/deploy_v1.5.0_2026-11-12cm_aenderungen.zip` · `…_komplett.zip` |
+| `APP_BUILD` | `2026-11-12 cn` (app.py Z. 93) |
+| Tests | `tests/test_build_cn.py` **6**, volle Suite **731 grün** (~140 s) |
+| Pakete | `deploy/deploy_v1.5.0_2026-11-12cn_aenderungen.zip` · `…_komplett.zip` |
 | Geprüft | Simulation vorher/nachher (Node, echter Template-Code), ZIP entpackt + Tests darin |
 
 **Hinweis zur Paket-Probe:** Zwei Tests (`test_az_deploy_date_freshness`,
@@ -268,7 +273,7 @@ Wenn eine neue Meldung kommt:
 1. Wörtlich zitieren, Akzeptanz im Code prüfen.
 2. Nachstellen (Skript, das den Fehler zeigt).
 3. Beheben, Gegenprobe, Tests, CHANGELOG.
-4. Buchstabe hochzählen: nach `cm` kommt `cn`, `co`, … (immer Kleinbuchstaben, `z` → `aa`).
+4. Buchstabe hochzählen: nach `cn` kommt `co`, `cp`, … (immer Kleinbuchstaben, `z` → `aa`).
 5. `APP_BUILD` auf das **heutige** Datum + neuen Buchstaben setzen.
 6. Deploy-Pakete, Probe, Commit, Push.
 7. **Diese Datei aktualisieren** (Abschnitt 3, 4 und 6).
@@ -307,6 +312,7 @@ Wenn eine neue Meldung kommt:
 
 | Build | Datum | Thema |
 |---|---|---|
+| `cn` | 2026-11-12 | Neustart-Frist 2 min; `users.tracker_note` (Schicksal des letzten Traccar-Punkts) |
 | `cm` | 2026-11-12 | `users.tracker_seen_at`; Live-Karte nennt Traccar im Zuschauer-Zustand |
 | `cl` | 2026-11-12 | Tracker-Knopf mit „vor X min", Link „Fahrt jetzt abschließen" (`force=1`) |
 | `ck` | 2026-11-12 | Tourstrecke (GPX) magenta mit weißem Saum – das war die „blaue" Linie |
@@ -332,8 +338,8 @@ Wenn eine neue Meldung kommt:
 ## 8. Text zum Einfügen in den neuen Chat
 
 > Wir machen mit der App „DejungenOlen" weiter. Lies bitte zuerst `UEBERGABE.md` im
-> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 cm` ist
+> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 cn` ist
 > fertig und ausgeliefert (Traccar-Hintergrund-Tracking mit Vorfahrtsregel), Arbeitsbaum
-> sauber, alle 725 Tests grün; Feldtest mit Traccar steht aus. Arbeite weiter wie dort beschrieben: Meldung wörtlich
+> sauber, alle 731 Tests grün; Feldtest mit Traccar steht aus. Arbeite weiter wie dort beschrieben: Meldung wörtlich
 > nehmen, am echten Code nachmessen, mit echten Daten nachstellen, beheben, Gegenprobe,
 > Tests, CHANGELOG, neuer Build-Buchstabe (`cf`), Deploy-Pakete, Push.
