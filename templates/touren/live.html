@@ -1128,6 +1128,30 @@ function noteTrackerLocs(locs) {
   else refreshTrackerUi();
 }
 function fmtUhr(ms) { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+// Build cl: „Ist das normal dass Tracker App läuft? Die Tracker App habe ich beendet." – Traccar
+// meldet kein „Dienst aus"; der Server hält den Tracker 15 min nach dem letzten Punkt für aktiv.
+// Deshalb (1) ehrlicher Knopf/Hinweis mit „zuletzt vor X min · gilt bis HH:MM als aktiv" und
+// (2) Link „Tracker beendet? Fahrt jetzt abschließen" → /api/location/stop mit force=1.
+function trackerMinAgo() { return Math.max(0, Math.round((Date.now() - trackerSeen) / 60000)); }
+function trackerBisUhr() { return fmtUhr(trackerSeen + TRACKER_ACTIVE_MS); }
+function trackerStatusHtml() {
+  const m = trackerMinAgo();
+  return '📡 Tracker-App · letzter Punkt ' + (m < 1 ? 'gerade eben' : 'vor ' + m + ' min') + ' (' + fmtUhr(trackerSeen) + ' Uhr) – '
+       + 'deine Position kommt aus Traccar, hier musst du nichts drücken. Kommt nichts mehr, gilt der Tracker bis '
+       + trackerBisUhr() + ' Uhr als aktiv. '
+       + '<a href="#" onclick="forceStopTracker(); return false;">Tracker beendet? Fahrt jetzt abschließen</a>';
+}
+function forceStopTracker() {
+  fetch('/api/location/stop', {method: 'POST', headers: {'Content-Type': 'application/json'},
+         body: JSON.stringify({tour_id: TOUR_ID, force: 1}), credentials: 'same-origin'})
+    .then(r => r.json()).then(d => {
+      if (!d || !d.ok) { setStatus('Abschließen hat nicht geklappt – bitte noch einmal.', 'danger'); return; }
+      trackerSeen = 0; trackerModus = false; sharing = false;
+      updateShareBtn();
+      setStatus('⏹ Fahrt abgeschlossen. Deine Aufzeichnung ist gespeichert (<a href="' + DL_URL + '">GPX speichern</a>) – '
+                + '<a href="/touren/' + TOUR_ID + '#live-aufzeichnung">Tourseite</a>. Sendet Traccar doch noch, zählt ein Punkt erst nach 10 min wieder als neue Fahrt.', '', true);
+    }).catch(() => setStatus('Abschließen hat nicht geklappt – keine Verbindung.', 'danger'));
+}
 function refreshTrackerUi() {
   const aktiv = trackerAktiv();
   if (aktiv && !trackerModus) {
@@ -1137,8 +1161,7 @@ function refreshTrackerUi() {
       stopShare(false, false);
     }
     updateShareBtn();
-    setStatus('📡 Tracker-App läuft (zuletzt ' + fmtUhr(trackerSeen) + ' Uhr) – deine Position kommt aus Traccar. '
-              + 'Hier musst du nichts drücken; beendet wird in der Traccar-App (Dienst aus).', 'sharing');
+    setStatus(trackerStatusHtml(), 'sharing', true);
   } else if (!aktiv && trackerModus) {
     trackerModus = false;
     updateShareBtn();
@@ -1149,8 +1172,7 @@ function refreshTrackerUi() {
 }
 function toggleShare() {
   if (trackerAktiv()) {
-    setStatus('📡 Tracker-App läuft (zuletzt ' + fmtUhr(trackerSeen) + ' Uhr) – hier gibt es nichts zu starten. '
-              + 'Beenden: in der Traccar-App den Dienst ausschalten.', 'sharing');
+    setStatus(trackerStatusHtml(), 'sharing', true);
     return;
   }
   if (sharing) stopShare(false); else startShare();
@@ -1247,7 +1269,7 @@ function updateShareBtn() {
   const b = document.getElementById('btn-share');
   if (!b) return;
   const trk = trackerAktiv();                                   // Build ci
-  b.textContent = trk ? '📡 Tracker-App läuft' : (sharing ? '⏹ Fahrt beenden' : '▶ Fahrt starten');
+  b.textContent = trk ? ('📡 Tracker-App · vor ' + trackerMinAgo() + ' min') : (sharing ? '⏹ Fahrt beenden' : '▶ Fahrt starten');   // Build cl
   b.classList.toggle('btn-success', !sharing && !trk);
   b.classList.toggle('btn-danger', sharing && !trk);
   b.classList.toggle('btn-info', trk);

@@ -90,7 +90,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 ck'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 cl'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5812,9 +5812,13 @@ def location_stop():
     tour_id = _parse_int(str(raw))
     if not tour_id:
         return jsonify({'error': 'tour_id fehlt'}), 400
-    if _tracker_active(tour_id, current_user.id):
+    force = str(data.get('force') or request.form.get('force') or request.args.get('force') or '') in ('1', 'true')
+    if _tracker_active(tour_id, current_user.id) and not force:
         # Build ci: Die Fahrt läuft über die Tracker-App – „Beenden" im Browser setzt kein Siegel
         # und löscht den Standort nicht; beendet wird in Traccar (Dienst aus).
+        # Build cl: mit force=1 („Tracker beendet – Fahrt jetzt abschließen") greift das normale
+        # Beenden trotzdem: Siegel jetzt; Traccar-Nachzügler < 10 min werden ignoriert, ein Punkt
+        # > 10 min später gilt als neue Fahrt (Regel aus Build cg).
         return jsonify({'ok': True, 'tracker': True})
     LiveLocation.query.filter_by(tour_id=tour_id, user_id=current_user.id).delete()
     # Build 11-06s: Siegel setzen – damit halten Zombie-Sender (vergessene Tabs/Hände mit

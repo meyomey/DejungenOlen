@@ -13,6 +13,18 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build cl) – „Tracker-App läuft", obwohl Traccar beendet
+- **Meldung:** „Ist das normal dass Tracker App läuft? Die Tracker App habe ich beendet."
+- **Hintergrund:** Traccar meldet kein „Dienst aus" – der Server hält den Tracker 15 min nach dem
+  letzten Punkt für aktiv (Build ci; kürzer geht nicht, weil Traccar im Stand minutenlang schweigt).
+- **1 · Ehrlicher Knopf/Hinweis:** „📡 Tracker-App · vor 9 min" statt „läuft"; Hinweis nennt den
+  letzten Punkt und „gilt bis HH:MM Uhr als aktiv".
+- **2 · Link „Tracker beendet? Fahrt jetzt abschließen":** `POST /api/location/stop` mit `force=1`
+  schließt trotz aktivem Tracker sofort ab (Siegel, Standort weg). Traccar-Nachzügler < 10 min werden
+  ignoriert, ein Punkt > 10 min später gilt wie bisher als neue Fahrt.
+- Nicht geändert: die 15-min-Frist (Punkt 3 nur auf Zuruf).
+- Tests `tests/test_build_cl.py` (6); `test_build_ci` an den neuen Knopftext angepasst. Suite **719 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build ck) – Tourstrecke auf der Live-Karte war die „blaue" Linie
 - **Meldung:** „in der live Karte ist er immer noch blau" (nach Build cj).
 - **Ursache:** Build cj hatte die **Live-Spur** umgefärbt – gemeint war aber die **Tourstrecke**

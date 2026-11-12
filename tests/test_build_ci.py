@@ -167,7 +167,7 @@ const ctx = {
   TRACKER_ACTIVE_MS: 900000, trackerSeen: 0, trackerModus: false, sharing: false,
   ME: {id: 7}, CAN_SHARE: true, stopped: 0, started: 0,
 };
-const code = [grab('trackerAktiv'), grab('noteTrackerAgo'), grab('noteTrackerLocs'), grab('fmtUhr'),
+const code = [grab('trackerAktiv'), grab('noteTrackerAgo'), grab('noteTrackerLocs'), grab('fmtUhr'), grab('trackerMinAgo'), grab('trackerBisUhr'), grab('trackerStatusHtml'),
               grab('refreshTrackerUi'), grab('toggleShare'), grab('updateShareBtn')].join('\n');
 const body = `
   let {TRACKER_ACTIVE_MS, trackerSeen, trackerModus, sharing, ME, CAN_SHARE} = ctx;
@@ -210,7 +210,7 @@ const src = fs.readFileSync(process.argv[2], 'utf8');
 function grab(name) { return src.match(new RegExp('function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\n\\}'))[0]; }
 let log = [], btn = {textContent: '', cls: new Set(), attrs: {},
   classList: {toggle(c, on) { on ? btn.cls.add(c) : btn.cls.delete(c); }}, setAttribute(k, v) { btn.attrs[k] = v; }};
-const code = [grab('trackerAktiv'), grab('noteTrackerAgo'), grab('noteTrackerLocs'), grab('fmtUhr'),
+const code = [grab('trackerAktiv'), grab('noteTrackerAgo'), grab('noteTrackerLocs'), grab('fmtUhr'), grab('trackerMinAgo'), grab('trackerBisUhr'), grab('trackerStatusHtml'),
               grab('refreshTrackerUi'), grab('updateShareBtn')].join('\n');
 const body = `
   let TRACKER_ACTIVE_MS = 900000, trackerSeen = Date.now() - 14 * 60000, trackerModus = false, sharing = false;
@@ -245,18 +245,18 @@ class ClientVorfahrtTest(unittest.TestCase):
         d = self._run(HARNESS)
         self.assertEqual(d['ohneTracker'], {'text': '⏹ Fahrt beenden', 'started': 1, 'sharing': True})
         t = d['trackerKommt']
-        self.assertEqual(t['text'], '📡 Tracker-App läuft')
+        self.assertTrue(t['text'].startswith('📡 Tracker-App'), t['text'])   # Build cl: „· vor X min"
         self.assertEqual(t['stopped'], 1, 'laufende Browser-Fahrt muss stoppen')
         self.assertFalse(t['sharing'])
         self.assertTrue(t['modus'] and t['info'])
-        self.assertTrue(t['status'].startswith('📡 Tracker-App läuft'))
+        self.assertTrue(t['status'].startswith('📡 Tracker-App'), t['status'])
         self.assertEqual(d['knopfImTrackerModus'], {'started': 0, 'sharing': False, 'hinweis': True})
         self.assertFalse(d['fremderTracker']['modus'], 'Tracker eines anderen zählt nicht für mich')
         self.assertTrue(d['altWert']['modus'], 'älterer Wert darf den frischen nicht überschreiben')
 
     def test_zurueck_wenn_tracker_still(self):
         d = self._run(HARNESS_STILL)
-        self.assertEqual(d['a'], {'text': '📡 Tracker-App läuft', 'modus': True})
+        self.assertEqual(d['a'], {'text': '📡 Tracker-App · vor 14 min', 'modus': True})
         self.assertEqual(d['b']['text'], '▶ Fahrt starten')
         self.assertFalse(d['b']['modus'])
         self.assertEqual(d['b']['warn'], 'warning')
