@@ -13,6 +13,14 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build ch) – Traccar-Anleitung an die neue App-Version angepasst
+- **Anlass:** Screenshot der Traccar-Client-Einstellungen (2025er-Oberfläche): kein Feld „Frequenz"
+  mehr, stattdessen **Entfernung (Meter)** und **Meldeintervall bei Stillstand**. Die Anleitung
+  im Profil nannte noch Frequenz/Distanz/Winkel der alten Version.
+- **Geändert:** Anleitung im Profil → Entfernung **10 m** (30 m schneidet Kurven: bei 18 km/h nur
+  alle 6 s ein Punkt), Stillstand 180 s, Offline-Pufferung/CPU wach/Stillstandserkennung an,
+  System-Standortdienste aus, Passwort leer; alte Version in Klammern. Nur Text, kein Code.
+
 ## 1.5.0 – 2026-11-12 (Build cg) – Hintergrund-Tracking mit der Traccar-Client-App
 - **Meldung:** „Wird noch getrackt wenn Display aus ist oder eine andere App genutzt wird?" –
   nein: `watchPosition` friert mit der Seite ein, eine Webseite darf im Hintergrund nicht orten.
