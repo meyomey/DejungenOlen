@@ -13,6 +13,17 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build cj) – Eigene Spur auf der Live-Karte war kaum zu sehen
+- **Meldung:** „man kann den gefahrenen Track in blauer Farbe kaum erkennen" (Screenshot: Radkarte
+  CyclOSM, Tracker-Fahrt).
+- **Ursache:** Die eigene Spur war `#1E88E5` (Blau), **3 px, 55 % Deckkraft** – auf der Radkarte
+  liegen die Radrouten in genau diesem Blau, auf der Standardkarte die Gewässer.
+- **Behoben:** eigene Spur **Orangerot `#FF3D00`** (kommt auf keiner der drei Kartenstile vor und
+  nicht in der Mitfahrer-Palette), **5 px, 95 %**; unter jeder Spur ein **weißer Saum** (eigene 9 px,
+  andere 7 px) – hebt sie von Straßen, Routen und der dunkelblauen Planstrecke ab. Mitfahrer-Spuren
+  4 px / 85 % statt 3 px / 55 %.
+- Tests `tests/test_build_cj.py` (4). Suite **709 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build ci) – „Tracker hat Vorfahrt": Traccar- und Browser-Nutzer nebeneinander
 - **Meldung:** „Wie geht man am besten damit um wenn jemand Traccar Client nutzt und ein anderer
   nicht? ‚Fahrt starten' Button ist ja auch noch da in der Live Karte und Fahren auf der Tourseite.

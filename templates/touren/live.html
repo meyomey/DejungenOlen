@@ -939,19 +939,30 @@ function showAll() {
 // ── Build af: Aufzeichnung – zurückgelegte Wege als dünne Linien ─────────────────────────────
 const trails = {}, trailLast = {};
 let trailSince = 0;
+// Build cj: „man kann den gefahrenen Track in blauer Farbe kaum erkennen" (Screenshot: Radkarte
+// CyclOSM, die eigene Spur in #1E88E5 bei 3 px / 55 % ging zwischen den blauen Radrouten der
+// Karte unter). Jetzt: eigene Spur in kräftigem Orangerot (kommt auf Standard-, Rad- und
+// Luftbildkarte nicht vor), 5 px, 95 %, und unter JEDER Spur ein weißer Saum (7 px) – so hebt
+// sie sich von Straßen, Routen und der dunkelblauen Planstrecke ab. Andere Mitfahrer: 4 px / 85 %.
 const TRAIL_COLORS = ['#C0392B', '#8E44AD', '#D98E04', '#16A085', '#2E7D4F', '#7F8C8D', '#E67E22', '#2C3E50'];
-function trailColor(uid) { return uid === ME.id ? '#1E88E5' : TRAIL_COLORS[uid % TRAIL_COLORS.length]; }
+const TRAIL_ME = '#FF3D00';
+function trailColor(uid) { return uid === ME.id ? TRAIL_ME : TRAIL_COLORS[uid % TRAIL_COLORS.length]; }
+const trailCasing = {};
 function addTrails(obj) {
   if (!obj) return;
   Object.keys(obj).forEach(k => {
     const uid = parseInt(k, 10);
     const pts = obj[k] || [];
     if (!trails[uid]) {
-      trails[uid] = L.polyline([], {color: trailColor(uid), weight: 3, opacity: .55, interactive: false}).addTo(map);
+      const mine = uid === ME.id;
+      trailCasing[uid] = L.polyline([], {color: '#fff', weight: mine ? 9 : 7, opacity: .9, interactive: false}).addTo(map);
+      trails[uid] = L.polyline([], {color: trailColor(uid), weight: mine ? 5 : 4, opacity: mine ? .95 : .85,
+                                    interactive: false}).addTo(map);
       trailLast[uid] = 0;
     }
     pts.forEach(p => {
       if (p[2] <= trailLast[uid]) return;             // schon bekannt (Server liefert ab „since“ inklusive)
+      trailCasing[uid].addLatLng([p[0], p[1]]);
       trails[uid].addLatLng([p[0], p[1]]);
       trailLast[uid] = p[2];
       if (p[2] > trailSince) trailSince = p[2];

@@ -1,10 +1,10 @@
-# Übergabe – Stand Build `ci`
+# Übergabe – Stand Build `cj`
 
 > **Zweck:** Diese Datei ist der Einstieg für einen frischen Chat. Sie beschreibt, wie in
 > diesem Projekt gearbeitet wird, was zuletzt passiert ist und was als Nächstes ansteht.
 > **Bei jedem neuen Build aktuell halten** (Abschnitt 3 und 6).
 >
-> Stand: 2026-11-12, Build `2026-11-12 ci`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
+> Stand: 2026-11-12, Build `2026-11-12 cj`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
 > HEAD siehe `git log -1`, Arbeitsbaum sauber.
 
 ---
@@ -50,7 +50,7 @@ dann, dass hinter dem Symptom zwei Ursachen stecken (so war es bei Build `ca`).
 ```bash
 cd /home/user/DejungenOlen
 .venv/bin/python -m unittest discover -s tests -q      # volle Suite, ~115 s
-.venv/bin/python -m unittest tests.test_build_ci -q    # nur ein Build
+.venv/bin/python -m unittest tests.test_build_cj -q    # nur ein Build
 .venv/bin/python -m pyflakes app.py tests/             # Lint
 ```
 
@@ -81,9 +81,13 @@ schnellste Weg, Bilder zu prüfen** – siehe Rezept in Abschnitt 5.
 
 ---
 
-## 3. Stand jetzt: Build `2026-11-12 ci` (fertig, ausgeliefert)
+## 3. Stand jetzt: Build `2026-11-12 cj` (fertig, ausgeliefert)
 
-### 3.0 Build `ci` – „Tracker hat Vorfahrt" ✅
+### 3.0 Build `cj` – eigene Spur sichtbar ✅
+> „man kann den gefahrenen Track in blauer Farbe kaum erkennen" → `TRAIL_ME = '#FF3D00'`, 5 px/95 %,
+weißer Saum (`trailCasing`) unter jeder Spur (live.html `addTrails`).
+
+### 3.0b Build `ci` – „Tracker hat Vorfahrt" ✅
 
 > „Wenn Traccar Client aktiv ist kann man trotzdem die Knöpfe drücken. Das muss entwirrt werden?"
 
@@ -156,9 +160,9 @@ Einkehr)“. Streckenfunde nur noch auf der Tour-Seite (Build u).
 | | |
 |---|---|
 | `APP_VERSION` | `1.5.0` |
-| `APP_BUILD` | `2026-11-12 ci` (app.py Z. 93) |
-| Tests | `tests/test_build_ci.py` **13**, volle Suite **705 grün** (~140 s) |
-| Pakete | `deploy/deploy_v1.5.0_2026-11-12ci_aenderungen.zip` · `…_komplett.zip` |
+| `APP_BUILD` | `2026-11-12 cj` (app.py Z. 93) |
+| Tests | `tests/test_build_cj.py` **4**, volle Suite **709 grün** (~140 s) |
+| Pakete | `deploy/deploy_v1.5.0_2026-11-12cj_aenderungen.zip` · `…_komplett.zip` |
 | Geprüft | Simulation vorher/nachher (Node, echter Template-Code), ZIP entpackt + Tests darin |
 
 **Hinweis zur Paket-Probe:** Zwei Tests (`test_az_deploy_date_freshness`,
@@ -249,7 +253,7 @@ Wenn eine neue Meldung kommt:
 1. Wörtlich zitieren, Akzeptanz im Code prüfen.
 2. Nachstellen (Skript, das den Fehler zeigt).
 3. Beheben, Gegenprobe, Tests, CHANGELOG.
-4. Buchstabe hochzählen: nach `ci` kommt `cj`, `ck`, … (immer Kleinbuchstaben, `z` → `aa`).
+4. Buchstabe hochzählen: nach `cj` kommt `ck`, `cl`, … (immer Kleinbuchstaben, `z` → `aa`).
 5. `APP_BUILD` auf das **heutige** Datum + neuen Buchstaben setzen.
 6. Deploy-Pakete, Probe, Commit, Push.
 7. **Diese Datei aktualisieren** (Abschnitt 3, 4 und 6).
@@ -288,6 +292,7 @@ Wenn eine neue Meldung kommt:
 
 | Build | Datum | Thema |
 |---|---|---|
+| `cj` | 2026-11-12 | Eigene Spur orangerot mit weißem Saum (war blau, auf Radkarte unsichtbar) |
 | `ci` | 2026-11-12 | „Tracker hat Vorfahrt": Browser-Punkte/Beenden bei aktivem Tracker, Knöpfe wechseln |
 | `ch` | 2026-11-12 | Traccar-Anleitung an neue App-Version angepasst (Entfernung 10 m statt Frequenz) |
 | `cg` | 2026-11-12 | Hintergrund-Tracking: `/api/traccar` für Traccar Client, Profilkarte mit Token |
@@ -309,8 +314,8 @@ Wenn eine neue Meldung kommt:
 ## 8. Text zum Einfügen in den neuen Chat
 
 > Wir machen mit der App „DejungenOlen" weiter. Lies bitte zuerst `UEBERGABE.md` im
-> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 ci` ist
+> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 cj` ist
 > fertig und ausgeliefert (Traccar-Hintergrund-Tracking mit Vorfahrtsregel), Arbeitsbaum
-> sauber, alle 705 Tests grün; Feldtest mit Traccar steht aus. Arbeite weiter wie dort beschrieben: Meldung wörtlich
+> sauber, alle 709 Tests grün; Feldtest mit Traccar steht aus. Arbeite weiter wie dort beschrieben: Meldung wörtlich
 > nehmen, am echten Code nachmessen, mit echten Daten nachstellen, beheben, Gegenprobe,
 > Tests, CHANGELOG, neuer Build-Buchstabe (`cf`), Deploy-Pakete, Push.
