@@ -13,6 +13,55 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build cb) – Einkehr-Folie im Video zeigt nur noch die eingetragene Einkehr
+
+> „Im Video erscheinen zwei Einkehrpunkte, wir waren aber nur im Asia Bistro. Bei der
+> zweiten Stelle waren wir nicht. Das darf im Video nicht erscheinen, es ist auch nur die
+> eine Einkehrstelle in der Tour eingetragen. Man könnte höchstens Einkehrstellen nahe der
+> Strecke erwähnen, aber dann in einem eigenen Bereich oder ganz weglassen.“
+
+**Befund.** Das war kein Rechenfehler und auch keine Dublette wie in Build `ca`. Die Folie
+„Einkehr unterwegs“ war seit Build `j` als „Gastronomie direkt an der Strecke (bis 150 m)“
+gebaut: Sie führte die **eingetragene Einkehr** (`_planned_einkehr_entries`) mit **allen**
+Gastro-Einträgen zusammen, die ≤ 150 m neben dem GPX-Track liegen (`gastro_near_track`).
+Das Bootshaus (81 m neben der Route) stand also berechtigt in dieser Liste – nur ist das
+die falsche Aussage für ein Tour-Video: Jeder Zuschauer liest „Bootshaus · km 30,4“ als
+„da waren wir auch“.
+
+Nachgestellt mit zwei Datensätzen (Asia Bistro eingetragen, Bootshaus 80 m neben dem Track):
+
+| | vorher (ca) | nachher (cb) |
+|---|---|---|
+| in der Tour eingetragen | 1 | 1 |
+| Streckenfunde ≤ 150 m | 2 | 2 (unverändert, nur noch auf der Tour-Seite) |
+| **Zeilen auf der Folie** | **2** | **1** |
+| Kartenmarker auf der Track-Folie | 2 | 1 |
+| keine Einkehr eingetragen | Folie mit fremden Lokalen | **keine Folie** |
+
+**Entscheidung (Variante „ganz weglassen“, mit dem Nutzer abgestimmt).** Das Video erzählt,
+wo wir waren. Was sonst an der Strecke liegt, ist eine Planungsinformation – die gibt es
+weiterhin auf der Tour-Seite unter „Einkehr entlang der Strecke“ (Build `u`). Ein eigener
+Video-Bereich dafür hätte 3–6 s gekostet und eine Frage beantwortet, die niemand stellt.
+
+**Änderungen.**
+- `tour_video_render`: `_near_spots = _planned_einkehr_entries(tour, _gpx_points)` – kein
+  `gastro_near_track()`, keine Zusammenführung mehr. Dieselbe Liste speist Folie **und**
+  Kartenmarker, also verschwinden fremde Lokale auch von der Karte.
+- Folie: Unterzeile „Unsere Einkehr auf dieser Tour“ statt „Gastronomie direkt an der
+  Strecke (bis 150 m)“; der Zusatz „· geplant“ entfällt (alles ist eingetragen). Freitext-
+  Einkehren ohne Position erscheinen weiter als „Geplante Einkehr“ (Build `ca`).
+- Video-Seite: Häkchen heißt „🍴 Einkehr-Folie (eingetragene Einkehr)“ statt „Einkehr nahe
+  der Route“.
+- `_einkehr_merge_dedup` (Build `ca`) bleibt als Funktion erhalten (mit Tests), wird von der
+  Video-Route aber nicht mehr gebraucht.
+
+**Gegenprobe.** Drei eingetragene Stopps (Build `bh`) erscheinen weiterhin alle drei; die
+Tour-Seite ruft `gastro_near_track` unverändert auf; Folie per AST herausgeschnitten und
+gerendert: eine Kachel, an der Stelle der früheren zweiten Zeile nur Hintergrund.
+
+**Tests.** `tests/test_build_cb.py` (11), `test_build_ca.py` und `test_build_ag.py` auf den
+neuen Stand angepasst – volle Suite **632 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build ca) – Einkehr doppelt im Video, Gäste fehlen im Einstiegsbild
 
 Zwei Meldungen zum Tour-Video, beide am echten Code nachgestellt.

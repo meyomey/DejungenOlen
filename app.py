@@ -89,7 +89,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 ca'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 cb'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -4339,10 +4339,12 @@ def tour_video_render(tour_id):
                 return False
 
         def build_gastro_frames(spots):
-            """Build j: Folie „Einkehr unterwegs“ – Gastro-Einträge höchstens GASTRO_NEAR_M m
-            neben dem Track (gastro_near_track), mit Art, Streckenkilometer und Abstand;
+            """Build j: Folie „Einkehr unterwegs“ – mit Art, Streckenkilometer und Abstand;
             Zeilen blenden gestaffelt ein. Liefert [(frame, dauer), …] für
-            frames_to_segment() oder [] (keine Treffer / Fehler)."""
+            frames_to_segment() oder [] (keine Einträge / Fehler).
+            Build cb: `spots` sind nur noch die in der Tour eingetragenen Einkehren
+            (_planned_einkehr_entries), keine Streckenfunde mehr – Unterzeile und Zusatz
+            „· geplant“ entsprechend angepasst."""
             if not PIL_OK or not spots:
                 return []
             try:
@@ -4365,7 +4367,7 @@ def tour_video_render(tour_id):
                     draw = _ID.Draw(canvas)
                     _centered_text(draw, W//2, int(H*0.10), 'Einkehr unterwegs', title_font, (255, 255, 255))
                     _centered_text(draw, W//2, int(H*0.10) + title_font.size + 14,
-                                   f'Gastronomie direkt an der Strecke (bis {GASTRO_NEAR_M} m)', sub_font, (190, 200, 220))
+                                   'Unsere Einkehr auf dieser Tour', sub_font, (190, 200, 220))   # Build cb
                     for i, sp in enumerate(rows):
                         a = max(0.0, min(1.0, (progress - 0.1 - i*0.1) * 4))
                         if a <= 0:
@@ -4388,9 +4390,10 @@ def tour_video_render(tour_id):
                             sub = ('Geplante Einkehr · ' + sp['type_label']) if sp.get('type_label') \
                                 else 'Geplante Einkehr'
                         else:
+                            # Build cb: kein „· geplant“ mehr – es stehen nur noch eingetragene
+                            # Einkehren auf der Folie.
                             sub = (f"{sp['type_label']} · km {sp['km']:.1f}".replace('.', ',') +
-                                   f" · {sp['dist_m']} m neben der Route" +
-                                   (' · geplant' if sp.get('planned') else ''))
+                                   f" · {sp['dist_m']} m neben der Route")
                         draw.text((x0 + 76, y + row_h//2 + 6), sub, font=sub_font, fill=lerp(tile_col, (210, 210, 210), a))
                     if more > 0:
                         a = max(0.0, min(1.0, (progress - 0.1 - len(rows)*0.1) * 4))
@@ -4849,13 +4852,14 @@ def tour_video_render(tour_id):
                 if _parsed:
                     _gpx_points = _parsed.get('points', [])
                     _ride = {k: _parsed.get(k) for k in ('moving_s', 'total_s', 'avg_kmh', 'max_kmh')}
-        if show_gastro and _gpx_points:
-            _near_spots = gastro_near_track(_gpx_points)
-        if show_gastro:                                   # Build x: geplante Einkehr immer zuerst
-            _planned_list = _planned_einkehr_entries(tour, _gpx_points)   # Build bh: bis zu 3 Stopps
-            # Build ca: nicht nur über die id entdoppeln – derselbe Ort kann zweimal in
-            # gastro_spots stehen (z. B. OSM-Import + Handanlage). Siehe _einkehr_merge_dedup.
-            _near_spots = _einkehr_merge_dedup(_planned_list, _near_spots)
+        if show_gastro:
+            # Build cb: NUR die in der Tour eingetragenen Einkehren (bis 3, Build bh). Die
+            # Streckenfunde aus gastro_near_track() (alle Gastro-Einträge ≤ 150 m neben dem
+            # Track) kommen nicht mehr ins Video – Meldung: „Im Video erscheinen zwei
+            # Einkehrpunkte, wir waren aber nur im Asia Bistro.“ Das Video erzählt, wo wir
+            # waren; was sonst an der Strecke liegt, zeigt die Tour-Seite (Build u).
+            # Damit entfällt auch die Entdopplung aus Build ca an dieser Stelle.
+            _near_spots = _planned_einkehr_entries(tour, _gpx_points)
         if len(_gpx_points) >= 2:   # Build o: Track-Umriss + km-Stände für die Mini-Karte auf den Fotos
             try:
                 import math as _m

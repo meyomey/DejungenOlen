@@ -172,9 +172,11 @@ class EinkehrDubletteTest(AppTestCase):
                 db.session.commit()
 
     def test_video_route_nutzt_die_entdopplung(self):
-        """Die Route darf nicht wieder auf den reinen id-Filter zurückfallen."""
+        """Die Route darf nicht wieder auf den reinen id-Filter zurückfallen.
+        Build cb: Die Route führt gar keine Streckenfunde mehr mit der Einkehr zusammen
+        (nur eingetragene Einkehren) – der alte id-Filter darf trotzdem nicht zurückkommen."""
         src = _lies_app()
-        self.assertIn('_near_spots = _einkehr_merge_dedup(_planned_list, _near_spots)', src)
+        self.assertIn('_near_spots = _planned_einkehr_entries(tour, _gpx_points)', src)
         self.assertNotIn("sp.get('id') not in _planned_ids", src)
 
     def test_osm_kennung_wird_mitgegeben(self):
