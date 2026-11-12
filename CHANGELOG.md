@@ -13,6 +13,16 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build cm) – Live-Karte erwähnt Traccar, falls eingerichtet
+- **Meldung:** „Hier steht nur Fahrt starten. Hier sollte auch Traccar erwähnt werden, falls eingerichtet."
+- **Eingerichtet** = von diesem Nutzer ist je ein Traccar-Punkt angekommen: neue Spalte
+  `users.tracker_seen_at` (Migration automatisch), gesetzt in `/api/traccar` bei bekanntem Token –
+  auch wenn der Punkt selbst verworfen wird. Der Token allein sagt nichts (entsteht beim Profilöffnen).
+- **Live-Karte, Zuschauer-Zustand:** „📡 Traccar ist eingerichtet (zuletzt gesendet Do 12.11., 17:10 Uhr):
+  Dienst in der Traccar-App einschalten, dann geht es hier von allein los – der Knopf springt auf
+  „Tracker-App". Oder „▶ Fahrt starten" für GPS aus dem Browser." Nur im Zeitfenster (`can_share`).
+- Tests `tests/test_build_cm.py` (6). Suite **725 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build cl) – „Tracker-App läuft", obwohl Traccar beendet
 - **Meldung:** „Ist das normal dass Tracker App läuft? Die Tracker App habe ich beendet."
 - **Hintergrund:** Traccar meldet kein „Dienst aus" – der Server hält den Tracker 15 min nach dem

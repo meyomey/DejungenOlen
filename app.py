@@ -90,7 +90,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 cl'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 cm'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5625,6 +5625,20 @@ def _tracker_ago(tour_id, user_id, now=None):
     return max(0, int((now - loc.tracker_at).total_seconds()))
 
 
+def _tracker_seen_txt(user):
+    """Build cm: „zuletzt gesendet Mo 12.11., 17:10" (Ortszeit) oder '' wenn Traccar nie gesendet hat.
+    Der Nutzer: „Hier steht nur Fahrt starten. Hier sollte auch Traccar erwähnt werden, falls
+    eingerichtet." – Eingerichtet heißt: es ist je ein Punkt mit seinem Token angekommen (der Token
+    selbst entsteht schon beim Öffnen des Profils und sagt nichts aus)."""
+    t = getattr(user, 'tracker_seen_at', None)
+    if not t:
+        return ''
+    from datetime import timezone as _utc
+    from zoneinfo import ZoneInfo
+    lt = t.replace(tzinfo=_utc.utc).astimezone(ZoneInfo('Europe/Berlin'))
+    return ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][lt.weekday()] + lt.strftime(' %d.%m., %H:%M')
+
+
 def _tracker_active(tour_id, user_id, now=None):
     ago = _tracker_ago(tour_id, user_id, now)
     return ago is not None and ago < TRACKER_ACTIVE_S
@@ -5679,6 +5693,7 @@ def tour_live(tour_id):
                            trails_json=_json_for_script(_live_trails_payload(tour.id)),   # Build af
                            can_share=can_share, share_hint=share_hint, can_takeover=_can_manage_tour(tour),
                            tracker_ago=_tracker_ago(tour.id, current_user.id),        # Build ci
+                           tracker_seen_txt=_tracker_seen_txt(current_user),          # Build cm
                            tracker_active_s=TRACKER_ACTIVE_S,
                            stale_s=LIVE_STALE_S, fresh_s=LIVE_FRESH_S, keep_days=LIVE_TRACK_KEEP_DAYS)
 
@@ -5901,6 +5916,8 @@ def traccar_push(token=None):
     user = User.query.filter_by(tracker_token=tok).first()
     if user is None or not user.is_active:
         return jsonify({'error': 'unbekannter Token'}), 404
+    user.tracker_seen_at = datetime.utcnow()      # Build cm: „Traccar eingerichtet" – auch wenn der Punkt gleich verworfen wird
+    db.session.commit()
     try:
         lat = float(src.get('lat', src.get('latitude')))
         lng = float(src.get('lon', src.get('lng', src.get('longitude'))))
@@ -11554,6 +11571,7 @@ def migrate_db():
     add_column('users', 'last_login', 'DATETIME')
     add_column('users', 'tracker_token', 'VARCHAR(40)')   # Build cg: Tracker-App (Traccar Client)
     add_column('live_locations', 'tracker_at', 'DATETIME')  # Build ci: Tracker hat Vorfahrt
+    add_column('users', 'tracker_seen_at', 'DATETIME')     # Build cm: Traccar je benutzt → Hinweis auf der Live-Karte
     add_column('gastro_spots', 'hours_text', 'VARCHAR(300)')   # Build t: Öffnungszeiten-Text / Ruhetage
     add_column('gastro_spots', 'lunch',      'VARCHAR(10)')    # Build z: Mittagstisch yes/no/NULL
     add_column('gastro_spots', 'lunch_text', 'VARCHAR(200)')   # Build z: Mittagstisch-Details

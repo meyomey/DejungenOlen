@@ -653,6 +653,7 @@ const CAN_SHARE = {{ 'true' if can_share else 'false' }};
 const TRACKER_ACTIVE_MS = {{ tracker_active_s }} * 1000;
 let trackerSeen = {{ tracker_ago if tracker_ago is not none else 'null' }};   // Sekunden (Server) → gleich Zeitpunkt (ms)
 trackerSeen = (trackerSeen == null) ? 0 : Date.now() - trackerSeen * 1000;
+const TRACKER_SEEN_TXT = {{ tracker_seen_txt|tojson }};   // Build cm: '' = Traccar nie benutzt
 let trackerModus = false;          // Knopf/Status stehen gerade im Tracker-Zustand
 // Build av: Ist Fahren gerade nicht erlaubt, steht der Grund in der Statuszeile – dort, wo
 // alle Meldungen der Live-Karte stehen (der Versuch, ihn unter die Karte zu setzen, kollidierte
@@ -1152,6 +1153,15 @@ function forceStopTracker() {
                 + '<a href="/touren/' + TOUR_ID + '#live-aufzeichnung">Tourseite</a>. Sendet Traccar doch noch, zählt ein Punkt erst nach 10 min wieder als neue Fahrt.', '', true);
     }).catch(() => setStatus('Abschließen hat nicht geklappt – keine Verbindung.', 'danger'));
 }
+// Build cm: „Hier steht nur Fahrt starten. Hier sollte auch Traccar erwähnt werden, falls
+// eingerichtet" – Zuschauer-Hinweis nennt die Tracker-App, wenn von diesem Nutzer je ein
+// Traccar-Punkt angekommen ist.
+function trackerIdleHtml() {
+  return '📡 Traccar ist eingerichtet (zuletzt gesendet ' + TRACKER_SEEN_TXT + ' Uhr): Dienst in der Traccar-App '
+       + 'einschalten, dann geht es hier von allein los – der Knopf springt auf „Tracker-App". '
+       + 'Oder „▶ Fahrt starten" für GPS aus dem Browser.';
+}
+if (TRACKER_SEEN_TXT && !trackerAktiv() && CAN_SHARE) setStatus(trackerIdleHtml(), '', true);
 function refreshTrackerUi() {
   const aktiv = trackerAktiv();
   if (aktiv && !trackerModus) {

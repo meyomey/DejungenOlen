@@ -230,7 +230,7 @@ class RateLimitStoreCleanupTest(AppTestCase):
 class BuildMarkerTest(AppTestCase):
 
     def test_build_marker(self):
-        self.assertEqual(appmod.APP_BUILD, '2026-11-12 cl')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-12 cm')
 
 
 class PauseDetectionTest(AppTestCase):
@@ -2055,7 +2055,7 @@ class VersionBumpAndHintWrapTest(AppTestCase):
 
     def test_k_version_1_5_0(self):
         self.assertEqual(appmod.APP_VERSION, '1.5.0')
-        self.assertEqual(appmod.APP_BUILD, '2026-11-12 cl')
+        self.assertEqual(appmod.APP_BUILD, '2026-11-12 cm')
 
     def test_k_aufklapp_buttons_wrappen(self):
         css = open(os.path.join(ROOT, 'static', 'css', 'style.css'), encoding='utf-8').read()
