@@ -297,6 +297,25 @@
           und am Tourtag – auch wenn die App nicht geöffnet ist.
         </p>
         <div id="push-status" class="mb-2"></div>
+        {# Build cr: „Testnachricht für Desktop funktioniert, aber Handy nicht?“ – Push ist je GERÄT/Browser.
+           Hier steht, welche Geräte angemeldet sind und was der letzte Versand dort ergab. #}
+        <div class="small text-muted mb-2">
+          Push ist <strong>je Gerät</strong>: Auf jedem Handy/PC einmal diese Seite öffnen und „Benachrichtigungen aktivieren“
+          drücken. iPhone/iPad: nur als installierte App („Zum Home-Bildschirm“, iOS 16.4+), Android: Chrome/Firefox/Samsung.
+        </div>
+        <ul class="list-unstyled small mb-2" id="push-devices" data-count="{{ push_devices|length }}">
+          {% for d in push_devices %}
+          <li data-endpoint="{{ d.endpoint }}">
+            {% if d.last_error %}<span class="text-danger">●</span>{% elif d.last_ok_at %}<span class="text-success">●</span>{% else %}<span class="text-muted">●</span>{% endif %}
+            <strong>{{ d.label or 'Gerät' }}</strong>
+            <span class="text-muted">· angemeldet {{ d.created_at.strftime('%d.%m.%Y') if d.created_at else '' }}{% if d.last_ok_at %} · zuletzt zugestellt {{ d.last_ok_at.strftime('%d.%m. %H:%M') }}{% endif %}{% if d.last_error %} · <span class="text-danger">{{ d.last_error[:80] }}</span>{% endif %}</span>
+            <span class="badge bg-light text-dark d-none push-this">dieses Gerät</span>
+          </li>
+          {% else %}
+          <li class="text-muted">Noch kein Gerät angemeldet.</li>
+          {% endfor %}
+        </ul>
+        <div id="push-test-result" class="small mb-2"></div>
         <button type="button" id="push-toggle-btn" class="btn btn-outline-djo btn-sm">
           <i class="bi bi-bell me-1"></i>Benachrichtigungen aktivieren
         </button>
@@ -334,12 +353,17 @@ async function refreshPushUI() {
   }
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
+  // Build cr: dieses Gerät in der Liste markieren; „Aktiv“ heißt nur: DIESER Browser
+  document.querySelectorAll('#push-devices li').forEach(li => {
+    li.querySelector('.push-this') && li.querySelector('.push-this').classList.toggle('d-none', !(sub && li.dataset.endpoint === sub.endpoint));
+  });
+  const others = parseInt(document.getElementById('push-devices').dataset.count || '0', 10);
   if (sub) {
-    setPushStatus('Aktiv', 'success');
+    setPushStatus('Aktiv auf diesem Gerät', 'success');
     pushToggleBtn.innerHTML = '<i class="bi bi-bell-slash me-1"></i>Benachrichtigungen deaktivieren';
     pushTestBtn.classList.remove('d-none');
   } else {
-    setPushStatus('Nicht aktiviert', 'secondary');
+    setPushStatus(others ? 'Auf diesem Gerät nicht aktiviert (' + others + ' anderes Gerät angemeldet)' : 'Nicht aktiviert', 'secondary');
     pushToggleBtn.innerHTML = '<i class="bi bi-bell me-1"></i>Benachrichtigungen aktivieren';
     pushTestBtn.classList.add('d-none');
   }
@@ -379,18 +403,44 @@ pushToggleBtn.addEventListener('click', async () => {
 
   await fetch('{{ url_for("push_subscribe") }}', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(sub.toJSON())
+    body: JSON.stringify(Object.assign(sub.toJSON(), {label: pushLabel()}))   // Build cr: Gerät benennen
   });
+  location.reload();                                                          // Build cr: Geräteliste frisch
 
   await refreshPushUI();
 });
 
+function pushLabel() {
+  const ua = navigator.userAgent, p = navigator.platform || '';
+  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) || (p === 'MacIntel' && navigator.maxTouchPoints > 1) ? 'iPad'
+           : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Gerät';
+  const br = /Edg\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /OPR\//.test(ua) ? 'Opera'
+           : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\/|CriOS/.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  const pwa = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone ? ' (App)' : '';
+  return os + ' · ' + br + pwa;
+}
+// Build cr: Ergebnis je Gerät statt stummem ok/alert
 pushTestBtn.addEventListener('click', async () => {
   pushTestBtn.disabled = true;
-  const resp = await fetch('{{ url_for("push_test") }}', {method: 'POST'});
-  const data = await resp.json();
+  const out = document.getElementById('push-test-result');
+  out.textContent = 'Sende …';
+  let data = {};
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    const resp = await fetch('{{ url_for("push_test") }}', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                             body: JSON.stringify({endpoint: sub ? sub.endpoint : ''})});
+    data = await resp.json();
+  } catch (e) { data = {ok: false, error: 'Keine Verbindung.'}; }
   pushTestBtn.disabled = false;
-  if (!data.ok) alert(data.error || 'Fehler beim Senden.');
+  const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  if (!data.devices || !data.devices.length) { out.innerHTML = '<span class="text-danger">' + esc(data.error || 'Fehler beim Senden.') + '</span>'; return; }
+  out.innerHTML = '<div class="fw-semibold mb-1">' + data.sent + ' von ' + data.total + ' Geräten erreicht:</div>' +
+    data.devices.map(d => '<div>' + (d.ok ? '✅' : '❌') + ' ' + esc(d.label) + (d.this_device ? ' <span class="text-muted">(dieses Gerät)</span>' : '') +
+      (d.ok ? '' : ' – <span class="text-danger">' + esc(d.reason) + '</span>') + '</div>').join('') +
+    (data.sent < data.total || data.total < 2
+      ? '<div class="text-muted mt-1">Fehlt das Handy in der Liste? Dann dort diese Seite öffnen und „Benachrichtigungen aktivieren“ drücken – jedes Gerät meldet sich einzeln an.' +
+        (data.devices.some(d => d.removed) ? ' Ein abgelaufenes Gerät wurde entfernt; dort bitte neu aktivieren.' : '') + '</div>' : '');
 });
 
 refreshPushUI();

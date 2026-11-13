@@ -90,7 +90,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-13 cq'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-13 cr'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -464,6 +464,7 @@ def send_push(subscription, title, body, url=None):
             vapid_private_key=priv_key,
             vapid_claims={'sub': f'mailto:{cfg("admin_email") or "admin@example.de"}'},
         )
+        _push_mark(subscription, True, 'ok')
         return True, 'ok'
     except WebPushException as e:
         status = getattr(e.response, 'status_code', None)
@@ -481,10 +482,40 @@ def send_push(subscription, title, body, url=None):
                 pass
             return False, f'Subscription ungültig (HTTP {status}) – wurde entfernt, bitte neu aktivieren'
         app.logger.warning(f'Push-Fehler ({status}): {e}')
-        return False, f'HTTP {status}: {body_text or str(e)[:200]}'
+        reason = f'HTTP {status}: {body_text or str(e)[:200]}'
+        _push_mark(subscription, False, reason)
+        return False, reason
     except Exception as e:
         app.logger.warning(f'Push-Fehler: {e}')
-        return False, f'{type(e).__name__}: {str(e)[:200]}'
+        reason = f'{type(e).__name__}: {str(e)[:200]}'
+        _push_mark(subscription, False, reason)
+        return False, reason
+
+
+def _push_mark(subscription, ok, reason):
+    """Build cr: Ergebnis am Gerät merken – damit „Testnachricht" sagen kann, WELCHES Gerät nicht
+    erreichbar war. Der Nutzer: „Testnachricht für Desktop funktioniert, aber Handy nicht?" – vorher
+    hieß die Antwort nur ok, sobald EIN Gerät erreicht wurde."""
+    try:
+        if ok:
+            subscription.last_ok_at = datetime.utcnow()
+            subscription.last_error = None
+        else:
+            subscription.last_error = reason[:200]
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _push_label_from_ua(ua):
+    """Build cr: „Android · Chrome" aus dem User-Agent – grob, aber zum Wiedererkennen genug."""
+    ua = ua or ''
+    os_ = ('iPhone' if 'iPhone' in ua else 'iPad' if 'iPad' in ua else 'Android' if 'Android' in ua
+           else 'Windows' if 'Windows' in ua else 'Mac' if 'Macintosh' in ua else 'Linux' if 'Linux' in ua else 'Gerät')
+    br = ('Edge' if 'Edg/' in ua else 'Samsung Internet' if 'SamsungBrowser' in ua else 'Opera' if 'OPR/' in ua
+          else 'Firefox' if 'Firefox/' in ua else 'Chrome' if 'Chrome/' in ua or 'CriOS' in ua
+          else 'Safari' if 'Safari/' in ua else 'Browser')
+    return f'{os_} · {br}'
 
 
 def send_push_to_user(user, title, body, url=None):
@@ -10385,14 +10416,16 @@ def push_subscribe():
     if not endpoint or not p256dh or not auth:
         return jsonify({'error': 'Unvollständige Subscription-Daten'}), 400
 
+    label = (str(data.get('label') or '')[:80]) or _push_label_from_ua(request.headers.get('User-Agent'))   # Build cr
     existing = PushSubscription.query.filter_by(endpoint=endpoint).first()
     if existing:
         existing.user_id = current_user.id
         existing.p256dh = p256dh
         existing.auth = auth
+        existing.label = label
     else:
         db.session.add(PushSubscription(
-            user_id=current_user.id, endpoint=endpoint, p256dh=p256dh, auth=auth
+            user_id=current_user.id, endpoint=endpoint, p256dh=p256dh, auth=auth, label=label
         ))
     db.session.commit()
     return jsonify({'ok': True})
@@ -10414,12 +10447,24 @@ def push_unsubscribe():
 @login_required
 def push_test():
     """Sendet eine Test-Benachrichtigung an den aktuellen Nutzer."""
-    sent, reasons = send_push_to_user(current_user, 'Testbenachrichtigung 🔔',
-                                      'Push-Benachrichtigungen funktionieren!', url='/')
-    if sent:
-        return jsonify({'ok': True, 'sent': sent})
-    detail = '; '.join(reasons) if reasons else 'Unbekannter Fehler'
-    return jsonify({'ok': False, 'error': f'Versand fehlgeschlagen: {detail}'}), 400
+    # Build cr: je Gerät ein Ergebnis. Vorher: ok, sobald EIN Gerät erreicht wurde – „Desktop
+    # funktioniert, aber Handy nicht?" blieb unsichtbar (meist: Handy nie aktiviert oder Subscription
+    # abgelaufen → 410 → still gelöscht).
+    data = request.get_json(silent=True) or {}
+    this_endpoint = data.get('endpoint') or ''
+    subs = PushSubscription.query.filter_by(user_id=current_user.id).order_by(PushSubscription.created_at).all()
+    if not subs:
+        return jsonify({'ok': False, 'devices': [], 'sent': 0, 'total': 0,
+                        'error': 'Kein Gerät angemeldet – auf jedem Gerät einmal „Benachrichtigungen aktivieren“ drücken.'}), 400
+    devices = []
+    sent = 0
+    for sub in subs:
+        label, this_dev, endpoint = sub.label or 'Gerät', sub.endpoint == this_endpoint, sub.endpoint
+        ok, reason = send_push(sub, 'Testbenachrichtigung 🔔', 'Push-Benachrichtigungen funktionieren!', url='/')
+        sent += 1 if ok else 0
+        devices.append({'label': label, 'ok': ok, 'reason': reason, 'this_device': this_dev,
+                        'removed': (not ok and 'wurde entfernt' in reason)})
+    return jsonify({'ok': sent > 0, 'sent': sent, 'total': len(subs), 'devices': devices}), (200 if sent else 400)
 
 
 @app.route('/admin/backups')
@@ -10842,6 +10887,8 @@ def profil_edit():
     return render_template('profil_edit.html', cal_https=cal_https, cal_webcal=cal_webcal,
                            tracker_token=_tracker_token_for(current_user),          # Build cg
                            tracker_seen_txt=_tracker_seen_txt(current_user),         # Build cq: Status im Profil
+                           push_devices=PushSubscription.query.filter_by(user_id=current_user.id)
+                                                             .order_by(PushSubscription.created_at).all(),   # Build cr
                            tracker_note=getattr(current_user, 'tracker_note', None) or '',
                            tracker_url=url_for('traccar_push', _external=True))
 
@@ -11686,6 +11733,9 @@ def migrate_db():
     add_column('live_locations', 'tracker_at', 'DATETIME')  # Build ci: Tracker hat Vorfahrt
     add_column('users', 'tracker_seen_at', 'DATETIME')     # Build cm: Traccar je benutzt → Hinweis auf der Live-Karte
     add_column('users', 'tracker_note', 'VARCHAR(160)')    # Build cn: Ergebnis des letzten Traccar-Punkts (sichtbar auf der Live-Karte)
+    add_column('push_subscriptions', 'label', 'VARCHAR(80)')        # Build cr: Gerät erkennbar
+    add_column('push_subscriptions', 'last_ok_at', 'DATETIME')      # Build cr
+    add_column('push_subscriptions', 'last_error', 'VARCHAR(200)')  # Build cr
     add_column('users', 'tracker_tour_id', 'INTEGER')      # Build cp: Rückfall-Tour für Traccar ohne Termin
     add_column('users', 'tracker_tour_at', 'DATETIME')     # Build cp
     add_column('live_locations', 'batt', 'FLOAT')          # Build co: Akku aus Traccar

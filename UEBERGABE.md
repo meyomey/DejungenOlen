@@ -1,10 +1,10 @@
-# Übergabe – Stand Build `cq`
+# Übergabe – Stand Build `cr`
 
 > **Zweck:** Diese Datei ist der Einstieg für einen frischen Chat. Sie beschreibt, wie in
 > diesem Projekt gearbeitet wird, was zuletzt passiert ist und was als Nächstes ansteht.
 > **Bei jedem neuen Build aktuell halten** (Abschnitt 3 und 6).
 >
-> Stand: 2026-11-12, Build `2026-11-13 cq`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
+> Stand: 2026-11-12, Build `2026-11-13 cr`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
 > HEAD siehe `git log -1`, Arbeitsbaum sauber.
 
 ---
@@ -50,7 +50,7 @@ dann, dass hinter dem Symptom zwei Ursachen stecken (so war es bei Build `ca`).
 ```bash
 cd /home/user/DejungenOlen
 .venv/bin/python -m unittest discover -s tests -q      # volle Suite, ~115 s
-.venv/bin/python -m unittest tests.test_build_cq -q    # nur ein Build
+.venv/bin/python -m unittest tests.test_build_cr -q    # nur ein Build
 .venv/bin/python -m pyflakes app.py tests/             # Lint
 ```
 
@@ -81,9 +81,13 @@ schnellste Weg, Bilder zu prüfen** – siehe Rezept in Abschnitt 5.
 
 ---
 
-## 3. Stand jetzt: Build `2026-11-13 cq` (fertig, ausgeliefert)
+## 3. Stand jetzt: Build `2026-11-13 cr` (fertig, ausgeliefert)
 
-### 3.0 Build `cq` – Audit 10 + Doku ✅
+### 3.0 Build `cr` – Push je Gerät sichtbar ✅
+> „Desktop ja, Handy nein": Push ist je Gerät. Geräteliste im Profil (`push_subscriptions.label/
+last_ok_at/last_error`), `/push/test` antwortet je Gerät, „dieses Gerät"-Markierung, Anmelde-Hinweis.
+
+### 3.0j Build `cq` – Audit 10 + Doku ✅
 > `docs/AUDIT_BERICHT.md` (Audit 10, Scope cg–cp): kein Befund im Code; Doku-Lücken (README, Profil
 `#tracker`, diese Datei) geschlossen. Profil zeigt jetzt den Tracker-Status („letzter Punkt …").
 
@@ -193,9 +197,9 @@ Einkehr)“. Streckenfunde nur noch auf der Tour-Seite (Build u).
 | | |
 |---|---|
 | `APP_VERSION` | `1.5.0` |
-| `APP_BUILD` | `2026-11-13 cq` (app.py Z. 93) |
-| Tests | `tests/test_build_cq.py` **3**, volle Suite **752 grün** (~120 s) |
-| Pakete | `deploy/deploy_v1.5.0_2026-11-13cq_aenderungen.zip` · `…_komplett.zip` |
+| `APP_BUILD` | `2026-11-13 cr` (app.py Z. 93) |
+| Tests | `tests/test_build_cr.py` **7**, volle Suite **759 grün** (~125 s) |
+| Pakete | `deploy/deploy_v1.5.0_2026-11-13cr_aenderungen.zip` · `…_komplett.zip` |
 | Geprüft | Simulation vorher/nachher (Node, echter Template-Code), ZIP entpackt + Tests darin |
 
 **Hinweis zur Paket-Probe:** Zwei Tests (`test_az_deploy_date_freshness`,
@@ -293,7 +297,7 @@ Wenn eine neue Meldung kommt:
 1. Wörtlich zitieren, Akzeptanz im Code prüfen.
 2. Nachstellen (Skript, das den Fehler zeigt).
 3. Beheben, Gegenprobe, Tests, CHANGELOG.
-4. Buchstabe hochzählen: nach `cq` kommt `cr`, `cs`, … (immer Kleinbuchstaben, `z` → `aa`).
+4. Buchstabe hochzählen: nach `cr` kommt `cs`, `ct`, … (immer Kleinbuchstaben, `z` → `aa`).
 5. `APP_BUILD` auf das **heutige** Datum + neuen Buchstaben setzen.
 6. Deploy-Pakete, Probe, Commit, Push.
 7. **Diese Datei aktualisieren** (Abschnitt 3, 4 und 6).
@@ -322,7 +326,7 @@ Wenn eine neue Meldung kommt:
 | ↳ `_live_locations_payload` ~5621 | Standorte inkl. `tracker_ago`, `batt`, `charging` |
 | ↳ `_live_track_ascent` ~5482 | Höhenmeter (Schwelle 10 m) aus `live_track_points.ele` |
 | `templates/touren/live.html` | Live-Karte: Farben `TRACK_COLOR` (Strecke, magenta) / `TRAIL_ME` (eigene Spur, orangerot) ~802/984; Tracker-Block `trackerAktiv`/`refreshTrackerUi`/`trackerStatusHtml`/`trackerIdleHtml`/`forceStopTracker` ~1160–1230; Akku `battTxt`/`battCheckMe` ~866 |
-| `templates/profil_edit.html` `#tracker` | Server-URL, Token, Anleitung, **Status + Regeln (cq)** |
+| `templates/profil_edit.html` `#tracker` | Server-URL, Token, Anleitung, **Status + Regeln (cq)**; Push-Karte mit Geräteliste (cr), `send_push`/`_push_mark`/`push_test` ~440/10413 |
 | `models.py` | `Tour` (inkl. `gastro_spot_id`, `einkehr2/3_*`), `TourGuest`, `TourParticipant`, `GastroSpot`; `User.tracker_token/_seen_at/_note/_tour_id/_tour_at`; `LiveLocation.tracker_at/batt/charging`; `LiveTrackPoint.ele` |
 | `templates/admin/dashboard.html` | Admin-Dashboard; WhatsApp-Einladungskarte + Liste (Build cc) |
 | `templates/touren/video.html` | Video-Seite: Format-Auswahl (`.format-wahl`, Build bz) + JS-Vorschau (seit `cd` paritätisch zum MP4: `drawAvatarRow`, `drawGastroFrame`, Logo) |
@@ -339,6 +343,7 @@ Wenn eine neue Meldung kommt:
 
 | Build | Datum | Thema |
 |---|---|---|
+| `cr` | 2026-11-13 | Push je Gerät: Geräteliste im Profil, Testnachricht-Ergebnis je Gerät |
 | `cq` | 2026-11-13 | Audit 10 (cg–cp): kein Code-Befund; README/Profil/UEBERGABE nachgezogen; Profil zeigt Tracker-Status |
 | `cp` | 2026-11-12 | Traccar-Rückfall-Tour: Organisator öffnet Live-Karte → 12 h Ziel, auch ohne Termin |
 | `co` | 2026-11-12 | Traccar: Akku in Liste/Tooltip, `valid=false` verworfen, Höhe → GPX/Hm |
@@ -368,8 +373,8 @@ Wenn eine neue Meldung kommt:
 ## 8. Text zum Einfügen in den neuen Chat
 
 > Wir machen mit der App „DejungenOlen" weiter. Lies bitte zuerst `UEBERGABE.md` im
-> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-13 cq` ist
+> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-13 cr` ist
 > fertig und ausgeliefert (Traccar-Hintergrund-Tracking komplett, Audit 10 ohne Code-Befund), Arbeitsbaum
-> sauber, alle 752 Tests grün. Arbeite weiter wie dort beschrieben: Meldung wörtlich
+> sauber, alle 759 Tests grün. Arbeite weiter wie dort beschrieben: Meldung wörtlich
 > nehmen, am echten Code nachmessen, mit echten Daten nachstellen, beheben, Gegenprobe,
-> Tests, CHANGELOG, neuer Build-Buchstabe (nach `cq` kommt `cr`), Deploy-Pakete, Push.
+> Tests, CHANGELOG, neuer Build-Buchstabe (nach `cr` kommt `cs`), Deploy-Pakete, Push.

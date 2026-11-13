@@ -13,6 +13,20 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-13 (Build cr) – Push: „Testnachricht für Desktop funktioniert, aber Handy nicht?"
+- **Ursache (Erklärung):** Web-Push ist **je Gerät/Browser** – jedes Handy meldet sich einzeln an. Die
+  Testnachricht ging an alle angemeldeten Geräte und meldete „ok", sobald **eines** erreicht wurde; das
+  Profil zeigte „Aktiv", wenn **dieser** Browser angemeldet war. Ob das Handy überhaupt angemeldet war
+  oder seine Subscription abgelaufen (HTTP 410 → still gelöscht) war, blieb unsichtbar.
+- **Neu:** `push_subscriptions.label/last_ok_at/last_error` (Migration automatisch). Beim Anmelden
+  schickt der Browser ein Label („Android · Chrome (App)"), sonst aus dem User-Agent. Profil zeigt die
+  **Geräteliste** (Ampel, angemeldet seit, zuletzt zugestellt, letzter Fehler, „dieses Gerät"), Status
+  heißt „Aktiv auf diesem Gerät" bzw. „Auf diesem Gerät nicht aktiviert (1 anderes Gerät angemeldet)".
+  `/push/test` antwortet **je Gerät**: „1 von 2 Geräten erreicht: ✅ Windows · Chrome (dieses Gerät) ·
+  ❌ Android · Chrome – HTTP 410 …" plus Hinweis „Fehlt das Handy in der Liste? Dort diese Seite öffnen
+  und aktivieren". iPhone-Hinweis (nur als installierte App, iOS 16.4+).
+- Tests `tests/test_build_cr.py` (7). Suite **759 grün**.
+
 ## 1.5.0 – 2026-11-13 (Build cq) – Audit 10 (Builds cg–cp, Traccar) + Dokumentation nachgezogen
 - **Auftrag:** „Bitte noch einmal ein komplettes Audit machen. Prüfe ausserdem ob die Dokumentation
   aktuell ist." Bericht: `docs/AUDIT_BERICHT.md` (Audit 10).

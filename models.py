@@ -242,6 +242,9 @@ class PushSubscription(db.Model):
     p256dh     = db.Column(db.Text, nullable=False)
     auth       = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    label      = db.Column(db.String(80), nullable=True)    # Build cr: „Android · Chrome“ – welches Gerät
+    last_ok_at = db.Column(db.DateTime, nullable=True)      # Build cr: letzter erfolgreicher Versand
+    last_error = db.Column(db.String(200), nullable=True)   # Build cr: letzter Fehlergrund
     user       = db.relationship('User')
 
 
