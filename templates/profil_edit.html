@@ -197,6 +197,23 @@
             anderer App im Vordergrund. Die Punkte landen automatisch bei der Tour des Tages – ohne
             „Fahren“ drücken. Token ist persönlich, bitte nicht weitergeben.
           </p>
+          {# Build cq (Audit 10): Die Regeln aus den Builds ci–cp standen nur im CHANGELOG – hier gehören sie hin. #}
+          {% if tracker_seen_txt %}
+          <div class="alert alert-light border small py-2 mb-2">
+            <strong>Status:</strong> letzter Punkt {{ tracker_note or (tracker_seen_txt ~ ' Uhr') }}
+          </div>
+          {% else %}
+          <div class="alert alert-light border small py-2 mb-2 text-muted">Noch kein Punkt aus Traccar angekommen.</div>
+          {% endif %}
+          <ul class="small text-muted mb-2 ps-3">
+            <li><strong>Welche Tour?</strong> Die Tour deiner Gruppe am Tag des Punktes (Tourtag ±1). Ohne Termin landet nichts –
+              Organisatoren können eine Tour ohne Termin zum Ziel machen, indem sie deren Live-Karte öffnen (gilt 12 h).</li>
+            <li><strong>Tracker hat Vorfahrt:</strong> Solange Traccar sendet (letzter Punkt &lt; 15 min), startet der Browser kein eigenes GPS;
+              die Live-Karte zeigt „📡 Tracker-App · vor X min“. Beendet wird in Traccar (Dienststatus aus) – oder auf der Live-Karte
+              „Tracker beendet? Fahrt jetzt abschließen“.</li>
+            <li><strong>Mehr als Position:</strong> Akku und Ladezustand erscheinen in der Mitfahrerliste (rot unter 15 %), die Höhe landet
+              im GPX und als Höhenmeter in der Aufzeichnung; Punkte ohne GPS-Fix werden verworfen.</li>
+          </ul>
           <div class="row g-2 mb-2">
             <div class="col-12 col-md-7">
               <label class="form-label small mb-0">Server-URL</label>

@@ -90,7 +90,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 cp'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-13 cq'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -10841,6 +10841,8 @@ def profil_edit():
     cal_https, cal_webcal = _calendar_urls(current_user)              # Build w: Kalender-Abo
     return render_template('profil_edit.html', cal_https=cal_https, cal_webcal=cal_webcal,
                            tracker_token=_tracker_token_for(current_user),          # Build cg
+                           tracker_seen_txt=_tracker_seen_txt(current_user),         # Build cq: Status im Profil
+                           tracker_note=getattr(current_user, 'tracker_note', None) or '',
                            tracker_url=url_for('traccar_push', _external=True))
 
 

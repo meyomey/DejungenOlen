@@ -1,3 +1,83 @@
+# Audit-Bericht – De jungen Olen, Audit 10 (Version 1.5.0, Build cp → cq, 13.11.2026)
+
+Zehntes Komplett-Audit, Stand Build **cp**. Auftrag: „Bitte noch einmal ein komplettes Audit machen.
+Prüfe ausserdem ob die Dokumentation aktuell ist." Scope: der Zuwachs seit Audit 9 (Build cf, 12.11.) –
+**Builds cg–cp**, also der komplette Traccar-Strang (Endpunkt `/api/traccar`, Vorfahrtsregel,
+Siegel/Neustart, Notiz, Akku/Höhe/valid, Rückfall-Tour) plus Spurfarben (cj/ck) – und ein zweiter,
+gleich gewichteter Teil: **stimmt die Dokumentation noch mit dem Code überein?**
+
+Ergebnis im Satz: **Im Code kein Befund** (keine Sicherheitslücke, kein 500, alle Eingabeproben sauber,
+749 Tests grün) – **in der Dokumentation fünf Lücken**, alle in Build **cq** geschlossen.
+
+## Vorgehen
+
+- **Statisch:** `pyflakes` über `app.py`, `models.py`, `config.py`, `exif_gps.py`, `make_deploy_zip.py`,
+  `passenger_wsgi.py` → **0 Befunde** (außer bekannten ungenutzten Verfügbarkeits-Imports);
+  alle Inline-`<script>`-Blöcke in `live.html`, `detail.html`, `karte.html`, `profil_edit.html`,
+  `base.html` mit `node --check` → **0 Fehler** (ein Fehlalarm in `detail.html` stammt vom Jinja-`{% if %}`
+  in einem Array-Literal, das mein Stripper nicht auflöst – gerendert ist die Seite im Routen-Sweep 200).
+- **Routen-Sweep:** **89 GET-Routen × 3 Rollen** (Admin/Orga/Mitglied, `/logout` ausgenommen) →
+  **kein 500, keine Ausnahme.** Admin 62×200 · Orga 47×200/18×403 · Mitglied 41×200/24×403; Nicht-200
+  nur erwartbar (Token-Routen 404, `/api/wetter*` 400 ohne Parameter, Overpass 502 wegen Netzsperre,
+  VAPID 503 ohne Schlüssel). Rollenschutz greift wie in Audit 9.
+- **Eingabeproben `/api/traccar`** (bekannter Token, Tour heute):
+  `lat=nan` → 400 · `batt=x, charge=maybe, altitude=1e30, valid=?, speed=-5, bearing=720, accuracy=inf`
+  → 200, Punkt übernommen, alle unbrauchbaren Felder verworfen (None) · `timestamp` in ms → 200 ·
+  ISO-8601 mit `Z` → 200 · `batt=150`/`altitude=-9999` → 200, beide verworfen · `lat=53,4` (Komma)
+  → 400 · `hdop=abc` → 200 · POST Formular, POST JSON, Token im Pfad → 200 · kaputtes JSON ohne Token
+  → 404. **Kein 500.**
+- **Eingabeproben `/api/location/stop`:** `tour_id=abc` → 400; `force='yes'`/`force=[1]` → wie ohne
+  force (Vorfahrt bleibt) – nur `1`/`true` zählt; der Client schickt `1`.
+- **Logik-Review (Lesen am Code, nicht nur Tests):** Zeitparser (`_tracker_parse_time`: Sekunden/ms/ISO,
+  aware → naiv UTC, Plausibilitätsfenster −12 h … +2 min); Siegel-Pfade (`late` nur Spur, `ignored`
+  < 2 min, danach Siegel weg); Vorfahrt (`_tracker_active` < 15 min, Browser-Update
+  `recorded:false, tracker:true`, Browser-Stop ohne Siegel außer `force`); Notiz nach jedem Pfad
+  (`kein Tourtag`, `kein GPS-Fix`, `Nachzügler`, `ignoriert … neue Fahrt ab HH:MM`, `übernommen … 🔋`);
+  Rückfall-Tour (nur Organisator, nur `can_share`, 12 h, keine abgesagte/fremde Tour, Datum vorrangig);
+  Akku (`batt` None lässt alten Wert stehen, Warnung einmalig mit Hysterese 15/25 %); Höhe (`ele` nur
+  aus Traccar, `_live_track_ascent` None bei < 50 % Höhen, GPX `<ele>` nur wo vorhanden).
+  Client: Reihenfolge der Statusmeldungen beim Laden (Tracker-Modus hat Vorrang vor Idle-Hinweis,
+  da `!trackerAktiv()` geprüft wird); `forceStopTracker` setzt `trackerSeen=0` und der nächste Poll
+  liefert keinen `tracker_ago` mehr (Standortzeile gelöscht) – konsistent.
+- **Doku-Abgleich:** README, UEBERGABE (alle Abschnitte), CHANGELOG-Kopf, `docs/*`, Profil-Text
+  `#tracker`, `_DEPLOY_HINWEISE.txt` (ist nur die Vorlage; die ZIPs enthalten die generierte Fassung).
+- **Tests:** volle Suite **749 grün** vor, **752** nach cq.
+
+## Gefunden und behoben (alles Dokumentation, Build cq)
+
+| Nr. | Fund | Behoben |
+|---|---|---|
+| D1 | **README** erwähnte Traccar mit keinem Wort (Features-Liste endete bei Build af/bv). | Absatz „Hintergrund-Tracking mit Traccar Client" unter *Karte & GPX*: Token, URL, Tourtag-Regel, Vorfahrt, Akku/Höhe. |
+| D2 | **Profil `#tracker`** erklärte nur Einrichtung; die Regeln aus ci–cp (Tourtag ±1, Organisator-Rückfall, Vorfahrt 15 min, Beenden, Akku/Höhe) standen nur im CHANGELOG. Wer die Live-Karte nicht offen hat, sah nie die Tracker-Notiz. | Status-Zeile „letzter Punkt … · <Notiz>" (gleiche Quelle wie Live-Karte) + drei Regel-Punkte. Route `profil_edit` liefert `tracker_seen_txt`/`tracker_note`. |
+| D3 | **UEBERGABE §3:** Nummer `3.0a` doppelt (cg und cf); §3.0a/3.0b behaupteten „Feldtest steht aus". | cf → `3.0z`; Feldtest-Sätze auf „am 12.11. bestanden". |
+| D4 | **UEBERGABE §6/§8:** „Feldtest Traccar steht aus", „neuer Build-Buchstabe (`cf`)", 749 Tests. | §6 neu (erster Blick = Tracker-Notiz), §8 aktualisiert. |
+| D5 | **UEBERGABE §4/§7:** Offene Punkte kannten keine Traccar-Themen; Landkarte ohne `traccar_push`, `TRACKER_*`, Spalten, Live-Karten-Funktionen. | Beides ergänzt (Zeilennummern Stand cq). |
+
+## Offen / bewusst so gelassen
+
+- **Akku-Warnung überschreibt den Status** (`battCheckMe` → `setStatus('warning')`): im Tracker-Modus
+  verschwindet dadurch einmalig der „📡 Tracker-App …"-Hinweis bis zum nächsten Zustandswechsel.
+  Bewusst: die Warnung ist wichtiger; auf Zuruf als eigener Chip.
+- **Organisator-Pin gilt auch für Touren weit in der Zukunft** – ein Organisator, der die Live-Karte
+  einer Tour in 10 Tagen öffnet, lenkt Traccar 12 h dorthin, sofern heute keine Tour mit Termin liegt.
+  Entspricht exakt der Browser-Regel „Organisatoren dürfen jederzeit fahren"; nicht geändert.
+- **`force` nur `1`/`true`:** Absicht (kein versehentliches Abschließen durch Fremdclients).
+- **Fristen** (`TRACKER_NEUSTART_MIN` 2, `TRACKER_ACTIVE_S` 15 min): Angebote an den Nutzer stehen,
+  Änderung nur auf Zuruf (siehe UEBERGABE §4).
+- **Aus Audit 9 unverändert:** Auto-Pause-Kosmetik (Anfahren 25 m, Stand-Punkte), σ = 12 m-Rauschen.
+
+## Tipps
+
+- Bei „Traccar sendet, aber nichts passiert": **zuerst die Tracker-Notiz lesen** (Live-Karte
+  Zuschauer-Hinweis oder Profil `#tracker`). Sie nennt den Pfad, den der letzte Punkt genommen hat.
+- Für Server-Tests am Traccar-Endpunkt: ersten Punkt 1 min zurückdatieren, Folgepunkte wenige
+  hundert Meter entfernt (`lat + 0.001`), sonst greifen Dublettenfilter (< 1 s) bzw. Plausibilität
+  (> 90 km/h).
+- Seed-Touren der Testgruppe liegen teils im Datumsfenster (`t_done` = gestern) – Tests zum
+  Rückfall-Pin müssen sie erst aus dem Fenster schieben (siehe `tests/test_build_cp.py`).
+
+---
+
 # Audit-Bericht – De jungen Olen, Audit 9 (Version 1.5.0, Build ce → cf, 12.11.2026)
 
 Neuntes Komplett-Audit, Stand Build **ce**. Auftrag: „Mache ein komplettes Audit, gibt es

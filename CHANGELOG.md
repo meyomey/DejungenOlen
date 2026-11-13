@@ -13,6 +13,22 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-13 (Build cq) – Audit 10 (Builds cg–cp, Traccar) + Dokumentation nachgezogen
+- **Auftrag:** „Bitte noch einmal ein komplettes Audit machen. Prüfe ausserdem ob die Dokumentation
+  aktuell ist." Bericht: `docs/AUDIT_BERICHT.md` (Audit 10).
+- **Code:** keine Sicherheitslücke, kein 500 im Routen-Sweep (89 GET-Routen × 3 Rollen), Eingabeproben
+  am Traccar-Endpunkt (NaN, Text statt Zahl, ms-/ISO-Zeit, batt 150, altitude −9999, kaputtes JSON)
+  alle 200/400 wie vorgesehen; pyflakes sauber; alle Inline-Skripte syntaktisch geprüft; 749 Tests grün.
+- **Dokumentation (behoben):** README kannte Traccar nicht (Abschnitt ergänzt); Profil `#tracker`
+  erklärte weder Tourtag-Regel noch Vorfahrt noch Akku/Höhe – jetzt mit **Status „letzter Punkt …"**
+  (dieselbe Notiz wie auf der Live-Karte) und den drei Regeln; UEBERGABE: doppelte Nummer 3.0a,
+  veraltetes „Feldtest steht aus"/„Build-Buchstabe cf" in Abschnitt 6/8, Landkarte ohne Traccar-Funktionen,
+  offene Punkte um Traccar-Themen ergänzt.
+- **Kleinigkeiten, bewusst so gelassen (siehe Bericht):** Akku-Warnung überschreibt kurz den Tracker-Hinweis;
+  Organisator-Pin gilt auch für Touren weit in der Zukunft (= Browser-Regel „Organisatoren jederzeit");
+  `force` am Stop-Endpunkt akzeptiert nur `1`/`true`.
+- Tests `tests/test_build_cq.py` (3). Suite **752 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build cp) – Traccar auf Touren ohne Termin (Organisatoren)
 - **Frage:** „Bin jetzt testweise eine Tour ohne Datum gefahren mit Traccar aktiv. In der App wird mit
   Traccar nicht getrackt weil kein Datum eingetragen ist, oder?" – Ja: Zuordnung läuft über Tourtag ±1.

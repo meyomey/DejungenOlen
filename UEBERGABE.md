@@ -1,10 +1,10 @@
-# Übergabe – Stand Build `cp`
+# Übergabe – Stand Build `cq`
 
 > **Zweck:** Diese Datei ist der Einstieg für einen frischen Chat. Sie beschreibt, wie in
 > diesem Projekt gearbeitet wird, was zuletzt passiert ist und was als Nächstes ansteht.
 > **Bei jedem neuen Build aktuell halten** (Abschnitt 3 und 6).
 >
-> Stand: 2026-11-12, Build `2026-11-12 cp`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
+> Stand: 2026-11-12, Build `2026-11-13 cq`, Branch `arena/cf89d938-dejungenolen` (Fortsetzung von `arena/9599fe55-dejungenolen`),
 > HEAD siehe `git log -1`, Arbeitsbaum sauber.
 
 ---
@@ -50,7 +50,7 @@ dann, dass hinter dem Symptom zwei Ursachen stecken (so war es bei Build `ca`).
 ```bash
 cd /home/user/DejungenOlen
 .venv/bin/python -m unittest discover -s tests -q      # volle Suite, ~115 s
-.venv/bin/python -m unittest tests.test_build_cp -q    # nur ein Build
+.venv/bin/python -m unittest tests.test_build_cq -q    # nur ein Build
 .venv/bin/python -m pyflakes app.py tests/             # Lint
 ```
 
@@ -81,9 +81,13 @@ schnellste Weg, Bilder zu prüfen** – siehe Rezept in Abschnitt 5.
 
 ---
 
-## 3. Stand jetzt: Build `2026-11-12 cp` (fertig, ausgeliefert)
+## 3. Stand jetzt: Build `2026-11-13 cq` (fertig, ausgeliefert)
 
-### 3.0 Build `cp` – Traccar-Rückfall-Tour für Organisatoren ✅
+### 3.0 Build `cq` – Audit 10 + Doku ✅
+> `docs/AUDIT_BERICHT.md` (Audit 10, Scope cg–cp): kein Befund im Code; Doku-Lücken (README, Profil
+`#tracker`, diese Datei) geschlossen. Profil zeigt jetzt den Tracker-Status („letzter Punkt …").
+
+### 3.0i Build `cp` – Traccar-Rückfall-Tour für Organisatoren ✅
 > Live-Karte öffnen (Organisator, can_share) → `users.tracker_tour_id/_at`; `/api/traccar` nimmt sie,
 wenn Tourtag ±1 nichts findet (12 h). Mitglieder: weiter nur per Termin.
 
@@ -123,7 +127,7 @@ weißer Saum (`trailCasing`) unter jeder Spur (live.html `addTrails`).
 Aktiv = `LiveLocation.tracker_at` < 15 min (`TRACKER_ACTIVE_S`, `_tracker_ago/_tracker_active`).
 Dann: Server verwirft Browser-Punkte (`tracker: true`), „Beenden" setzt kein Siegel; Live-Karte
 zeigt „📡 Tracker-App läuft" (`trackerAktiv/refreshTrackerUi` in live.html), Tourseite „Tracker
-läuft". Rückfall nach 15 min Stille. Feldtest mit echtem Traccar steht weiter aus.
+läuft". Rückfall nach 15 min Stille. (Feldtest am 12.11. bestanden.)
 
 ### 3.0a Build `cg` – Hintergrund-Tracking über Traccar Client ✅
 
@@ -134,9 +138,9 @@ läuft". Rückfall nach 15 min Stille. Feldtest mit echtem Traccar steht weiter 
 des Punktes (`_tracker_tour_for`), gleiche Aufzeichnung/Live-Karte, Beenden-Siegel: vor Ende
 `late`, bis 10 min danach ignoriert, später neue Fahrt. Profil → Karte „Tracker-App" mit URL,
 Token, Anleitung. **Speed kommt in Knoten** (×0,514444). Antwort bei bekanntem Token immer 200.
-Feldtest steht aus – der Nutzer hat Traccar Client installiert.
+Feldtest am 12.11. bestanden (Fahrt Wulmstorf–Langwedel).
 
-### 3.0a Build `cf` – Audit 9, sechs Lücken im Tracking ✅
+### 3.0z Build `cf` – Audit 9, sechs Lücken im Tracking ✅
 
 > „Mache ein komplettes Audit, gibt es irgendwo Lücken in den Funktionen? Check auch ob das
 > Tracken mit und ohne Stromsparmodus optimal funktioniert"
@@ -189,9 +193,9 @@ Einkehr)“. Streckenfunde nur noch auf der Tour-Seite (Build u).
 | | |
 |---|---|
 | `APP_VERSION` | `1.5.0` |
-| `APP_BUILD` | `2026-11-12 cp` (app.py Z. 93) |
-| Tests | `tests/test_build_cp.py` **8**, volle Suite **749 grün** (~115 s) |
-| Pakete | `deploy/deploy_v1.5.0_2026-11-12cp_aenderungen.zip` · `…_komplett.zip` |
+| `APP_BUILD` | `2026-11-13 cq` (app.py Z. 93) |
+| Tests | `tests/test_build_cq.py` **3**, volle Suite **752 grün** (~120 s) |
+| Pakete | `deploy/deploy_v1.5.0_2026-11-13cq_aenderungen.zip` · `…_komplett.zip` |
 | Geprüft | Simulation vorher/nachher (Node, echter Template-Code), ZIP entpackt + Tests darin |
 
 **Hinweis zur Paket-Probe:** Zwei Tests (`test_az_deploy_date_freshness`,
@@ -212,6 +216,13 @@ Diese stehen im Kopf von `CHANGELOG.md` und wurden vom Nutzer **absichtlich** ve
 
 Beides in `templates/…/live.html` (Pausen-Block), klein und unabhängig voneinander.
 **Nur auf Zuruf machen** – der Nutzer wollte erst echte Fahrten abwarten.
+
+**Traccar (Stand Audit 10, alle nur auf Zuruf):**
+- `TRACKER_NEUSTART_MIN` 2 → 0 (der Nutzer fragte nach „Standort senden" sofort; Angebot steht).
+- `TRACKER_ACTIVE_S` 15 min → 10 min (erst mit Feld-Erfahrung zu Pausen ohne Punkte).
+- `motion` aus Traccar für die Pausenerkennung (Vorschlag 4 aus Build co).
+- Akku-Warnung (`battCheckMe`) überschreibt den Tracker-Hinweis einmalig; könnte als Chip statt Status kommen.
+- Organisator-Pin (cp) gilt auch für Touren weit in der Zukunft – entspricht der Browser-Regel, bewusst so.
 - **Neu aus Audit 9 (Anmerkung, nicht geändert):** Bei normalverteiltem Stand-Rauschen σ = 12 m
   (Einkehr im Gebäude) erkennt die Simulation **keine** Pause – einzelne Fixe springen > 25 m
   und setzen den Anker zurück. Kostet keine Kilometer, gehört zum selben Pausen-Thema.
@@ -272,9 +283,9 @@ sonst. Probe: ZIP nach `/tmp` entpacken, App starten, Footer prüfen.
 
 ## 6. Als Nächstes
 
-Offen aus Build `cg`: **Feldtest Traccar Client** (Server-URL/Token aus dem Profil; prüfen, ob Punkte
-auf der Live-Karte und in der Aufzeichnung erscheinen; Frequenz 10 s). Danach wartet der Chat auf die nächste Meldung –
-spannend wäre eine echte Fahrt mit Normal- **und** Sparmodus, um B1–B3 aus Audit 9 im Feld zu bestätigen.
+Traccar ist im Feld (12.11.: echte Fahrt Wulmstorf–Langwedel mit Tracker, Screenshots bestätigen
+Vorfahrtsknopf, Spurfarben, Notiz). Offen ist nur, was der Nutzer meldet – zuerst immer die
+**Tracker-Notiz** lesen (Live-Karte Zuschauer-Hinweis oder Profil `#tracker`, Status-Zeile).
 Hinweis: `origin/main` auf GitHub steht noch auf Build `af` (15.10.) – alle neueren Builds
 liegen nur auf den Arena-Branches; `main` nur auf Zuruf nachziehen.
 
@@ -282,7 +293,7 @@ Wenn eine neue Meldung kommt:
 1. Wörtlich zitieren, Akzeptanz im Code prüfen.
 2. Nachstellen (Skript, das den Fehler zeigt).
 3. Beheben, Gegenprobe, Tests, CHANGELOG.
-4. Buchstabe hochzählen: nach `cp` kommt `cq`, `cr`, … (immer Kleinbuchstaben, `z` → `aa`).
+4. Buchstabe hochzählen: nach `cq` kommt `cr`, `cs`, … (immer Kleinbuchstaben, `z` → `aa`).
 5. `APP_BUILD` auf das **heutige** Datum + neuen Buchstaben setzen.
 6. Deploy-Pakete, Probe, Commit, Push.
 7. **Diese Datei aktualisieren** (Abschnitt 3, 4 und 6).
@@ -305,7 +316,14 @@ Wenn eine neue Meldung kommt:
 | ↳ `_gastro_match_known` 6972 | Vorbild für die Duplikat-Regel (25 m / 100 m / osm_id) |
 | ↳ `tour_headcount` 8279 | Mitglieder **+ Gäste** – die verbindliche Kopfzahl |
 | ↳ `_de_name_key` 7260 | Telefonbuch-Sortierung (Ä→A, Ö→O, Ü→U, ß→ss) |
-| `models.py` | `Tour` (inkl. `gastro_spot_id`, `einkehr2/3_*`), `TourGuest`, `TourParticipant`, `GastroSpot` |
+| ↳ `traccar_push` ~5986 | `/api/traccar` (OsmAnd): Token → Nutzer, Zeit, Tour (`_tracker_tour_for` Tourtag ±1, Rückfall `_tracker_pinned_tour`), Siegel-Regeln, `_note()` = `users.tracker_note` |
+| ↳ `TRACKER_*` ~5646/5895–5923 | `ACTIVE_S` 15 min (Vorfahrt), `MAX_ALTER_H` 12, `NEUSTART_MIN` 2, `TOUR_PIN_H` 12 |
+| ↳ `location_update` / `location_stop` ~5736/5855 | Browser-Sendepfad; bei aktivem Tracker `recorded:false, tracker:true` bzw. kein Siegel (außer `force=1`) |
+| ↳ `_live_locations_payload` ~5621 | Standorte inkl. `tracker_ago`, `batt`, `charging` |
+| ↳ `_live_track_ascent` ~5482 | Höhenmeter (Schwelle 10 m) aus `live_track_points.ele` |
+| `templates/touren/live.html` | Live-Karte: Farben `TRACK_COLOR` (Strecke, magenta) / `TRAIL_ME` (eigene Spur, orangerot) ~802/984; Tracker-Block `trackerAktiv`/`refreshTrackerUi`/`trackerStatusHtml`/`trackerIdleHtml`/`forceStopTracker` ~1160–1230; Akku `battTxt`/`battCheckMe` ~866 |
+| `templates/profil_edit.html` `#tracker` | Server-URL, Token, Anleitung, **Status + Regeln (cq)** |
+| `models.py` | `Tour` (inkl. `gastro_spot_id`, `einkehr2/3_*`), `TourGuest`, `TourParticipant`, `GastroSpot`; `User.tracker_token/_seen_at/_note/_tour_id/_tour_at`; `LiveLocation.tracker_at/batt/charging`; `LiveTrackPoint.ele` |
 | `templates/admin/dashboard.html` | Admin-Dashboard; WhatsApp-Einladungskarte + Liste (Build cc) |
 | `templates/touren/video.html` | Video-Seite: Format-Auswahl (`.format-wahl`, Build bz) + JS-Vorschau (seit `cd` paritätisch zum MP4: `drawAvatarRow`, `drawGastroFrame`, Logo) |
 | ↳ `_video_attending_users` / `_video_page_einkehr` / `_video_weather` | gemeinsame Daten für Seite und Renderer (Build cd/ce) |
@@ -321,6 +339,7 @@ Wenn eine neue Meldung kommt:
 
 | Build | Datum | Thema |
 |---|---|---|
+| `cq` | 2026-11-13 | Audit 10 (cg–cp): kein Code-Befund; README/Profil/UEBERGABE nachgezogen; Profil zeigt Tracker-Status |
 | `cp` | 2026-11-12 | Traccar-Rückfall-Tour: Organisator öffnet Live-Karte → 12 h Ziel, auch ohne Termin |
 | `co` | 2026-11-12 | Traccar: Akku in Liste/Tooltip, `valid=false` verworfen, Höhe → GPX/Hm |
 | `cn` | 2026-11-12 | Neustart-Frist 2 min; `users.tracker_note` (Schicksal des letzten Traccar-Punkts) |
@@ -349,8 +368,8 @@ Wenn eine neue Meldung kommt:
 ## 8. Text zum Einfügen in den neuen Chat
 
 > Wir machen mit der App „DejungenOlen" weiter. Lies bitte zuerst `UEBERGABE.md` im
-> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-12 cp` ist
-> fertig und ausgeliefert (Traccar-Hintergrund-Tracking mit Vorfahrtsregel), Arbeitsbaum
-> sauber, alle 749 Tests grün; Feldtest mit Traccar steht aus. Arbeite weiter wie dort beschrieben: Meldung wörtlich
+> Projektordner – dort steht der komplette Stand. Kurzfassung: Build `2026-11-13 cq` ist
+> fertig und ausgeliefert (Traccar-Hintergrund-Tracking komplett, Audit 10 ohne Code-Befund), Arbeitsbaum
+> sauber, alle 752 Tests grün. Arbeite weiter wie dort beschrieben: Meldung wörtlich
 > nehmen, am echten Code nachmessen, mit echten Daten nachstellen, beheben, Gegenprobe,
-> Tests, CHANGELOG, neuer Build-Buchstabe (`cf`), Deploy-Pakete, Push.
+> Tests, CHANGELOG, neuer Build-Buchstabe (nach `cq` kommt `cr`), Deploy-Pakete, Push.
