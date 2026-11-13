@@ -13,6 +13,19 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build co) – Mehr aus Traccar: Akku, GPS-Gültigkeit, Höhe
+- **Frage:** „Kann man aus Traccar noch mehr Daten bekommen die nützlich sind?" → 1 + 2 + 3.
+- **1 · Akku:** `batt` + `charge` → `live_locations.batt/charging` → Payload → Live-Karte: Liste und
+  Tooltip zeigen „🔋 23 % ⚡"; unter 15 % ohne Ladegerät rot. Der Fahrer selbst bekommt einmal
+  „🔋 Dein Akku ist bei 12 % – Powerbank dran …" (erneut erst nach Aufladen ≥ 25 %). Punkte ohne
+  `batt` lassen den alten Wert stehen. Die Tracker-Notiz (cn) nennt den Akku mit.
+- **2 · `valid=false`** (Netzwerk-Ortung ohne GPS-Fix) → Punkt verworfen, weder Standort noch Spur;
+  Notiz „verworfen: kein gültiger GPS-Fix". Fehlendes Feld = wie bisher.
+- **3 · Höhe:** `altitude` → `live_track_points.ele` → GPX-Download mit `<ele>`; Höhenmeter
+  (`_live_track_ascent`, Schwellwert 10 m gegen GPS-Rauschen) als Spalte „Hm" in der
+  Live-Aufzeichnung der Tourseite. Browser-Aufzeichnungen ohne Höhe zeigen „–".
+- Migration automatisch (3 Spalten). Tests `tests/test_build_co.py` (10). Suite **741 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build cn) – Traccar wieder an, „es springt nicht um und keiner ist unterwegs"
 - **Meldung:** Traccar Client aktiv, Hinweis zeigt „zuletzt gesendet 17:44", Karte zeigt nur einen
   kleinen roten Punkt, niemand „unterwegs".

@@ -90,7 +90,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 cn'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 co'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5400,7 +5400,7 @@ def _inject_live_now():
         return {'live_now': None}
 
 
-def _live_track_add(tour_id, user_id, lat, lng, accuracy, now):
+def _live_track_add(tour_id, user_id, lat, lng, accuracy, now, ele=None):
     """Build af: Position an die Aufzeichnung anhängen – nur brauchbare Fixe (Genauigkeit ≤ 100 m)
     und keine unplausiblen Sprünge (> 90 km/h seit dem letzten Punkt = GPS-Aussetzer).
     Liefert True, wenn ein Punkt gespeichert wurde. Commit macht der Aufrufer."""
@@ -5426,7 +5426,7 @@ def _live_track_add(tour_id, user_id, lat, lng, accuracy, now):
             if dt_s < 6 * 3600 and _haversine_m(last.lat, last.lng, lat, lng) / dt_s * 3.6 > LIVE_TRACK_MAX_KMH:
                 return False
     db.session.add(LiveTrackPoint(tour_id=tour_id, user_id=user_id, lat=lat, lng=lng,
-                                  accuracy=accuracy, recorded_at=now))
+                                  accuracy=accuracy, recorded_at=now, ele=ele))   # Build co: ele
     return True
 
 
@@ -5469,9 +5469,35 @@ def _live_track_summaries(tour_id):
         span = s_loc.strftime('%d.%m.%Y %H:%M') + '–' + e_loc.strftime('%H:%M') + ' Uhr'
         out.append({'user_id': uid, 'name': name, 'initials': _initials(name), 'n': len(pts),
                     'start': start, 'end': end, 'km': round(dist / 1000, 1), 'span': span,
-                    'points': [(p.recorded_at.replace(tzinfo=_utc.utc).timestamp(), p.lat, p.lng) for p in pts]})
+                    'hm': _live_track_ascent([p.ele for p in pts]),                      # Build co
+                    'points': [(p.recorded_at.replace(tzinfo=_utc.utc).timestamp(), p.lat, p.lng) for p in pts],
+                    'eles': [p.ele for p in pts]})                                        # Build co
     out.sort(key=lambda d: (-d['km'], -d['n']))
     return out
+
+
+LIVE_ASCENT_STEP_M = 10   # Build co: Höhenmeter zählen erst, wenn es 10 m netto bergauf ging (GPS-Höhenrauschen)
+
+
+def _live_track_ascent(eles):
+    """Build co: Höhenmeter aus einer Folge von Höhen (None = unbekannt). Schwellwert-Verfahren: Anstieg
+    wird erst gezählt, wenn seit dem letzten Tal LIVE_ASCENT_STEP_M erreicht sind – sonst macht das
+    Handy-GPS aus einer platten Weser-Tour 400 Höhenmeter. None, wenn weniger als die Hälfte der
+    Punkte eine Höhe hat (Browser-Aufzeichnung)."""
+    vals = [e for e in eles if e is not None]
+    if not eles or len(vals) < max(2, len(eles) // 2):
+        return None
+    total = 0.0
+    low = high = vals[0]
+    for e in vals[1:]:
+        if e < low:
+            low = e; high = e
+        elif e > high:
+            high = e
+            if high - low >= LIVE_ASCENT_STEP_M:
+                total += high - low
+                low = high
+    return int(round(total))
 
 
 def _live_track_timed_points(tour_id, user_id=None):
@@ -5485,8 +5511,8 @@ def _live_track_timed_points(tour_id, user_id=None):
 
 
 def _live_track_gpx_xml(summary, tour):
-    """Build af: GPX 1.1 mit Zeitstempeln (UTC) aus einer Aufzeichnung – ohne Höhenangaben, das
-    Handy liefert keine verlässlichen. Lesbar für parse_gpx/_gpx_timed_points und jedes Navi."""
+    """Build af: GPX 1.1 mit Zeitstempeln (UTC) aus einer Aufzeichnung. Build co: mit <ele>, wo der
+    Punkt eine Höhe hat (Traccar liefert sie, der Browser nicht). Lesbar für parse_gpx und jedes Navi."""
     import gpxpy
     import gpxpy.gpx
     from datetime import timezone as _utc
@@ -5494,8 +5520,11 @@ def _live_track_gpx_xml(summary, tour):
     g.creator = 'De jungen Olen – Live-Karte'            # bewusst ohne Personenname in der Datei
     trk = gpxpy.gpx.GPXTrack(name=tour.title)
     seg = gpxpy.gpx.GPXTrackSegment()
-    for ts, lat, lng in summary['points']:
+    eles = summary.get('eles') or []
+    for i, (ts, lat, lng) in enumerate(summary['points']):
+        ele = eles[i] if i < len(eles) else None
         seg.points.append(gpxpy.gpx.GPXTrackPoint(round(lat, 6), round(lng, 6),
+                                                  elevation=(round(ele, 1) if ele is not None else None),   # Build co
                                                   time=datetime.fromtimestamp(ts, _utc.utc)))
     trk.segments.append(seg)
     g.tracks.append(trk)
@@ -5603,6 +5632,7 @@ def _live_locations_payload(tour_id, now=None):
         out.append({'user_id': loc.user_id, 'name': name, 'initials': _initials(name),
                     'lat': loc.lat, 'lng': loc.lng, 'accuracy': loc.accuracy,
                     'speed': loc.speed, 'heading': loc.heading,
+                    'batt': loc.batt, 'charging': loc.charging,          # Build co: Akku (nur Traccar)
                     'ago': max(0, int((now - loc.updated_at).total_seconds())),
                     # Build ci: Sekunden seit dem letzten Tracker-Punkt (None = kein Tracker)
                     'tracker_ago': (max(0, int((now - loc.tracker_at).total_seconds()))
@@ -5883,6 +5913,18 @@ def _tracker_tour_for(user, local_day):
     return rows[0]
 
 
+def _tracker_bool(raw):
+    """Build co: Traccar schickt true/false, 1/0 – None wenn das Feld fehlt."""
+    if raw is None:
+        return None
+    v = str(raw).strip().lower()
+    if v in ('1', 'true', 'yes', 'ja'):
+        return True
+    if v in ('0', 'false', 'no', 'nein'):
+        return False
+    return None
+
+
 def _tracker_parse_time(raw, now):
     """Traccar schickt `timestamp` als Unix-Sekunden (manche Versionen ms oder ISO-8601).
     Liefert UTC-datetime oder None (fehlt/unplausibel → Ankunftszeit nehmen)."""
@@ -5950,6 +5992,11 @@ def traccar_push(token=None):
     accuracy = _f('accuracy', hi=100000) or _f('hdop', scale=5.0, hi=100000)   # hdop ≈ 5 m je Einheit (grob)
     speed = _f('speed', scale=0.514444, lo=0, hi=150)        # Traccar: Knoten → m/s
     heading = _f('bearing', lo=0, hi=360)
+    # Build co: mehr aus Traccar – Akku, Ladezustand, Höhe, Fix-Gültigkeit
+    batt = _f('batt', lo=0, hi=100)
+    charging = _tracker_bool(src.get('charge'))
+    ele = _f('altitude', lo=-500, hi=9000)
+    valid = _tracker_bool(src.get('valid'))
     arrived = datetime.utcnow()
     now = _tracker_parse_time(src.get('timestamp'), arrived) or arrived
 
@@ -5959,11 +6006,15 @@ def traccar_push(token=None):
     if tour is None:
         _note('verworfen: kein Tourtag (Punkt vom ' + local_day.strftime('%d.%m.') + ')')
         return jsonify({'ok': True, 'ignored': 'kein Tourtag'})
+    if valid is False:
+        # Build co: Netzwerk-/Funkzellen-Ortung ohne GPS-Fix – springt in der Kneipe 300 m; nicht in die Spur
+        _note('verworfen: kein gültiger GPS-Fix')
+        return jsonify({'ok': True, 'tour_id': tour.id, 'ignored': 'kein GPS-Fix'})
     stop_mark = LiveStop.query.filter_by(tour_id=tour.id, user_id=user.id).first()
     if stop_mark is not None:
         if now <= stop_mark.stopped_at:
             # Punkt gehört zur beendeten Fahrt (Nachzügler aus dem Traccar-Puffer): nur Spur, kein Standort
-            recorded = _live_track_add(tour.id, user.id, lat, lng, accuracy, now)
+            recorded = _live_track_add(tour.id, user.id, lat, lng, accuracy, now, ele=ele)
             db.session.commit()
             _note('Nachzügler (Punktzeit vor dem Fahrtende) – nur Spur')
             return jsonify({'ok': True, 'tour_id': tour.id, 'recorded': recorded, 'late': True})
@@ -5975,16 +6026,20 @@ def traccar_push(token=None):
     existing = LiveLocation.query.filter_by(tour_id=tour.id, user_id=user.id).first()
     if existing is None:
         db.session.add(LiveLocation(tour_id=tour.id, user_id=user.id, lat=lat, lng=lng, accuracy=accuracy,
-                                    speed=speed, heading=heading, updated_at=now, tracker_at=now))
+                                    speed=speed, heading=heading, updated_at=now, tracker_at=now,
+                                    batt=batt, charging=charging))
     else:
         if existing.updated_at is None or now >= existing.updated_at:   # Nachzügler überschreiben nichts Neueres
             existing.lat, existing.lng, existing.accuracy = lat, lng, accuracy
             existing.speed, existing.heading, existing.updated_at = speed, heading, now
+            if batt is not None:
+                existing.batt, existing.charging = batt, charging      # Build co
         if existing.tracker_at is None or now > existing.tracker_at:     # Build ci: Tracker hat Vorfahrt
             existing.tracker_at = now
-    recorded = _live_track_add(tour.id, user.id, lat, lng, accuracy, now)
+    recorded = _live_track_add(tour.id, user.id, lat, lng, accuracy, now, ele=ele)
     db.session.commit()
-    _note('übernommen – Tour „' + (tour.title or '')[:40] + '"')
+    _note('übernommen – Tour „' + (tour.title or '')[:40] + '"'
+          + (' · 🔋 ' + str(int(batt)) + ' %' + (' ⚡' if charging else '') if batt is not None else ''))
     return jsonify({'ok': True, 'tour_id': tour.id, 'recorded': recorded})
 
 
@@ -11593,6 +11648,9 @@ def migrate_db():
     add_column('live_locations', 'tracker_at', 'DATETIME')  # Build ci: Tracker hat Vorfahrt
     add_column('users', 'tracker_seen_at', 'DATETIME')     # Build cm: Traccar je benutzt → Hinweis auf der Live-Karte
     add_column('users', 'tracker_note', 'VARCHAR(160)')    # Build cn: Ergebnis des letzten Traccar-Punkts (sichtbar auf der Live-Karte)
+    add_column('live_locations', 'batt', 'FLOAT')          # Build co: Akku aus Traccar
+    add_column('live_locations', 'charging', 'BOOLEAN')    # Build co
+    add_column('live_track_points', 'ele', 'FLOAT')        # Build co: Höhe aus Traccar → GPX <ele>, Höhenmeter
     add_column('gastro_spots', 'hours_text', 'VARCHAR(300)')   # Build t: Öffnungszeiten-Text / Ruhetage
     add_column('gastro_spots', 'lunch',      'VARCHAR(10)')    # Build z: Mittagstisch yes/no/NULL
     add_column('gastro_spots', 'lunch_text', 'VARCHAR(200)')   # Build z: Mittagstisch-Details

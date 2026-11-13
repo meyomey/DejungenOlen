@@ -461,13 +461,14 @@
       <div class="card-body py-2">
         <div class="table-responsive">
           <table class="table table-sm mb-2 align-middle" style="font-size:.85rem">
-            <thead><tr><th>Wer</th><th>Zeitraum</th><th class="text-end">km</th><th class="text-end">Punkte</th><th></th></tr></thead>
+            <thead><tr><th>Wer</th><th>Zeitraum</th><th class="text-end">km</th><th class="text-end" title="Höhenmeter – nur bei Aufzeichnung über die Tracker-App">Hm</th><th class="text-end">Punkte</th><th></th></tr></thead>
             <tbody>
             {% for r in live_recs %}
               <tr>
                 <td>{{ r.name }}{% if r.user_id == current_user.id %} <span class="text-muted">(du)</span>{% endif %}</td>
                 <td class="text-nowrap">{{ r.span }}</td>
                 <td class="text-end">{{ r.km|de1 }}</td>
+                <td class="text-end">{% if r.hm is not none %}{{ r.hm }}{% else %}<span class="text-muted">–</span>{% endif %}</td>
                 <td class="text-end">{{ r.n }}</td>
                 <td class="text-end text-nowrap">
                   {% if can_manage or r.user_id == current_user.id %}

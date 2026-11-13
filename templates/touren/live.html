@@ -858,6 +858,30 @@ function pinIcon(loc, isMe) {
     iconSize: [36, 36], iconAnchor: [18, 18], tooltipAnchor: [0, -18], popupAnchor: [0, -18], className: ''
   });
 }
+// Build co: Akku aus Traccar (batt/charge). Unter 15 % ohne Ladegerät rot – die Tourleitung sieht,
+// wessen Tracker gleich ausgeht, bevor der Standort grau wird; der Fahrer selbst bekommt einmal
+// eine Warnung.
+const BATT_WARN = 15;
+function battTxt(loc) {
+  if (loc.batt == null) return '';
+  return '🔋 ' + Math.round(loc.batt) + ' %' + (loc.charging ? ' ⚡' : '');
+}
+function battLow(loc) { return loc.batt != null && loc.batt < BATT_WARN && !loc.charging; }
+function battHtml(loc) {
+  const t = escHtml(battTxt(loc));
+  return battLow(loc) ? '<span class="text-danger fw-semibold" title="Akku fast leer – Tracker geht gleich aus">' + t + '</span>' : t;
+}
+let battGewarnt = false;
+function battCheckMe(locs) {
+  const me = (locs || []).find(l => l.user_id === ME.id);
+  if (!me) return;
+  if (battLow(me) && !battGewarnt) {
+    battGewarnt = true;
+    setStatus('🔋 Dein Akku ist bei ' + Math.round(me.batt) + ' % – Powerbank dran, sonst endet die Aufzeichnung gleich.', 'warning');
+  } else if (me.batt != null && me.batt >= BATT_WARN + 10) {
+    battGewarnt = false;                                   // geladen → beim nächsten Mal wieder warnen
+  }
+}
 function setStatus(text, cls, asHtml) {
   const el = document.getElementById('live-status');
   if (asHtml) { el.innerHTML = text; } else { el.textContent = text; }   // Build k: html nur für eigene Link-Meldungen
@@ -870,6 +894,7 @@ let lastLocs = [];
 function render(locs) {
   lastLocs = locs || [];
   noteTrackerLocs(lastLocs);                         // Build ci: eigener Tracker-Punkt dabei?
+  battCheckMe(lastLocs);                             // Build co: Akku-Warnung für mich
   const seen = new Set();
   const rows = [];
   lastLocs.forEach(loc => {
@@ -878,7 +903,8 @@ function render(locs) {
     const proj = projectKm(loc.lat, loc.lng);
     const kmh = loc.speed != null ? Math.round(loc.speed * 3.6) : null;
     const tip = escHtml(loc.name) + (isMe ? ' (du)' : '') + ' · ' + fmtAgo(loc.ago)
-              + ((loc.tracker_ago != null && loc.tracker_ago * 1000 < TRACKER_ACTIVE_MS) ? ' · 📡 Tracker' : '');   // Build ci
+              + ((loc.tracker_ago != null && loc.tracker_ago * 1000 < TRACKER_ACTIVE_MS) ? ' · 📡 Tracker' : '')   // Build ci
+              + (battTxt(loc) ? ' · ' + battTxt(loc) : '');                                                       // Build co
     if (markers[loc.user_id]) {
       markers[loc.user_id].setLatLng([loc.lat, loc.lng]).setIcon(pinIcon(loc, isMe)).setTooltipContent(tip);
     } else {
@@ -900,6 +926,7 @@ function render(locs) {
     list.innerHTML = rows.map(r => {
       const parts = [fmtAgo(r.loc.ago)];
       if (r.kmh != null && r.loc.ago < FRESH_S) parts.push(r.kmh + ' km/h');
+      if (battTxt(r.loc)) parts.push(battHtml(r.loc));                       // Build co: Akku aus Traccar
       if (r.proj) parts.push(r.proj.off > 300 ? fmtKm(r.proj.off) + ' km abseits der Strecke' : 'km ' + fmtKm(r.proj.m));
       return '<div class="list-group-item d-flex align-items-center gap-2 py-2">' +
         '<span class="live-bubble" style="background:' + colorFor(r.loc.ago) + '">' + escHtml(r.loc.initials || '?') + '</span>' +

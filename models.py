@@ -255,6 +255,8 @@ class LiveLocation(db.Model):
     speed      = db.Column(db.Float, nullable=True)   # Build aa: m/s
     heading    = db.Column(db.Float, nullable=True)   # Build aa: Grad
     tracker_at = db.Column(db.DateTime, nullable=True)   # Build ci: letzter Punkt aus der Tracker-App (Traccar)
+    batt       = db.Column(db.Float, nullable=True)      # Build co: Akku % (nur Traccar liefert das)
+    charging   = db.Column(db.Boolean, nullable=True)    # Build co: lädt gerade
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     tour       = db.relationship('Tour')
     user       = db.relationship('User')
@@ -286,6 +288,7 @@ class LiveTrackPoint(db.Model):
     lat         = db.Column(db.Float, nullable=False)
     lng         = db.Column(db.Float, nullable=False)
     accuracy    = db.Column(db.Float, nullable=True)
+    ele         = db.Column(db.Float, nullable=True)   # Build co: Höhe in m (Traccar altitude), None aus dem Browser
     recorded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)   # UTC
     __table_args__ = (db.Index('ix_live_track_tour_user_time', 'tour_id', 'user_id', 'recorded_at'),)
 
