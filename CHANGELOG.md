@@ -13,6 +13,17 @@
 > Falls nach der ersten bv-Fahrt gewünscht: Anker beim Anfahren 25 → 10 m, und Stand-Punkte nur
 > bei ≥ 5 m echter Bewegung. Beides klein und voneinander unabhängig.
 
+## 1.5.0 – 2026-11-12 (Build cp) – Traccar auf Touren ohne Termin (Organisatoren)
+- **Frage:** „Bin jetzt testweise eine Tour ohne Datum gefahren mit Traccar aktiv. In der App wird mit
+  Traccar nicht getrackt weil kein Datum eingetragen ist, oder?" – Ja: Zuordnung läuft über Tourtag ±1.
+- **Neu:** Öffnet ein **Organisator** die Live-Karte einer Tour (und dürfte dort fahren), ist diese Tour
+  **12 h lang das Rückfall-Ziel seines Trackers** (`users.tracker_tour_id/_at`,
+  `_tracker_pin_tour`/`_tracker_pinned_tour`, `TRACKER_TOUR_PIN_H`). Die Datums-Zuordnung bleibt
+  vorrangig; abgesagte/fremde Touren zählen nicht; Mitglieder bleiben an den Termin gebunden (wie im
+  Browser). Der Zuschauer-Hinweis sagt „Diese Tour ist jetzt 12 h lang das Ziel deines Trackers, auch
+  ohne Termin."; die Tracker-Notiz bei „kein Tourtag" nennt Organisatoren den Weg.
+- Migration automatisch (2 Spalten). Tests `tests/test_build_cp.py` (8). Suite **749 grün**.
+
 ## 1.5.0 – 2026-11-12 (Build co) – Mehr aus Traccar: Akku, GPS-Gültigkeit, Höhe
 - **Frage:** „Kann man aus Traccar noch mehr Daten bekommen die nützlich sind?" → 1 + 2 + 3.
 - **1 · Akku:** `batt` + `charge` → `live_locations.batt/charging` → Payload → Live-Karte: Liste und

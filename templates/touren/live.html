@@ -654,6 +654,7 @@ const TRACKER_ACTIVE_MS = {{ tracker_active_s }} * 1000;
 let trackerSeen = {{ tracker_ago if tracker_ago is not none else 'null' }};   // Sekunden (Server) → gleich Zeitpunkt (ms)
 trackerSeen = (trackerSeen == null) ? 0 : Date.now() - trackerSeen * 1000;
 const TRACKER_SEEN_TXT = {{ tracker_seen_txt|tojson }};   // Build cm: '' = Traccar nie benutzt
+const TRACKER_PINNED = {{ 'true' if tracker_pinned else 'false' }};   // Build cp: Organisator – Tour als Traccar-Ziel gemerkt
 const TRACKER_NOTE = {{ tracker_note|tojson }};           // Build cn: „17:44 · ignoriert: …" – was der Server mit dem letzten Punkt tat
 let trackerModus = false;          // Knopf/Status stehen gerade im Tracker-Zustand
 // Build av: Ist Fahren gerade nicht erlaubt, steht der Grund in der Statuszeile – dort, wo
@@ -1191,7 +1192,8 @@ function trackerIdleHtml() {
   const letzter = TRACKER_NOTE ? esc(TRACKER_NOTE) : esc(TRACKER_SEEN_TXT) + ' Uhr';
   return '📡 Traccar ist eingerichtet (letzter Punkt ' + letzter + '). Dienst in der Traccar-App '
        + 'einschalten, dann geht es hier von allein los – der Knopf springt auf „Tracker-App". '
-       + 'Oder „▶ Fahrt starten" für GPS aus dem Browser.';
+       + 'Oder „▶ Fahrt starten" für GPS aus dem Browser.'
+       + (TRACKER_PINNED ? ' Diese Tour ist jetzt 12 h lang das Ziel deines Trackers, auch ohne Termin.' : '');   // Build cp
 }
 if (TRACKER_SEEN_TXT && !trackerAktiv() && CAN_SHARE) setStatus(trackerIdleHtml(), '', true);
 function refreshTrackerUi() {

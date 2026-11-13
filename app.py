@@ -90,7 +90,7 @@ app.config.from_object(Config)
 
 # ─── Versionskennung (bei jeder Auslieferung hochzählen) ─────────────────────
 APP_VERSION = '1.5.0'
-APP_BUILD   = '2026-11-12 co'   # Datum + Buchstabe pro Auslieferung am selben Tag
+APP_BUILD   = '2026-11-12 cp'   # Datum + Buchstabe pro Auslieferung am selben Tag
 
 
 @app.after_request
@@ -5712,6 +5712,7 @@ def tour_live(tour_id):
         einkehr = {'lat': ek['lat'], 'lng': ek['lng'], 'name': ek['name'], 'url': ek['url'],
                    'hours': ek['hours'], 'lunch_label': ek.get('lunch_label', '')}
     can_share, share_hint = _live_share_window(tour)
+    tracker_pinned = _tracker_pin_tour(current_user, tour) if can_share else False   # Build cp
     me_name = current_user.display_name
     me = {'id': current_user.id, 'name': me_name, 'initials': _initials(me_name)}
     datum = '' if tour.is_date_open else (['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][tour.tour_date.weekday()]
@@ -5725,6 +5726,7 @@ def tour_live(tour_id):
                            tracker_ago=_tracker_ago(tour.id, current_user.id),        # Build ci
                            tracker_seen_txt=_tracker_seen_txt(current_user),          # Build cm
                            tracker_note=getattr(current_user, 'tracker_note', None) or '',   # Build cn
+                           tracker_pinned=tracker_pinned,                              # Build cp
                            tracker_active_s=TRACKER_ACTIVE_S,
                            stale_s=LIVE_STALE_S, fresh_s=LIVE_FRESH_S, keep_days=LIVE_TRACK_KEEP_DAYS)
 
@@ -5913,6 +5915,37 @@ def _tracker_tour_for(user, local_day):
     return rows[0]
 
 
+# Build cp: „Bin jetzt testweise eine Tour ohne Datum gefahren mit Traccar aktiv. In der App wird mit
+# Traccar nicht getrackt weil kein Datum eingetragen ist, oder?" – Ja. Im Browser dürfen Organisatoren
+# jederzeit fahren (auch ohne Termin), Traccar kannte dieses Hintertürchen nicht, weil die App nicht
+# sagt, welche Tour gemeint ist. Jetzt: Öffnet ein Organisator die Live-Karte einer Tour, ist das für
+# TRACKER_TOUR_PIN_H Stunden das Ziel seines Trackers – als Rückfall, wenn das Datum nichts hergibt.
+TRACKER_TOUR_PIN_H = 12
+
+
+def _tracker_pin_tour(user, tour, now=None):
+    """Beim Öffnen der Live-Karte: Tour als Tracker-Ziel merken (nur Organisatoren, nur wenn sie dort
+    fahren dürften). Commit macht der Aufrufer nicht – wir selbst, damit der Render nichts davon merkt."""
+    if not getattr(user, 'is_organizer', False) or tour.status == 'cancelled':
+        return False
+    user.tracker_tour_id = tour.id
+    user.tracker_tour_at = now or datetime.utcnow()
+    db.session.commit()
+    return True
+
+
+def _tracker_pinned_tour(user, now=None):
+    """Gemerkte Rückfall-Tour, falls jünger als TRACKER_TOUR_PIN_H und noch gültig; sonst None."""
+    now = now or datetime.utcnow()
+    tid, at = getattr(user, 'tracker_tour_id', None), getattr(user, 'tracker_tour_at', None)
+    if not tid or not at or (now - at).total_seconds() > TRACKER_TOUR_PIN_H * 3600:
+        return None
+    t = db.session.get(Tour, tid)
+    if t is None or t.status == 'cancelled' or t.group_id != user.group_id:
+        return None
+    return t
+
+
 def _tracker_bool(raw):
     """Build co: Traccar schickt true/false, 1/0 – None wenn das Feld fehlt."""
     if raw is None:
@@ -6004,7 +6037,10 @@ def traccar_push(token=None):
     local_day = now.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Berlin')).date()
     tour = _tracker_tour_for(user, local_day)
     if tour is None:
-        _note('verworfen: kein Tourtag (Punkt vom ' + local_day.strftime('%d.%m.') + ')')
+        tour = _tracker_pinned_tour(user, arrived)          # Build cp: Rückfall – Live-Karte zuletzt geöffnet
+    if tour is None:
+        _note('verworfen: kein Tourtag (Punkt vom ' + local_day.strftime('%d.%m.') + ')'
+              + (' – Organisatoren: Live-Karte der Tour öffnen, dann zählt sie 12 h als Ziel' if user.is_organizer else ''))
         return jsonify({'ok': True, 'ignored': 'kein Tourtag'})
     if valid is False:
         # Build co: Netzwerk-/Funkzellen-Ortung ohne GPS-Fix – springt in der Kneipe 300 m; nicht in die Spur
@@ -11648,6 +11684,8 @@ def migrate_db():
     add_column('live_locations', 'tracker_at', 'DATETIME')  # Build ci: Tracker hat Vorfahrt
     add_column('users', 'tracker_seen_at', 'DATETIME')     # Build cm: Traccar je benutzt → Hinweis auf der Live-Karte
     add_column('users', 'tracker_note', 'VARCHAR(160)')    # Build cn: Ergebnis des letzten Traccar-Punkts (sichtbar auf der Live-Karte)
+    add_column('users', 'tracker_tour_id', 'INTEGER')      # Build cp: Rückfall-Tour für Traccar ohne Termin
+    add_column('users', 'tracker_tour_at', 'DATETIME')     # Build cp
     add_column('live_locations', 'batt', 'FLOAT')          # Build co: Akku aus Traccar
     add_column('live_locations', 'charging', 'BOOLEAN')    # Build co
     add_column('live_track_points', 'ele', 'FLOAT')        # Build co: Höhe aus Traccar → GPX <ele>, Höhenmeter
